@@ -134,13 +134,18 @@ pub(crate) fn busy_body(error: &str) -> Value {
     body
 }
 
-fn interrupted_body() -> Value {
+/// The editor's page went away under a running export; `detail` says where it stopped and why, when the native trace knew. A reloaded editor keeps slowing down, so the honest next step is a restart.
+fn interrupted_body(detail: Option<&str>) -> Value {
+    let error = match detail {
+        Some(detail) => format!("{detail}, so nothing was saved"),
+        None => "the editor reloaded during the export, so nothing was saved".to_owned(),
+    };
     let mut body = refusal(
         "interrupted",
-        "the editor reloaded during the export, so nothing was saved",
-        Some("rerun kb export"),
+        &error,
+        Some("ask the user to quit and reopen Kookaburra Cut, then rerun kb export"),
     );
-    body["retryAfterMs"] = json!(5_000);
+    body["restartRecommended"] = json!(true);
     body
 }
 
@@ -526,12 +531,12 @@ impl Exports {
         }
     }
 
-    /// The main window (re)mounted: an export still in the slot lost its runner, so it fails now. Returns its id and whether it was running.
-    pub(crate) fn reset(&self) -> Option<(String, bool)> {
+    /// The main window reloaded or (re)mounted: an export still in the slot lost its runner, so it fails now. Returns its id and whether it was running.
+    pub(crate) fn reset(&self, detail: Option<&str>) -> Option<(String, bool)> {
         let mut guard = self.slot.lock().ok()?;
         let mut slot = guard.take()?;
         let running = slot.phase == Phase::Running;
-        slot.fail(interrupted_body());
+        slot.fail(interrupted_body(detail));
         Some((slot.id, running))
     }
 
@@ -752,7 +757,7 @@ async fn serve_export(
         Ok(Ok(answer)) => answer,
         Ok(Err(_)) => {
             EXPORTS.end(&id);
-            return interrupted_body();
+            return interrupted_body(None);
         }
         Err(_) => {
             EXPORTS.expire(&id);
@@ -772,7 +777,7 @@ async fn serve_export(
     if let (Some(pid), false) = (fields.client_pid, fields.detach) {
         watch_client(app, &id, pid);
     }
-    let result = finish_rx.await.unwrap_or_else(|_| interrupted_body());
+    let result = finish_rx.await.unwrap_or_else(|_| interrupted_body(None));
     let body = if result.get("ok") == Some(&Value::Bool(true)) {
         EXPORTS.set_stage(&id, "hashing");
         if let Ok(Some((path, body))) =
@@ -971,6 +976,13 @@ pub fn bridge_export_finish(
     EXPORTS.finish(&id, result)
 }
 
+/// The main window's page started loading again (export_health): the bridge export it ran fails now, with where it stopped.
+pub(crate) fn editor_reloaded(detail: Option<&str>) {
+    if let Some((id, _)) = EXPORTS.reset(detail) {
+        log::warn!("[bridge] the editor reloaded during export {id}; it failed");
+    }
+}
+
 /// Called by the main window on mount: an export left in the slot by a reload fails instead of hanging.
 #[tauri::command]
 pub fn bridge_export_reset(
@@ -978,7 +990,7 @@ pub fn bridge_export_reset(
     window: tauri::Window,
 ) -> Result<Option<String>, String> {
     main_window_only(&window)?;
-    Ok(EXPORTS.reset().map(|(id, running)| {
+    Ok(EXPORTS.reset(None).map(|(id, running)| {
         if running {
             let _ = app.state::<ExportState>().cancel();
         }
@@ -1180,14 +1192,19 @@ mod tests {
     fn reset_fails_the_slot_whichever_side_waits() {
         let exports = Exports::new();
         let (mut accept, _finish) = exports.begin("a", "ws:demo", &root()).unwrap();
-        assert_eq!(exports.reset(), Some(("a".to_owned(), false)));
+        assert_eq!(exports.reset(None), Some(("a".to_owned(), false)));
         assert_eq!(code(&accept.try_recv().unwrap()), "interrupted");
-        assert!(exports.reset().is_none());
+        assert!(exports.reset(None).is_none());
 
         let (_accept, mut finish) = exports.begin("b", "ws:demo", &root()).unwrap();
         exports.accept("b", json!({"accepted": true})).unwrap();
-        assert_eq!(exports.reset(), Some(("b".to_owned(), true)));
-        assert_eq!(code(&finish.try_recv().unwrap()), "interrupted");
+        let detail = "WebKit replaced the editor's page process during the export, at frame 12/90 (12%)";
+        assert_eq!(exports.reset(Some(detail)), Some(("b".to_owned(), true)));
+        let body = finish.try_recv().unwrap();
+        assert_eq!(code(&body), "interrupted");
+        assert_eq!(body["error"], json!(format!("{detail}, so nothing was saved")));
+        assert_eq!(body["restartRecommended"], json!(true));
+        assert!(body.get("retryAfterMs").is_none(), "rerunning without a restart fails again");
         assert!(
             exports.begin("c", "ws:demo", &root()).is_ok(),
             "the slot is free again"

@@ -67,7 +67,8 @@ export async function runPackRoundTrip(projectId: string): Promise<RoundTripResu
   const built = await invoke<{ path: string; bytes: number }>("build_pack", {
     selection: full,
     destination: packPath,
-    meta: { name: `Round trip ${slug}` },
+    // A throwaway root has no profile, so the trip names itself; nothing is saved.
+    meta: { name: `Round trip ${slug}`, publisherName: "Pack round trip" },
     onProgress: new Channel(),
   });
 

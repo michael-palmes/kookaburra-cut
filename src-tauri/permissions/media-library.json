@@ -1,0 +1,59 @@
+{
+  "permission": [
+    {
+      "identifier": "media-library",
+      "description": "The media library: imports, conforms, originals, global screenshots and 3D objects.",
+      "commands": {
+        "allow": [
+          "import_media",
+          "import_media_bytes",
+          "import_app_icon",
+          "import_audio",
+          "delete_media",
+          "unused_media",
+          "rename_media",
+          "media_users",
+          "list_originals",
+          "remove_original",
+          "remove_originals",
+          "list_conform_jobs",
+          "conform_media",
+          "cancel_conform",
+          "measure_loudness",
+          "song_analysis",
+          "list_global_screenshots",
+          "import_global_screenshots",
+          "global_screenshot_meta",
+          "copy_to_global_screenshots",
+          "delete_global_screenshot",
+          "import_object",
+          "write_object_thumbnail",
+          "reveal_in_finder"
+        ]
+      }
+    },
+    {
+      "identifier": "library",
+      "description": "The template, scene-preset, theme and gradient library.",
+      "commands": {
+        "allow": [
+          "convert_project_to_template",
+          "save_scene_as_preset",
+          "duplicate_template_to_workspace",
+          "duplicate_preset_to_workspace",
+          "write_user_template_manifest",
+          "write_user_preset_manifest",
+          "delete_user_template",
+          "delete_user_preset",
+          "set_user_template_orders",
+          "set_user_preset_orders",
+          "set_workspace_theme_orders",
+          "delete_theme",
+          "list_gradients",
+          "write_gradient",
+          "delete_gradient"
+        ]
+      }
+    }
+  ]
+}

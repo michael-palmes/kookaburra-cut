@@ -130,7 +130,8 @@ One array for stills and videos. Where an entry draws depends only on its `host`
   `{ "opacity": 1, "blur": 0, "offset": [0.03, -0.03], "colour": "#ff6a3d" }`.
 - `motion.preset`: `none`, `float`, `tilt-reveal`, `push-in` (both kinds), `turntable`
   (stills), `drift` (videos); tuning `amplitude`, `hz`, `degPerSec`, `durationMs`.
-- `video`: `startMs` (scene-local), `loop` (default false: holds the last frame).
+- `video`: `startMs` (scene-local), `at` (a musical position the start follows, cached in
+  `startMs`; reference/beats.md), `loop` (default false: holds the last frame).
 - `castShadow: true` for stage-hosted stills.
 - `motionBlur: { enabled, amount? }` keeps an item sharp or scales its trail under
   motion blur (reference/camera.md).

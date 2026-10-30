@@ -32,6 +32,9 @@ import json
 import sys
 from pathlib import Path
 
+# kb runs this with python3 -I, which drops the script's folder: put it back so kblib resolves.
+sys.path.append(str(Path(__file__).resolve().parent))
+
 
 def load(stem: str) -> tuple[Path, dict]:
     path = Path("scenes") / f"{stem}.json"
@@ -132,14 +135,21 @@ def main() -> int:
             rows = [[""] + rows[0]] + rows[1:]
             source = None
         else:
-            src = Path(sys.argv[3])
+            from kblib.reach import guard_read_at
+            from kblib.util import KbError
+
+            try:
+                src = guard_read_at(Path.cwd(), sys.argv[3], "the data file")
+            except KbError as e:
+                print(e.text(), file=sys.stderr)
+                return e.code
             if not src.is_file():
-                print(f"chart: {src} does not exist", file=sys.stderr)
+                print(f"chart: {sys.argv[3]} does not exist", file=sys.stderr)
                 return 2
             delimiter = "\t" if src.suffix.lower() in (".tsv", ".txt") else ","
             with src.open(newline="") as f:
                 rows = list(csv.reader(f, delimiter=delimiter))
-            source = str(src) if str(src).startswith("assets/") else None
+            source = sys.argv[3] if sys.argv[3].startswith("assets/") else None
         categories, series = parse_rows(rows)
         chart = doc.setdefault("chart", {"type": "column"})
         old = chart.get("data") or {}

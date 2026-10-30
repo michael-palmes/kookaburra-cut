@@ -1,6 +1,7 @@
 //! The capture bridge: a file-drop queue at `~/Kookaburra Cut/_bridge/` that lets Claude Code ask the RUNNING app (dev or packaged) to capture, check, vet fonts, insert presets, refresh changed media or open the video editor (docs/agent-kit.md, "The bridge (v2)"; v1 `capture.py` requests carry no `kind` and still work). Clients write `requests/<id>.json`; the hidden render window claims one per tick via `bridge_claim_request`, serves it through the export path and answers via `bridge_write_response` + the bridge screenshot pair. The native kinds (`NATIVE_KINDS`) never reach the render window: `spawn_native_bridge` claims and serves them from Rust. Several app instances can share the queue: `init` decides once whether this one serves (`bridge_role`), every claim and the pending count go through `claimable`, and every answer carries `servedBy`. The editor's one-second tick also writes this instance's `apps/<pid>.json` heartbeat (plus `app.json` when it is the elected primary). Deliberately separate from the autorun screenshot commands (env-gated, cold-boot, single-instance): neither surface may regress the other.
 
 use std::cell::OnceCell;
+use std::collections::{HashMap, HashSet};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -11,6 +12,7 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 use crate::{media, workspace};
 
@@ -313,6 +315,235 @@ pub struct Heartbeat {
     pub export_job: Option<Value>,
     /// Filled by the capture service (`bridge_health`); serving instances only.
     pub health: Option<Value>,
+    /// Folders the app's own file dialogs returned this session: the only places outside the workspace kb may write.
+    pub picked_dirs: Vec<String>,
+}
+
+// ── Picked folders ─────────────────────────────────────────────────────────
+
+/// Folders a person chose in one of the app's native dialogs this session (`note_picked_folder`); published in the heartbeat so kb and the headless CLI can honour them, forgotten when the app quits.
+#[derive(Default)]
+pub struct PickedFolders(Mutex<Vec<PathBuf>>);
+
+const PICKED_FOLDERS_CAP: usize = 32;
+
+impl PickedFolders {
+    pub(crate) fn note(&self, path: &Path) {
+        let Ok(mut list) = self.0.lock() else {
+            return;
+        };
+        list.retain(|p| p != path);
+        list.push(path.to_path_buf());
+        let excess = list.len().saturating_sub(PICKED_FOLDERS_CAP);
+        list.drain(..excess);
+    }
+
+    pub(crate) fn list(&self) -> Vec<PathBuf> {
+        self.0.lock().map(|list| list.clone()).unwrap_or_default()
+    }
+}
+
+/// Folders too broad to hand kb as a write root even when a dialog returned them: the filesystem root, the volume and user roots, and the home folder itself.
+fn too_broad_to_pick(dir: &Path, home: Option<&Path>) -> bool {
+    let depth = dir.components().count();
+    depth <= 2 || home.is_some_and(|home| dir == home)
+}
+
+/// Folders whose contents are credentials (the same set kb refuses to read).
+const NEVER_PICKED: [&str; 5] = [".ssh", ".aws", ".config", ".gnupg", "Library/Keychains"];
+
+/// A folder the person just chose in a native dialog (a Save dialog's parent counts). Only an existing directory is kept, and never one broad enough to make the confinement moot or one that holds credentials; the command comes from the webview, so it trusts the path no further than that.
+#[tauri::command]
+pub fn note_picked_folder(
+    app: AppHandle,
+    state: State<'_, PickedFolders>,
+    path: String,
+) -> Result<(), String> {
+    let path = PathBuf::from(path);
+    if !path.is_absolute() {
+        return Err("a picked folder must be an absolute path".into());
+    }
+    let dir = if path.is_dir() {
+        path
+    } else {
+        path.parent()
+            .filter(|p| p.is_dir())
+            .map(Path::to_path_buf)
+            .ok_or("that path is not inside an existing folder")?
+    };
+    let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
+    let home = app
+        .path()
+        .home_dir()
+        .ok()
+        .map(|h| std::fs::canonicalize(&h).unwrap_or(h));
+    if too_broad_to_pick(&dir, home.as_deref()) {
+        return Err("that folder is too broad to hand to Claude; pick a folder inside it".into());
+    }
+    if home
+        .as_deref()
+        .is_some_and(|home| NEVER_PICKED.iter().any(|rel| dir.starts_with(home.join(rel))))
+    {
+        return Err("that folder holds credentials and is never handed to Claude".into());
+    }
+    state.note(&dir);
+    Ok(())
+}
+
+/// `pickedDirs` of every live heartbeat under `bridge`, for a process with no app handle (the headless CLI).
+pub(crate) fn picked_dirs_in(bridge: &Path) -> Vec<PathBuf> {
+    let now = now_ms();
+    let mut out = Vec::new();
+    let Ok(entries) = std::fs::read_dir(bridge.join(APPS_DIR)) else {
+        return out;
+    };
+    for entry in entries.flatten() {
+        let Ok(text) = std::fs::read_to_string(entry.path()) else {
+            continue;
+        };
+        let Ok(body) = serde_json::from_str::<Value>(&text) else {
+            continue;
+        };
+        let fresh = body
+            .get("updatedAtMs")
+            .and_then(Value::as_u64)
+            .is_some_and(|at| now.saturating_sub(at) <= HEARTBEAT_FRESH_MS);
+        if !fresh {
+            continue;
+        }
+        for dir in body
+            .get("pickedDirs")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+        {
+            let path = PathBuf::from(dir);
+            if path.is_absolute() && !out.contains(&path) {
+                out.push(path);
+            }
+        }
+    }
+    out
+}
+
+/// The bridge folder for a process without an app handle: the test override, else the fixed home location.
+pub(crate) fn bridge_root_without_app() -> Option<PathBuf> {
+    if let Some(dir) = bridge_dir_env() {
+        return Some(dir.clone());
+    }
+    crate::tools::home_dir()
+        .ok()
+        .map(|home| home.join(workspace::WORKSPACE_DIR_NAME).join(BRIDGE_DIR))
+}
+
+// ── Cross-project confirmation ─────────────────────────────────────────────
+
+/// A request for a workspace project other than the one open in the editor renders or opens that project on an agent's say-so, so the person confirms it once per project per session; a refusal holds for a minute so a flood of requests cannot flood dialogs.
+#[derive(Default)]
+pub struct BridgeGrants {
+    allowed: Mutex<HashSet<String>>,
+    declined_until: Mutex<HashMap<String, Instant>>,
+    prompting: Mutex<()>,
+}
+
+const DECLINE_HOLD: Duration = Duration::from_secs(60);
+
+fn access_verb(kind: &str) -> &'static str {
+    match kind {
+        "capture" => "render frames of",
+        "check" => "load and check",
+        "insertPreset" => "add a scene to",
+        "openEdit" => "open the video editor for",
+        _ => "use",
+    }
+}
+
+/// Whether the agent may act on `slug`: true without asking when the editor has it open or the person already allowed it this session, else one native dialog (off the main thread).
+pub(crate) fn confirm_project_access(
+    app: &AppHandle,
+    slug: &str,
+    kind: &str,
+    client: Option<&str>,
+) -> bool {
+    let project_id = format!("ws:{slug}");
+    if editor_context(app).and_then(|c| c.project_id) == Some(project_id.clone()) {
+        return true;
+    }
+    let grants = app.state::<BridgeGrants>();
+    if grants
+        .allowed
+        .lock()
+        .is_ok_and(|allowed| allowed.contains(slug))
+    {
+        return true;
+    }
+    if grants.declined_until.lock().is_ok_and(|held| {
+        held.get(slug)
+            .is_some_and(|until| Instant::now() < *until)
+    }) {
+        return false;
+    }
+    let _one_at_a_time = grants.prompting.lock().unwrap_or_else(|p| p.into_inner());
+    if grants
+        .allowed
+        .lock()
+        .is_ok_and(|allowed| allowed.contains(slug))
+    {
+        return true;
+    }
+    let name = crate::clean_text::clean_text_with_cap(slug, 80);
+    let who = client
+        .map(|c| crate::clean_text::clean_text_with_cap(c, 40))
+        .filter(|c| !c.is_empty())
+        .map(|c| format!(" (request from {c})"))
+        .unwrap_or_default();
+    let message = format!(
+        "Claude asked to {} \"{name}\", which is not the project open in Kookaburra Cut{who}.\n\nAllow it for the rest of this session?",
+        access_verb(kind)
+    );
+    let allowed = app
+        .dialog()
+        .message(message)
+        .title("Allow Claude to use another project?")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "Allow".into(),
+            "Don't allow".into(),
+        ))
+        .blocking_show();
+    if allowed {
+        if let Ok(mut set) = grants.allowed.lock() {
+            set.insert(slug.to_owned());
+        }
+    } else if let Ok(mut held) = grants.declined_until.lock() {
+        held.insert(slug.to_owned(), Instant::now() + DECLINE_HOLD);
+    }
+    allowed
+}
+
+/// The render window asks before serving a request for a project the editor does not have open.
+#[tauri::command]
+pub async fn bridge_confirm_project(
+    app: AppHandle,
+    slug: String,
+    kind: String,
+    client: Option<String>,
+) -> Result<bool, String> {
+    workspace::validate_slug(&slug)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        confirm_project_access(&app, &slug, &kind, client.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// The sentence a refused request carries.
+pub(crate) fn access_refused(slug: &str, kind: &str) -> String {
+    format!(
+        "the person did not allow Claude to {} \"ws:{slug}\" (it is not the project open in Kookaburra Cut); ask them to open it in the app, or to allow it when the app asks",
+        access_verb(kind)
+    )
 }
 
 fn build_name() -> &'static str {
@@ -697,6 +928,7 @@ fn heartbeat_body(
         last_load: last_load.cloned(),
         export_job: crate::bridge_export::job_value(),
         health,
+        picked_dirs: Vec::new(),
     }
 }
 
@@ -721,7 +953,7 @@ fn write_cli_marker(app: &AppHandle) {
         return;
     };
     let body = cli_marker_body(&path, &app.package_info().version.to_string(), now_ms());
-    let written = std::fs::create_dir_all(&root)
+    let written = crate::privacy::private_dir(&root)
         .map_err(|e| e.to_string())
         .and_then(|()| serde_json::to_string_pretty(&body).map_err(|e| e.to_string()))
         .and_then(|text| write_atomic(&root.join(CLI_MARKER_FILE), &text));
@@ -884,6 +1116,12 @@ fn write_heartbeat(
         health,
         now,
     );
+    body.picked_dirs = app
+        .state::<PickedFolders>()
+        .list()
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
     let Ok(bridge) = bridge_root(app) else {
         return;
     };
@@ -1142,9 +1380,12 @@ fn valid_name(name: &str, max: usize) -> bool {
         && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
+/// Every answer an agent reads passes through `clean_text` first: names and messages from project files are escaped and capped.
 pub(crate) fn write_response_value(root: &Path, id: &str, body: &Value) -> Result<(), String> {
     let dir = root.join("responses");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let mut body = body.clone();
+    crate::clean_text::clean_value(&mut body);
     write_atomic(&dir.join(format!("{id}.json")), &body.to_string())
 }
 
@@ -1400,9 +1641,7 @@ pub fn bridge_write_response(app: AppHandle, id: String, json_text: String) -> R
     if !crate::capture_service::on_response(&app, &id, &mut body) {
         return Ok(());
     }
-    let dir = bridge_root(&app)?.join("responses");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    write_atomic(&dir.join(format!("{id}.json")), &body.to_string())
+    write_response_value(&bridge_root(&app)?, &id, &body)
 }
 
 /// Arm a bridge capture (the begin_screenshot shape, gated on a configured workspace instead of the autorun env; the PNG lands beside the response JSON).
@@ -1855,6 +2094,15 @@ async fn serve_open_edit(app: &AppHandle, request: &BridgeRequest) -> Result<Val
     let (slug, dir) = native_project(app, request)?;
     let name =
         edit_name(request.name.as_deref(), "edit name")?.ok_or("openEdit needs the edit's name")?;
+    let (handle, s, client) = (app.clone(), slug.clone(), request.client.clone());
+    let allowed = tauri::async_runtime::spawn_blocking(move || {
+        confirm_project_access(&handle, &s, "openEdit", client.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    if !allowed {
+        return Err(access_refused(&slug, "openEdit"));
+    }
     let context = editor_context(app);
     if context.as_ref().is_some_and(|c| c.export_locked) {
         return Ok(busy("Kookaburra Cut is exporting right now; retry shortly"));
@@ -2108,6 +2356,7 @@ mod tests {
                 "kinds",
                 "lastLoad",
                 "openProject",
+                "pickedDirs",
                 "pid",
                 "playheadMs",
                 "playing",
@@ -2955,6 +3204,28 @@ mod tests {
             now,
             alive
         ));
+    }
+
+    #[test]
+    fn picked_folders_refuse_roots_the_home_folder_and_credentials() {
+        let home = Path::new("/Users/x");
+        assert!(too_broad_to_pick(Path::new("/"), Some(home)));
+        assert!(too_broad_to_pick(Path::new("/Users"), Some(home)));
+        assert!(too_broad_to_pick(Path::new("/Volumes"), Some(home)));
+        assert!(too_broad_to_pick(Path::new("/Users/x"), Some(home)));
+        assert!(!too_broad_to_pick(Path::new("/Users/x/Desktop"), Some(home)));
+        assert!(!too_broad_to_pick(Path::new("/Volumes/Work/review"), None));
+        assert!(NEVER_PICKED
+            .iter()
+            .any(|rel| Path::new("/Users/x/.ssh/keys").starts_with(home.join(rel))));
+        let picked = PickedFolders::default();
+        picked.note(Path::new("/Users/x/Desktop"));
+        picked.note(Path::new("/Users/x/Movies"));
+        picked.note(Path::new("/Users/x/Desktop"));
+        assert_eq!(
+            picked.list(),
+            vec![PathBuf::from("/Users/x/Movies"), PathBuf::from("/Users/x/Desktop")]
+        );
     }
 
     #[test]

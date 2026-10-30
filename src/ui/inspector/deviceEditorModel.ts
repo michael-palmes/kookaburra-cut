@@ -1,7 +1,10 @@
 import {
+  compareSlotMedia,
+  DEVICE_SCREEN_SLOTS,
   type DeviceScreenSlot,
   deviceHasFollowVideo,
   deviceSlotMedia,
+  setCompareSlotMedia,
   setDeviceSlotMedia,
 } from "../../engine/deviceScreens";
 import type { RigDoc } from "../../engine/sceneCameraEdit";
@@ -19,6 +22,7 @@ import {
   type DeviceId,
   isDeviceId,
 } from "../../toolkit/device/catalog";
+import type { DeviceMediaSpec } from "../../toolkit/device/Device";
 import type { V3 } from "../../toolkit/types";
 import { duplicateCompareDeviceTargets, pruneCompareDeviceTargets } from "./comparisonTarget";
 import { nextNumberedContentId } from "./contentIds";
@@ -104,6 +108,27 @@ export function setDeviceRotationPose(doc: SceneDoc, deviceId: string, rotationD
     device.placement = { ...device.placement, rotationDeg: [...rotationDeg] };
   }
   return true;
+}
+
+/** "Rotate to match the device" (mutating `doc`): `auto` on the display's media on both comparison sides, since the pose they follow is shared; off removes the field. Every display when `screen` is omitted. */
+export function setScreenRotateToMatch(
+  doc: SceneDoc,
+  deviceId: string,
+  on: boolean,
+  screen?: DeviceScreenSlot,
+): void {
+  const device = doc.devices?.find((candidate) => candidate.id === deviceId);
+  if (!device) return;
+  const turned = (media: DeviceMediaSpec): DeviceMediaSpec => {
+    const { rotateDeg: _drop, ...rest } = media;
+    return on ? { ...rest, rotateDeg: "auto" } : rest;
+  };
+  for (const slot of screen ? [screen] : DEVICE_SCREEN_SLOTS) {
+    const own = deviceSlotMedia(device, slot);
+    if (own) setDeviceSlotMedia(device, slot, turned(own));
+    const after = compareSlotMedia(doc, deviceId, slot);
+    if (after) setCompareSlotMedia(doc, deviceId, slot, turned(after));
+  }
 }
 
 export interface DeviceEditorSelection {

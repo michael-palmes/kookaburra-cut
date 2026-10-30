@@ -44,6 +44,14 @@ interface BasePlacement {
 
 const widthOf = (model: string): number => resolveAvailableDeviceSpec(model).layoutWidth;
 
+/** The width a device spans once its delta rolls it about the view axis (a portrait foldable is as wide as it is tall upright); exactly its own width unrolled. */
+function rolledWidth(model: string, rollDeg: number): number {
+  const spec = resolveAvailableDeviceSpec(model);
+  if (rollDeg === 0) return spec.layoutWidth;
+  const roll = (rollDeg * Math.PI) / 180;
+  return Math.abs(Math.cos(roll)) * spec.layoutWidth + Math.abs(Math.sin(roll)) * spec.fittedHeight;
+}
+
 /** Yaw turning a device's screen toward the frame's centre line, scaled by how far out it sits. */
 const toeToward = (x: number, halfSpan: number, deg: number): number =>
   halfSpan > 1e-6 ? -Math.sign(x) * deg * (Math.abs(x) / halfSpan) : 0;
@@ -142,10 +150,12 @@ export function resolveDeviceLayout(
   const gap = Math.min(GAP_MAX, Math.max(GAP_MIN, layout.gap ?? DEFAULT_GAP));
   const widths = devices.map((d) => widthOf(d.model) * BASE_SCALE);
   const bases = presetBases(layout.preset, widths, gap);
-  // Uniform fit against the safe width: positions and scales compress together so the arrangement keeps its proportions in narrow aspects.
+  // Uniform fit against the safe width: positions and scales compress together so the arrangement keeps its proportions in narrow aspects. Slots stay on the upright widths; the fit reads each device's rolled one.
   const avail = Math.max(format.frame.width - format.safe.left - format.safe.right, 0.5);
-  const span =
-    2 * Math.max(...bases.map((b, i) => Math.abs(b.x) + (widths[i] * b.scale) / 2), 1e-6);
+  const spans = devices.map(
+    (d) => rolledWidth(d.model, layout.devices?.[d.id]?.rotationDeg?.[2] ?? 0) * BASE_SCALE,
+  );
+  const span = 2 * Math.max(...bases.map((b, i) => Math.abs(b.x) + (spans[i] * b.scale) / 2), 1e-6);
   const f = Math.min(1, avail / span);
   return devices.map((d, i) => {
     const base = bases[i];

@@ -394,10 +394,21 @@ export const DEVICE_MEDIA_KEYS: Record<
       "Video: scene-time delay before playback, holding the first played frame; a negative value pre-rolls the clip on the scene clock.",
     type: "number",
   },
+  at: {
+    summary:
+      "Video: musical position the start follows (bar:9.3, cue:drop); startMs caches it in scene ms, and moving startMs drops it. Not with startOn.",
+    type: "string",
+  },
   fit: {
     summary: "Always cover: fills the screen and crops the overflow.",
     type: "string",
     values: ["cover"],
+  },
+  rotateDeg: {
+    summary:
+      "Turns the media clockwise on the screen before the cover fit (0 default). auto stands it upright on the device's current pose, e.g. a portrait recording on a device turned on its side.",
+    type: "number|string",
+    values: ["0", "90", "180", "270", "auto"],
   },
   startOn: {
     summary: "Foldable inside display: startMs counts from the moment the fold opens.",

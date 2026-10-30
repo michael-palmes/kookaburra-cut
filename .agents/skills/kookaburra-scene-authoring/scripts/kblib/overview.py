@@ -382,7 +382,14 @@ def status_data(project: Project) -> Dict[str, Any]:
         "videoCli": video_cli(),
         "leases": coord[2],
         "notes": coord[3],
+        "drift": drift_of(project),
     }
+
+
+def drift_of(project: Project) -> List[Dict[str, Any]]:
+    from . import cuts
+
+    return cuts.drift(project)
 
 
 def video_cli() -> Dict[str, Any]:
@@ -413,6 +420,7 @@ def status_text(project: Project) -> str:
     if edits:
         lines.append(edits)
     lines.append(checkpoint_line(project))
+    lines += [f"Timeline: {d['message']}" for d in drift_of(project)]
     lease_line, note_lines, _rows, _unseen = coordination(project)
     if lease_line:
         lines.append(lease_line)

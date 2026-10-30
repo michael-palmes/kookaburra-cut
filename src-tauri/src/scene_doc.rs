@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, State};
 
 use crate::live_edits::{self, FileWrite};
-use crate::workspace::{self, SettingsState, MANIFEST_FILENAME};
+use crate::workspace::{self, SettingsState, TrustState, MANIFEST_FILENAME};
 
 /// Newest sidecar schema this binary understands (`read`/`write` reject anything newer).
 const SCENE_DOC_VERSION: u64 = 1;
@@ -199,12 +199,14 @@ pub fn write_scene_doc(
     text: String,
     base_hash: Option<String>,
 ) -> Result<FileWrite, String> {
-    write_scene_doc_at(
-        &workspace::project_dir_mut(&app, &state, &slug)?,
-        &file,
-        &text,
-        base_hash.as_deref(),
-    )
+    workspace::restamping_trust(&app, &state, &slug, || {
+        write_scene_doc_at(
+            &workspace::project_dir_mut(&app, &state, &slug)?,
+            &file,
+            &text,
+            base_hash.as_deref(),
+        )
+    })
 }
 
 pub(crate) fn write_scene_doc_at(
@@ -252,7 +254,7 @@ fn migrate_manifest_transitions(manifest: &mut Value) {
     manifest["version"] = json!(2);
 }
 
-/// Patch one scene's `durationMs` in `project.json` (atomic); project.json stays the sequencing source of truth, the sidecar's `duration.mode` only tells the app whether to keep it synced (duration-follow). `file` is the scene the caller saw at `index`; a mismatch is refused.
+/// Patch one scene's `durationMs` in `project.json` (atomic); project.json stays the sequencing source of truth, the sidecar's `duration.mode` only tells the app whether to keep it synced (duration-follow). An explicit length unpins the scene's cut (`cutAt`, `align`). `file` is the scene the caller saw at `index`; a mismatch is refused.
 #[tauri::command]
 pub fn update_project_scene(
     app: AppHandle,
@@ -262,12 +264,14 @@ pub fn update_project_scene(
     duration_ms: u64,
     file: Option<String>,
 ) -> Result<FileWrite, String> {
-    update_scene_duration_at(
-        &workspace::project_dir_mut(&app, &state, &slug)?,
-        index,
-        file.as_deref(),
-        duration_ms,
-    )
+    workspace::restamping_trust(&app, &state, &slug, || {
+        update_scene_duration_at(
+            &workspace::project_dir_mut(&app, &state, &slug)?,
+            index,
+            file.as_deref(),
+            duration_ms,
+        )
+    })
 }
 
 pub(crate) fn update_scene_duration_at(
@@ -283,6 +287,10 @@ pub(crate) fn update_scene_duration_at(
         .get_mut(index)
         .ok_or_else(|| format!("project.json has no scene at index {index}"))?;
     scene["durationMs"] = json!(duration_ms);
+    if let Some(entry) = scene.as_object_mut() {
+        entry.remove("cutAt");
+        entry.remove("align");
+    }
     tracked_write_json(project, MANIFEST_FILENAME, &manifest, None)
 }
 
@@ -296,12 +304,14 @@ pub fn update_project_scene_transition(
     transition: Option<Value>,
     file: Option<String>,
 ) -> Result<FileWrite, String> {
-    set_scene_transition_at(
-        &workspace::project_dir_mut(&app, &state, &slug)?,
-        index,
-        file.as_deref(),
-        transition,
-    )
+    workspace::restamping_trust(&app, &state, &slug, || {
+        set_scene_transition_at(
+            &workspace::project_dir_mut(&app, &state, &slug)?,
+            index,
+            file.as_deref(),
+            transition,
+        )
+    })
 }
 
 pub(crate) fn set_scene_transition_at(
@@ -376,10 +386,12 @@ pub fn apply_project_transition_to_all(
     slug: String,
     transition: Option<Value>,
 ) -> Result<FileWrite, String> {
-    let project = workspace::project_dir_mut(&app, &state, &slug)?;
-    let mut manifest = read_manifest(&project)?;
-    apply_transition_to_manifest(&mut manifest, transition.as_ref())?;
-    tracked_write_json(&project, MANIFEST_FILENAME, &manifest, None)
+    workspace::restamping_trust(&app, &state, &slug, || {
+        let project = workspace::project_dir_mut(&app, &state, &slug)?;
+        let mut manifest = read_manifest(&project)?;
+        apply_transition_to_manifest(&mut manifest, transition.as_ref())?;
+        tracked_write_json(&project, MANIFEST_FILENAME, &manifest, None)
+    })
 }
 
 /// The raw project.json text; undo/redo snapshots the whole manifest around an edit so any manifest op restores generically, named distinctly from `workspace::read_project_manifest` (the plain load-path read) to avoid registering two commands under the same name, this one is the undo/redo snapshot surface only.
@@ -402,12 +414,14 @@ pub fn write_project_manifest_snapshot(
     text: String,
     base_hash: Option<String>,
 ) -> Result<FileWrite, String> {
-    write_manifest_snapshot_at(
-        &workspace::project_dir_mut(&app, &state, &slug)?,
-        &slug,
-        &text,
-        base_hash.as_deref(),
-    )
+    workspace::restamping_trust(&app, &state, &slug, || {
+        write_manifest_snapshot_at(
+            &workspace::project_dir_mut(&app, &state, &slug)?,
+            &slug,
+            &text,
+            base_hash.as_deref(),
+        )
+    })
 }
 
 pub(crate) fn write_manifest_snapshot_at(
@@ -434,22 +448,24 @@ pub fn remove_project_scene(
     index: usize,
     file: Option<String>,
 ) -> Result<(), String> {
-    let project = workspace::project_dir_mut(&app, &state, &slug)?;
-    let removed = remove_scene_entry_at(&project, index, file.as_deref())?;
-    // Files ride to the Trash after the manifest write lands, a failed manifest write must never leave the project pointing at trashed files.
-    if let Some(file) = removed {
-        if file.starts_with("scenes/") && !file.contains("..") {
-            let tsx = project.join(&file);
-            if tsx.is_file() {
-                let _ = workspace::trash_path(&tsx);
-            }
-            let sidecar = project.join(file.replace(".tsx", ".json"));
-            if sidecar.is_file() {
-                let _ = workspace::trash_path(&sidecar);
+    workspace::restamping_trust(&app, &state, &slug, || {
+        let project = workspace::project_dir_mut(&app, &state, &slug)?;
+        let removed = remove_scene_entry_at(&project, index, file.as_deref())?;
+        // Files ride to the Trash after the manifest write lands, a failed manifest write must never leave the project pointing at trashed files.
+        if let Some(file) = removed {
+            if file.starts_with("scenes/") && !file.contains("..") {
+                let tsx = project.join(&file);
+                if tsx.is_file() {
+                    let _ = workspace::trash_path(&tsx);
+                }
+                let sidecar = project.join(file.replace(".tsx", ".json"));
+                if sidecar.is_file() {
+                    let _ = workspace::trash_path(&sidecar);
+                }
             }
         }
-    }
-    Ok(())
+        Ok(())
+    })
 }
 
 /// The manifest half of `remove_project_scene`; returns the removed entry's module path.
@@ -485,12 +501,14 @@ pub fn move_project_scene(
     to: usize,
     file: Option<String>,
 ) -> Result<(), String> {
-    move_scene_at(
-        &workspace::project_dir_mut(&app, &state, &slug)?,
-        from,
-        to,
-        file.as_deref(),
-    )
+    workspace::restamping_trust(&app, &state, &slug, || {
+        move_scene_at(
+            &workspace::project_dir_mut(&app, &state, &slug)?,
+            from,
+            to,
+            file.as_deref(),
+        )
+    })
 }
 
 pub(crate) fn move_scene_at(
@@ -774,106 +792,108 @@ pub fn duplicate_scene(
     position: Option<usize>,
     guard: Option<InsertGuard>,
 ) -> Result<SceneCopyResult, String> {
-    workspace::require_multiple_scenes(&slug)?;
-    let project = workspace::project_dir_mut(&app, &state, &slug)?;
-    let manifest_path = project.join(MANIFEST_FILENAME);
-    let mut manifest = read_manifest(&project)?;
-    let guard = guard.unwrap_or_default();
-    guard_insert(
-        manifest_scenes(&mut manifest)?,
-        index,
-        guard.file.as_deref(),
-        position,
-        guard.position_file.as_deref(),
-    )?;
-    let source = manifest
-        .get("scenes")
-        .and_then(Value::as_array)
-        .ok_or("project.json has no scenes array")?
-        .get(index)
-        .cloned()
-        .ok_or_else(|| format!("project.json has no scene at index {index}"))?;
-    let file = source
-        .get("file")
-        .and_then(Value::as_str)
-        .ok_or("scene entry has no file")?
-        .to_string();
-    if !file.starts_with("scenes/") || file.contains("..") {
-        return Err(format!("invalid scene path: {file:?}"));
-    }
-    let tsx =
-        std::fs::read_to_string(project.join(&file)).map_err(|e| format!("reading {file}: {e}"))?;
-    let doc_file_src = file.replace(".tsx", ".json");
-    let doc = match std::fs::read_to_string(project.join(&doc_file_src)) {
-        Ok(text) => Some(
-            serde_json::from_str::<Value>(&text)
-                .map_err(|e| format!("scene doc isn't valid JSON: {e}"))?,
-        ),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-        Err(e) => return Err(format!("reading {doc_file_src}: {e}")),
-    };
-
-    let scenes_dir = project.join("scenes");
-    let stem_src = file.trim_start_matches("scenes/").trim_end_matches(".tsx");
-    let source_name = doc
-        .as_ref()
-        .and_then(|d| d.get("name"))
-        .and_then(Value::as_str)
-        .map(str::to_string);
-    // Display-name fallback mirrors the frontend: sidecar name, else the stem minus its numeric prefix.
-    let base_name = source_name.clone().unwrap_or_else(|| {
-        stem_src
-            .split_once('-')
-            .map_or(stem_src, |(_, rest)| rest)
-            .replace('-', " ")
-    });
-    let base = slugify(&format!("{base_name} copy"));
-    let stem = format!("{:02}-{base}", next_prefix(&scenes_dir));
-    let new_file = format!("scenes/{stem}.tsx");
-    let new_doc_file = format!("scenes/{stem}.json");
-
-    let scene_id = free_scene_id(&base, &collect_scene_ids(&scenes_dir));
-    let tsx = match rewrite_define_scene_id(&tsx, &scene_id) {
-        Some(minted) => minted,
-        None => {
-            log::warn!("{file} has no readable defineScene id, the copy keeps the source's");
-            tsx
+    workspace::restamping_trust(&app, &state, &slug, || {
+        workspace::require_multiple_scenes(&slug)?;
+        let project = workspace::project_dir_mut(&app, &state, &slug)?;
+        let manifest_path = project.join(MANIFEST_FILENAME);
+        let mut manifest = read_manifest(&project)?;
+        let guard = guard.unwrap_or_default();
+        guard_insert(
+            manifest_scenes(&mut manifest)?,
+            index,
+            guard.file.as_deref(),
+            position,
+            guard.position_file.as_deref(),
+        )?;
+        let source = manifest
+            .get("scenes")
+            .and_then(Value::as_array)
+            .ok_or("project.json has no scenes array")?
+            .get(index)
+            .cloned()
+            .ok_or_else(|| format!("project.json has no scene at index {index}"))?;
+        let file = source
+            .get("file")
+            .and_then(Value::as_str)
+            .ok_or("scene entry has no file")?
+            .to_string();
+        if !file.starts_with("scenes/") || file.contains("..") {
+            return Err(format!("invalid scene path: {file:?}"));
         }
-    };
-    atomic_write_text(&scenes_dir.join(format!("{stem}.tsx")), &tsx)?;
+        let tsx = std::fs::read_to_string(project.join(&file))
+            .map_err(|e| format!("reading {file}: {e}"))?;
+        let doc_file_src = file.replace(".tsx", ".json");
+        let doc = match std::fs::read_to_string(project.join(&doc_file_src)) {
+            Ok(text) => Some(
+                serde_json::from_str::<Value>(&text)
+                    .map_err(|e| format!("scene doc isn't valid JSON: {e}"))?,
+            ),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(format!("reading {doc_file_src}: {e}")),
+        };
 
-    if let Some(mut doc) = doc {
-        if let Some(name) = &source_name {
-            doc["name"] = json!(format!("{name} copy"));
+        let scenes_dir = project.join("scenes");
+        let stem_src = file.trim_start_matches("scenes/").trim_end_matches(".tsx");
+        let source_name = doc
+            .as_ref()
+            .and_then(|d| d.get("name"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        // Display-name fallback mirrors the frontend: sidecar name, else the stem minus its numeric prefix.
+        let base_name = source_name.clone().unwrap_or_else(|| {
+            stem_src
+                .split_once('-')
+                .map_or(stem_src, |(_, rest)| rest)
+                .replace('-', " ")
+        });
+        let base = slugify(&format!("{base_name} copy"));
+        let stem = format!("{:02}-{base}", next_prefix(&scenes_dir));
+        let new_file = format!("scenes/{stem}.tsx");
+        let new_doc_file = format!("scenes/{stem}.json");
+
+        let scene_id = free_scene_id(&base, &collect_scene_ids(&scenes_dir));
+        let tsx = match rewrite_define_scene_id(&tsx, &scene_id) {
+            Some(minted) => minted,
+            None => {
+                log::warn!("{file} has no readable defineScene id, the copy keeps the source's");
+                tsx
+            }
+        };
+        atomic_write_text(&scenes_dir.join(format!("{stem}.tsx")), &tsx)?;
+
+        if let Some(mut doc) = doc {
+            if let Some(name) = &source_name {
+                doc["name"] = json!(format!("{name} copy"));
+            }
+            remint_scene_doc_ids(&mut doc);
+            atomic_write_json(&scene_doc_path(&project, &new_doc_file)?, &doc)?;
         }
-        remint_scene_doc_ids(&mut doc);
-        atomic_write_json(&scene_doc_path(&project, &new_doc_file)?, &doc)?;
-    }
 
-    let scenes = manifest
-        .get_mut("scenes")
-        .and_then(Value::as_array_mut)
-        .ok_or("project.json has no scenes array")?;
-    let duration_ms = source
-        .get("durationMs")
-        .and_then(Value::as_u64)
-        .unwrap_or(DEFAULT_SCENE_DURATION_MS);
-    let mut entry = json!({ "file": new_file, "durationMs": duration_ms });
-    // The source's outgoing transition always rides along (the move_project_scene convention): a copy that lands last carries it inert, and it comes alive if a later copy lands behind it, which is what duplicating a block of scenes needs.
-    if let Some(transition) = source.get("transition") {
-        entry["transition"] = transition.clone();
-    }
-    match position {
-        Some(i) if i < scenes.len() => scenes.insert(i, entry),
-        _ => scenes.push(entry),
-    }
-    atomic_write_json(&manifest_path, &manifest)?;
+        let scenes = manifest
+            .get_mut("scenes")
+            .and_then(Value::as_array_mut)
+            .ok_or("project.json has no scenes array")?;
+        let duration_ms = source
+            .get("durationMs")
+            .and_then(Value::as_u64)
+            .unwrap_or(DEFAULT_SCENE_DURATION_MS);
+        let mut entry = json!({ "file": new_file, "durationMs": duration_ms });
+        // The source's outgoing transition always rides along (the move_project_scene convention): a copy that lands last carries it inert, and it comes alive if a later copy lands behind it, which is what duplicating a block of scenes needs.
+        if let Some(transition) = source.get("transition") {
+            entry["transition"] = transition.clone();
+        }
+        match position {
+            Some(i) if i < scenes.len() => scenes.insert(i, entry),
+            _ => scenes.push(entry),
+        }
+        atomic_write_json(&manifest_path, &manifest)?;
 
-    Ok(SceneCopyResult {
-        file: new_file,
-        doc_file: new_doc_file,
-        scene_id,
-        duration_ms,
+        Ok(SceneCopyResult {
+            file: new_file,
+            doc_file: new_doc_file,
+            scene_id,
+            duration_ms,
+        })
     })
 }
 
@@ -1120,6 +1140,7 @@ pub struct CopiedSceneResult {
 pub fn copy_scene_to_project(
     app: AppHandle,
     state: State<'_, SettingsState>,
+    trust: State<'_, TrustState>,
     slug: String,
     index: usize,
     dest_slug: String,
@@ -1127,46 +1148,49 @@ pub fn copy_scene_to_project(
     name: Option<String>,
     guard: Option<InsertGuard>,
 ) -> Result<CopiedSceneResult, String> {
-    workspace::require_multiple_scenes(&dest_slug)?;
-    if slug == dest_slug {
-        return Err("pick a different project to copy into".into());
-    }
-    let project = workspace::project_dir(&app, &state, &slug)?;
-    let dest = workspace::project_dir_mut(&app, &state, &dest_slug)?;
-    let guard = guard.unwrap_or_default();
-    if guard.file.is_some() {
-        guard_insert(
-            manifest_scenes(&mut read_manifest(&project)?)?,
+    workspace::restamping_trust(&app, &state, &dest_slug, || {
+        workspace::require_multiple_scenes(&dest_slug)?;
+        if slug == dest_slug {
+            return Err("pick a different project to copy into".into());
+        }
+        workspace::require_source_allowed(&app, &state, &trust, &slug)?;
+        let project = workspace::project_dir(&app, &state, &slug)?;
+        let dest = workspace::project_dir_mut(&app, &state, &dest_slug)?;
+        let guard = guard.unwrap_or_default();
+        if guard.file.is_some() {
+            guard_insert(
+                manifest_scenes(&mut read_manifest(&project)?)?,
+                index,
+                guard.file.as_deref(),
+                None,
+                None,
+            )?;
+        }
+        if guard.position_file.is_some() {
+            guard_insert(
+                manifest_scenes(&mut read_manifest(&dest)?)?,
+                0,
+                None,
+                position,
+                guard.position_file.as_deref(),
+            )?;
+        }
+        let sample_pool = matches!(
+            workspace::parse_project_id(&slug)?.0,
+            workspace::ProjectScope::BundledTemplate | workspace::ProjectScope::BundledPreset
+        )
+        .then(|| workspace::samples_root(&app));
+        copy_named_scene_between(
+            &project,
+            &dest,
             index,
-            guard.file.as_deref(),
-            None,
-            None,
-        )?;
-    }
-    if guard.position_file.is_some() {
-        guard_insert(
-            manifest_scenes(&mut read_manifest(&dest)?)?,
-            0,
-            None,
+            &slug,
+            &dest_slug,
             position,
-            guard.position_file.as_deref(),
-        )?;
-    }
-    let sample_pool = matches!(
-        workspace::parse_project_id(&slug)?.0,
-        workspace::ProjectScope::BundledTemplate | workspace::ProjectScope::BundledPreset
-    )
-    .then(|| workspace::samples_root(&app));
-    copy_named_scene_between(
-        &project,
-        &dest,
-        index,
-        &slug,
-        &dest_slug,
-        position,
-        sample_pool.as_deref(),
-        name.as_deref().map(str::trim).filter(|n| !n.is_empty()),
-    )
+            sample_pool.as_deref(),
+            name.as_deref().map(str::trim).filter(|n| !n.is_empty()),
+        )
+    })
 }
 
 #[cfg(test)]
@@ -1474,13 +1498,15 @@ pub fn set_project_theme(
     slug: String,
     theme_id: String,
 ) -> Result<FileWrite, String> {
-    let project = workspace::project_dir_mut(&app, &state, &slug)?;
-    let text = std::fs::read_to_string(project.join(MANIFEST_FILENAME))
-        .map_err(|e| format!("reading project.json: {e}"))?;
-    let mut manifest: Value =
-        serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
-    manifest["themeId"] = json!(theme_id);
-    tracked_write_json(&project, MANIFEST_FILENAME, &manifest, None)
+    workspace::restamping_trust(&app, &state, &slug, || {
+        let project = workspace::project_dir_mut(&app, &state, &slug)?;
+        let text = std::fs::read_to_string(project.join(MANIFEST_FILENAME))
+            .map_err(|e| format!("reading project.json: {e}"))?;
+        let mut manifest: Value = serde_json::from_str(&text)
+            .map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
+        manifest["themeId"] = json!(theme_id);
+        tracked_write_json(&project, MANIFEST_FILENAME, &manifest, None)
+    })
 }
 
 /// Set or remove the project soundtrack (`project.json.audio`, atomic), the media library's "Use as soundtrack" write surface; schema-light (the `set_project_theme` precedent): must be an object with a string `file` when present, the loader probes and degrades.
@@ -1491,30 +1517,32 @@ pub fn set_project_audio(
     slug: String,
     audio: Option<Value>,
 ) -> Result<FileWrite, String> {
-    if let Some(spec) = &audio {
-        let ok = spec
-            .as_object()
-            .and_then(|o| o.get("file"))
-            .map(Value::is_string)
-            .unwrap_or(false);
-        if !ok {
-            return Err("audio must be an object with a string `file`".into());
-        }
-    }
-    let project = workspace::project_dir_mut(&app, &state, &slug)?;
-    let text = std::fs::read_to_string(project.join(MANIFEST_FILENAME))
-        .map_err(|e| format!("reading project.json: {e}"))?;
-    let mut manifest: Value =
-        serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
-    match audio {
-        Some(spec) => manifest["audio"] = spec,
-        None => {
-            if let Some(obj) = manifest.as_object_mut() {
-                obj.remove("audio");
+    workspace::restamping_trust(&app, &state, &slug, || {
+        if let Some(spec) = &audio {
+            let ok = spec
+                .as_object()
+                .and_then(|o| o.get("file"))
+                .map(Value::is_string)
+                .unwrap_or(false);
+            if !ok {
+                return Err("audio must be an object with a string `file`".into());
             }
         }
-    }
-    tracked_write_json(&project, MANIFEST_FILENAME, &manifest, None)
+        let project = workspace::project_dir_mut(&app, &state, &slug)?;
+        let text = std::fs::read_to_string(project.join(MANIFEST_FILENAME))
+            .map_err(|e| format!("reading project.json: {e}"))?;
+        let mut manifest: Value = serde_json::from_str(&text)
+            .map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
+        match audio {
+            Some(spec) => manifest["audio"] = spec,
+            None => {
+                if let Some(obj) = manifest.as_object_mut() {
+                    obj.remove("audio");
+                }
+            }
+        }
+        tracked_write_json(&project, MANIFEST_FILENAME, &manifest, None)
+    })
 }
 
 // ── Scene identity ────────────────────────────────────────────────────────────
@@ -1825,9 +1853,11 @@ pub fn ensure_unique_scene_ids(
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<SceneIdHeal, String> {
-    Ok(heal_scene_ids(&workspace::project_dir_mut(
-        &app, &state, &slug,
-    )?))
+    workspace::restamping_trust(&app, &state, &slug, || {
+        Ok(heal_scene_ids(&workspace::project_dir_mut(
+            &app, &state, &slug,
+        )?))
+    })
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -3634,6 +3664,19 @@ mod live_edit_tests {
         let err = write_manifest_snapshot_at(&p.0, "demo", &before, Some(&base)).unwrap_err();
         assert!(err.starts_with(CONFLICT_PREFIX), "{err}");
         assert_eq!(p.manifest()["themeId"], json!("kookaburra-dark"));
+    }
+
+    #[test]
+    fn an_explicit_duration_unpins_the_cut() {
+        let p = Project::new();
+        let mut manifest = p.manifest();
+        manifest["scenes"][0]["cutAt"] = json!("bar:9");
+        manifest["scenes"][0]["align"] = json!("mid");
+        std::fs::write(p.0.join("project.json"), manifest.to_string()).unwrap();
+        update_scene_duration_at(&p.0, 0, Some("scenes/01-a.tsx"), 5000).unwrap();
+        let scene = &p.manifest()["scenes"][0];
+        assert_eq!(scene["durationMs"], json!(5000));
+        assert!(scene.get("cutAt").is_none() && scene.get("align").is_none());
     }
 
     #[test]

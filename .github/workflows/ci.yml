@@ -69,6 +69,15 @@ jobs:
       - name: Script tests
         run: node --test scripts/*.test.mjs
 
+      # No workspace on a runner, so only the denylist half runs (scripts/workspace-denylist.txt).
+      - name: Workspace names
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE"
+          node scripts/workspace-names.mjs --base "$BASE"
+
       # Mostly waiting on fake apps and retries, so modules run well past the core count.
       - name: kb tests
         if: ${{ needs.changes.outputs.kit != 'false' }}

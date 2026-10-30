@@ -2,9 +2,10 @@
 
 A **terminal** is singleton scene content (sidecar `terminal` block): a styled
 terminal window drawn as a screen-locked panel over the composited slide. It is
-live and typeable in the editor preview and in Present slideshows, while video
-export renders a captured snapshot, so the deterministic pipeline never sees a
-process or the DOM.
+live and typeable in the editor preview, while Present slideshows and video
+export render a captured snapshot, so the deterministic pipeline never sees a
+process or the DOM (Present lost its live shell with the per-window ACL on
+2026-10-28; see docs/decisions.md).
 
 ## Locked decisions
 
@@ -99,12 +100,13 @@ session, and only trust decides whether it runs at all.
    re-theme and resize the running session. `pty_spawn` takes
    `allowExternalCwd` for scene terminals (F-006 opt-out: `~` expands
    Rust-side, the path must resolve to a real directory).
-3. **Present** (`src/present/PresentTerminalOverlay.tsx`): a separate webview,
-   so it spawns fresh sessions per presentation run on the scene's `entering`
-   phase (the pre-typed command sits on the prompt by the hold); a custom
-   `startPath` waits for the first click instead (Shared projects, below).
-   Revisited
-   slides re-adopt their session. No capture in Present, deliberately. Rust
+3. **Present** (`src/present/PresentTerminalOverlay.tsx`): a separate webview
+   whose capability carries no PTY commands since 2026-10-28 (docs/decisions.md,
+   "Per-window ACL"), so its spawn attempts are refused and the overlay leaves
+   the baked snapshot showing, the same path a missing `startPath` always took.
+   The overlay keeps its session plumbing (spawn on `entering`, click-to-start
+   for a custom path, re-adoption on revisited slides) for the day scene code
+   leaves the webview and the present window can carry a live shell again. Rust
    tags each PTY with its owner window and kills present-owned sessions on the
    window's Destroyed event; the editor's follow the rail's live-until-app-exit
    posture.
@@ -127,9 +129,9 @@ A terminal block travels in `.kbpack` projects like any sidecar data, so the
 author of a shared file chooses the command and the start path. Four layers
 keep that safe: the command is sanitised to one line at parse and at the paste
 boundary (above); no session exists until the user opens the project through
-the F-001 trust gate; the import summary lists every pre-typed command and
-custom start path read from the landed sidecars
-(`src/packs/terminalReview.ts`); and a custom start path never
+the F-001 trust gate; the pack trust screen lists every pre-typed command and
+custom start path before Continue, read from the pack's sidecars and checked
+against the signed hash (`src/packs/packReview.ts`); and a custom start path never
 auto-spawns in Present, the first click on the terminal starts that session
 (project-folder decks keep the spawn-on-entry magic). A start path runs
 nothing of the pack's, but a login shell still runs the user's own init files

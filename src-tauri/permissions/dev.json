@@ -1,0 +1,35 @@
+{
+  "permission": [
+    {
+      "identifier": "dev-library",
+      "description": "Dev builds only: edit the bundled themes, templates and presets in place. Registered under cfg(debug_assertions) and granted only by capabilities/dev/.",
+      "commands": {
+        "allow": [
+          "dev_write_builtin_theme",
+          "dev_delete_builtin_theme",
+          "dev_set_builtin_theme_orders",
+          "dev_write_template_manifest",
+          "dev_delete_bundled_template",
+          "dev_write_preset_manifest",
+          "dev_delete_bundled_preset",
+          "dev_set_template_orders",
+          "dev_set_preset_orders"
+        ]
+      }
+    },
+    {
+      "identifier": "dev-theme-editor",
+      "description": "Dev builds only: move a theme between the bundled set and the workspace from the theme editor.",
+      "commands": {
+        "allow": ["dev_move_theme", "theme_editor_move_ready"]
+      }
+    },
+    {
+      "identifier": "dev-autorun",
+      "description": "Dev builds only: the autorun pack round-trip gate builds, stages and applies a pack from the main window (docs/determinism.md, \"Pack round trip\").",
+      "commands": {
+        "allow": ["workspace_root_path", "plan_pack", "build_pack", "stage_pack", "apply_import"]
+      }
+    }
+  ]
+}

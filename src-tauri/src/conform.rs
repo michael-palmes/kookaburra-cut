@@ -2,7 +2,7 @@
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use serde::Serialize;
@@ -343,7 +343,7 @@ fn count_discarded(csv: &str) -> u32 {
 }
 
 fn run_capture(tool: &Path, args: &[String]) -> Result<String, String> {
-    let out = Command::new(tool)
+    let out = crate::tools::sidecar_command(tool)
         .args(args)
         .stdin(Stdio::null())
         .output()
@@ -416,8 +416,9 @@ pub(crate) fn ffmpeg_decode_timing(
     background: bool,
     cancel: &AtomicBool,
 ) -> Result<DecodeTiming, String> {
-    let mut child = Command::new(ffmpeg)
+    let mut child = crate::tools::sidecar_command(ffmpeg)
         .args(["-hide_banner", "-nostdin", "-nostats", "-loglevel", "info"])
+        .args(["-protocol_whitelist", "file,pipe"])
         .arg("-i")
         .arg(abs)
         .args([
@@ -950,7 +951,7 @@ fn encode(
         let Some((frame, _)) = step else { break };
         if child.is_none() {
             size = (frame.width, frame.height);
-            let mut spawned = Command::new(&tools.ffmpeg)
+            let mut spawned = crate::tools::sidecar_command(&tools.ffmpeg)
                 .args(encode_args(frame.width, frame.height, mov, out))
                 .stdin(Stdio::piped())
                 .stdout(Stdio::null())
@@ -2046,7 +2047,7 @@ pub(crate) mod tests {
     );
 
     fn ffmpeg_ok(args: &[&str]) {
-        let out = Command::new(DEV_FFMPEG)
+        let out = std::process::Command::new(DEV_FFMPEG)
             .args(["-y", "-hide_banner", "-loglevel", "error"])
             .args(args)
             .output()
@@ -2094,7 +2095,7 @@ pub(crate) mod tests {
 
     /// The barcode of every stored frame, in order (passthrough: one value per frame the file holds).
     pub(crate) fn decode_barcodes(path: &Path) -> Vec<u32> {
-        let out = Command::new(DEV_FFMPEG)
+        let out = std::process::Command::new(DEV_FFMPEG)
             .args(["-v", "error", "-i", path.to_str().unwrap()])
             .args(["-vf", "crop=iw:32:0:0,scale=16:1:flags=area,format=gray"])
             .args(["-fps_mode", "passthrough", "-f", "rawvideo", "-"])
@@ -2116,7 +2117,7 @@ pub(crate) mod tests {
 
     /// The centre pixel as the clip path sees it: ffmpeg to RGB, honouring the file's tags.
     fn centre_rgb(path: &Path) -> [i32; 3] {
-        let out = Command::new(DEV_FFMPEG)
+        let out = std::process::Command::new(DEV_FFMPEG)
             .args([
                 "-v",
                 "error",

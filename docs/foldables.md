@@ -7,7 +7,8 @@ foldable is a catalogue entry and an asset export, not new engine work.
 
 Read this before touching `src/toolkit/device/foldPose.ts`,
 `src/engine/foldTransition.ts`, `src/engine/deviceScreens.ts`,
-`src/ui/inspector/foldEditorModel.ts` or `scripts/blender-duo-prepare.py`.
+`src/toolkit/device/screenTurns.ts`, `src/ui/inspector/foldEditorModel.ts` or
+`scripts/blender-duo-prepare.py`.
 
 ## The model
 
@@ -34,16 +35,16 @@ layout and object presets already lean on.
   "devices": [{
     "id": "hero",
     "model": "iphone-duo",
-    "media":      { "src": "assets/inside.mp4",  "kind": "video", "startOn": "open" },
-    "coverMedia": { "src": "assets/outside.mp4", "kind": "video" },
+    "media":      { "src": "assets/inside.mp4",  "kind": "video", "startOn": "open", "rotateDeg": "auto" },
+    "coverMedia": { "src": "assets/outside.mp4", "kind": "video", "rotateDeg": "auto" },
     "foldDeg": 0,                  // 0 closed, 180 open flat (the default)
     "bothScreensOn": false,        // true lights both displays at every angle
     "foldTransition": { "switchDeg": 45, "enabled": true, "intensity": 1, "blur": 1, "darken": 1 }
   }],
   "deviceTrack": {
     "keys": [
-      { "id": "k1", "tMs": 900,  "pose": { "hero": { "foldDeg": 0 } } },
-      { "id": "k2", "tMs": 2200, "pose": { "hero": { "foldDeg": 180 } } }
+      { "id": "k1", "tMs": 900,  "pose": { "hero": { "foldDeg": 0, "coverPower": 0 } } },
+      { "id": "k2", "tMs": 2200, "pose": { "hero": { "foldDeg": 180, "coverPower": 1 } } }
     ],
     "segments": [{ "from": "k1", "to": "k2", "ease": "inOutCubic" }]
   },
@@ -53,9 +54,10 @@ layout and object presets already lean on.
 
 - `foldDeg` is absolute, like `lidDeg`: a key that omits it holds the other
   end's, so one keyed angle still eases from the device's own.
-- `SCENE_DOC_VERSION` stays 1. `parseDeviceTrack` and `parseCompare` are
-  allowlists, so a new pose or side B field must be added to the parser or it is
-  dropped on load and erased on the next save.
+- `SCENE_DOC_VERSION` stays 1. `parseDeviceTrack` validates the pose fields it knows
+  and carries any other pose field through verbatim, so a newer field survives a save.
+  `parseCompare` is still an allowlist: a new side B field must be added to the parser
+  or it is dropped on load and erased on the next save.
 - An empty display is black. There is no mirroring and no wallpaper.
 - Every read and write of a display's media goes through
   `src/engine/deviceScreens.ts` (`deviceSlotMedia`, `compareSlotMedia`, their
@@ -97,7 +99,11 @@ bounds centre kinks at 90°, which reads as a jolt in motion. Camera aims and
 grounding stay valid because the visible mass stays on the group origin.
 
 `layoutWidth` is the **open** width: layout presets reserve the open footprint.
-Height is fold-invariant, so height-fit from the rest pose is safe.
+Height is fold-invariant, so height-fit from the rest pose is safe. A layout delta that
+rolls a device (its `rotationDeg` z) fits the arrangement to the rolled width
+(`|cos| · layoutWidth + |sin| · fittedHeight`), so a portrait foldable is not shrunk to
+its landscape width; slots keep the upright widths, since deltas never re-slot
+neighbours. Unrolled, it is exactly `layoutWidth`.
 
 ## Auto screen power
 
@@ -112,6 +118,13 @@ outside display to the inside one across a window around the switch angle:
 The switch angle is clamped a window's width from both ends, so closed is always
 wholly the outside display and open wholly the inside one. `bothScreensOn`
 returns 1 for both. These constants are export contract.
+
+**Keyed power.** `deviceTrack` poses take `screenPower` (the inside display, or any
+device's only screen) and `coverPower` (the outside one), 0 black to 1 lit. They are
+absolutes like `foldDeg`: a key that omits one holds the other end's, and a display no
+key mentions rests lit. The keyed power multiplies the handover's level, so it is the
+same black-to-lit fade, and 1 leaves the level bit for bit. It replaces a hand-faded
+black rect on a `DeviceScreenAnchor` for "the cover stays dark until the beat".
 
 The level reaches a display through its material colour. Video binds land
 asynchronously, after `Device` has set the frame's brightness, so
@@ -231,10 +244,40 @@ branch, so every other device's arithmetic is literally unchanged, and a test
 pins legacy slabs deep-equal. The sun hull stays inside `SUN_HULL_MAX` through
 the whole fold.
 
+**The floor follows the pose.** Floor modes and `ground: true` stand the posed
+device's lowest point on the floor (`devicePoseFloorShift`): each slab's inset box
+corners less the corner radius along the drop, against the same device upright. The
+pose is the placement and keys (rotation, fold, lid, scale), never the motion presets,
+and never an offset, so a float still lifts off its shadow. Turned 90 degrees, an
+unfolded Duo drops its floor from half the height to half the open width; in portrait
+the floor follows the swinging panel through the whole fold. A yaw alone gives exactly
+0, so upright devices keep their floor bit for bit. The behind modes already turn
+with the device. Every mode's look is unchanged: only where the floor sits moves.
+
+## Rotated media
+
+`rotateDeg` on any screen's media (`media`, `coverMedia` and their `compare.b`
+overrides) turns it clockwise on the screen, 0, 90, 180 or 270, and the cover fit
+applies after the turn, to the turned media's aspect. `"auto"` picks the turn that
+stands the media upright on the device's current pose (`autoScreenTurns`): world up
+measured in the device's right and up axes, leaning on "away from the camera" as the
+screen tips flat, snapped to the nearest quarter. Both displays are judged at their
+home pose (facing the device's front), so a fold never flips the media part way, and
+the pose is the placement and keys, so a keyed turn flips it at 45 degrees. Anything
+else reads as unturned.
+
+The turn is baked into the screen's UVs with the crop (`screenUvMap`): a signed
+permutation of the unit square after the crop, with video's V flip applied after the
+turn. Unturned media keeps `coverCropRect` exactly. The blur handover recovers panel
+coordinates through it: `uFoldTurned`, `uFoldTurnU` and `uFoldTurnV` carry the turn,
+and an unturned display passes every value through untouched.
+
 ## The inspector
 
 The device drill-in shows one media group per display ("Inside screen",
-"Outside screen"; single-screen devices keep "Screen") and a **Fold** group:
+"Outside screen"; single-screen devices keep "Screen"), each with **Rotate to match the
+device** (`rotateDeg: "auto"` on both comparison sides, since the pose is shared; off
+removes the field), and a **Fold** group:
 
 - four presets, Closed 0, Flex 90, Book 120 and Open 180, beside a 0 to 180
   slider;
@@ -245,11 +288,13 @@ The device drill-in shows one media group per display ("Inside screen",
 - **Unfold** and **Fold**, which add a tuned pair of keys at the playhead
   (1.3 s, `inOutCubic`) seeded with what every device is showing, so nothing else
   moves; they refuse inside an existing animation;
-- foldable poses, a rotation and an angle together: Book upright, Tent, Back.
-  Tent is solved, not eyeballed (hinge horizontal on top, the panels' bisector
-  straight down) and switches both screens on, since it faces the outside display
-  out while folded past the power switch; Book upright and Back switch that back
-  off, so Tent's flag never outlives it;
+- foldable poses, a rotation and an angle together: Book upright, Tent, Back and
+  Portrait. Tent is solved, not eyeballed (hinge horizontal on top, the panels'
+  bisector straight down) and switches both screens on, since it faces the outside
+  display out while folded past the power switch; the others switch that back off,
+  so Tent's flag never outlives it. Portrait opens the device and stands it on its
+  side (`[4, -16, 90]`, the camera half on top) and turns on Rotate to match the
+  device for both displays;
 - Keep both screens on, and on the inside display, Start when opened. With both
   held on there is no handover, so Blur between screens shows off and says why.
 
@@ -271,8 +316,9 @@ because the inside media is landscape and would crop badly.
   clips do. The blur handover hides the join; matching layouts sell it.
 - Landscape Simulator recordings carry a rotation flag rather than rotated
   pixels. The media probe honours it (`display_dimensions` in `media.rs`).
-- Media is fixed to its panel, so in Tent the outside media appears sideways.
-  Record it rotated if that pose matters.
+- Media is fixed to its panel, so a turned device shows it sideways. Use
+  `rotateDeg: "auto"` (Rotate to match the device) rather than a rotated copy of the
+  recording.
 - Two videos double the clip decode cost, the measured preview bottleneck. Probe
   before blaming anything else.
 

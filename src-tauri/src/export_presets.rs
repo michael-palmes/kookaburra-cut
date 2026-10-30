@@ -80,7 +80,7 @@ pub fn write_export_preset(
     std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
 }
 
-/// Delete a workspace export preset (the modal's Your-presets remove affordance).
+/// Move a workspace export preset to the Trash (the modal's Your-presets remove affordance).
 #[tauri::command]
 pub fn delete_export_preset(
     app: AppHandle,
@@ -95,5 +95,5 @@ pub fn delete_export_preset(
     if !path.is_file() {
         return Ok(()); // already gone; deleting twice isn't an error
     }
-    std::fs::remove_file(&path).map_err(|e| e.to_string())
+    crate::workspace::trash_path(&path).map_err(|e| e.to_string())
 }

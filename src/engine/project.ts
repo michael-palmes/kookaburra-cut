@@ -55,12 +55,21 @@ import { parseRenderSettings, type RenderSettings } from "./renderSettings";
 import { sceneErrorCard } from "./SceneErrorCard";
 import { ensureSampleAssets } from "./sampleAssets";
 import { deriveCompareBDoc } from "./sceneCompare";
-import { compileSceneModule } from "./sceneCompiler";
+import { type CutAlign, resolveSceneCuts } from "./sceneCuts";
 import { loadSceneDoc } from "./sceneDoc";
 import { resolveProjectDocsMusic } from "./sceneDocMusic";
 import { collectSceneDocFontRefs, type SceneDoc } from "./sceneDocSchema";
 import { ensureUniqueSceneIds } from "./sceneIds";
 import { normalizeLighting } from "./sceneLighting";
+import {
+  errorText,
+  persistentComponentFor,
+  SceneModuleError,
+  StageSceneStandIn,
+  sceneModuleFor,
+  sceneModuleProvider,
+  setBundledSceneLoader,
+} from "./sceneModules";
 import { collectRoomThemeIds } from "./sceneRoom";
 import {
   buildSceneTimeline,
@@ -68,6 +77,10 @@ import {
   type TransitionSpec,
   timelineTotalMs,
 } from "./sceneTimeline";
+import { cleanAssetRel, stageAssetTable } from "./stageAssets";
+import { stageOrNull } from "./stageHandle";
+import type { SceneCompileEntry } from "./stageProtocol";
+import { isStageWorker } from "./stageRealm";
 import { ensureFontRefsPinned } from "./systemFonts";
 import { resolveSlotTransitionMasks } from "./transitionMask";
 
@@ -96,6 +109,9 @@ export interface ProjectManifest {
     transition?: TransitionSpec;
     /** Per-scene postprocessing overrides layered on the project-wide (theme) effects. */
     effects?: EffectsOverride;
+    /** A pinned cut: the musical position this scene's cut lands on, `durationMs` its cached length (engine/sceneCuts.ts). */
+    cutAt?: string;
+    align?: CutAlign;
   }[];
   /** Per-project camera keyframes on the GLOBAL clock, applied at the shared render seam (engine/cameraTrack.ts). Absent means the camera is never touched (the v0-v2 byte-identical path). */
   camera?: CameraKeyframe[];
@@ -404,6 +420,8 @@ export interface LoadedProject {
   cameraTrack?: CameraKeyframe[];
   /** The project's persistent (hoisted morph) component, if it declares one (manifest `persistent`). */
   persistent?: ComponentType;
+  /** The key the compiling realm holds the persistent module under (`engine/sceneModules`). */
+  persistentKey?: string;
   /** Per-scene sidecar documents, index-parallel to `scenes` and keyed off each manifest entry's FILE stem (`scenes/01-hero.tsx` → `scenes/01-hero.json`). Undefined entries are scenes without a sidecar, rendering as before with no editing affordances; the engine reads these directly, scene components via `SceneHost`'s `SceneDocContext`. */
   sceneDocs: (SceneDoc | undefined)[];
   /** The manifest's per-scene module paths (`scenes/01-hero.tsx`), index-parallel to `scenes`; the stable file identity behind sidecar writes and thumb caching (scene ids are TSX-authored and free to collide/rename, files are unique), and mount keys derive from these. */
@@ -424,6 +442,8 @@ export interface LoadedProject {
   music?: ProjectMusic;
   /** Scenes whose sidecar `tMs` caches the load re-resolved from `at` (a grid or slot moved since they were written); the editor writes them back. Absent when none did. */
   musicCacheRewrites?: number[];
+  /** Scenes whose pinned cut resolved to a length other than the manifest's cached `durationMs`; the editor writes them back. Absent when none did. */
+  cutCacheRewrites?: number[];
   /** BASE effect stacks for scenes whose sidecar swaps the theme (sparse, keyed by scene index); a wholesale replacement of the project default for that scene, LUT urls already resolved. See `sceneBaseEffects` (engine/effectParams.ts). */
   sceneEffectDefaults: Record<number, EffectsConfig>;
   /** The manifest's validated project-default lighting layer, if it declares one (manifest `lighting`); provided to the canvas tree via `ProjectLightingContext`. */
@@ -483,14 +503,8 @@ const sceneGlob: LazyGlob<{ default: SceneModule }> = {
     ? import.meta.glob<{ default: SceneModule }>("/fixtures/*/scenes/*.tsx")
     : {}),
 };
-// Persistent (hoisted morph) modules share the scenes/ folder but default-export a plain component rather than a defineScene, hence the separately-typed glob over the same files.
-const persistentGlob: LazyGlob<{ default: ComponentType }> = {
-  ...import.meta.glob<{ default: ComponentType }>("/projects/*/scenes/*.tsx"),
-  ...import.meta.glob<{ default: ComponentType }>("/presets/*/scenes/*.tsx"),
-  ...(import.meta.env.DEV
-    ? import.meta.glob<{ default: ComponentType }>("/fixtures/*/scenes/*.tsx")
-    : {}),
-};
+// Persistent (hoisted morph) modules share the scenes/ folder but default-export a plain component rather than a defineScene; the registry reads both through this one glob.
+setBundledSceneLoader((path) => sceneGlob[path]?.());
 // Scene sidecar documents live beside their TSX as `scenes/<stem>.json`.
 const sceneDocGlob: LazyGlob<{ default: unknown }> = {
   ...import.meta.glob<{ default: unknown }>("/projects/*/scenes/*.json"),
@@ -974,6 +988,17 @@ function resolveLutUrls<T extends EffectsConfig | EffectsOverride>(projectId: st
 
 /** Resolve a project-relative IMAGE asset (e.g. `"assets/screen.png"`) to a Vite-fingerprinted URL loadable inside the webview (for a WebGL texture). Unlike `resolveAssetPath` (an absolute FS path for the native side), this is a bundled asset URL that survives the `base: "./"` packaged build. Throws with an actionable message if the asset is missing. */
 export function resolveAssetUrl(projectId: string, relPath: string): string {
+  // The stage worker loads workspace assets from the table the window resolved; a miss is a missing asset.
+  if (isStageWorker() && isWorkspaceBackedProjectId(projectId)) {
+    const url = stageAssetTable(projectId)?.images[cleanAssetRel(relPath)];
+    if (!url) {
+      throw new Error(
+        `Image asset "${relPath}" not found in project "${projectId}". ` +
+          "Put it under the project's assets/ folder and reference it relatively.",
+      );
+    }
+    return url;
+  }
   const key = projectAssetKey(projectId, relPath);
   // Workspace assets load at their asset-protocol key, gated by the inventory: a known-missing file must throw here (callers degrade to nothing) rather than reject inside the texture loader, which fails an autorun via the boot trap even when an AssetBoundary contains it. Library items (templates, presets) keep no inventory, so their key stands as-is.
   if (isWorkspaceBackedProjectId(projectId)) {
@@ -1006,6 +1031,16 @@ export function assetFileUrl(projectId: string, relPath: string): string {
 /** Resolve a project-relative environment map (`.hdr`/`.exr`) to a loadable URL. THROWS on a missing file, at resolve time, so a bad source fails an autorun loudly instead of exporting without reflections (the AssetBoundary lesson: boundary-caught errors still fail autoruns). */
 export function resolveProjectHdrUrl(projectId: string, relPath: string): string {
   const clean = assertProjectRelative(relPath);
+  if (isStageWorker() && isWorkspaceBackedProjectId(projectId)) {
+    const url = stageAssetTable(projectId)?.environments[clean];
+    if (!url) {
+      throw new Error(
+        `Environment map "${relPath}" not found in project "${projectId}". ` +
+          "Put a .hdr or .exr under the project's assets/ folder and reference it relatively.",
+      );
+    }
+    return url;
+  }
   if (isWorkspaceBackedProjectId(projectId)) {
     if (workspaceEnvironmentMissing(projectId, clean)) {
       throw new Error(
@@ -1038,6 +1073,11 @@ async function refreshWorkspaceEnvironments(projectId: string): Promise<void> {
   } catch {
     workspaceEnvironments.delete(projectId);
   }
+}
+
+/** The environment-map rels listed for a workspace project (empty before a listing). */
+export function workspaceEnvironmentRels(projectId: string): string[] {
+  return [...(workspaceEnvironments.get(projectId) ?? [])];
 }
 
 /** True only when the inventory is loaded AND the path is absent from it. */
@@ -1090,7 +1130,9 @@ export async function refreshBundledProjectAssets(projectId: string): Promise<vo
 /** Decode project images and warm the texture cache before frame 0. */
 export async function preloadProjectImages(projectId: string): Promise<void> {
   let urls: string[];
-  if (isWorkspaceBackedProjectId(projectId)) {
+  if (isStageWorker() && isWorkspaceBackedProjectId(projectId)) {
+    urls = Object.values(stageAssetTable(projectId)?.images ?? {});
+  } else if (isWorkspaceBackedProjectId(projectId)) {
     // The workspace equivalent of the eager glob: ask the native side for the project's image assets and load them at their asset-protocol URLs.
     const slug = nativeProjectSlug(projectId);
     const rels = await invoke<string[]>("list_project_assets", { slug });
@@ -1112,121 +1154,65 @@ export async function preloadProjectImages(projectId: string): Promise<void> {
   );
 }
 
+export { compileErrorDetail, SceneModuleError } from "./sceneModules";
+
 /** Load a project by id: parse its manifest, import each referenced scene module, and resolve its theme. Scene durations come from the manifest (the sequencing source of truth). Throws with an actionable message if the project, a scene, or the scene's default export is missing/malformed. */
-/** Compiled workspace modules, keyed `slug/file@token`: a module is reused until the reload token bumps (UI writes never bump it). Rejections evict themselves so a fixed scene recompiles on the next load. */
-const wsCompiledModules = new Map<string, Promise<unknown>>();
-
-/** A scene module that failed to load, tagged with where: reading or compiling ("compile"), running its top level ("evaluate"), or its default export ("export"). */
-export class SceneModuleError extends Error {
-  readonly phase: SceneLoadPhase;
-  constructor(phase: SceneLoadPhase, message: string) {
-    super(message);
-    this.name = "SceneModuleError";
-    this.phase = phase;
-  }
-}
-
-function errorText(e: unknown): string {
-  if (!(e instanceof Error)) return String(e);
-  return e.name && e.name !== "Error" ? `${e.name}: ${e.message}` : e.message;
-}
-
-/** esbuild's diagnostics without the "Scene … failed to compile:" lead line, so the first line names the problem. */
-export function compileErrorDetail(message: string): string {
-  const lines = message
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (lines.length > 1 && /failed to compile:$/.test(lines[0])) lines.shift();
-  return lines.join("\n");
-}
-
-async function importCompiledWorkspaceModule<T>(slug: string, file: string): Promise<T> {
-  const key = `${slug}/${file}@${workspaceReloadToken}`;
-  let pending = wsCompiledModules.get(key);
-  if (!pending) {
-    pending = (async () => {
-      let source: string;
-      try {
-        source = await invoke<string>("read_scene_source", { slug, file });
-      } catch (e) {
-        throw new SceneModuleError("compile", `couldn't read the file: ${errorText(e)}`);
-      }
-      let url: string;
-      try {
-        url = await compileSceneModule(source, file);
-      } catch (e) {
-        throw new SceneModuleError("compile", compileErrorDetail(errorText(e)));
-      }
-      try {
-        return await import(/* @vite-ignore */ url);
-      } catch (e) {
-        throw new SceneModuleError("evaluate", errorText(e));
-      } finally {
-        // The module is fully instantiated once the import resolves; the URL is done.
-        URL.revokeObjectURL(url);
-      }
-    })();
-    wsCompiledModules.set(key, pending);
-    pending.catch(() => wsCompiledModules.delete(key));
-  }
-  return (await pending) as T;
-}
-
-/** Import a project-relative TSX module. Bundled projects resolve through the compile-time glob; workspace projects compile at runtime (esbuild-wasm, one loader for dev and packaged; the dev-server `/@fs` module path was retired once proved hash-equal to the compiled path). */
-async function importProjectModule<T>(
-  glob: Record<string, () => Promise<T>>,
-  projectId: string,
-  file: string,
-  what: string,
-): Promise<T> {
-  if (isWorkspaceProjectId(projectId)) {
-    const project = requireWorkspaceProject(nativeProjectSlug(projectId));
-    return importCompiledWorkspaceModule<T>(project.slug, file.replace(/^\.?\//, ""));
-  }
+/** The compile entry for one manifest scene file: bundled files resolve through the app's glob, workspace files are read here (the only realm with IPC) and compiled by the scene module provider. */
+async function sceneCompileEntry(projectId: string, file: string): Promise<SceneCompileEntry> {
+  const clean = file.replace(/^\.?\//, "");
   if (isWorkspaceBackedProjectId(projectId)) {
-    return importCompiledWorkspaceModule<T>(
-      nativeProjectSlug(projectId),
-      file.replace(/^\.?\//, ""),
-    );
+    const slug = isWorkspaceProjectId(projectId)
+      ? requireWorkspaceProject(nativeProjectSlug(projectId)).slug
+      : nativeProjectSlug(projectId);
+    let source: string;
+    try {
+      source = await invoke<string>("read_scene_source", { slug, file: clean });
+    } catch (e) {
+      throw new SceneModuleError("compile", `couldn't read the file: ${errorText(e)}`);
+    }
+    return { kind: "source", file: clean, source, token: workspaceReloadToken };
   }
-  const path = `${bundledProjectDir(projectId)}/${file}`;
-  const load = glob[path];
-  if (!load) {
-    throw new SceneModuleError(
-      "compile",
-      `${what} "${path}" not found (referenced by ${projectId}/project.json).`,
-    );
-  }
-  try {
-    return await load();
-  } catch (e) {
-    throw new SceneModuleError("evaluate", errorText(e));
-  }
+  return { kind: "bundled", path: `${bundledProjectDir(projectId)}/${clean}` };
 }
 
-/** One scene module, or the reason it can't render; never throws, so one bad file can't sink the project. */
-async function loadSceneModule(
+/** Every manifest scene compiled through the provider, index-parallel: a module (with the key the holding realm knows it by) or the reason it can't render; never throws, so one bad file can't sink the project. */
+async function loadSceneModules(
   projectId: string,
-  entry: ProjectManifest["scenes"][number],
-): Promise<SceneModule | { phase: SceneLoadPhase; message: string }> {
-  try {
-    const scene = (
-      await importProjectModule<{ default: SceneModule }>(sceneGlob, projectId, entry.file, "Scene")
-    ).default;
-    if (!scene || typeof scene.Scene !== "function") {
-      return {
-        phase: "export",
-        message: "it must default-export defineScene({ id, durationMs, Scene })",
-      };
+  entries: ProjectManifest["scenes"],
+): Promise<(SceneModule | { phase: SceneLoadPhase; message: string })[]> {
+  const prepared = await Promise.all(
+    entries.map(async (entry) => {
+      try {
+        return { entry: await sceneCompileEntry(projectId, entry.file) };
+      } catch (e) {
+        return e instanceof SceneModuleError
+          ? { phase: e.phase, message: e.message }
+          : { phase: "evaluate" as const, message: errorText(e) };
+      }
+    }),
+  );
+  const compiled = await sceneModuleProvider().compile(
+    projectId,
+    prepared.flatMap((p) => ("entry" in p && p.entry ? [p.entry] : [])),
+  );
+  let at = 0;
+  return prepared.map((p, i) => {
+    if (!("entry" in p) || !p.entry)
+      return "entry" in p ? { phase: "compile" as const, message: "unreadable" } : p;
+    const result = compiled[at++];
+    if (!result?.ok) {
+      return result
+        ? { phase: result.phase, message: result.message }
+        : { phase: "compile" as const, message: "the stage did not compile this scene" };
     }
     // The manifest's durationMs is authoritative for sequencing.
-    return { ...scene, durationMs: entry.durationMs ?? scene.durationMs };
-  } catch (e) {
-    return e instanceof SceneModuleError
-      ? { phase: e.phase, message: e.message }
-      : { phase: "evaluate", message: errorText(e) };
-  }
+    return {
+      id: result.id,
+      durationMs: entries[i].durationMs ?? result.durationMs,
+      Scene: sceneModuleFor(result.key)?.Scene ?? StageSceneStandIn,
+      key: result.key,
+    };
+  });
 }
 
 /** A project must reference each scene file once: shared files load one sidecar into two scenes and every text key collides. */
@@ -1324,8 +1310,8 @@ export async function loadProject(
     if (options?.trustMode)
       await ensureProjectTrusted(slug, manifest.name || slug, options.trustMode);
     else await ensureProjectTrusted(slug, manifest.name || slug);
-    // Trust first: declining must mean zero writes. The bump evicts pre-heal modules from `wsCompiledModules` so the imports below compile the rewritten bytes.
-    const heal = await ensureUniqueSceneIds(slug);
+    // Trust first: declining must mean zero writes. The heal is the main window's (a stored-only load runs in a window that cannot write scenes). The bump evicts pre-heal modules from `wsCompiledModules` so the imports below compile the rewritten bytes.
+    const heal = options?.trustMode ? null : await ensureUniqueSceneIds(slug);
     if (heal?.renamed.length) {
       healedSceneIds = heal.renamed.map((r) => r.file);
       bumpWorkspaceReloadToken();
@@ -1343,8 +1329,9 @@ export async function loadProject(
   // A scene that fails to read, compile, evaluate or export loads as an error card with its manifest duration; only a broken manifest fails the whole project.
   const scenes: SceneModule[] = [];
   const sceneErrors: SceneLoadError[] = [];
+  const loadedScenes = await loadSceneModules(id, manifest.scenes);
   for (const [index, entry] of manifest.scenes.entries()) {
-    const loaded = await loadSceneModule(id, entry);
+    const loaded = loadedScenes[index];
     if ("Scene" in loaded) {
       scenes.push(loaded);
       continue;
@@ -1381,8 +1368,25 @@ export async function loadProject(
     noteParse(docFile, docFile, sceneDocWarnings[i]);
   });
 
-  // Overlap-aware placement: a transition pulls the next scene's start back, shortening the project.
+  // Authored music comes from the manifest alone, so a missing soundtrack never moves a visual; pinned cuts and sidecar `at` positions resolve against it before anything reads a time.
+  const audioSpec = isRecordValue(manifest.audio)
+    ? withSanitisedMusic(manifest.audio as ProjectAudioSpec)
+    : undefined;
+  const music = projectMusicOf(audioSpec);
+
+  // Pinned cuts first (a project without one keeps its durations untouched), then overlap-aware placement: a transition pulls the next scene's start back, shortening the project.
   const outgoing = outgoingSceneTransitions(manifest);
+  const cuts = resolveSceneCuts(
+    manifest.scenes.map((entry, i) => ({
+      durationMs: scenes[i].durationMs,
+      transition: outgoing[i],
+      cutAt: entry.cutAt,
+      align: entry.align,
+    })),
+    music,
+  );
+  for (const i of cuts.changed) scenes[i] = { ...scenes[i], durationMs: cuts.durations[i] };
+  for (const issue of cuts.issues) parseNotes.push(`project.json: ${issue}`);
   const timeline = buildSceneTimeline(
     manifest.scenes.map((_, i) => ({
       // TSX-authored, so it may collide: never key a mount off it, files are the identity (`sceneMountKey`).
@@ -1396,11 +1400,6 @@ export async function loadProject(
   );
   const totalMs = timelineTotalMs(slots);
 
-  // Authored music comes from the manifest alone, so a missing soundtrack never moves a visual; sidecar `at` positions resolve against it here, before anything reads a key time.
-  const audioSpec = isRecordValue(manifest.audio)
-    ? withSanitisedMusic(manifest.audio as ProjectAudioSpec)
-    : undefined;
-  const music = projectMusicOf(audioSpec);
   const resolved = resolveProjectDocsMusic(loadedDocs, music, slots);
   const sceneDocs = resolved.docs;
 
@@ -1481,7 +1480,7 @@ export async function loadProject(
   await preloadAppFonts(fontRefs);
 
   // Colour-emoji rasters for every sidecar string settle before scenes mount, and this pins which project's cache receives new rasters (mirrors the export preamble).
-  await preloadEmojiRasters(id, sceneDocs);
+  if (!stageOrNull()) await preloadEmojiRasters(id, sceneDocs);
 
   // Collect per-scene effect overrides (sparse, only scenes that declare `effects`), with any LUT urls resolved from project-relative to their project asset keys.
   const effectOverrides: Record<number, EffectsOverride> = {};
@@ -1541,20 +1540,13 @@ export async function loadProject(
 
   // Resolve the persistent (hoisted morph) module, if the project declares one; a broken one is recorded (index -1, so export refuses) and the project opens without the layer.
   let persistent: ComponentType | undefined;
+  let persistentKey: string | undefined;
   if (manifest.persistent) {
     try {
-      persistent = (
-        await importProjectModule<{ default: ComponentType }>(
-          persistentGlob,
-          id,
-          manifest.persistent,
-          "Persistent module",
-        )
-      ).default;
-      if (typeof persistent !== "function") {
-        persistent = undefined;
-        throw new SceneModuleError("export", "it must default-export a component");
-      }
+      const entry = await sceneCompileEntry(id, manifest.persistent);
+      const compiled = await sceneModuleProvider().compilePersistent(id, entry);
+      persistentKey = compiled.key;
+      persistent = persistentComponentFor(compiled.key) ?? StageSceneStandIn;
     } catch (e) {
       const failure =
         e instanceof SceneModuleError ? e : new SceneModuleError("evaluate", errorText(e));
@@ -1607,8 +1599,10 @@ export async function loadProject(
     audio,
     music,
     ...(resolved.changed.length > 0 ? { musicCacheRewrites: resolved.changed } : {}),
+    ...(cuts.changed.length > 0 ? { cutCacheRewrites: cuts.changed } : {}),
     cameraTrack: manifest.camera,
     persistent,
+    persistentKey,
     sceneDocs,
     sceneFiles: manifest.scenes.map((entry) => entry.file),
     sceneThemes,

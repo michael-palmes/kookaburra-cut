@@ -169,7 +169,7 @@ export function CompositorDriver({
   const progress = useRef<PreviewProgress | null>(null);
   useEffect(
     () => () => {
-      window.clearTimeout(settle.current.timer);
+      clearTimeout(settle.current.timer);
       if (useClockStore.getState().shutter !== NO_SHUTTER) {
         useClockStore.getState().setShutter(NO_SHUTTER);
       }
@@ -501,12 +501,12 @@ export function CompositorDriver({
       return { plan: shutterPlan, samples: undefined };
     }
     st.fired = false;
-    window.clearTimeout(st.timer);
+    clearTimeout(st.timer);
     if (!editing) {
-      st.timer = window.setTimeout(() => {
+      st.timer = setTimeout(() => {
         st.fired = true;
         invalidate();
-      }, SETTLE_MS);
+      }, SETTLE_MS) as unknown as number;
     }
     return "plain";
   }

@@ -29,6 +29,15 @@ toolkit primitives. Three tiers share one contract:
   | `ipad-pro-13` | `licensed/1a8f4c65-0cd1-42c2-a5cd-ffb632ec372b.glb` | `pnpm assets:ipad-pro-13` |
   | `iphone-duo` | `licensed/572f22d2-448d-4511-80ee-d0a309cf1e2f.glb` | `pnpm assets:iphone-duo` |
 
+  `licensed.sha256` beside this file pins each glb (shasum format);
+  `scripts/check-licensed-models.sh` fails a release build on a missing or
+  changed file, so rebuilding a model means re-pinning it in the same commit.
+  Release builds run on GitHub Actions, which has no vendor files: the
+  workflow fetches `licensed-models.tar.age` (a flat tar of these glbs,
+  encrypted with `age`) from a private repository with a read-only token,
+  decrypts it, and unpacks only flat `*.glb` entries that match the pins
+  (`.agents/skills/kookaburra-release/SKILL.md`, "Licensed device models").
+
   All of them run `scripts/prepare-device-model.sh` (Blender export with a
   per-device corrective yaw, then gltf-transform optimise; needs
   `KOOKABURRA_ASSETS_DIR` pointing at the private vendor-blend folder).

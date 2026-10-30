@@ -1,5 +1,6 @@
 //! Media library backend: imports files into a project's `assets/` and maintains a content-hash-keyed thumbnail/metadata cache (probe JSON via the ffprobe sidecar, a poster and ~10 hover-scrub frames via the ffmpeg sidecar), stored APP-GLOBALLY in `$APPDATA/cache/media/<sha>/` (beside `cache/clips`) so identical files dedupe across projects and Settings can clear it in one shot; entries are guarded by a `.done` marker plus a `POSTER_VERSION` stamp (image posters regenerate when the pipeline changes), and a by-path stamp (size+mtime → sha) keeps warm views hash-free and regenerates automatically when a file changes.
 
+use std::collections::HashSet;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
@@ -7,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_shell::process::CommandEvent;
-use tauri_plugin_shell::ShellExt;
 
 use crate::workspace::{self, SettingsState, MANIFEST_FILENAME};
 
@@ -115,13 +115,195 @@ fn sha256_file(path: &Path) -> Result<String, String> {
     Ok(crate::hex_digest(hasher.finalize().as_slice()))
 }
 
-/// Resolve an asset under the already resolved project folder, including scoped library items.
+/// The content sha a file resolved to the last time the library saw it, from its by-path stamp and only while the file's size and mtime still match; no bytes are read.
+fn stamped_sha(cache_root: &Path, abs: &Path) -> Option<String> {
+    let (size, mtime_ms) = file_stamp(abs).ok()?;
+    let stamp_path = cache_root
+        .join("by-path")
+        .join(format!("{}.json", hashed_path_key(abs)));
+    let stamp: PathStamp = serde_json::from_str(&std::fs::read_to_string(stamp_path).ok()?).ok()?;
+    (stamp.size == size && stamp.mtime_ms == mtime_ms).then_some(stamp.sha)
+}
+
+/// Every video and image under a project's `assets/`, `.originals` included (it holds footage too); the render staging and emoji rasters are never cached by content, so they are skipped.
+fn media_files_in(project: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut pending = vec![project.join("assets")];
+    while let Some(dir) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            if kind.is_symlink() {
+                continue;
+            }
+            if kind.is_dir() {
+                let name = entry.file_name();
+                if name == ".kc-render" || name == ".emoji-cache" {
+                    continue;
+                }
+                pending.push(path);
+            } else {
+                let ext = extension_of(&path);
+                if is_video(&ext) || workspace::IMAGE_EXTENSIONS.contains(&ext.as_str()) {
+                    out.push(path);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// One media file with the content sha the caches know it by.
+pub(crate) struct MediaSource {
+    pub path: PathBuf,
+    pub sha: String,
+}
+
+/// A project's media with each file's content sha: from the by-path stamp where the library has seen the file, else hashed now. Called before the folder moves, since the caches are keyed by content and the Trash is another path.
+pub(crate) fn project_media_sources(app: &AppHandle, project: &Path) -> Vec<MediaSource> {
+    let Ok(cache_root) = media_cache_root(app) else {
+        return Vec::new();
+    };
+    media_files_in(project)
+        .into_iter()
+        .filter_map(|path| {
+            let sha = stamped_sha(&cache_root, &path).or_else(|| sha256_file(&path).ok())?;
+            Some(MediaSource { path, sha })
+        })
+        .collect()
+}
+
+/// The shas the projects, templates and presets under `root` are known to use, from their stamps alone (never hashed): the cheap check that keeps a clip shared between two items. A file already in the Trash has no stamp that still matches, so the deleted item drops out on its own.
+fn shas_in_use(cache_root: &Path, root: &Path) -> HashSet<String> {
+    let mut used = HashSet::new();
+    let folders = std::iter::once(root.to_path_buf()).chain([
+        workspace::templates_dir(root),
+        workspace::presets_dir(root),
+    ]);
+    for folder in folders {
+        let Ok(entries) = std::fs::read_dir(folder) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let dir = entry.path();
+            if !dir.join(MANIFEST_FILENAME).is_file() {
+                continue;
+            }
+            for file in media_files_in(&dir) {
+                if let Some(sha) = stamped_sha(cache_root, &file) {
+                    used.insert(sha);
+                }
+            }
+        }
+    }
+    used
+}
+
+/// Drop what the caches hold for media that left the workspace: the media cache entries, conform verdicts and by-path stamps, and the clip cache entries, except content another item under `root` still maps to. Runs off the caller's thread; a cache miss later only costs a re-decode.
+pub(crate) fn forget_media(app: &AppHandle, root: &Path, gone_from: &Path, sources: Vec<MediaSource>) {
+    if sources.is_empty() {
+        return;
+    }
+    let app = app.clone();
+    let root = root.to_path_buf();
+    let gone_from = gone_from.to_path_buf();
+    tauri::async_runtime::spawn_blocking(move || {
+        let Ok(cache_root) = media_cache_root(&app) else {
+            return;
+        };
+        let keep = shas_in_use(&cache_root, &root);
+        let mut shas: Vec<String> = Vec::new();
+        for source in &sources {
+            let _ = std::fs::remove_file(
+                cache_root
+                    .join("by-path")
+                    .join(format!("{}.json", hashed_path_key(&source.path))),
+            );
+            if !keep.contains(&source.sha) && !shas.contains(&source.sha) {
+                shas.push(source.sha.clone());
+            }
+        }
+        for sha in &shas {
+            let _ = std::fs::remove_dir_all(cache_root.join(sha));
+            let _ = std::fs::remove_file(cache_root.join("verdicts").join(format!("{sha}.json")));
+        }
+        let clips = crate::clip_cache::evict_entries(&app, &shas);
+        log::info!(
+            "[media] forgot {} media entries and {} clip entries for {}",
+            shas.len(),
+            clips.len(),
+            gone_from.display()
+        );
+    });
+}
+
+/// Resolve an asset under the already resolved project folder, including scoped library items; refused when a link along the way leaves the project.
 pub(crate) fn resolve_asset_in(project: &Path, rel: &str) -> Result<PathBuf, String> {
     let clean = rel.trim_start_matches("./");
     if !clean.starts_with("assets/") || clean.split('/').any(|part| part == "..") {
         return Err(format!("not a project asset path: {rel}"));
     }
+    confine_to_project(project, clean)?;
     Ok(project.join(clean))
+}
+
+/// Where `project/rel` really leads, with every link followed: the deepest existing ancestor is what a link could redirect, so that is what is canonicalised, and whatever is missing below it is kept as written so a file about to be checked with `is_file` still resolves.
+fn confine_to_project(project: &Path, rel: &str) -> Result<PathBuf, String> {
+    let root = project
+        .canonicalize()
+        .map_err(|e| format!("project folder {}: {e}", project.display()))?;
+    let full = root.join(rel);
+    let mut existing = full.as_path();
+    let mut missing: Vec<&std::ffi::OsStr> = Vec::new();
+    while std::fs::symlink_metadata(existing).is_err() {
+        let (Some(parent), Some(name)) = (existing.parent(), existing.file_name()) else {
+            break;
+        };
+        missing.push(name);
+        existing = parent;
+    }
+    let real = existing
+        .canonicalize()
+        .map_err(|_| format!("\"{rel}\" is a link that leads nowhere"))?;
+    if !real.starts_with(&root) {
+        return Err(format!(
+            "\"{rel}\" links outside the project folder; links out of a project are not followed"
+        ));
+    }
+    Ok(missing
+        .into_iter()
+        .rev()
+        .fold(real, |path, name| path.join(name)))
+}
+
+/// The project soundtrack an export or a loudness pass may open: an absolute file inside the workspace-readable roots with an audio extension, so a planted playlist (an `.m3u8` named in `project.json`, say) never reaches ffmpeg.
+pub(crate) fn confine_soundtrack(
+    app: &AppHandle,
+    state: &State<'_, workspace::SettingsState>,
+    file: &str,
+) -> Result<PathBuf, String> {
+    check_soundtrack_file(Path::new(file))?;
+    workspace::confine_readable(app, state, file)
+}
+
+/// The shape every soundtrack must have before its path is even confined: absolute, a file, an audio extension.
+pub(crate) fn check_soundtrack_file(path: &Path) -> Result<(), String> {
+    if !path.is_absolute() || !path.is_file() {
+        return Err(format!("audio file not found: {}", path.display()));
+    }
+    let ext = extension_of(path);
+    if !workspace::AUDIO_EXTENSIONS.contains(&ext.as_str()) {
+        return Err(format!(
+            "the soundtrack must be an audio file ({}), not .{ext}",
+            workspace::AUDIO_EXTENSIONS.join(", ")
+        ));
+    }
+    Ok(())
 }
 
 /// Whether a sidecar run competes for the background-ffmpeg cap or runs unthrottled.
@@ -145,9 +327,12 @@ pub(crate) async fn write_rgba_png(
         "ffmpeg",
         vec![
             "-y".into(),
+            "-nostdin".into(),
             "-hide_banner".into(),
             "-loglevel".into(),
             "error".into(),
+            "-protocol_whitelist".into(),
+            "file,pipe".into(),
             "-f".into(),
             "rawvideo".into(),
             "-pix_fmt".into(),
@@ -184,10 +369,7 @@ pub(crate) async fn run_sidecar(
         ),
         SidecarPriority::Foreground => None,
     };
-    let (mut rx, child) = app
-        .shell()
-        .sidecar(name)
-        .map_err(|e| format!("{name} sidecar not found: {e}"))?
+    let (mut rx, child) = crate::tools::sidecar(app, name)?
         .args(args)
         .spawn()
         .map_err(|e| format!("failed to start {name}: {e}"))?;
@@ -316,8 +498,11 @@ pub async fn import_app_icon(
     } else {
         let args: Vec<String> = vec![
             "-y".into(),
+            "-nostdin".into(),
             "-loglevel".into(),
             "error".into(),
+            "-protocol_whitelist".into(),
+            "file,pipe".into(),
             "-i".into(),
             src.to_string_lossy().into_owned(),
             "-frames:v".into(),
@@ -395,11 +580,25 @@ pub async fn probe_audio(
     })
 }
 
+/// The head of every poster and scrub lane: no terminal, no protocol but a local file.
+fn media_lane_head() -> Vec<String> {
+    vec![
+        "-y".into(),
+        "-nostdin".into(),
+        "-loglevel".into(),
+        "error".into(),
+        "-protocol_whitelist".into(),
+        "file,pipe".into(),
+    ]
+}
+
 /// The ffprobe arguments every media probe runs.
 pub(crate) fn probe_args(abs: &Path) -> Vec<String> {
     vec![
         "-v".into(),
         "error".into(),
+        "-protocol_whitelist".into(),
+        "file,pipe".into(),
         "-print_format".into(),
         "json".into(),
         "-show_streams".into(),
@@ -467,7 +666,7 @@ pub(crate) fn parse_probe(stdout: &str, abs: &Path) -> Result<ProbeInfo, String>
 
 /// Probe one media file with the given ffprobe, blocking; stdin is closed so the tool can never wait on a terminal.
 pub(crate) fn probe_media_at(ffprobe: &Path, abs: &Path) -> Result<ProbeInfo, String> {
-    let out = std::process::Command::new(ffprobe)
+    let out = crate::tools::sidecar_command(ffprobe)
         .args(probe_args(abs))
         .stdin(std::process::Stdio::null())
         .output()
@@ -822,9 +1021,9 @@ fn validate_asset_rel(rel: &str) -> Result<(), String> {
     }
 }
 
-/// Move an asset to the TRASH, refused while any scene, edit or the manifest still references it (re-point first; a broken reference would fail the next load loudly).
+/// Move an asset to the TRASH, refused while any scene, edit or the manifest still references it (re-point first; a broken reference would fail the next load loudly). Its cache entries go with it.
 #[tauri::command]
-pub fn delete_media(
+pub async fn delete_media(
     app: AppHandle,
     state: State<'_, SettingsState>,
     slug: String,
@@ -841,7 +1040,22 @@ pub fn delete_media(
         return Err(format!("{rel} is still used by: {}", used.join(", ")));
     }
     let timing = timing_record_for(&project, &rel);
+    let sources = {
+        let cache_root = media_cache_root(&app)?;
+        let path = path.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let sha = stamped_sha(&cache_root, &path).or_else(|| sha256_file(&path).ok())?;
+            Some(MediaSource { path, sha })
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .collect::<Vec<_>>()
+    };
     workspace::trash_path(&path).map_err(|e| format!("couldn't move the file to the Trash: {e}"))?;
+    if let Ok(root) = workspace::require_root(&app, &state) {
+        forget_media(&app, &root, &project, sources);
+    }
     // A conformed video's records go with it; its original stays in `assets/.originals/`.
     if let Some(timing) = timing {
         if let Err(e) = workspace::trash_path(&project.join(&timing)) {
@@ -1787,7 +2001,7 @@ pub async fn conform_status(
     .await
     .map_err(|e| format!("probe task failed: {e}"))??;
     if let Some(dir) = cache.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        crate::privacy::private_dir(dir).map_err(|e| e.to_string())?;
     }
     let record = CachedVerdict {
         version: VERDICT_VERSION,
@@ -1795,6 +2009,7 @@ pub async fn conform_status(
     };
     let text = serde_json::to_string(&record).map_err(|e| e.to_string())?;
     crate::write_atomic(&cache, text.as_bytes())?;
+    let _ = crate::privacy::private_file(&cache);
     Ok(status)
 }
 
@@ -1955,7 +2170,7 @@ pub(crate) async fn ensure_media_cache(
         Some(sha) => sha,
         None => {
             let sha = sha256_file(abs)?;
-            std::fs::create_dir_all(&stamp_dir).map_err(|e| e.to_string())?;
+            crate::privacy::private_dir(&stamp_dir).map_err(|e| e.to_string())?;
             let stamp = PathStamp {
                 size,
                 mtime_ms,
@@ -1967,6 +2182,7 @@ pub(crate) async fn ensure_media_cache(
                     .map_err(|e| e.to_string())?
                     .as_bytes(),
             )?;
+            let _ = crate::privacy::private_file(&stamp_path);
             sha
         }
     };
@@ -2003,7 +2219,7 @@ pub(crate) async fn ensure_media_cache(
     // (Re)generate from scratch into a staging sibling, renamed onto `cache` once complete, so a second app instance never reads a half-built entry.
     let staging = crate::staging_sibling(&cache)?;
     let _ = std::fs::remove_dir_all(&staging);
-    std::fs::create_dir_all(&staging).map_err(|e| e.to_string())?;
+    crate::privacy::private_dir(&staging).map_err(|e| e.to_string())?;
     let abs_str = abs.to_string_lossy().into_owned();
 
     // Probe (shared with the video editor, see `probe_media`).
@@ -2019,7 +2235,7 @@ pub(crate) async fn ensure_media_cache(
 
     // Poster: 25% in for videos (skips black lead-ins), the image itself otherwise.
     let poster = staging.join(poster_name(if video { "video" } else { "image" }));
-    let mut poster_args: Vec<String> = vec!["-y".into(), "-loglevel".into(), "error".into()];
+    let mut poster_args: Vec<String> = media_lane_head();
     if hardware {
         poster_args.extend(["-hwaccel".into(), "videotoolbox".into()]);
     }
@@ -2045,7 +2261,7 @@ pub(crate) async fn ensure_media_cache(
     let mut scrub_count = 0u32;
     if video && duration_s > 0.0 {
         let rate = f64::from(SCRUB_FRAMES) / duration_s;
-        let mut scrub_args: Vec<String> = vec!["-y".into(), "-loglevel".into(), "error".into()];
+        let mut scrub_args: Vec<String> = media_lane_head();
         if hardware {
             scrub_args.extend(["-hwaccel".into(), "videotoolbox".into()]);
         }
@@ -2089,6 +2305,7 @@ pub(crate) async fn ensure_media_cache(
     )
     .map_err(|e| e.to_string())?;
     std::fs::write(staging.join(".done"), []).map_err(|e| e.to_string())?;
+    crate::privacy::seal_tree(&staging);
     if regenerating_stale {
         let _ = std::fs::remove_dir_all(&cache);
     }
@@ -2174,6 +2391,123 @@ fn hydrate(cached: CachedMeta, cache: &Path, rel: &str, sha: &str) -> MediaMeta 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn scratch(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("kc-media-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// A link out of the project is refused by name, a link within it is allowed, and a missing file still resolves so callers can say it is missing.
+    #[test]
+    fn assets_resolve_inside_the_project_only() {
+        let dir = scratch("confine");
+        let project = dir.join("project");
+        let outside = dir.join("outside");
+        std::fs::create_dir_all(project.join("assets/sub")).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(project.join("assets/real.png"), b"x").unwrap();
+        std::fs::write(outside.join("secret.png"), b"x").unwrap();
+        std::os::unix::fs::symlink(outside.join("secret.png"), project.join("assets/theirs.png")).unwrap();
+        std::os::unix::fs::symlink(&outside, project.join("assets/out")).unwrap();
+        std::os::unix::fs::symlink(project.join("assets/real.png"), project.join("assets/alias.png")).unwrap();
+        std::os::unix::fs::symlink(dir.join("nothing"), project.join("assets/dangling.png")).unwrap();
+
+        assert_eq!(
+            resolve_asset_in(&project, "assets/real.png").unwrap(),
+            project.join("assets/real.png")
+        );
+        assert_eq!(
+            resolve_asset_in(&project, "./assets/alias.png").unwrap(),
+            project.join("assets/alias.png")
+        );
+        assert_eq!(
+            resolve_asset_in(&project, "assets/sub/missing.png").unwrap(),
+            project.join("assets/sub/missing.png")
+        );
+        for rel in ["assets/theirs.png", "assets/out/secret.png", "assets/out/missing.png"] {
+            let err = resolve_asset_in(&project, rel).unwrap_err();
+            assert!(err.contains(rel) && err.contains("outside the project"), "{rel}: {err}");
+        }
+        let err = resolve_asset_in(&project, "assets/dangling.png").unwrap_err();
+        assert!(err.contains("dangling.png"), "{err}");
+        assert!(resolve_asset_in(&project, "assets/../project.json").is_err());
+        assert!(resolve_asset_in(&project, "scenes/a.tsx").is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A playlist named as the soundtrack never reaches ffmpeg, whatever it is called in `project.json`.
+    #[test]
+    fn a_planted_playlist_is_not_a_soundtrack() {
+        let dir = scratch("soundtrack");
+        let playlist = dir.join("bed.m3u8");
+        std::fs::write(&playlist, "#EXTM3U\nhttp://example.test/leak.ts\n").unwrap();
+        let err = check_soundtrack_file(&playlist).unwrap_err();
+        assert!(err.contains("audio file"), "{err}");
+        let track = dir.join("bed.mp3");
+        std::fs::write(&track, b"ID3").unwrap();
+        assert!(check_soundtrack_file(&track).is_ok());
+        assert!(check_soundtrack_file(Path::new("assets/bed.mp3")).is_err());
+        assert!(check_soundtrack_file(&dir.join("missing.mp3")).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A deleted project's media resolves to shas from the library's stamps without reading the file, and a stamp another project holds keeps its entry alive.
+    #[test]
+    fn stamps_name_the_shas_a_project_leaves_behind() {
+        let root = scratch("forget");
+        let cache = root.join("cache");
+        let gone = root.join("gone");
+        let other = root.join("other");
+        for project in [&gone, &other] {
+            std::fs::create_dir_all(project.join("assets/.originals")).unwrap();
+            std::fs::write(project.join(MANIFEST_FILENAME), "{}").unwrap();
+        }
+        let shared = gone.join("assets/take.mp4");
+        std::fs::write(&shared, b"video bytes").unwrap();
+        let only = gone.join("assets/.originals/raw.mov");
+        std::fs::write(&only, b"original bytes").unwrap();
+        std::fs::write(gone.join("assets/notes.txt"), b"not media").unwrap();
+        let theirs = other.join("assets/take.mp4");
+        std::fs::write(&theirs, b"video bytes").unwrap();
+
+        let stamp = |abs: &Path, sha: &str| {
+            let (size, mtime_ms) = file_stamp(abs).unwrap();
+            let dir = cache.join("by-path");
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(
+                dir.join(format!("{}.json", hashed_path_key(abs))),
+                serde_json::to_string(&PathStamp {
+                    size,
+                    mtime_ms,
+                    sha: sha.to_owned(),
+                })
+                .unwrap(),
+            )
+            .unwrap();
+        };
+        stamp(&shared, "aaaa");
+        stamp(&theirs, "aaaa");
+
+        let mut files = media_files_in(&gone);
+        files.sort();
+        assert_eq!(files, vec![only.clone(), shared.clone()]);
+        assert_eq!(stamped_sha(&cache, &shared).as_deref(), Some("aaaa"));
+        assert_eq!(stamped_sha(&cache, &only), None, "never stamped, so it is hashed");
+        assert_eq!(sha256_file(&only).unwrap().len(), 64);
+
+        std::fs::create_dir_all(gone.join("assets/.kc-render")).unwrap();
+        std::fs::write(gone.join("assets/.kc-render/frame.png"), b"staging").unwrap();
+        assert_eq!(media_files_in(&gone).len(), 2, "render staging is never cached by content");
+        let keep = shas_in_use(&cache, &root);
+        assert!(keep.contains("aaaa"), "the other project still maps to it");
+        assert_eq!(keep.len(), 1);
+        std::fs::remove_file(&theirs).unwrap();
+        std::fs::remove_file(&shared).unwrap();
+        assert!(shas_in_use(&cache, &root).is_empty(), "a gone file's stamp no longer matches");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn a_path_shaped_name_is_reduced_to_its_final_component() {

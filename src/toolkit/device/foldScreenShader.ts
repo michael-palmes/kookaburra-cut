@@ -15,7 +15,7 @@ import {
   FOLD_STATIC_GUARD,
   type FoldScreenState,
 } from "../../engine/foldTransition";
-import type { UvRect } from "../../engine/screenFit";
+import type { ScreenUvMap } from "../../engine/screenFit";
 
 /** The handover on a foldable's display. Two things happen in one pass, both in the display's own space so the bend and perspective come free from rasterisation:
  *
@@ -26,6 +26,9 @@ import type { UvRect } from "../../engine/screenFit";
 
 interface FoldScreenUniforms {
   uFoldCrop: { value: Vector4 };
+  uFoldTurned: { value: number };
+  uFoldTurnU: { value: Vector3 };
+  uFoldTurnV: { value: Vector3 };
   uFoldAxis: { value: Vector2 };
   uFoldFront: { value: number };
   uFoldSoftFront: { value: number };
@@ -58,6 +61,9 @@ vFoldRootPos = ( uFoldRootInv * modelMatrix * vec4( transformed, 1.0 ) ).xyz;`;
 
 const PARS = /* glsl */ `#include <map_pars_fragment>
 uniform vec4 uFoldCrop;
+uniform float uFoldTurned;
+uniform vec3 uFoldTurnU;
+uniform vec3 uFoldTurnV;
 uniform vec2 uFoldAxis;
 uniform float uFoldFront;
 uniform float uFoldSoftFront;
@@ -71,6 +77,8 @@ uniform float uFoldHomeZ;
 uniform vec3 uFoldEye;
 varying vec3 vFoldRootPos;
 
+// The sampler exists only with a map; a display without media compiles without one.
+#ifdef USE_MAP
 // PCG-style integer hash: a pure function of the pixel, never a sine hash, whose bits drift between GPUs.
 float foldHash( uvec2 p ) {
 	uint h = p.x * 374761393u ^ p.y * 668265263u;
@@ -78,12 +86,22 @@ float foldHash( uvec2 p ) {
 	return float( h & 0x00FFFFFFu ) / 16777216.0;
 }
 
+// Turned media's quarter turn after the crop, and back: a signed permutation, so its inverse is its transpose.
+vec2 foldTurn( vec2 uv ) {
+	return uFoldTurned > 0.5 ? vec2( dot( uFoldTurnU, vec3( uv, 1.0 ) ), dot( uFoldTurnV, vec3( uv, 1.0 ) ) ) : uv;
+}
+vec2 foldUnturn( vec2 uv ) {
+	vec2 d = uv - vec2( uFoldTurnU.z, uFoldTurnV.z );
+	return uFoldTurned > 0.5 ? vec2( uFoldTurnU.x * d.x + uFoldTurnV.x * d.y, uFoldTurnU.y * d.x + uFoldTurnV.y * d.y ) : uv;
+}
+
 // The media at a panel coordinate, or black off the display: what makes the projected edge soft under blur.
 vec4 foldTap( vec2 panel, vec2 dx, vec2 dy ) {
 	vec2 inside = step( vec2( 0.0 ), panel ) * step( panel, vec2( 1.0 ) );
-	vec2 uv = uFoldCrop.xy + clamp( panel, 0.0, 1.0 ) * ( uFoldCrop.zw - uFoldCrop.xy );
+	vec2 uv = foldTurn( uFoldCrop.xy + clamp( panel, 0.0, 1.0 ) * ( uFoldCrop.zw - uFoldCrop.xy ) );
 	return textureGrad( map, uv, dx, dy ) * ( inside.x * inside.y );
-}`;
+}
+#endif`;
 
 const FRAGMENT = /* glsl */ `#ifdef USE_MAP
 	vec4 sampledDiffuseColor;
@@ -92,7 +110,7 @@ const FRAGMENT = /* glsl */ `#ifdef USE_MAP
 	} else {
 		// The baked cover crop is affine, so the panel coordinate comes straight back out of the media UV.
 		vec2 foldSpan = uFoldCrop.zw - uFoldCrop.xy;
-		vec2 foldOwn = ( vMapUv - uFoldCrop.xy ) / foldSpan;
+		vec2 foldOwn = ( foldUnturn( vMapUv ) - uFoldCrop.xy ) / foldSpan;
 		// Cast from the fixed front eye through this fragment onto the display's home plane.
 		float foldT = ( uFoldHomeZ - uFoldEye.z ) / min( vFoldRootPos.z - uFoldEye.z, -1e-6 );
 		vec2 foldHit = uFoldEye.xy + ( vFoldRootPos.xy - uFoldEye.xy ) * foldT;
@@ -142,6 +160,9 @@ const uniformsOf = (material: Material): FoldScreenUniforms | undefined =>
 export function applyFoldScreenShader(material: MeshBasicMaterial, aspect: number): void {
   const uniforms: FoldScreenUniforms = {
     uFoldCrop: { value: new Vector4(0, 0, 1, 1) },
+    uFoldTurned: { value: 0 },
+    uFoldTurnU: { value: new Vector3(1, 0, 0) },
+    uFoldTurnV: { value: new Vector3(0, 1, 0) },
     uFoldAxis: { value: new Vector2(0, 0) },
     uFoldFront: { value: 0 },
     uFoldSoftFront: { value: 0 },
@@ -168,9 +189,17 @@ export function applyFoldScreenShader(material: MeshBasicMaterial, aspect: numbe
   material.customProgramCacheKey = () => "kookaburra-fold-screen-v1";
 }
 
-/** The media's cover crop, so the shader can turn a media UV back into a panel coordinate. Inert on any other material. */
-export function setFoldScreenCrop(material: Material, rect: UvRect): void {
-  uniformsOf(material)?.uFoldCrop.value.set(rect.u0, rect.v0, rect.u1, rect.v1);
+/** The media's cover crop and turn, so the shader can turn a media UV back into a panel coordinate. Inert on any other material. */
+export function setFoldScreenCrop(material: Material, map: ScreenUvMap): void {
+  const uniforms = uniformsOf(material);
+  if (!uniforms) return;
+  const { rect, turn } = map;
+  uniforms.uFoldCrop.value.set(rect.u0, rect.v0, rect.u1, rect.v1);
+  uniforms.uFoldTurned.value = turn ? 1 : 0;
+  if (turn) {
+    uniforms.uFoldTurnU.value.set(turn.a, turn.b, turn.e);
+    uniforms.uFoldTurnV.value.set(turn.c, turn.d, turn.f);
+  }
 }
 
 /** This frame's handover state and eye; CPU-written per frame, never derived from time in GLSL. */

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { contentHmr } from "./vite.content-hmr.ts";
+import { workerSafeRefresh } from "./vite.worker-refresh.ts";
 
 // Tauri sets this when running on a physical device / over the LAN.
 const host = process.env.TAURI_DEV_HOST;
@@ -21,9 +22,12 @@ const fixturesDir = fileURLToPath(new URL("./fixtures", import.meta.url));
 // exactly like `projects/` (tauri.conf.json maps ../presets → Resources/presets).
 const presetsDir = fileURLToPath(new URL("./presets", import.meta.url));
 
+// Worktrees nested under this checkout; an agent editing one must not restart this server.
+const worktreesDir = fileURLToPath(new URL("./.claude/worktrees", import.meta.url));
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), contentHmr()],
+  plugins: [react(), contentHmr(), workerSafeRefresh()],
 
   define: {
     __PROJECTS_DIR__: JSON.stringify(projectsDir),
@@ -75,9 +79,11 @@ export default defineConfig({
       allow: [fileURLToPath(new URL(".", import.meta.url)), homedir()],
     },
     watch: {
-      // Rust source changes shouldn't trigger a frontend reload, and neither should an
-      // agent editing a git worktree nested under this checkout.
-      ignored: ["**/src-tauri/**", "**/.claude/worktrees/**"],
+      // Rust source changes shouldn't trigger a frontend reload.
+      ignored: [
+        "**/src-tauri/**",
+        (path) => path === worktreesDir || path.startsWith(`${worktreesDir}/`),
+      ],
     },
   },
 

@@ -1,4 +1,4 @@
-import type { Group } from "three";
+import { Group } from "three";
 
 /** Live handles onto each mounted scene's `<group>`, published by `<SceneHost>`; the compositor reads these to gate per-frame visibility for both preview and export, mirroring the single `canvasHandle` in `exportBridge.tsx` but as a keyed collection since all scenes mount at once. */
 export interface SceneHostHandle {
@@ -37,6 +37,19 @@ export function getSceneHosts(): SceneHostHandle[] {
     (a, b) => a.index - b.index || (a.side === "b" ? 1 : 0) - (b.side === "b" ? 1 : 0),
   );
 }
+
+/** A window rendering through the stage holds the worker's hosts as summaries (no group to gate); readers that only need index and side see them through `getSceneHosts`. */
+export function setMirroredSceneHosts(
+  entries: { index: number; id: string; startMs: number; durationMs: number; side?: "b" }[],
+): void {
+  hosts.clear();
+  entries.forEach((entry, i) => {
+    hosts.set(`mirror:${i}`, { ...entry, group: mirrorGroup });
+  });
+  notifySceneHostsChanged();
+}
+
+const mirrorGroup = new Group();
 
 export function subscribeSceneHosts(listener: () => void): () => void {
   listeners.add(listener);

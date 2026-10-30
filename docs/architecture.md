@@ -7,27 +7,35 @@
 ## The core idea
 
 One WebGL surface for everything. Text (troika SDF), graphics, and 3D are all
-Three.js objects inside a single react-three-fiber `<Canvas>`. WebKit cannot
+Three.js objects inside a single react-three-fiber root. WebKit cannot
 deterministically capture the DOM, so nothing visual is ever DOM/CSS. That is
 the whole architecture in one sentence.
 
-Export steps a manual clock frame-by-frame, reads pixels with `gl.readPixels`,
-and pipes raw RGBA to a bundled ffmpeg sidecar that encodes H.264, H.265 and
-ProRes. It runs in pure WKWebView (Tauri 2), no Chromium fallback.
+That root lives in a Web Worker, the **stage worker**, drawing on an
+OffscreenCanvas the window transferred to it. Scene code (the project's own
+TSX, compiled at load) runs only there, in a realm with no `window`, no
+`document` and no Tauri IPC; the window keeps the chrome, the clock, the
+stores and every native call, and the two talk over one typed protocol
+(`src/engine/stageProtocol.ts`). Export steps a manual clock frame-by-frame,
+the worker renders and reads back each frame with `gl.readPixels`, and the
+window pipes the raw RGBA to a bundled ffmpeg sidecar that encodes H.264, H.265
+and ProRes. It runs in pure WKWebView (Tauri 2), no Chromium fallback.
 
 ## Data flow (export)
 
 ```
-global timeline (anime.js, autoplay off)
-        │  seek(tMs)              ← preview and export drive the SAME clock
-        ▼
-React commit  → Three.js objects (position, opacity, text, …)
-        │
-        ▼
-r3f advance(tMs)  (frameloop="never")  → renders exactly one frame
-        │
-        ▼
-gl.readPixels → one reused RGBA Uint8Array (3840×2160 ≈ 33 MB)
+window: exportFrame(frame, tMs)  ─────────────▶  stage worker
+                                                 global timeline (anime.js, autoplay off)
+                                                         │  seek(tMs)   ← preview and export drive the SAME clock
+                                                         ▼
+                                                 React commit → Three.js objects (position, opacity, text, …)
+                                                         │
+                                                         ▼
+                                                 r3f advance(tMs) (frameloop="never") → exactly one frame
+                                                         │
+                                                         ▼
+                                                 gl.readPixels → one RGBA Uint8Array (3840×2160 ≈ 33 MB)
+window  ◀──────── transferred back (no copy) ────────────┘
         │  invoke("push_frame", rgba)   ← zero-copy, InvokeBody::Raw
         ▼
 Rust handler → ffmpeg sidecar stdin  (-f rawvideo -pix_fmt rgba -vf vflip …)
@@ -39,13 +47,102 @@ Determinism holds because time is an explicit input (no `requestAnimationFrame`,
 no `Date.now`) and all fonts/assets are preloaded before frame 0. The full
 loop and its failure modes are in [determinism.md](./determinism.md).
 
+## The stage worker
+
+Every window that renders scenes (the editor, Present, the hidden render
+window) mounts one `StageView`, which creates a canvas, transfers it as an
+OffscreenCanvas to a module worker (`src/stage/stageWorker.ts`) and drives it
+through `StageClient` (`src/stage/stageClient.ts`), the window's implementation
+of the `StageHandle` the engine calls (`src/engine/stageHandle.ts`). Inside,
+`stageServer.tsx` owns the r3f root, the compositor, the export and stills
+frame bodies and the scene trees. The split, and why it is drawn where it is:
+
+- **The realm is the boundary.** A worker has no `window`, no `document` and
+  no `__TAURI_INTERNALS__`, so `invoke` fails closed there by construction; a
+  scene that reaches for either throws at runtime. The worker gets a small set
+  of stand-ins (an OffscreenCanvas that answers as a canvas element, a document
+  that can only make canvases, an image that decodes through
+  `createImageBitmap`, in-memory storage, `setImmediate` for anime.js) and
+  nothing that reaches the Mac.
+- **The window resolves, the worker consumes.** Asset URLs for the open
+  project are resolved in the window and shipped with the project
+  (`StageAssets`); clip frames, conform jobs, emoji rasters, PNG decodes and
+  3D objects go through a `NativePort` (`src/engine/stageRealm.ts`) whose
+  window side (`windowNativePort.ts`) validates every cache directory it
+  issued, and whose
+  client refuses any request naming a project this window has not loaded. The
+  worker names clip sources by project id and relative path and never computes
+  a path. Every message from the worker is data: a scene can post anything,
+  so the window acts only on what the protocol names and fails a worker that
+  reports a fatal error closed (every waiting request rejects, `ready`
+  rejects, the hidden render window poisons itself so Rust recycles it). A
+  worker that misses its 90 s ready window fails the same way, but stays
+  recoverable: a ready that arrives late (the main thread sat behind a macOS
+  permission prompt) lifts the failure and the editor reloads the project,
+  and the editor's Retry bumps the `StageView` attempt, which terminates the
+  worker and mounts a fresh canvas and worker with a fresh window, since a
+  transferred canvas cannot be transferred again. `StageHandle.boot()` is the
+  current state; `ready` settles once.
+- **Requests that touch the loaded project run in order.** The server answers
+  sizing, compiles, hit tests and the census at once, but queues `loadProject`,
+  the barriers, exports, stills, snapshots and the probe one after another, so
+  a request sent after a project swap can never see the project it replaced.
+- **State is mirrored, not shared.** The zustand data fields the canvas tree
+  reads (editor, effects, clock, the edit stores, the sidecar registries) are
+  mirrored both ways over the protocol with echo suppression
+  (`src/stage/storeMirror.ts`); the export path reads none of them.
+- **Gizmo chrome stays in the DOM.** The worker projects every 2D gizmo target
+  per frame (world points, NDC and matrices) and posts them; hit tests against
+  the 3D handles are async requests. Terminal and website overlays stay DOM in
+  the window. See [gizmos.md](./gizmos.md).
+- **Orchestration stays in the window.** `exporter.ts` and `stillsExport.ts`
+  own `start_export`, `push_frame`, `push_still` and `finish_*`; the worker
+  renders one frame or page per request into a buffer that ping-pongs by
+  transfer. A frame body (`src/engine/exportRun.ts`, `stillsRun.ts`) is the
+  same code the main thread ran, moved verbatim.
+- **Fonts preload in the worker, in the window's order.** troika's shared SDF
+  atlas is per realm and its cell order is export contract, so the server
+  preloads the bundled faces at boot and the project's faces before a scene
+  mounts, exactly as the window did. Its atlas uploads through troika's
+  readback path (`sdfAtlasReadback`, the one patched option), since WebKit's
+  upload of a worker canvas is not a raw copy.
+- **A bitmap carries its orientation.** Images decode to ImageBitmaps with
+  the texture's `flipY` baked in, because WebGL ignores `flipY` for a bitmap
+  upload. A clone that wants the other orientation (a device screen's
+  `flipY = false` copy of a plane's image) takes a row-reversed copy from
+  `engine/bitmapOrientation.ts` instead of sharing the pixels.
+- **A PNG decodes natively.** WebKit's `createImageBitmap` rounds every
+  semi-transparent texel through a premultiply round trip, so PNG bytes go to
+  the port's `decode_png` and upload as straight rows (`engine/stageTexture.ts`),
+  the bytes the window's `<img>` upload had. Other formats decode to bitmaps
+  with no colour conversion, as three uploads them.
+- **Dev HMR reaches the worker by a reload.** Vite serves the worker's modules
+  through the same client pipeline as the window's, so with HMR on the React
+  plugin's Fast Refresh runtime is imported by every component module in both
+  realms. That runtime assigns to `window` as it evaluates, which a worker has
+  not got, so `vite.worker-refresh.ts` points those references at `globalThis`
+  in that one virtual module (serve only; a build has no refresh). The
+  plugin's footer skips refresh registration in a worker, so a worker cannot
+  swap a module in place: `stageWorker.ts` listens to its Vite client for an
+  update to a module this realm holds and posts `sourceChanged`, and the
+  window reloads, as Vite does for an update nothing accepts. A module only
+  the window holds refreshes in place as before. Autoruns run with HMR off
+  (`vite.config.ts`), so none of this touches the export path.
+
+The theme editor's `SpecimenCanvas` is the one r3f root still on a main
+thread: it draws bundled specimen scenes only, never a workspace scene, in a
+window that has no project IPC of its own.
+
 ## Modules
 
 | Path | Role |
 | --- | --- |
 | `src/engine/timeline.ts` | anime.js global timeline wrapper; `useTimeline()`; `configureDeterministicEngine()` |
 | `src/engine/format.ts` | `FormatInfo`, `FORMATS`, `useFormat()`, safe-area maths |
-| `src/engine/exporter.ts` | deterministic frame loop |
+| `src/engine/exporter.ts` | deterministic frame loop (window side: orchestration and IPC) |
+| `src/engine/exportRun.ts` | the per-frame render body, in the stage worker |
+| `src/engine/stageProtocol.ts` | the versioned window ↔ worker protocol |
+| `src/stage/` | the stage worker: `stageWorker.ts` (realm shims), `stageServer.tsx` (r3f root, trees), `stageClient.ts` (the window's handle), `StageView.tsx` |
 | `src/engine/compositor.ts` | `renderComposited`: single-scene direct render / two-scene transition composite |
 | `src/engine/sceneTimeline.ts` | global→local time mapping (`buildSceneTimeline` / `resolveAt`) |
 | `src/engine/project.ts` | project loading: manifest, sidecars, theme/audio resolution |
@@ -155,7 +252,7 @@ deterministic, frame-accurate, 4K, inside WKWebView (not Chromium).
 
 **The resolution: one WebGL surface.** Because WebKit cannot deterministically
 capture the DOM (finding 2), all visual content is authored as Three.js objects
-in a single `<Canvas>`:
+in a single r3f root, inside the stage worker:
 
 - Text (headlines, body, counters) → troika SDF meshes.
 - Static graphics (PNG/SVG) → textured planes/sprites, or SVG tessellated via `SVGLoader`.
@@ -169,7 +266,7 @@ counters, device demos, transitions) troika gives kerned, ligature-aware text.
 
 **The deterministic frame loop** never uses rAF: an export controller owns the
 clock, seeks the global timeline to `t`, renders exactly one frame directly and
-reads it back. (The editor's canvas mounts `frameloop="demand"` for interactive
+reads it back. (The editor's stage mounts `frameloop="demand"` for interactive
 preview; the hidden render window's mounts `frameloop="never"`; the export loop
 bypasses both.) The authoritative loop, its barriers, and the
 `preserveDrawingBuffer` requirement live in [determinism.md](./determinism.md).
@@ -332,17 +429,24 @@ runtime, notarised) for personal distribution. For development, `tauri dev`
 with Vite HMR is the working mode. The app and the bundled ffmpeg/ffprobe
 sidecars are signed and stapled together or Gatekeeper blocks them.
 
-Three scripts own the release, and the split between them is deliberate.
-`tauri build` does the **signing** only: it walks the bundle and signs the
-sidecars and nested code in the right inside-out order, which is the fiddly part.
-`scripts/sign-and-notarize.sh` does **all** the notarising, because Tauri's
-built-in notarisation cannot use a notarytool keychain profile and never
-notarises the DMG, only the `.app`. `scripts/make-dmg.sh` builds the installer
-itself (`bundle.targets` is `["app"]`) because Tauri's DMG bundler accepts only a
-png/jpg/gif background (no multi-resolution TIFF, so the artwork is blurry on
-Retina) and cannot set a volume icon. `scripts/release.sh` chains the lot behind
-the usual guards and cuts a draft GitHub release. Both artefacts land in
-`release/` (not `dist/`: that is Vite's output, and `vite build` empties it).
+The release is cut by `.github/workflows/release.yml` from a signed `v*` tag
+(`pnpm release` only tags). Its build job holds no signing secret: it checks the
+tag against `main`'s `.github/allowed_signers`, builds the ffmpeg sidecar from
+pinned source, fetches the licensed device models and runs `pnpm tauri build
+--no-sign`. A sign job in the protected `release` environment then runs
+`scripts/sign-and-notarize.sh` on that payload: it signs the two sidecars and
+the bundle inside-out with the hardened runtime, notarises and staples the app
+and the DMG, and signs the updater tar bound to the version. Tauri's own
+signing would need the identity at build time, and its notarisation can't use a
+keychain profile or an API key file and never notarises the DMG, which is why
+the script owns both. A verify job on a fresh runner checks the result and runs
+the signed binary's headless CLI; publish writes `SHA256SUMS`, attests
+provenance and drafts the release. `scripts/make-dmg.sh` still builds the
+styled Retina DMG for local use (`bundle.targets` is `["app"]`, since Tauri's
+DMG bundler accepts only a png/jpg/gif background and cannot set a volume
+icon); CI ships a plain `hdiutil` DMG because a headless runner has no Finder.
+Both artefacts land in `release/` (not `dist/`: that is Vite's output, and
+`vite build` empties it).
 
 Two traps are worth naming, since both produce a build that signs and notarises
 happily and then misbehaves on someone else's Mac. `pnpm setup:ffmpeg` provisions
@@ -371,14 +475,20 @@ their render time.
 
 Where the live Tauri-2 setup matters for working in the code:
 
-1. **Sidecar permission.** In Tauri 2, `bundle.externalBin` stays in
+1. **Sidecar permission and the app ACL.** In Tauri 2, `bundle.externalBin` stays in
    `tauri.conf.json`; a sidecar permission would normally be a `shell:allow-execute`
    entry with `"sidecar": true` in `capabilities/default.json`. **Kookaburra Cut needs
    none**: it spawns the sidecars from Rust (`app.shell().sidecar("ffmpeg")`),
-   which bypasses the webview shell ACL, so `capabilities/default.json` carries
-   no fs or shell scope at all: `core:default`, three window permissions and
-   `dialog:default`. (Custom `#[tauri::command]`s like `start_export`/`push_frame`
-   are likewise un-gated by the ACL; only plugin/core commands need permissions.)
+   which bypasses the webview shell ACL, so no capability carries an fs or shell
+   scope. Custom `#[tauri::command]`s ARE gated, since 2026-10-28, by the app
+   permission manifest in `src-tauri/permissions/*.json` (one set per window role;
+   `project-read`, `render-window`, `settings-window` and so on) that each
+   `capabilities/<window>.json` grants: a command a window's capability does not
+   name is refused before the handler runs. Dev-only commands are registered under
+   `cfg(debug_assertions)` and granted by `capabilities/dev/`, which `build.rs`
+   reads only under the debug profile; the same folder lets the main window run
+   the autorun pack round trip, a dev-build gate. `src-tauri/src/acl.rs` tests
+   that every registered command sits in a set and spells out each window's list.
 2. **Sidecar runtime name is the basename.** Spawn with
    `app.shell().sidecar("ffmpeg")`, *not* `"bin/ffmpeg"`. Tauri copies the dev
    binary to `target/debug/ffmpeg`, stripping both the `bin/` prefix (from
@@ -402,7 +512,7 @@ Where the live Tauri-2 setup matters for working in the code:
    stable` suffices, no `rustup target add`.
 8. **The hidden render window** (label `render`, `render.html` →
    `src/renderMain.tsx`) serves live captures and scene thumbs off-screen: its
-   own realm mounts the shared `StageScenes` tree plus `ExportBridge`, so the
+   own realm, with its own stage worker, mounts the shared scene tree, so the
    editor's clock, stores and canvas are never touched by a capture. Created
    lazily by the editor's bridge pending-check, closes itself after ~5 idle
    minutes, stays alive (replying busy) during exports since it lives in its own
@@ -430,6 +540,18 @@ Where the live Tauri-2 setup matters for working in the code:
     `.<stem>.part.<ext>` temp file beside the destination
     (`resolve_export_output`, shared with video); `finish_stills_export` fsyncs
     it and renames it into place. Contract: [stills.md](./stills.md).
+
+11. **`asset://` is served by the app.** `src-tauri/src/asset_reach.rs`
+    registers the `asset` scheme itself (Tauri then skips its own handler, so
+    `convertFileSrc` and the CSP are unchanged) and ports Tauri's byte-range
+    serving over its own reach: `$APPDATA/cache`, the workspace's shared
+    libraries, and per window label the one project that window loaded last.
+    Tauri's scope was not an option because it can allow a folder but never
+    take it back, and a closed project must stop being readable. Every
+    request path is canonicalised and refused when it leaves its root or
+    crosses a hidden folder (the `requireLiteralLeadingDot` rule, kept here);
+    the emoji raster cache therefore reads through `read_emoji_raster` on the
+    stage worker's native port.
 
 `src-tauri/tauri.conf.json` sidecar wiring (Tauri 2, no `plugins.shell.sidecar`
 block; the permission is handled Rust-side per note 1):

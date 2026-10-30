@@ -3,11 +3,12 @@
   "name": "Migration",
   "text": {
     "title": "How to migrate",
-    "subtitle": "Three steps, about ten minutes",
-    "bullets": "Step 1: bump the SDK to 4.2.0\nStep 2: pass a region to createClient\nStep 3: run the codemod for callbacks"
+    "subtitle": "About ten minutes",
+    "code": "$ npm i sdk@4.2.0\n$ npx sdk-codemod\n$ npm test"
   },
   "textStyle": {
-    "bulletsFont": "JetBrains Mono"
+    "codeFont": "JetBrains Mono",
+    "titleSize": 0.82
   },
   "textAnimation": {
     "in": "fade",
@@ -17,14 +18,17 @@
   },
   "frame": {
     "cutout": {
-      "shape": "none"
+      "shape": "rect",
+      "side": "end",
+      "size": 0.46,
+      "inset": 0.075
     },
     "chip": {
       "label": "Migrate",
       "icon": "circle-check"
     },
     "background": "#0f141b",
-    "textAlign": "center"
+    "textAlign": "left"
   },
   "backdrop": {
     "type": "none"

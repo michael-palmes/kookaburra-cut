@@ -21,6 +21,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { ANCHORS, classify, plan, readBaselines, readStillsBaselines } from "./gate-plan.mjs";
 import { renderClosure } from "./render-closure.mjs";
+import { check as checkWorkspaceNames } from "./workspace-names.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const AUTORUN = join(homedir(), "Kookaburra Cut", "_autorun");
@@ -465,6 +466,15 @@ async function main() {
   if (flag("--plan")) return;
 
   let ok = true;
+  // Every branch, whatever it touches: nothing from the user's own workspace may land in the repo.
+  if (!value("--legs")) {
+    console.log("workspace names:");
+    const clean = checkWorkspaceNames({ base });
+    console.log(
+      `  ${clean ? "ok  " : "FAIL"} workspace names${clean ? "" : " (swap in a neutral placeholder)"}`,
+    );
+    ok = clean && ok;
+  }
   if (!flag("--no-statics")) {
     console.log("statics:");
     ok = (await runStatics(p.statics)) && ok;

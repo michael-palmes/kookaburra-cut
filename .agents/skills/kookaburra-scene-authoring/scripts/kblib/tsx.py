@@ -383,3 +383,12 @@ def scene_ids_in(texts: Dict[str, str]) -> Dict[str, List[str]]:
         if sid is not None:
             owners.setdefault(sid, []).append(file)
     return owners
+
+
+_DEFINED_DURATION = re.compile(r"defineScene\(\s*\{[^}]*?\bdurationMs\s*:\s*([0-9]+(?:\.[0-9]+)?)")
+
+
+def defined_duration(text: str) -> Optional[float]:
+    """The durationMs literal of the defineScene call, or None when it isn't a plain number before the Scene body."""
+    m = _DEFINED_DURATION.search(text)
+    return float(m.group(1)) if m else None

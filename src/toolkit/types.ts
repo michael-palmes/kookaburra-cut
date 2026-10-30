@@ -43,4 +43,6 @@ export interface SceneModule {
   id: string;
   durationMs: number;
   Scene: ComponentType;
+  /** Set by `loadProject`: the key the compiling realm holds this module under (`engine/sceneModules`). */
+  key?: string;
 }

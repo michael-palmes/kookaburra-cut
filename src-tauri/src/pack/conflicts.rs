@@ -441,6 +441,7 @@ pub(crate) mod tests {
         StagedPack {
             root,
             manifest: manifest(contents),
+            dropped: Vec::new(),
         }
     }
 

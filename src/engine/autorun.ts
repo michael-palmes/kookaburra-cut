@@ -11,15 +11,12 @@ import { THEME_LINEUP } from "../theme/registry";
 import { preloadBundledBackdrops } from "../toolkit/stage/backdrops";
 import { highQualityEncode, openingPosterFrameEnabled, withPosterFrame } from "../ui/exportOptions";
 import { BridgeProgressTracker } from "./bridgeExport";
-import { releaseCompositorPools } from "./compositor";
-import { releaseComposer } from "./effects";
-import { collectEnvironmentSources, preloadEnvironments } from "./environments";
-import { canvasHandle } from "./exportBridge";
 import {
   awaitSceneHostsCommitted,
   type Codec,
   captureFrameRgba,
   captureScreenshot,
+  type ExportOptions,
   type ExportProgress,
   exportProject,
   type FrameDelta,
@@ -28,6 +25,7 @@ import {
 import { setExporting } from "./exportState";
 import { type AspectName, FORMATS, type FormatSpec, FPS, STANDING_ASPECTS } from "./format";
 import { libraryPreviewFormat, resolveLibraryPreviewPoint } from "./libraryPreviewPoint";
+import { applyMemoryLever, MemoryRecorder, type MemorySummary } from "./memoryProbe";
 import { captureOptionPreviews, optionPreviewSetsOf } from "./optionPreviews";
 import { runPackRoundTrip } from "./packRoundTrip";
 import { clipColdMetric, runPerfProbe } from "./perfProbe";
@@ -35,6 +33,7 @@ import { listPresets, presetPreviewFrame } from "./presets";
 import { type LoadedProject, loadProject, previewLabProjectIds, sceneFileStem } from "./project";
 import type { RenderStateFingerprint } from "./renderFingerprint";
 import { assertScenesLoaded, sceneErrorRefusal } from "./sceneErrors";
+import { stage } from "./stageHandle";
 import type { StillsWarning } from "./stillPages";
 import {
   DEFAULT_STILLS_FORMAT,
@@ -51,6 +50,7 @@ import {
   THEME_PREVIEW_PROJECT_ID,
   writeThemePreviews,
 } from "./themePreviews";
+import { CROSSFADE_TOLERANCE, crossfadeProbes, outgoingWeight } from "./transitionCheck";
 import { createProject, getSettings } from "./workspace";
 
 /** Headless auto-run: `pnpm kookaburra:run` sets `KOOKABURRA_*` env vars read via native `get_autorun_config` (process env, not `import.meta.env`, which is baked at build time and unreadable in a packaged app); drives the store then calls the same `verifyDeterminism`/`exportProject` the UI buttons call, so it never bypasses the real WebGL/ffmpeg export path. See docs/determinism.md. */
@@ -63,7 +63,9 @@ export type AutoRunAction =
   | "preset-previews"
   | "option-previews"
   | "perf"
+  | "memory"
   | "screenshot"
+  | "transitioncheck"
   | "packroundtrip"
   | "create"
   | "render-spike"
@@ -96,6 +98,8 @@ export interface AutoRunConfig {
   stillsSize: StillsSize;
   /** `KOOKABURRA_PROGRESS=1`: report progress through `autorun_progress` (kb's headless export polls it). */
   progress: boolean;
+  /** memory: the one change this run measures (engine/memoryProbe.ts `applyMemoryLever`). */
+  lever?: string;
 }
 
 /** `KOOKABURRA_POSTER`: the Export modal's opening poster frame for export and verify runs (`app` reads its setting). */
@@ -120,8 +124,15 @@ interface AutoRunResult {
   /** Render-state snapshot from verify's pass A; always present on verify rows, diffing it across builds/machines localizes hash divergence to a named value. */
   fingerprint?: RenderStateFingerprint;
   path?: string;
+  /** transitioncheck rows: which crossfade (1-based scenes), the outgoing scene's measured and expected weight at its midpoint, and whether they agree. */
+  transition?: string;
+  weight?: number | null;
+  expected?: number;
+  ok?: boolean;
   /** create: slot count of the created project after a full load-and-commit. */
   scenes?: number;
+  /** memory rows: the long-film probe's render rate and memory growth (engine/memoryProbe.ts). */
+  memory?: MemorySummary;
   /** perf rows: one per scene × elimination pass (see engine/perfProbe.ts). */
   scene?: string;
   pass?: string;
@@ -241,6 +252,7 @@ interface AutoRunEnv {
   trust?: string | null;
   poster?: string | null;
   progress?: boolean;
+  lever?: string | null;
 }
 
 let autoRunEnv: AutoRunEnv | null = null;
@@ -295,6 +307,29 @@ export async function initAutoRunConfig(): Promise<void> {
   }
 }
 
+/** A single frame's export options, exactly as the export path builds them minus the encode. */
+function frameOptions(project: LoadedProject, format: FormatSpec, codec: Codec): ExportOptions {
+  return {
+    projectId: project.id,
+    fps: FPS,
+    durationMs: project.totalMs,
+    slots: project.slots,
+    cameraTrack: project.cameraTrack,
+    sceneDocs: project.sceneDocs,
+    music: project.music,
+    theme: project.theme,
+    sceneThemes: project.sceneThemes,
+    projectLighting: project.projectLighting,
+    sceneFrames: project.sceneFrames,
+    compareBDocs: project.compareBDocs,
+    compareBThemes: project.compareBThemes,
+    roomThemes: project.roomThemes,
+    motionBlur: project.renderSettings.motionBlur,
+    codec,
+    format,
+  };
+}
+
 /** Reads the prefetched auto-run intent; returns `null` when unset so the app stays fully interactive under a normal launch, and throws on a malformed action/aspect/codec so the wrapper surfaces the mistake immediately. */
 export function getAutoRunConfig(): AutoRunConfig | null {
   const env = autoRunEnv;
@@ -308,7 +343,9 @@ export function getAutoRunConfig(): AutoRunConfig | null {
     action !== "preset-previews" &&
     action !== "option-previews" &&
     action !== "perf" &&
+    action !== "memory" &&
     action !== "screenshot" &&
+    action !== "transitioncheck" &&
     action !== "packroundtrip" &&
     action !== "create" &&
     action !== "render-spike" &&
@@ -316,7 +353,7 @@ export function getAutoRunConfig(): AutoRunConfig | null {
     action !== "stillsverify"
   ) {
     throw new Error(
-      `unknown KOOKABURRA_ACTION "${action}" (expected verify | export | theme-previews | template-previews | preset-previews | option-previews | perf | screenshot | packroundtrip | create | render-spike | stills | stillsverify)`,
+      `unknown KOOKABURRA_ACTION "${action}" (expected verify | export | theme-previews | template-previews | preset-previews | option-previews | perf | memory | screenshot | transitioncheck | packroundtrip | create | render-spike | stills | stillsverify)`,
     );
   }
   const stills = parseStillsFormat(env.stills ?? undefined);
@@ -375,13 +412,14 @@ export function getAutoRunConfig(): AutoRunConfig | null {
     projects.length > 1 &&
     action !== "verify" &&
     action !== "export" &&
+    action !== "memory" &&
     action !== "stills" &&
     action !== "stillsverify" &&
     action !== "template-previews" &&
     action !== "preset-previews"
   ) {
     throw new Error(
-      `KOOKABURRA_PROJECT lists ${projects.length} projects; only verify, export, stills, stillsverify, template-previews and preset-previews accept a list`,
+      `KOOKABURRA_PROJECT lists ${projects.length} projects; only verify, export, memory, stills, stillsverify, template-previews and preset-previews accept a list`,
     );
   }
   return {
@@ -394,6 +432,7 @@ export function getAutoRunConfig(): AutoRunConfig | null {
         ? [FORMATS[preset.favouredAspect]]
         : (action === "perf" ||
               action === "screenshot" ||
+              action === "transitioncheck" ||
               action === "stills" ||
               action === "stillsverify") &&
             !env.aspect?.trim()
@@ -420,6 +459,7 @@ export function getAutoRunConfig(): AutoRunConfig | null {
     stills,
     stillsSize,
     progress: env.progress === true,
+    lever: env.lever?.trim() || undefined,
   };
 }
 
@@ -678,19 +718,7 @@ export async function runAutoRun(
         console.warn(`[autorun] theme-previews ${themeId} starting`);
         const loaded = await loadProject(config.project, { themeId });
         assertScenesLoaded(loaded, "capture theme previews");
-        // The theme's PMREM environment resolves BEFORE the swap (the preloadBundledBackdrops rationale): headless windows never fire rAF, so a texture landing after the swap would otherwise stay unpainted into the first capture.
-        const gl = canvasHandle.current?.gl;
-        if (gl) {
-          await preloadEnvironments(
-            gl,
-            collectEnvironmentSources(
-              loaded.id,
-              [loaded.theme, ...loaded.sceneThemes],
-              loaded.projectLighting,
-              loaded.sceneDocs,
-            ),
-          ).catch((e) => console.warn(`[autorun] environment preload failed for ${themeId}:`, e));
-        }
+        // The theme's PMREM environment resolves inside the stage before its first capture (the snapshot barriers wait on it).
         applyProject(loaded);
         await nextCommit();
         // Two commit barriers: the project swap itself (concurrent-lane; without this the first capture reads the previous theme) then a cold-mount wait so the scenes are actually in the canvas.
@@ -729,8 +757,7 @@ export async function runAutoRun(
         if (!entry) throw new Error(`template-previews: unknown template "${templateId}"`);
         console.warn(`[autorun] template-previews ${templateId} starting`);
         const info = await createProject(`Template previews ${templateId}`, templateId, null);
-        releaseCompositorPools();
-        releaseComposer();
+        await stage().releasePools();
         const created = await loadProject(`ws:${info.slug}`);
         assertScenesLoaded(created, "capture template previews");
         applyProject(created);
@@ -816,8 +843,7 @@ export async function runAutoRun(
         const entry = bundled.find((preset) => preset.projectId === projectId);
         if (!entry) throw new Error(`preset-previews: unknown preset "${projectId}"`);
         console.warn(`[autorun] preset-previews ${entry.slug} starting`);
-        releaseCompositorPools();
-        releaseComposer();
+        await stage().releasePools();
         const loaded = await loadProject(entry.projectId);
         assertScenesLoaded(loaded, "capture preset previews");
         applyProject(loaded);
@@ -984,29 +1010,7 @@ export async function runAutoRun(
       await nextCommit();
       const tMs = resolveScreenshotTimeMs(project, config.scene, config.atSeconds);
       const name = `screenshot-${project.id.replace(/^ws:/, "")}-${Math.round(tMs)}ms-${format.name.replace(":", "x")}`;
-      const path = await captureScreenshot(
-        {
-          projectId: project.id,
-          fps: FPS,
-          durationMs: project.totalMs,
-          slots: project.slots,
-          cameraTrack: project.cameraTrack,
-          sceneDocs: project.sceneDocs,
-          music: project.music,
-          theme: project.theme,
-          sceneThemes: project.sceneThemes,
-          projectLighting: project.projectLighting,
-          sceneFrames: project.sceneFrames,
-          compareBDocs: project.compareBDocs,
-          compareBThemes: project.compareBThemes,
-          roomThemes: project.roomThemes,
-          motionBlur: project.renderSettings.motionBlur,
-          codec: config.codec,
-          format,
-        },
-        tMs,
-        name,
-      );
+      const path = await captureScreenshot(frameOptions(project, format, config.codec), tMs, name);
       results.push({ aspect: format.name, path });
       // The frame still lands (an error card is worth seeing), but the run fails so a gate never passes on one.
       const refusal = sceneErrorRefusal(project, "pass a screenshot run");
@@ -1030,14 +1034,67 @@ export async function runAutoRun(
     return;
   }
 
+  if (config.action === "transitioncheck") {
+    // Each crossfade's midpoint must carry both scenes: a hard cut there still passes Verify ×2.
+    try {
+      const format = config.aspects[0];
+      useEditorStore.getState().setFormat(format);
+      await nextCommit();
+      const opts = frameOptions(project, format, config.codec);
+      const probes = crossfadeProbes(project.slots, FPS);
+      if (probes.length === 0) throw new Error(`${project.id} has no crossfade to check`);
+      const failed: string[] = [];
+      for (const probe of probes) {
+        const before = await captureFrameRgba(opts, probe.beforeMs);
+        const mid = await captureFrameRgba(opts, probe.midMs);
+        const after = await captureFrameRgba(opts, probe.afterMs);
+        const transition = `${probe.fromIndex + 1}→${probe.toIndex + 1}`;
+        const name = `transitioncheck-${project.id.replace(/^ws:/, "")}-${probe.fromIndex + 1}-${probe.toIndex + 1}-${format.name.replace(":", "x")}`;
+        await invoke("begin_screenshot", { width: mid.width, height: mid.height, name });
+        const path = await invoke<string>("save_screenshot", mid.rgba);
+        const weight = outgoingWeight(before.rgba, mid.rgba, after.rgba);
+        const rowOk = weight !== null && Math.abs(weight - probe.expected) <= CROSSFADE_TOLERANCE;
+        if (!rowOk) {
+          failed.push(
+            `crossfade ${transition}: ${weight === null ? "the scenes look alike, so no blend can be read" : `outgoing weight ${weight.toFixed(2)}, expected ${probe.expected.toFixed(2)}`}`,
+          );
+        }
+        results.push({
+          aspect: format.name,
+          transition,
+          weight: weight === null ? null : Math.round(weight * 1000) / 1000,
+          expected: probe.expected,
+          ok: rowOk,
+          path,
+        });
+      }
+      if (failed.length > 0) {
+        ok = false;
+        error = failed.join("; ");
+      }
+    } catch (e) {
+      ok = false;
+      error = String(e);
+    }
+    await finish({
+      action: config.action,
+      project: config.project,
+      codec: config.codec,
+      ok,
+      durationMs: Math.round(performance.now() - startedAt),
+      results,
+      ...(error ? { error } : {}),
+    });
+    return;
+  }
+
   if (config.action === "create") {
     // The create smoke: the same native create_project the dialog calls, then a full load-and-commit so a missing scene, seeded asset or theme fails here, not in a user's hands. Works packaged via --app, where templates_root() takes the resource_dir() branch.
     try {
       const templateId = config.projects[0];
       if (!applyProject) throw new Error("the create action needs the applyProject hook");
       const info = await createProject(`Create smoke ${templateId}`, templateId, null);
-      releaseCompositorPools();
-      releaseComposer();
+      await stage().releasePools();
       const created = await loadProject(`ws:${info.slug}`);
       assertScenesLoaded(created, "pass the create smoke");
       applyProject(created);
@@ -1097,8 +1154,7 @@ export async function runAutoRun(
       if (index > 0) {
         if (!applyProject) throw new Error("a multi-project run needs the applyProject hook");
         // One WebContent process hosts every leg, so the previous project's render-target pools and composer must not stack onto this leg's footprint (WebKit kills the process near 4 GB).
-        releaseCompositorPools();
-        releaseComposer();
+        await stage().releasePools();
         console.warn(`[autorun] loading "${projectId}"`);
         current = await loadProject(projectId);
         applyProject(current);
@@ -1124,8 +1180,8 @@ export async function runAutoRun(
         console.warn(`[autorun] ${format.name} format committed`);
         // Loudness is gain-only: measured through the exact export graph (cached native-side) and summed into the spec's volume slot.
         let encode = config.encode;
-        // Renders at the output rate: a 30fps spec steps the clock at 30 directly, so the export graph's frame count is computed at outFps too.
-        const outFps = encode?.fps ?? FPS;
+        // Renders at the output rate: a 30fps spec steps the clock at 30 directly, so the export graph's frame count is computed at outFps too. The memory probe renders at 30 (the drafts the field used) unless a preset says otherwise.
+        const outFps = encode?.fps ?? (config.action === "memory" ? 30 : FPS);
         if (encode && config.loudnessTarget !== undefined && current.audio) {
           const posterFrame = encode.posterFrame === true;
           const outFrames =
@@ -1179,12 +1235,9 @@ export async function runAutoRun(
           format,
         };
         // GPU-residency breadcrumb: three's texture/geometry/program counts localize footprint growth to a leg without a debugger attached.
-        const glInfo = canvasHandle.current?.gl.info;
-        if (glInfo) {
-          console.warn(
-            `[autorun] gl memory before ${current.id} ${format.name}: geometries ${glInfo.memory.geometries} textures ${glInfo.memory.textures} programs ${glInfo.programs?.length ?? 0}`,
-          );
-        }
+        console.warn(
+          `[autorun] stage census before ${current.id} ${format.name}: ${JSON.stringify(await stage().census())}`,
+        );
         if (config.action === "stills" || config.action === "stillsverify") {
           // Reproducible stills land in the run dir; the page-stage hash is the baseline, a PDF's file hash only advisory.
           const settings = {
@@ -1258,6 +1311,26 @@ export async function runAutoRun(
               : {}),
           });
           if (!r.identical) ok = false;
+        } else if (config.action === "memory") {
+          applyMemoryLever(config.lever);
+          // --at caps the film at N seconds; the probe rides the real export's progress.
+          const durationMs = config.atSeconds
+            ? Math.min(current.totalMs, config.atSeconds * 1000)
+            : current.totalMs;
+          const recorder = new MemoryRecorder(current.slots, outFps);
+          const path = await exportProject({ ...base, durationMs }, (p) => {
+            onProgress(p);
+            recorder.onProgress(p);
+          });
+          const memory = await recorder.summary();
+          console.warn(
+            `[autorun] memory ${current.id} ${format.name}: fps ${memory.fps.join(" → ")}, editor ${memory.editorMb.first} → ${memory.editorMb.last} MB (peak ${memory.editorMb.peak}), gpu ${memory.gpuMb.first} → ${memory.gpuMb.last} MB, clips peak ${memory.clipMbPeak} MB`,
+          );
+          results.push({ aspect: format.name, project: current.id, path, fps: outFps, memory });
+          if (!memory.holds) {
+            ok = false;
+            error ??= `${current.id} ${format.name}: ${memory.failures.join("; ")}`;
+          }
         } else {
           const path = await exportProject(
             base,
@@ -1276,11 +1349,9 @@ export async function runAutoRun(
             ...(await writtenFacts(path)),
           });
         }
-        if (glInfo) {
-          console.warn(
-            `[autorun] gl memory after ${current.id} ${format.name}: geometries ${glInfo.memory.geometries} textures ${glInfo.memory.textures} programs ${glInfo.programs?.length ?? 0}`,
-          );
-        }
+        console.warn(
+          `[autorun] stage census after ${current.id} ${format.name}: ${JSON.stringify(await stage().census())}`,
+        );
       }
     }
   } catch (e) {

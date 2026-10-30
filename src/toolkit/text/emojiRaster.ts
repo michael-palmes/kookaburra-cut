@@ -1,8 +1,7 @@
-import { invoke } from "@tauri-apps/api/core";
 import { SRGBColorSpace, type Texture, TextureLoader } from "three";
-import { fsUrl } from "../../engine/media";
-import { isEditableProjectId, nativeProjectSlug, resolveAssetPath } from "../../engine/project";
+import { isEditableProjectId } from "../../engine/project";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
+import { nativePort } from "../../engine/stageRealm";
 import { type EmojiCluster, prepareEmojiText } from "./emojiText";
 
 /** Emoji rasters freeze to project PNGs when editable; read-only bundled projects keep session rasters. */
@@ -44,7 +43,15 @@ export function getEmojiTexture(key: string): Texture | null {
 
 /** Clusters the system font could not draw (key → cluster), for the inspector badge. */
 export function unrenderableEmojiClusters(): ReadonlyMap<string, string> {
-  return unrenderable;
+  return mirrored?.unrenderable ?? unrenderable;
+}
+
+let mirrored: { version: number; unrenderable: Map<string, string> } | null = null;
+
+/** A window rendering through the stage shows the worker's raster state. */
+export function applyMirroredEmoji(version: number, clusters: [string, string][]): void {
+  mirrored = { version, unrenderable: new Map(clusters) };
+  bump();
 }
 
 function configureTexture(tex: Texture): Texture {
@@ -112,8 +119,18 @@ function warnOnce(key: string, message: string): void {
   console.warn(message);
 }
 
-function cacheFile(key: string): string {
-  return `assets/.emoji-cache/${key}@${EMOJI_RASTER_SIZE}.png`;
+function cacheName(key: string): string {
+  return `${key}@${EMOJI_RASTER_SIZE}`;
+}
+
+/** Decodes raster bytes through the texture loader (the same path the cache file takes on a later load). */
+async function textureFromBytes(bytes: ArrayBuffer | Uint8Array): Promise<Texture> {
+  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "image/png" }));
+  try {
+    return await loader.loadAsync(url);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 async function resolveKey(key: string, cluster: string): Promise<void> {
@@ -121,9 +138,11 @@ async function resolveKey(key: string, cluster: string): Promise<void> {
   // Disk first: the frozen bytes win over re-rasterisation, so OS emoji updates can never move pixels.
   if (projectId) {
     try {
-      const tex = await loader.loadAsync(fsUrl(resolveAssetPath(projectId, cacheFile(key))));
-      textures.set(key, configureTexture(tex));
-      return;
+      const cached = await nativePort().emojiRead(projectId, `${cacheName(key)}.png`);
+      if (cached) {
+        textures.set(key, configureTexture(await textureFromBytes(cached)));
+        return;
+      }
     } catch {
       // No cached file yet; fall through to rasterise.
     }
@@ -137,24 +156,13 @@ async function resolveKey(key: string, cluster: string): Promise<void> {
   if (projectId && isEditableProjectId(projectId)) {
     const bytes = new Uint8Array(await blob.arrayBuffer());
     try {
-      await invoke("write_emoji_raster", bytes, {
-        headers: {
-          "x-kookaburra-slug": nativeProjectSlug(projectId),
-          "x-kookaburra-key": `${key}@${EMOJI_RASTER_SIZE}`,
-        },
-      });
+      await nativePort().emojiWrite(projectId, cacheName(key), bytes);
     } catch (e) {
       warnOnce(key, `[emoji] could not persist raster for ${key}: ${e}`);
     }
   }
   // Texture decodes from the same PNG bytes the cache stores, so preview and later re-export agree.
-  const url = URL.createObjectURL(blob);
-  try {
-    const tex = await loader.loadAsync(url);
-    textures.set(key, configureTexture(tex));
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+  textures.set(key, configureTexture(await textureFromBytes(await blob.arrayBuffer())));
 }
 
 /** Resolve every cluster to a texture (disk, else rasterise + persist); memoised per key. */

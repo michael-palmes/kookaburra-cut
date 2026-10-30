@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import re
 import subprocess
@@ -15,6 +16,7 @@ from . import assets_cli
 from . import brands as brandmod
 from . import bridge
 from . import capture as capturemod
+from . import reach
 from . import catalog as catmod
 from . import check as checkmod
 from . import coord_cli
@@ -47,6 +49,8 @@ from .util import (
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent
 
+STRING_HELP = r"keep VALUE as a string even if it parses as JSON; \n, \t and \\ become a newline, a tab and a backslash"
+
 MAIN_HELP = """\
 kb: the one tool for editing a Kookaburra Cut project safely. Run it from the project
 folder as ./kb <command> (never through a shell variable or alias); it also walks up from
@@ -76,18 +80,21 @@ the cwd, or uses $CLAUDE_PROJECT_DIR.
                     [--verify] [--headless] [--allow-flashes] [--timeout S] [--progress-every S]
              verify-export FILE [--no-sheet] [--no-flashes] [--allow-flashes] [--loudness-target LUFS]
              check film [flashes colour handoffs pacing] [--file F] [--standard wcag|itu|both]
+             sync-check FILE [--bpm N [--offset MS]] [--poster-frame auto|on|off]
   History    checkpoint [MESSAGE] [--scene S]... [--files P]... | history [--scene S]
              undo [REV] [--scene S | --all] | diff [REV] [--scene S] | plan COMMAND ...
   Agents     lease S [--ttl 2h] [--note T] [--for NAME] | lease S --release [--force] | leases [--all]
              note TEXT [--scene S] | notes [--all]
              events [--follow] [--since 10m|CURSOR|all] [--kinds ...] [--all-agents] [--exit-after S]
   Music      beats [--scene S] | beats set-grid|set-downbeat|clear-grid|cue|section|resolve ...
+             timeline | timeline apply PLAN [--ripple]   (cuts and transitions in bars and ms)
              song analyse [--force] [--tracker nn|dsp] [--lyrics] [--accept]
   Helpers    chart ... (chart data) | hook EVENT (Claude Code)
 
 S is a scene index (0-based) or file stem (03-pricing). PATH is dotted
 (textStyle.titleFont, devices.0.model, devices.+ appends). VALUE is parsed as
-JSON when it parses, else kept as a string (--string forces a string).
+JSON when it parses, else kept as a string (--string forces a string and reads
+\\n, \\t and \\\\ as a newline, a tab and a backslash).
 
 Every command takes --json (one object on stdout: { "ok", "command", ... }, failures
 too) and --agent NAME (who is asking; pass it on every command when several agents
@@ -442,8 +449,14 @@ def cmd_scene_set(ctx: Ctx) -> int:
         known = catmod.load_catalog().ids("transitions", catmod.FALLBACK_TRANSITIONS) or []
         if kind not in known:
             raise KbError(f'unknown transition "{kind}".{checkmod.did_you_mean(kind, known)} See kb catalog transitions', 2, kind="usage")
-    res = scenemod.set_scene(ctx.project, a.scene, a.duration, a.transition, a.ease, a.name, ctx.opts, timing=timing)
+    if a.ripple and a.transition is None:
+        raise KbError("--ripple goes with --transition", 2, kind="usage")
+    before = copy.deepcopy(ctx.project.manifest())
+    res = scenemod.set_scene(ctx.project, a.scene, a.duration, a.transition, a.ease, a.name, ctx.opts, timing=timing, ripple=a.ripple)
     idx, stem = res["index"], res["stem"]
+    from . import cuts as cutsmod
+
+    res["drift"] = [] if ctx.dry_run else cutsmod.drift_between(ctx.project, before, ctx.project.manifest())
     if ctx.dry_run:
         if ctx.json:
             ctx.out(res)
@@ -459,6 +472,8 @@ def cmd_scene_set(ctx: Ctx) -> int:
         return EXIT_PROBLEMS if report.errors else EXIT_OK
     for c in res["changes"]:
         emit(f"scene {idx} {stem}: {c}")
+    for d in res["drift"]:
+        emit(f"! {d['message']}")
     if report.issues:
         emit(report.render())
     return EXIT_PROBLEMS if report.errors else EXIT_OK
@@ -467,9 +482,10 @@ def cmd_scene_set(ctx: Ctx) -> int:
 # ── documents ─────────────────────────────────────────────────────────────────
 
 
-def parse_json_arg(raw: str) -> Any:
+def parse_json_arg(raw: str, project: Optional[Project] = None) -> Any:
     if raw.startswith("@"):
-        return load_json(Path(raw[1:]).expanduser(), raw[1:])
+        path = reach.guard_read(project, raw[1:], "the JSON file") if project else Path(raw[1:]).expanduser()
+        return load_json(path, raw[1:])
     try:
         return json.loads(raw)
     except ValueError as e:
@@ -574,7 +590,7 @@ def cmd_doc(ctx: Ctx) -> int:
     if a.op == "set":
         arg: Any = docmod.parse_value(a.value, a.string)
     elif a.op == "merge":
-        arg = parse_json_arg(a.json_patch)
+        arg = parse_json_arg(a.json_patch, ctx.project)
         if not isinstance(arg, dict):
             raise KbError("merge needs a JSON object (RFC 7386 merge patch: null deletes a key)", 2, kind="usage")
     else:
@@ -586,19 +602,25 @@ def cmd_doc(ctx: Ctx) -> int:
         if a.op == "unset" and doc is None:
             raise KbError(f"{label} does not exist")
         new, summary = docmod.edit(doc if doc is not None else {"version": version}, a.op, getattr(a, "path", "") or "", arg)
-        return settle_music(project, stem, doc, checkmod.stamp_stagger_exact(doc, new), summary)
+        from .beats import model as beatsmodel
+
+        stray = beatsmodel.stray_positions(doc, new)
+        if stray:
+            raise beatsmodel.stray_error(stray)
+        patch = arg if a.op == "merge" else None
+        return settle_music(project, stem, doc, checkmod.stamp_stagger_exact(doc, new), summary, patch)
 
     return guarded_write(ctx, label, label, edit, sidecar_validator(ctx, label))
 
 
-def settle_music(project: Project, stem: str, before: Any, after: Any, summary: str) -> Tuple[Any, str]:
-    """The detach rule on a sidecar write: a key this write moved drops its `at`; every other `at` refreshes its tMs."""
+def settle_music(project: Project, stem: str, before: Any, after: Any, summary: str, patch: Optional[Dict[str, Any]] = None) -> Tuple[Any, str]:
+    """The detach rule on a sidecar write: a field this write moved drops its `at` (a merge keeps it unless nulled); every other `at` refreshes its time."""
     from .beats import model as beatsmodel
 
     if not (beatsmodel.has_at(before) or beatsmodel.has_at(after)):
         return after, summary
     music, start = beatsmodel.scene_scope(project, stem)
-    settled, notes = beatsmodel.settle_written(before, after, music, start)
+    settled, notes = beatsmodel.settle_written(before, after, music, start, patch)
     return settled, "; ".join([summary] + notes)
 
 
@@ -1073,15 +1095,18 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
         "change a scene's duration, outgoing transition or name",
         epilog="  ./kb scene set 2 --duration 4500\n  ./kb scene set 02-hero --transition glasssweep:700 --ease smooth\n  ./kb scene set 02-hero --transition none      hard cut\n"
         "  ./kb scene set 02-hero --duration-bars 4     four bars at the grid's tempo\n"
-        "  ./kb scene set 02-hero --cut-at bar:9 --align mid   its outgoing transition centred on bar 9\n"
-        "Durations are written as ms: a later grid change does not move them. Keys with an \"at\" in this and later\n"
-        "scenes get their tMs caches refreshed in the same write.",
+        "  ./kb scene set 02-hero --cut-at bar:9 --align mid   pin the cut: its outgoing transition centred on bar 9\n"
+        "A --cut-at position pins the cut (cutAt in project.json): its length follows the grid and earlier\n"
+        "transitions from then on. --duration and --duration-bars unpin it. With a beat grid, --transition keeps\n"
+        "every later boundary where it is (the cut stays put, pinned when it sits on a beat); --ripple lets later\n"
+        "scenes move by the overlap instead. Keys with an \"at\" get their tMs caches refreshed in the same write.",
     )
     x.add_argument("scene", metavar="S")
     x.add_argument("--duration", type=int, metavar="MS")
     x.add_argument("--duration-bars", type=float, metavar="N", help="N bars at the beat grid's tempo (whole ms)")
-    x.add_argument("--cut-at", metavar="POS", help="end the scene at a position or time (bar:9, cue:drop, 12.5s)")
+    x.add_argument("--cut-at", metavar="POS", help="pin the scene's cut to a position (bar:9, cue:drop), or end it at a time once (12.5s)")
     x.add_argument("--align", choices=["end", "mid"], help="with --cut-at: end (the scene is gone at POS, default) or mid (its outgoing transition centred on POS)")
+    x.add_argument("--ripple", action="store_true", help="with --transition: let later scenes move by the overlap instead of keeping their boundaries")
     x.add_argument("--transition", metavar="TYPE[:MS]", help="outgoing transition (kb catalog transitions), or none")
     x.add_argument("--ease", metavar="E", help="transition ease: linear, smooth or snappy")
     x.add_argument("--name", metavar="N", help="display name")
@@ -1107,7 +1132,7 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     y = dsub.add_parser("set", help="set PATH to VALUE (JSON, else string)", parents=writes, formatter_class=Formatter)
     y.add_argument("path")
     y.add_argument("value")
-    y.add_argument("--string", action="store_true", help="keep VALUE as a string even if it parses as JSON")
+    y.add_argument("--string", action="store_true", help=STRING_HELP)
     y.add_argument("--force", action="store_true", help="write even if the result has new errors")
     y = dsub.add_parser("unset", help="remove PATH", parents=writes, formatter_class=Formatter)
     y.add_argument("path")
@@ -1131,7 +1156,7 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     y = psub.add_parser("set", help="set PATH to VALUE", parents=writes, formatter_class=Formatter)
     y.add_argument("path")
     y.add_argument("value")
-    y.add_argument("--string", action="store_true")
+    y.add_argument("--string", action="store_true", help=STRING_HELP)
     y.add_argument("--force", action="store_true")
     y = psub.add_parser("unset", help="remove PATH", parents=writes, formatter_class=Formatter)
     y.add_argument("path")
@@ -1149,7 +1174,7 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     y.add_argument("path")
     y.add_argument("value")
     y.add_argument("--theme", metavar="ID", help="ws:<slug> (default: the project's theme)")
-    y.add_argument("--string", action="store_true")
+    y.add_argument("--string", action="store_true", help=STRING_HELP)
     y.add_argument("--force", action="store_true")
     t.set_defaults(fn=cmd_theme)
 
@@ -1219,6 +1244,9 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     from .film import cli as filmcli
 
     filmcli.register(sub, common, Formatter)
+    from .film import sync as syncmod
+
+    syncmod.register(sub, common, Formatter)
     from . import exporting
 
     exporting.register(sub, common, Formatter)
@@ -1230,6 +1258,9 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     from .beats import commands as beatsmod
 
     beatsmod.register(sub, common, Formatter)
+    from . import cuts as cutsmod
+
+    cutsmod.register(sub, common, Formatter)
     from . import song as songmod
 
     songmod.register(sub, common, Formatter)

@@ -1,0 +1,7 @@
+{
+  "$schema": "../../gen/schemas/desktop-schema.json",
+  "identifier": "main-dev",
+  "description": "Dev builds only (build.rs reads capabilities/dev/ under the debug profile): the main window edits the bundled library in place and runs the autorun pack round trip.",
+  "windows": ["main"],
+  "permissions": ["dev-library", "dev-autorun"]
+}

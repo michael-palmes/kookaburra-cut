@@ -17,6 +17,7 @@ import {
   resetAllDeviceLayoutDeltas,
   resetDeviceLayoutDelta,
   setDeviceRotationPose,
+  setScreenRotateToMatch,
 } from "./deviceEditorModel";
 
 describe("device editor model", () => {
@@ -453,5 +454,38 @@ describe("replacing one display of a foldable", () => {
     expect(doc.duration).toEqual({ mode: "follow-media", sourceDeviceId: "d1" });
     replaceDeviceMedia(doc, "d1", { src: "still-2.png", kind: "image" }, "cover");
     expect(doc.duration).toEqual({ mode: "manual" });
+  });
+});
+
+describe("setScreenRotateToMatch", () => {
+  const foldDoc = (): SceneDoc => ({
+    version: 1,
+    devices: [
+      {
+        id: "d1",
+        model: "iphone-duo",
+        media: { src: "assets/in.mp4", kind: "video", rotateDeg: 90 },
+        coverMedia: { src: "assets/out.png", kind: "image" },
+      },
+    ],
+    compare: { b: { coverMedia: { d1: { src: "assets/after.png", kind: "image" } } } },
+  });
+
+  it("turns every display on both sides to auto, replacing a hand-set turn", () => {
+    const doc = foldDoc();
+    setScreenRotateToMatch(doc, "d1", true);
+    expect(doc.devices?.[0].media?.rotateDeg).toBe("auto");
+    expect(doc.devices?.[0].coverMedia?.rotateDeg).toBe("auto");
+    expect(doc.compare?.b?.coverMedia?.d1.rotateDeg).toBe("auto");
+    expect(doc.compare?.b?.media).toBeUndefined();
+  });
+
+  it("touches only the display it names, and removes the field when off", () => {
+    const doc = foldDoc();
+    setScreenRotateToMatch(doc, "d1", true, "cover");
+    expect(doc.devices?.[0].media?.rotateDeg).toBe(90);
+    setScreenRotateToMatch(doc, "d1", false, "cover");
+    expect(doc.devices?.[0].coverMedia).toEqual({ src: "assets/out.png", kind: "image" });
+    expect(doc.compare?.b?.coverMedia?.d1).toEqual({ src: "assets/after.png", kind: "image" });
   });
 });

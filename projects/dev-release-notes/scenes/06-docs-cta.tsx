@@ -1,7 +1,7 @@
 import { BrandLockup, defineScene, SceneStage, useFormat, useSceneText } from "@kookaburra/toolkit";
 
 export default defineScene({
-  id: "dev-release-notes-07-docs-cta",
+  id: "dev-release-notes-06-docs-cta",
   durationMs: 3600,
   Scene() {
     const format = useFormat();

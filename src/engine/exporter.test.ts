@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Mesh, MeshBasicMaterial, PerspectiveCamera, Scene } from "three";
 import { Text } from "troika-three-text";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createInlineStage } from "../stage/inlineStage";
 import { prepareExportClips } from "./clips";
 import { useClockStore } from "./clock";
 import { renderComposited } from "./compositor";
@@ -16,6 +17,7 @@ import {
 import { isExporting } from "./exportState";
 import { FORMATS } from "./format";
 import type { SceneDoc } from "./sceneDocSchema";
+import { setStage } from "./stageHandle";
 import { reportTextDerivedPending } from "./textDerivedState";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), Channel: class {} }));
@@ -141,6 +143,7 @@ let onPush: () => void = () => {};
 const called = (cmd: string) => vi.mocked(invoke).mock.calls.some(([c]) => c === cmd);
 
 beforeEach(() => {
+  setStage(createInlineStage());
   pushed = [];
   onPush = () => {};
   vi.mocked(invoke).mockReset();
@@ -155,6 +158,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setStage(null);
   canvasHandle.current = null;
 });
 
@@ -195,6 +199,25 @@ describe("export readback guard", () => {
     );
     expect(pushed).toHaveLength(1);
     expect(called("cancel_export")).toBe(true);
+  });
+
+  it("hands the encoder its failure and names where the run stopped", async () => {
+    mountCanvas([1]);
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "push_frame") pushed.push([]);
+      if (cmd === "cancel_export") {
+        expect((args as { reason?: string }).reason).toMatch(/^GPU stalled/);
+        return "frame 2/3 (33%), scene a, render 4.0 fps";
+      }
+      return undefined;
+    });
+    await expect(exportProject(opts)).rejects.toThrow(
+      "Kookaburra Cut (at frame 2/3 (33%), scene a, render 4.0 fps)",
+    );
+    const start = vi.mocked(invoke).mock.calls.find(([c]) => c === "start_export");
+    expect((start?.[1] as { scenes?: unknown } | undefined)?.scenes).toEqual(
+      opts.slots.map((s) => ({ id: s.id, startMs: s.startMs, endMs: s.endMs })),
+    );
   });
 
   it("refuses to start on a canvas that lost its context earlier in the session", async () => {
@@ -277,6 +300,10 @@ describe("export cancel", () => {
     expect(called("cancel_export")).toBe(true);
     expect(called("finish_export")).toBe(false);
     expect(isExporting()).toBe(false);
+    const cancel = vi.mocked(invoke).mock.calls.filter(([c]) => c === "cancel_export");
+    expect(
+      cancel.every(([, args]) => (args as { reason?: string } | undefined)?.reason === undefined),
+    ).toBe(true);
   });
 
   it("never starts the encoder once already cancelled", async () => {

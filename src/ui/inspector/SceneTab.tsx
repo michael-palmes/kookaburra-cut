@@ -43,6 +43,7 @@ import { deriveManagedTextModel, resolveManagedTextGroups } from "../../engine/m
 import { formatMediaDuration, fsUrl, type MediaMeta, mediaMeta } from "../../engine/media";
 import { useObjectEditStore } from "../../engine/objectEditStore";
 import { optionPreviewClip, optionPreviewStill } from "../../engine/optionPreviews";
+import { notePickedFolder } from "../../engine/pickedFolders";
 import {
   assetFileUrl,
   type LoadedProject,
@@ -402,6 +403,7 @@ import { MediaBrowser } from "../MediaBrowser";
 import { mediaCardMenu } from "../mediaCardMenu";
 import { ObjectPicker } from "../ObjectPicker";
 import { OptionCard } from "../OptionCard";
+import { writeTransitionKeepingCuts } from "../pinnedCuts";
 import { TextFieldRow } from "../SceneTextFields";
 import { SHADOW_OPTIONS } from "../SceneWizards";
 import { backgroundOptions, toggleDrift } from "../stageOptions";
@@ -6534,14 +6536,17 @@ export function SceneTab({
           boundaryIndex={boundaryIndex}
           thumbs={thumbs ?? {}}
           onCancel={() => closeDrill()}
-          onApply={async (spec) => {
+          onApply={async (spec, keepCuts) => {
             const manifestBefore = await readProjectManifestSnapshot(slug);
-            await updateSceneTransition(
-              slug,
-              boundaryIndex,
-              spec,
-              project.sceneFiles[boundaryIndex],
-            );
+            if (keepCuts) await writeTransitionKeepingCuts(project, boundaryIndex, spec);
+            else {
+              await updateSceneTransition(
+                slug,
+                boundaryIndex,
+                spec,
+                project.sceneFiles[boundaryIndex],
+              );
+            }
             pushHistory({
               label: "transition",
               changes: [
@@ -6558,10 +6563,11 @@ export function SceneTab({
           }}
           onApplyAll={
             project.slots.length > 2
-              ? async (spec) => {
+              ? async (spec, keepCuts) => {
                   const manifestBefore = await readProjectManifestSnapshot(slug);
                   for (let i = 0; i < project.slots.length - 1; i++) {
-                    await updateSceneTransition(slug, i, spec, project.sceneFiles[i]);
+                    if (keepCuts) await writeTransitionKeepingCuts(project, i, spec);
+                    else await updateSceneTransition(slug, i, spec, project.sceneFiles[i]);
                   }
                   pushHistory({
                     label: "transition (all)",
@@ -7548,6 +7554,7 @@ export function SceneTab({
         title: "Choose the session's start folder",
       });
       if (typeof picked === "string" && picked.length > 0) {
+        void notePickedFolder(picked);
         patchTerminal((t) => {
           t.startPath = picked;
         }, "set terminal start path");

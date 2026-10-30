@@ -124,9 +124,14 @@ Two mechanisms enforce the table, because the two families sit on opposite sides
 of the camera tool surface.
 
 **3D handles are BELOW it.** `TransformControls` listens on the canvas, so the
-camera overlay has to stand down: `useGizmoYield` hover-raycasts the registered
+camera overlay has to stand down: `useGizmoYield` hit-tests the registered
 pickers and the overlay takes `.is-inert` (`pointer-events: none`) when the
-router says "gizmo". Its listeners sit on `window` in the capture phase, because
+router says "gizmo". The pickers live in the stage worker, so a hit test is a
+message round trip (`stageGizmoHandleAt`, the protocol's `hitTest`): every
+pointer move sends one, the latest answer is kept per pointer, and a press reads
+that answer instead of waiting on a new one, since the pointer moved there
+first. The claim (the pointer-down latch) is taken in the worker only on a
+press, never from a hover. Its listeners sit on `window` in the capture phase, because
 an inert overlay stops receiving its own events, and hover is re-tested at the
 parked pointer whenever the tool arms (tools arm from the keyboard, with no
 pointermove) or the pickable set changes. As a second line of defence the overlay
@@ -177,6 +182,16 @@ or preview capture.
 raycaster ignores `visible`, so the idle modes would hit too), against the live
 preview camera and the stage viewport, never a DOM overlay's box, so the NDC it
 uses is the NDC r3f's own event raycaster would use.
+
+Both registries are written inside the stage worker, where the scenes mount,
+and the window never reads them directly. The worker projects every registered
+2D target once per rendered frame (`gizmoTargetFrames.ts`: the five world
+points, their NDC, the node's `matrixWorld` and its parent's) and posts the set
+with the frame; a 2D host reads them through `useStageTargets`
+(`src/ui/gizmo/stageTargets.ts`) and does its own pixel maths in the window.
+The picker registry answers the async hit test above and the picker summary
+the yield hooks subscribe to. Drags still write sidecar documents from the
+window, exactly as before; only the projection crossed the realm.
 
 **The stage viewport** (`src/engine/stageViewport.ts`) is that qualifier. An
 overlay renders the scene into a cutout-sized target and keys it into the
@@ -331,7 +346,8 @@ in the tree.
 | Shared mode type | `src/engine/gizmoMode.ts` |
 | Palette, size, restyle | `src/engine/gizmoTokens.ts` (+ `--gizmo-*` in `src/styles.css`) |
 | 3D control seam | `src/engine/SceneGizmo.tsx` |
-| Picker registry, stage camera and rect, capture hide | `src/engine/gizmoRegistry.ts` |
+| Picker registry, stage camera and rect, capture hide, the async hit test | `src/engine/gizmoRegistry.ts` |
+| Worker-projected 2D target frames | `src/engine/gizmoTargetFrames.ts` (worker), `src/ui/gizmo/stageTargets.ts` (window), `Gizmo2DTargetFrame` in `src/engine/stageProtocol.ts` |
 | Stage viewport (the cutout maths, the r3f compute) | `src/engine/stageViewport.ts`, `StagePointer.tsx` |
 | Outlines and click-to-select | `src/engine/SceneOutline.tsx`, `gizmoOutline.ts`, `gizmoVisibility.ts` |
 | Section map | `src/engine/gizmoSections.ts` |
@@ -345,6 +361,11 @@ in the tree.
 
 ## Open edges
 
+- A 3D hit test crosses the realm, so hover state lands one message round trip
+  after the pointer moves and a press routes on the last answer: a press that
+  lands on a handle the pointer reached in the same frame can go to the camera.
+  Routing is never wrong the other way, since a claim is only ever taken on a
+  press.
 - Right-click over a live 3D handle no longer reaches the camera context menu
   while the overlay is inert.
 - If playback slides the world under a parked pointer, the first gesture from

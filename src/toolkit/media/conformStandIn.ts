@@ -1,5 +1,4 @@
 import { useThree } from "@react-three/fiber";
-import { invoke } from "@tauri-apps/api/core";
 import {
   useContext,
   useEffect,
@@ -11,9 +10,9 @@ import {
 import { CanvasTexture, SRGBColorSpace, type Texture } from "three";
 import { type ClipPendingState, clipPendingState, subscribeClipPending } from "../../engine/clips";
 import { isExporting, subscribeExporting } from "../../engine/exportState";
-import { pendingConformMeta } from "../../engine/media";
-import { resolveAssetPath } from "../../engine/project";
+import { assertProjectRelative } from "../../engine/project";
 import { ProjectIdContext } from "../../engine/sceneContext";
+import { clipSourceKey, nativePort } from "../../engine/stageRealm";
 import { useEditorStore } from "../../store/editorStore";
 import { preparingVideoTexture } from "./preparingTexture";
 
@@ -121,9 +120,9 @@ function loadPoster(slug: string, rel: string): Promise<ImageBitmap | null> {
   const key = `${slug}\n${rel}`;
   let load = posterLoads.get(key);
   if (!load) {
-    load = pendingConformMeta(slug, { rel, original: "" })
-      .then((meta) => invoke<ArrayBuffer>("read_media_thumb", { path: meta.posterPath }))
-      .then((bytes) => createImageBitmap(new Blob([bytes])))
+    load = nativePort()
+      .conformPoster(slug, rel)
+      .then((bytes) => (bytes ? createImageBitmap(new Blob([bytes])) : null))
       .catch((e) => {
         console.warn(`[media] no poster for conforming ${rel}:`, e);
         posterLoads.delete(key);
@@ -165,16 +164,16 @@ export function useClipStandInTexture(src: string, aspect: number, flipY: boolea
   const contextProjectId = useContext(ProjectIdContext);
   const storeProjectId = useEditorStore((s) => s.projectId);
   const projectId = contextProjectId ?? storeProjectId;
-  const srcAbs = useMemo(() => {
+  const source = useMemo(() => {
     try {
-      return resolveAssetPath(projectId, src);
+      return clipSourceKey({ projectId, rel: assertProjectRelative(src) });
     } catch {
       return null;
     }
   }, [projectId, src]);
   // Null throughout an export, so a running export never re-renders a consumer for it.
   const pending = useSyncExternalStore(subscribeStandIn, () =>
-    srcAbs && !isExporting() ? clipPendingState(srcAbs) : null,
+    source && !isExporting() ? clipPendingState(source) : null,
   );
   const mode = clipStandInMode(pending, isExporting());
   const invalidate = useThree((s) => s.invalidate);

@@ -536,18 +536,20 @@ pub fn set_project_brand(
     slug: String,
     brand: Option<String>,
 ) -> Result<FileWrite, String> {
-    let project = workspace::project_dir_mut(&app, &state, &slug)?;
-    match brand.as_deref().map(str::trim).filter(|b| !b.is_empty()) {
-        Some(id) => {
-            let brand_slug = brand_slug_of(id)?;
-            let dir = brands_root(&app, &state)?.join(brand_slug);
-            if !dir.join(BRAND_FILENAME).is_file() {
-                return Err(format!("no brand named \"{brand_slug}\""));
+    workspace::restamping_trust(&app, &state, &slug, || {
+        let project = workspace::project_dir_mut(&app, &state, &slug)?;
+        match brand.as_deref().map(str::trim).filter(|b| !b.is_empty()) {
+            Some(id) => {
+                let brand_slug = brand_slug_of(id)?;
+                let dir = brands_root(&app, &state)?.join(brand_slug);
+                if !dir.join(BRAND_FILENAME).is_file() {
+                    return Err(format!("no brand named \"{brand_slug}\""));
+                }
+                apply_brand_at(&project, &dir, brand_slug)
             }
-            apply_brand_at(&project, &dir, brand_slug)
+            None => clear_brand_at(&project),
         }
-        None => clear_brand_at(&project),
-    }
+    })
 }
 
 #[cfg(test)]

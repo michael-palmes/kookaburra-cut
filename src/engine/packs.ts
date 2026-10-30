@@ -9,8 +9,11 @@ import type {
   PackInspection,
   PackPlan,
   PackProgress,
+  PackSceneDoc,
   Resolution,
+  SceneSource,
 } from "../packs/types";
+import { notePickedFolder } from "./pickedFolders";
 
 export interface PackSelection {
   projects: string[];
@@ -93,6 +96,10 @@ export function planPack(selection: PackSelection): Promise<PackPlan> {
 export interface PackMetaInput {
   name: string;
   description?: string;
+  /** The publisher name for an install with no saved profile; ignored once one exists. */
+  publisherName?: string;
+  /** Save `publisherName` as the profile, so the window asks once. */
+  rememberPublisher?: boolean;
 }
 
 /** The app's first Save dialog. The path is user-chosen through a native OS surface, and Rust re-validates it before writing. */
@@ -102,6 +109,7 @@ export async function chooseDestination(defaultName: string): Promise<string | n
     defaultPath: `${defaultName}.kbpack`,
     filters: [{ name: "Kookaburra Pack", extensions: ["kbpack"] }],
   });
+  await notePickedFolder(path);
   return path ?? null;
 }
 
@@ -124,12 +132,15 @@ export function inspectPack(path: string): Promise<PackInspection> {
   return invoke<PackInspection>("inspect_pack", { path });
 }
 
-export function readPackSceneSource(
-  path: string,
-  projectSlug: string,
-  sceneFile: string,
-): Promise<string> {
-  return invoke<string>("read_pack_scene_source", { path, projectSlug, sceneFile });
+/** One staged scene source as text, hash-checked against the signed manifest on the way out. */
+export function readPackSceneSource(path: string, source: SceneSource): Promise<string> {
+  const { kind, slug, file } = source;
+  return invoke<string>("read_pack_scene_source", { path, kind, slug, sceneFile: file });
+}
+
+/** Every scene sidecar beside a staged scene source, hash-checked, for the trust screen's review. */
+export function readPackSceneDocs(path: string): Promise<PackSceneDoc[]> {
+  return invoke<PackSceneDoc[]>("read_pack_scene_docs", { path });
 }
 
 /** Stage and plan in one call: extraction happens only after the user has seen what is inside. */
@@ -168,16 +179,17 @@ export interface PublisherKey {
   /** The same id in groups of four, for reading out loud. */
   keyIdDisplay: string;
   publicKey: string;
+  /** The login Keychain, or the owner-only file where the Keychain could not answer. */
+  storedIn: "keychain" | "file";
 }
 
 /** `get_publisher_profile` as Rust serialises it (`PublisherProfileView` in pack/publisher.rs): the saved profile rides nested under `profile`, absent until the pane has been saved once. */
 export interface PublisherProfileView {
   profile: PublisherProfile | null;
-  /** What a pack signed right now would carry (the macOS full name when nothing is set). */
-  effectiveName: string;
+  /** What a pack signed right now would carry; null until a profile is saved, when the packs window asks for a name. */
+  effectiveName: string | null;
   organisation: string | null;
   website: string | null;
-  device: string;
   /** Absent until the first pack is signed: the key is created lazily. */
   key: PublisherKey | null;
 }

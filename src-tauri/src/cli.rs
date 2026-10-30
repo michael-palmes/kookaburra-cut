@@ -632,8 +632,23 @@ fn canonical_lenient(path: &Path) -> PathBuf {
     base
 }
 
-/// A review render's `--out`: an absolute `.mp4` outside the project's `assets/` (canonical outputs come only from `--name`).
-fn review_output(project: &Path, raw: &str) -> Result<PathBuf, Fail> {
+/// Where a review render may land: the project, its workspace, the home workspace, and any folder the running app's dialogs returned this session (its heartbeat's `pickedDirs`).
+fn allowed_output_roots(project: &Path) -> Vec<PathBuf> {
+    let mut roots = vec![project.to_path_buf()];
+    if let Some(parent) = project.parent() {
+        roots.push(parent.to_path_buf());
+    }
+    if let Ok(home) = crate::tools::home_dir() {
+        roots.push(home.join(crate::workspace::WORKSPACE_DIR_NAME));
+    }
+    if let Some(bridge) = crate::bridge::bridge_root_without_app() {
+        roots.extend(crate::bridge::picked_dirs_in(&bridge));
+    }
+    roots
+}
+
+/// A review render's `--out`: an absolute `.mp4` outside the project's `assets/` (canonical outputs come only from `--name`) and inside one of `allowed`.
+fn review_output(project: &Path, raw: &str, allowed: &[PathBuf]) -> Result<PathBuf, Fail> {
     let path = PathBuf::from(raw);
     if !path.is_absolute() {
         return Err(Fail::usage(format!(
@@ -657,6 +672,17 @@ fn review_output(project: &Path, raw: &str) -> Result<PathBuf, Fail> {
         return Err(Fail::usage(
             "--out cannot be inside the project's assets/: render the named edit without --out for its canonical output",
         ));
+    }
+    let canonical = canonical_lenient(&path);
+    let inside = allowed.iter().any(|root| {
+        path_within(&path, root) || path_within(&canonical, &canonical_lenient(root))
+    });
+    if !inside {
+        let roots: Vec<String> = allowed.iter().map(|r| r.display().to_string()).collect();
+        return Err(Fail::usage(format!(
+            "--out must be inside the project, its workspace, or a folder picked in Kookaburra Cut this session; allowed: {}",
+            roots.join(", ")
+        )));
     }
     Ok(path)
 }
@@ -706,7 +732,7 @@ fn render_inner(args: &[String]) -> Result<Value, Fail> {
     let name = flags.get("name").map(edit_name).transpose()?;
     let out = flags
         .get("out")
-        .map(|raw| review_output(&project, raw))
+        .map(|raw| review_output(&project, raw, &allowed_output_roots(&project)))
         .transpose()?;
     let draft = flags.has("draft");
     let scale = flags.get("scale").map(parse_scale).transpose()?;
@@ -944,9 +970,18 @@ mod tests {
     #[test]
     fn a_review_output_must_be_an_absolute_mp4_outside_assets() {
         let dir = temp_project("out");
-        let ok = |raw: &str| review_output(&dir, raw).is_ok();
-        let elsewhere = std::env::temp_dir().join("kc-cli-review/draft.mp4");
+        let picked = std::env::temp_dir().join("kc-cli-review");
+        let allowed = vec![dir.clone(), picked.clone()];
+        let ok = |raw: &str| review_output(&dir, raw, &allowed).is_ok();
+        let elsewhere = picked.join("draft.mp4");
         assert!(ok(elsewhere.to_str().unwrap()));
+        // A folder nobody picked is refused, naming the allowed roots.
+        let stray = std::env::temp_dir().join("kc-cli-stray/draft.mp4");
+        let refused = review_output(&dir, stray.to_str().unwrap(), &allowed).unwrap_err();
+        assert!(refused.to_json()["error"]
+            .as_str()
+            .unwrap()
+            .contains(picked.to_str().unwrap()));
         assert!(!ok("draft.mp4"));
         assert!(!ok(&format!(
             "{}/x.mov",

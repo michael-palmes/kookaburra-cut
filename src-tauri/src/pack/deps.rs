@@ -557,19 +557,9 @@ fn walk(dir: &Path, prefix: &str, out: &mut Vec<(String, PathBuf)>) {
     }
 }
 
-/// The pack build exclusions (`02-data-model.md`), extending `duplicate_project`'s skip list. Shares `scan::is_excluded` with the import side, so an item exported and re-scanned hashes equal. `CLAUDE.md` and `.claude/settings.json` ride along: both are only written when missing, and users edit them.
+/// The pack build exclusions (`02-data-model.md`), extending `duplicate_project`'s skip list. Shares `scan::is_excluded` with the import side, so an item exported and re-scanned hashes equal. `CLAUDE.md` rides along (import swaps it for the app's default and keeps the text as `NOTES.md`); nothing under `.claude/` does.
 fn project_file_excluded(rel: &str) -> bool {
     super::scan::is_excluded(rel)
-}
-
-/// The dot-named entries a project carries that are still payload; `walk` skips dotted names, so these are re-added by hand.
-fn project_dot_files(dir: &Path) -> Vec<(String, PathBuf)> {
-    let settings = dir.join(".claude").join("settings.json");
-    if settings.is_file() {
-        vec![(".claude/settings.json".to_owned(), settings)]
-    } else {
-        Vec::new()
-    }
 }
 
 // - The resolver ---------------------------------------------------------------
@@ -1156,6 +1146,38 @@ fn accept(path: &str, warnings: &mut Vec<ClosureWarning>) -> bool {
     }
 }
 
+/// Every `scenes/**/*.tsx` the item packs, in `project.json` order first (the film's order) and then any file the
+/// manifest does not list, sorted. Export and import build this set the same way (`read::staged_scene_sources`).
+fn scene_files_of<'a>(doc: &Value, packed: impl Iterator<Item = &'a str>) -> Vec<String> {
+    let packed: BTreeSet<&str> = packed
+        .filter(|rel| {
+            rel.starts_with("scenes/")
+                && rel
+                    .rsplit_once('.')
+                    .is_some_and(|(_, ext)| ext.eq_ignore_ascii_case("tsx"))
+        })
+        .collect();
+    let mut out: Vec<String> = Vec::new();
+    for file in doc
+        .get("scenes")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|s| str_field(s, "file"))
+    {
+        if packed.contains(file.as_str()) && !out.contains(&file) {
+            out.push(file);
+        }
+    }
+    let unlisted: Vec<String> = packed
+        .iter()
+        .filter(|rel| !out.iter().any(|f| f == *rel))
+        .map(|rel| (*rel).to_owned())
+        .collect();
+    out.extend(unlisted);
+    out
+}
+
 fn stage_all(
     files: Vec<(String, String, PathBuf)>,
     warnings: &mut Vec<ClosureWarning>,
@@ -1332,7 +1354,6 @@ fn build_project(
 
     let mut candidates: Vec<(String, PathBuf)> = Vec::new();
     walk(&dir, "", &mut candidates);
-    candidates.extend(project_dot_files(&dir));
     candidates.retain(|(rel, _)| !project_file_excluded(rel));
 
     let mut reviewed = Vec::new();
@@ -1375,6 +1396,8 @@ fn build_project(
         });
     }
     candidates.retain(|(rel, _)| !dropped.contains(rel));
+    // What is listed is what is packed: the reader refuses any pack whose `sceneFiles` is not the staged set.
+    let scene_files = scene_files_of(&doc, candidates.iter().map(|(rel, _)| rel.as_str()));
 
     let staged = stage_all(
         candidates
@@ -1388,11 +1411,6 @@ fn build_project(
         mode,
     );
 
-    let scene_files: Vec<String> = doc
-        .get("scenes")
-        .and_then(Value::as_array)
-        .map(|scenes| scenes.iter().filter_map(|s| str_field(s, "file")).collect())
-        .unwrap_or_default();
     let formats: Vec<String> = doc
         .get("formats")
         .and_then(Value::as_array)
@@ -1606,16 +1624,30 @@ fn build_object(
         warnings,
         mode,
     );
-    let in_archive =
-        |rel: Option<String>| rel.map(|r| archive_path(ItemKind::Object, &format!("{slug}/{r}")));
+    // A path the manifest cannot be allowed to make (outside the folder, or deeper than the pack reads) is dropped with a warning, never carried.
+    let mut in_archive = |rel: Option<String>| {
+        rel.filter(|r| match crate::objects::validate_object_rel(r) {
+            Ok(()) => true,
+            Err(detail) => {
+                warnings.push(ClosureWarning::UnreadableDocument {
+                    path: format!("objects/{slug}/object.json"),
+                    detail,
+                });
+                false
+            }
+        })
+        .map(|r| archive_path(ItemKind::Object, &format!("{slug}/{r}")))
+    };
+    let glb = in_archive(str_field(&doc, "glb")).unwrap_or_default();
+    let thumbnail = in_archive(str_field(&doc, "thumbnail"));
     let object = PackObject {
         base: base_from(
             slug,
             &str_field(&doc, "name").unwrap_or_else(|| slug.to_owned()),
             &staged,
         ),
-        glb: in_archive(str_field(&doc, "glb")).unwrap_or_default(),
-        thumbnail: in_archive(str_field(&doc, "thumbnail")),
+        glb,
+        thumbnail,
         licence: doc.get("licence").and_then(|l| str_field(l, "name")),
         tags: doc
             .get("tags")
@@ -2226,8 +2258,8 @@ mod tests {
 
         assert!(has("payload/projects/acme/CLAUDE.md"), "CLAUDE.md travels");
         assert!(
-            has("payload/projects/acme/.claude/settings.json"),
-            ".claude/settings.json travels"
+            !has("payload/projects/acme/.claude/settings.json"),
+            ".claude/settings.json stays home"
         );
         assert!(has("payload/projects/acme/project.json"));
         assert!(has("payload/projects/acme/scenes/01-hero.tsx"));

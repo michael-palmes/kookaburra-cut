@@ -68,7 +68,7 @@ pub fn write_gradient(
     std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
 }
 
-/// Delete a saved gradient preset (delete parity with export presets).
+/// Move a saved gradient preset to the Trash (delete parity with export presets).
 #[tauri::command]
 pub fn delete_gradient(
     app: AppHandle,
@@ -81,5 +81,5 @@ pub fn delete_gradient(
     if !path.is_file() {
         return Err(format!("no saved gradient named \"{slug}\""));
     }
-    std::fs::remove_file(&path).map_err(|e| e.to_string())
+    crate::workspace::trash_path(&path).map_err(|e| e.to_string())
 }

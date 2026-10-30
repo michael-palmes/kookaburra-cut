@@ -60,6 +60,29 @@ describe("resolveDeviceWorldAnchor", () => {
     expect(anchor?.[2]).toBe(placement.position?.[2]);
   });
 
+  it("stands a turned device's lowest edge on the floor, and an upright or yawed one exactly as before", () => {
+    const spec = resolveAvailableDeviceSpec("android");
+    const at = (rotationDeg: [number, number, number]) =>
+      resolveDeviceWorldAnchor(
+        { model: "android" },
+        { position: [0, 4, 0], rotationDeg, scale: 0.8, ground: true },
+        -1.5,
+      )?.[1];
+
+    expect(at([0, 0, 0])).toBe(-1.5 + (spec.fittedHeight * 0.8) / 2);
+    expect(at([0, -30, 0])).toBe(-1.5 + (spec.fittedHeight * 0.8) / 2);
+    expect(at([0, 0, 90])).toBeCloseTo(-1.5 + (spec.layoutWidth * 0.8) / 2, 9);
+    // A live pose's shift wins over the placement's own.
+    expect(
+      resolveDeviceWorldAnchor(
+        { model: "android" },
+        { position: [0, 4, 0], rotationDeg: [0, 0, 90], ground: true },
+        -1.5,
+        0,
+      )?.[1],
+    ).toBe(-1.5 + spec.fittedHeight / 2);
+  });
+
   it("uses authored Y with a known absent floor and preserves a baked aim when floor state is unknown", () => {
     const device: SceneDocDeviceSpec = {
       id: "phone",

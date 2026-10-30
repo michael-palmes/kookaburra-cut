@@ -349,12 +349,16 @@ def bind(root: str, command: str, caller: Dict[str, Any]) -> List[str]:
 
 
 def deny(reason: str) -> Tuple[int, str, str]:
-    out = {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": reason}}
+    from .util import clean_lines
+
+    out = {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": clean_lines(reason)}}
     return 0, json.dumps(out, ensure_ascii=False), ""
 
 
 def context(event: str, text: str) -> str:
-    return json.dumps({"hookSpecificOutput": {"hookEventName": event, "additionalContext": text}}, ensure_ascii=False)
+    from .util import clean_lines
+
+    return json.dumps({"hookSpecificOutput": {"hookEventName": event, "additionalContext": clean_lines(text)}}, ensure_ascii=False)
 
 
 def session_marker(root: str, session: str) -> str:
