@@ -33,6 +33,47 @@ class CheckTests(KbTestCase):
         self.assertEqual(messages(report), [])
         self.assertEqual(messages(report, "warning"), [])
 
+    def single_line_tsx(self, tag: str, doc=None) -> list:
+        write(self.root / "scenes" / "01-intro.tsx", SCENE_TSX.format(id="intro").replace("<TitleBlock title={title} />", tag))
+        if doc is not None:
+            write_json(self.root / "scenes" / "01-intro.json", doc)
+        return [w for w in messages(self.run_check(), "warning") if "single-line" in w]
+
+    def test_single_line_motion_over_tsx_copy(self) -> None:
+        tag = '<AnimatedHeadline text={"one\\ntwo"} preset="rise-mask" />'
+        self.assertTrue(self.single_line_tsx(tag))
+
+    def test_single_line_motion_that_can_wrap(self) -> None:
+        self.assertTrue(self.single_line_tsx('<AnimatedHeadline text="copy" preset="word-cycle" maxWidth={2} />'))
+        self.assertFalse(self.single_line_tsx('<AnimatedHeadline text="copy" preset="word-cycle" maxWidth={2} fit="width" />'))
+
+    def test_commented_out_jsx_stays_quiet(self) -> None:
+        tag = '{/* <AnimatedHeadline text="copy" preset="word-cycle" maxWidth={2} /> */}<TitleBlock title={title} />'
+        self.assertFalse(self.single_line_tsx(tag))
+
+    def test_two_line_motion_stays_quiet(self) -> None:
+        self.assertFalse(self.single_line_tsx('<AnimatedHeadline text={"one\\ntwo"} preset="slam" maxWidth={2} />'))
+
+    def test_a_word_staggered_rise_is_single_line(self) -> None:
+        tag = '<AnimatedHeadline text={"one\\ntwo"} preset="fade-up" stagger="word" />'
+        self.assertTrue(self.single_line_tsx(tag))
+        self.assertFalse(self.single_line_tsx('<AnimatedHeadline text={"one\\ntwo"} preset="fade-up" />'))
+
+    def test_single_line_motion_over_sidecar_copy_by_text_key(self) -> None:
+        doc = {"version": 1, "text": {"title": "one\ntwo"}}
+        tag = '<AnimatedHeadline text={title} textKey="title" preset="rise-mask" />'
+        self.assertTrue(self.single_line_tsx(tag, doc))
+
+    def test_single_line_sidecar_motion_warns_on_managed_copy(self) -> None:
+        doc = {
+            "version": 1,
+            "textAnimation": {"in": "underline-draw", "out": "none", "staggerMs": 0},
+            "managedText": {"items": [{"key": "title", "type": "title", "text": "one\ntwo"}]},
+        }
+        write_json(self.root / "scenes" / "01-intro.json", doc)
+        warnings = messages(self.run_check(), "warning")
+        self.assertTrue(any("managedText.items[0].text" in w and "single-line" in w for w in warnings))
+
     def test_cli_exit_codes(self) -> None:
         self.assertExit(self.kb(["check"], cwd=self.root), 0)
         write(self.root / "scenes" / "02-hero.tsx", "export default 1;")
