@@ -226,7 +226,7 @@ def _jpeg_facts(f: BinaryIO, path: Path) -> Dict[str, Any]:
         elif code == 0xE1:
             body = f.read(length - 2)
             if body[:6] == b"Exif\x00\x00":
-                out["orientation"] = _exif_orientation(body[6:])
+                out["orientation"] = out.get("orientation") or _exif_orientation(body[6:])
         elif code == 0xE2:
             body = f.read(length - 2)
             if body[:12] == b"ICC_PROFILE\x00" and len(body) > 14 and sum(len(v) for v in icc.values()) < MAX_ICC_BYTES:

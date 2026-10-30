@@ -262,6 +262,47 @@ class ConvertTests(ImportCase):
         self.assertFalse(plain["conformed"])
         self.assertTrue(any("will draw wrong" in w for w in plain["warnings"]), plain["warnings"])
 
+    def jpeg_of_four_quadrants(self) -> bytes:
+        """A 40x20 JPEG, stored red and green over blue and white, so where each corner lands shows the turn."""
+        red, green, blue, white = (255, 0, 0, 255), (0, 255, 0, 255), (0, 0, 255, 255), (255, 255, 255, 255)
+        rows = [[red] * 20 + [green] * 20 for _ in range(10)] + [[blue] * 20 + [white] * 20 for _ in range(10)]
+        out = self.outside / "quadrants.jpg"
+        subprocess.run([imagefile.SIPS, "-s", "format", "jpeg", "-s", "formatOptions", "100", str(self.source("quadrants.png", png(rows))), "--out", str(out)], check=True, capture_output=True)
+        return out.read_bytes()
+
+    def corners(self, path: Path) -> Tuple[Tuple[int, int], str]:
+        decoded = self.outside / "decoded.png"
+        subprocess.run([imagefile.SIPS, "-s", "format", "png", str(path), "--out", str(decoded)], check=True, capture_output=True)
+        width, height, px = imagefile.png_rgba(decoded)
+
+        def name(x: int, y: int) -> str:
+            r, g, b = px[(y * width + x) * 4:(y * width + x) * 4 + 3]
+            return "W" if min(r, g, b) > 180 else "R" if r > 180 else "G" if g > 180 else "B"
+
+        return (width, height), name(width // 4, height // 4) + name(3 * width // 4, height // 4) + "/" + name(width // 4, 3 * height // 4) + name(3 * width // 4, 3 * height // 4)
+
+    def test_every_exif_turn_comes_in_upright(self) -> None:
+        data = self.jpeg_of_four_quadrants()
+        wanted = {2: "GR/WB", 3: "WB/GR", 4: "BW/RG", 5: "RB/GW", 6: "BR/WG", 7: "WG/BR", 8: "GW/RB"}
+        for orientation, picture in wanted.items():
+            block = b"Exif\x00\x00" + exif_block(orientation)
+            turned = data[:2] + b"\xff\xe1" + struct.pack(">H", len(block) + 2) + block + data[2:]
+            res = self.add(str(self.source(f"turn{orientation}.jpg", turned)))
+            self.assertEqual((res["conformed"], res["probe"]["why"]), (True, ["orientation"]), orientation)
+            landed = self.root / res["path"]
+            self.assertIsNone(imagefile.facts(landed).get("orientation"), orientation)
+            size, seen = self.corners(landed)
+            self.assertEqual(seen, picture, orientation)
+            self.assertEqual(size, (20, 40) if orientation >= 5 else (40, 20), orientation)
+
+    def test_a_cmyk_jpeg_comes_in_as_rgb_and_stays_a_jpeg(self) -> None:
+        cmyk = self.outside / "cmyk.jpg"
+        subprocess.run([imagefile.SIPS, "--matchTo", "/System/Library/ColorSync/Profiles/Generic CMYK Profile.icc", str(self.source("plain.jpg", self.jpeg_of_four_quadrants())), "--out", str(cmyk)], check=True, capture_output=True)
+        self.assertEqual(imagefile.facts(cmyk)["space"], "cmyk")
+        res = self.add(str(cmyk))
+        self.assertEqual((res["path"], res["probe"]["why"]), ("assets/cmyk.jpg", ["cmyk"]))
+        self.assertEqual(imagefile.facts(self.root / res["path"])["space"], "rgb")
+
     def test_a_webp_that_needs_nothing_stays_a_webp(self) -> None:
         src = self.source("a.webp", TINY_WEBP)
         res = self.add(str(src), "--allow-blank")
