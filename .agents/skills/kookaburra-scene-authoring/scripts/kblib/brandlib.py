@@ -106,7 +106,8 @@ def walk_images(folder: Path) -> List[str]:
 
 def _pair_key(rel: str) -> Tuple[Tuple[str, ...], ...]:
     parts = rel.rsplit(".", 1)[0].split("/")
-    return tuple(tuple(t for t in tokens(p) if t not in VARIANT_WORDS) for p in parts)
+    kept = (tuple(t for t in tokens(p) if t not in VARIANT_WORDS) for p in parts[:-1])
+    return tuple(k for k in kept if k) + (tuple(t for t in tokens(parts[-1]) if t not in VARIANT_WORDS),)
 
 
 def infer_pairs(surfaces: Dict[str, Optional[str]]) -> Dict[str, str]:
@@ -191,7 +192,7 @@ def _score(item: Dict[str, Any], words: List[str], phrase: str) -> float:
     tags = [w for tag in item["tags"] for w in tokens(tag)]
     path = tokens(item["rel"])
     if "-".join(name) == phrase:
-        return 4.0
+        return float("inf")
     total = 0.0
     for word in words:
         if word in name:

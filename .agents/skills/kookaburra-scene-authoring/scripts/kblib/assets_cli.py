@@ -110,6 +110,7 @@ def cmd_add(ctx: Any) -> int:
 
 def cmd_add_folder(ctx: Any) -> int:
     from . import asset_folder
+    from . import assets as assetmod
 
     a = ctx.args
     res = asset_folder.add_folder(ctx.project, a.folder, dedupe=a.dedupe, thumbs=asset_folder.parse_thumbs(a.thumbs), limit=a.limit, subdir=a.dir, max_size=a.max_size,
@@ -127,7 +128,8 @@ def cmd_add_folder(ctx: Any) -> int:
             emit(f"skipped {s['file']}: {s['why']}")
         for r in res["refused"]:
             emit(f"refused {r['file']}: {r['error']}")
-        emit(f"{verb} {res['copied'] if not ctx.dry_run else len(res['writes'])} of {len(res['items']) + len(res['duplicates']) + len(res['refused'])} media files from {res['folder']}"
+        landing = sum(1 for w in res["writes"] if w["path"] != assetmod.META_REL) if ctx.dry_run else res["copied"]
+        emit(f"{verb} {landing} of {len(res['items']) + len(res['duplicates']) + len(res['refused'])} media files from {res['folder']}"
              + (f"; left alone: {res['otherFiles']} other file(s)" if res["otherFiles"] else ""))
         if res["remaining"]:
             emit(f"{res['remaining']} more past --limit {a.limit}")

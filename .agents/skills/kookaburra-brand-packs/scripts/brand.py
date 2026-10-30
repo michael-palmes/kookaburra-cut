@@ -364,6 +364,9 @@ def build_library(home: Path, scene_edge: Optional[int], new_tags: Optional[Dict
     surfaces: Dict[str, Optional[str]] = {}
     keep_scene: set = set()
     scene_root = home / brandlib.SCENE
+    if scene_root.is_symlink():
+        raise BrandError(f"{scene_root} is a link, and kb writes and removes files in it; make it a real folder or remove it")
+    brand_root = os.path.realpath(home) + os.sep
     for rel in brandlib.walk_images(home):
         path = home / brandlib.IMAGES / rel
         try:
@@ -383,6 +386,10 @@ def build_library(home: Path, scene_edge: Optional[int], new_tags: Optional[Dict
         surfaces[rel] = surface
         if max(f["width"], f["height"]) > scene_edge:
             copy = scene_root / rel if f["format"] in ("png", "jpeg") else (scene_root / rel).with_suffix(".png")
+            if not os.path.realpath(copy).startswith(brand_root):
+                problems.append(f"{rel}: no copy for scenes: a link in {brandlib.SCENE}/ leads out of the brand")
+                images[rel] = record
+                continue
             try:
                 fresh = copy.is_file() and copy.stat().st_mtime >= path.stat().st_mtime and max(_size(imagefile.facts(copy))) == scene_edge
                 if not fresh:
@@ -428,7 +435,7 @@ def cmd_tag(args: argparse.Namespace) -> int:
         raise BrandError("give at least one tag, comma-separated")
     doc = load_json(home / brandlib.LIBRARY)
     images = doc.get("images") if isinstance(doc, dict) and isinstance(doc.get("images"), dict) else {}
-    hits = [rel for rel in images if fnmatch.fnmatchcase(rel, args.pattern)]
+    hits = [rel for rel, record in images.items() if isinstance(record, dict) and fnmatch.fnmatchcase(rel, args.pattern)]
     if not hits:
         raise BrandError(f"no image in the library matches {args.pattern!r} (paths are relative to images/)")
     for rel in hits:

@@ -252,8 +252,8 @@ As built (`scripts/kblib/`):
   `--limit` (2000 at most), 20000 entries, 12 levels, 32 GB in total or the free disk; one file
   over 16 GB is refused alone. Files land through `assets.add_file`, keeping the folder's shape
   under `--dir` in slugged names, and refused ones are collected (exit 1, `invalid`, with the
-  whole report in the envelope). SVGs rasterise in one `osascript` per 80, and provenance is one
-  write at the end. `--dedupe` hashes a file against the batch, `origin.sourceSha256` and, only
+  whole report in the envelope). SVGs rasterise in one `osascript` per 80, split down when one
+  hangs or crashes so the file at fault fails alone, and provenance is one write at the end. `--dedupe` hashes a file against the batch, `origin.sourceSha256` and, only
   where the size matches, `assets/` and `assets/.originals/`. `--thumbs WxH` and `kb brand icons
   --sheet` draw sheets in plain Python (`kblib/contact.py`), on the surface each picture suits,
   into `.kb/thumbs/<time>-<tag>/` (the newest 20 kept), so they are never in `assets/`, a pack or

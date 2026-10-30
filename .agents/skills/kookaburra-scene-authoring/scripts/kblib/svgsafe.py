@@ -20,7 +20,7 @@ MAX_ELEMENTS = 200_000
 MAX_DEPTH = 256
 MAX_ENTITIES = 64
 MAX_ENTITY_VALUE = 4096
-RASTER_TIMEOUT_S = 120
+RASTER_BASE_TIMEOUT_S = 20
 BATCH = 80
 DEFAULT_EDGE = 2048
 SVG_NS = "http://www.w3.org/2000/svg"
@@ -40,7 +40,8 @@ TEXT_ELEMENTS = frozenset(("text", "tspan", "textPath", "title", "desc", "style"
 RASTER_DATA = re.compile(r"^\s*data:image/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=\s]*$", re.IGNORECASE)
 EXTERNAL_URL = re.compile(r"url\(\s*['\"]?\s*(?!#)", re.IGNORECASE)
 LIVE_VALUE = re.compile(r"javascript:|vbscript:|expression\(", re.IGNORECASE)
-LIVE_STYLE = re.compile(r"@import|@font-face|@charset|@namespace|image-set\(|-webkit-image-set\(|behavior\s*:|-moz-binding", re.IGNORECASE)
+# A backslash is a CSS escape, which would spell url( or @import past every check here.
+LIVE_STYLE = re.compile(r"@import|@font-face|@charset|@namespace|image-set\(|-webkit-image-set\(|behavior\s*:|-moz-binding|\\", re.IGNORECASE)
 PERCENT = re.compile(r"%\s*$")
 
 
@@ -94,7 +95,7 @@ class _Sanitiser:
         if self.skip_depth:
             self.skip_depth += 1
             return
-        if ns not in ("", SVG_NS) or local not in ELEMENTS:
+        if ns not in ("", SVG_NS) or local not in ELEMENTS or (self.stack and self.stack[-1] == "style"):
             if ns in ("", SVG_NS) and local not in QUIET_ELEMENTS:
                 self.drop(local)
             self.skip_depth = 1
@@ -131,7 +132,7 @@ class _Sanitiser:
             if local.lower().startswith("on") or local.lower() in ("src", "base", "style-src"):
                 self.drop(f"{local} attribute")
                 continue
-            if local == "href":
+            if local.lower() == "href":
                 target = value.strip()
                 if target.startswith("#") or (element in ("image", "feImage") and RASTER_DATA.match(target)):
                     kept["xlink:href"] = value
@@ -216,16 +217,24 @@ def rasterise(jobs: List[Tuple[Path, Path]], edge: int) -> None:
     if not script.is_file():
         raise Refused("no-decoder", f"the SVG rasteriser is missing ({script.name} from the kookaburra-brand-packs skill)", "open the project in the app once so it stamps its skills")
     for start in range(0, len(jobs), BATCH):
-        batch = jobs[start:start + BATCH]
-        argv = ["/usr/bin/osascript", "-l", "JavaScript", str(script), str(edge)]
-        for svg, png in batch:
-            argv += [str(svg), str(png)]
-        try:
-            proc = subprocess.run(argv, capture_output=True, text=True, errors="replace", timeout=RASTER_TIMEOUT_S, stdin=subprocess.DEVNULL)
-        except subprocess.TimeoutExpired:
-            raise Refused("unreadable", f"rasterising took longer than {RASTER_TIMEOUT_S} s, so it was stopped", "export the SVG again as a PNG") from None
-        except OSError as e:
-            raise Refused("no-decoder", f"SVGs rasterise through macOS's osascript, which could not run: {e.strerror}", "run this on the Mac the app is installed on") from None
-        if proc.returncode != 0 and not any(png.is_file() for _svg, png in batch):
-            tail = proc.stderr.strip().splitlines()[-1][-160:] if proc.stderr.strip() else f"exit {proc.returncode}"
-            raise Refused("no-decoder", f"the SVG rasteriser failed: {tail}")
+        _run_batch(script, jobs[start:start + BATCH], edge)
+
+
+def _run_batch(script: Path, batch: List[Tuple[Path, Path]], edge: int) -> None:
+    """A batch that hangs or crashes is split until the file at fault fails alone, so it never costs the others."""
+    argv = ["/usr/bin/osascript", "-l", "JavaScript", str(script), str(edge)]
+    for svg, png in batch:
+        argv += [str(svg), str(png)]
+    try:
+        done = subprocess.run(argv, capture_output=True, text=True, errors="replace", timeout=RASTER_BASE_TIMEOUT_S + len(batch), stdin=subprocess.DEVNULL).returncode == 0
+    except subprocess.TimeoutExpired:
+        done = False
+    except OSError as e:
+        raise Refused("no-decoder", f"SVGs rasterise through macOS's osascript, which could not run: {e.strerror}", "run this on the Mac the app is installed on") from None
+    if done or len(batch) == 1:
+        return
+    left = [job for job in batch if not job[1].is_file()]
+    middle = len(left) // 2
+    for part in (left[:middle], left[middle:]):
+        if part:
+            _run_batch(script, part, edge)

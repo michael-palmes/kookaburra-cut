@@ -546,6 +546,7 @@ def import_decision(path: Path, *, deep: bool = True, say: Optional[Callable[[st
     except KbError as e:
         return {"conform": False, "checked": False, "why": f"the app's probe failed: {e.message}", "probe": summary(static), "refused": None, "cli": None}
     merged = merge(report, static)
+    checks: Optional[List[str]] = None
     if deep and not merged["recommended"] and merged["refused"] is None:
         if say is not None:
             say(f"decoding {path.name} to check it plays the same in both decoders")
@@ -553,7 +554,8 @@ def import_decision(path: Path, *, deep: bool = True, say: Optional[Callable[[st
             merged = merge(media_probe(cli, path, pts=True), static)
         except KbError as e:
             return {"conform": False, "checked": False, "why": f"the app's deep probe failed: {e.message}", "probe": summary(merged), "refused": None, "cli": None}
-    return {"conform": merged["recommended"], "checked": True, "why": None, "probe": summary(merged), "refused": merged["refused"], "cli": cli}
+        checks = ["app", "decode"]
+    return {"conform": merged["recommended"], "checked": True, "why": None, "probe": summary(merged), "refused": merged["refused"], "cli": cli, "checks": checks}
 
 
 def _container_mismatch(path: Path, box: Dict[str, Any], say: Optional[Callable[[str], None]]) -> Optional[List[str]]:

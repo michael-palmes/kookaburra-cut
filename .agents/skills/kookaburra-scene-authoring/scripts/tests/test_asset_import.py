@@ -7,12 +7,14 @@ import json
 import os
 import shutil
 import struct
+import subprocess
 import sys
 import tempfile
 import unittest
 import zlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from unittest import mock
 
 from kblib import asset_folder, assets, imagefile, svgsafe
 
@@ -55,6 +57,17 @@ def icc_profile(name: str) -> bytes:
 
 def iccp_chunk(name: str) -> bytes:
     return chunk(b"iCCP", b"icc\x00\x00" + zlib.compress(icc_profile(name)))
+
+
+def riff_chunk(kind: bytes, data: bytes) -> bytes:
+    return kind + struct.pack("<I", len(data)) + data + (b"\x00" if len(data) % 2 else b"")
+
+
+def extended_webp(before: bytes = b"", after: bytes = b"") -> bytes:
+    """TINY_WEBP's frame in the extended layout, where a profile sits before the image and EXIF after it."""
+    head = riff_chunk(b"VP8X", b"\x00\x00\x00\x00" + b"\x00\x00\x00" + b"\x00\x00\x00")
+    body = b"WEBP" + head + before + TINY_WEBP[12:] + after
+    return b"RIFF" + struct.pack("<I", len(body)) + body
 
 
 def exif_block(orientation: int) -> bytes:
@@ -168,6 +181,12 @@ class FactsTests(ImportCase):
         self.assertTrue(imagefile.facts(anim)["animated"])
         self.assertEqual(imagefile.facts(self.source("t.webp", TINY_WEBP))["format"], "webp")
 
+    def test_webp_exif_after_the_image_is_still_read(self) -> None:
+        turned = self.source("turned.webp", extended_webp(after=riff_chunk(b"EXIF", exif_block(6))))
+        f = imagefile.facts(turned)
+        self.assertEqual((f["width"], f["orientation"], imagefile.needs_conform(f)), (1, 6, ["orientation"]))
+        self.assertIsNone(imagefile.facts(self.source("plain.webp", extended_webp())).get("orientation"))
+
     def test_probe_reports_a_stills_facts(self) -> None:
         (self.root / "assets" / "plain.png").write_bytes(flat(4, 4, (9, 9, 9, 255)))
         info = json.loads(self.kb(["assets", "probe", "plain.png", "--json"], cwd=self.root).stdout)
@@ -230,8 +249,6 @@ class ConvertTests(ImportCase):
         self.assertExit(self.kb(["assets", "add", str(self.source("a.png", png_bytes())), "--max-size", "1"], cwd=self.root), 2)
 
     def test_a_p3_png_comes_in_as_srgb_pixels(self) -> None:
-        import subprocess
-
         src = self.source("shot.png", png([[(200, (x * 11) % 255, 40, 255) for x in range(64)] for _ in range(32)]))
         tagged = self.outside / "tagged.png"
         subprocess.run([imagefile.SIPS, "--matchTo", "/System/Library/ColorSync/Profiles/Display P3.icc", str(src), "--out", str(tagged)], check=True, capture_output=True)
@@ -245,9 +262,17 @@ class ConvertTests(ImportCase):
         self.assertFalse(plain["conformed"])
         self.assertTrue(any("will draw wrong" in w for w in plain["warnings"]), plain["warnings"])
 
+    def test_a_webp_that_needs_nothing_stays_a_webp(self) -> None:
+        src = self.source("a.webp", TINY_WEBP)
+        res = self.add(str(src), "--allow-blank")
+        self.assertEqual((res["path"], res["transforms"]), ("assets/a.webp", []))
+        self.assertEqual((self.root / res["path"]).read_bytes(), src.read_bytes())
+
     def test_a_webp_that_has_to_change_becomes_a_png(self) -> None:
-        res = self.add(str(self.source("a.webp", TINY_WEBP)), "--allow-blank")
-        self.assertEqual(res["path"], "assets/a.webp")
+        profile = Path("/System/Library/ColorSync/Profiles/Display P3.icc").read_bytes()
+        res = self.add(str(self.source("wide.webp", extended_webp(before=riff_chunk(b"ICCP", profile)))), "--allow-blank")
+        self.assertEqual((res["path"], res["image"]["format"], res["conformed"]), ("assets/wide.png", "png", True))
+        self.assertEqual(imagefile.needs_conform(imagefile.facts(self.root / res["path"])), [])
 
     def test_a_blank_result_of_a_resize_is_refused(self) -> None:
         self.assertEqual(self.add(str(self.source("clear.png", flat(400, 400, (0, 0, 0, 0)))), "--max-size", "100", code=1)["refused"], "blank")
@@ -300,6 +325,26 @@ class SvgSanitiseTests(unittest.TestCase):
         self.assertNotIn("DOCTYPE", out)
         self.assertNotIn("example.com", out)
 
+    def test_a_nested_style_cant_shield_the_outer_sheet(self) -> None:
+        out, dropped = self.clean('<svg xmlns="http://www.w3.org/2000/svg"><style>@import url(file:///x.css);<style>a{}</style></style><rect width="1" height="1"/></svg>')
+        self.assertNotIn("@import", out)
+        self.assertNotIn("file:", out)
+        self.assertIn("style sheet", dropped)
+        self.assertIn("<rect", out)
+
+    def test_css_escapes_cant_spell_a_reference(self) -> None:
+        cases = [
+            '<svg xmlns="http://www.w3.org/2000/svg"><rect style="fill:u\\72 l(file:///x)" width="1" height="1"/></svg>',
+            '<svg xmlns="http://www.w3.org/2000/svg"><style>@\\69mport "file:///x.css";</style><rect width="1" height="1"/></svg>',
+            '<svg xmlns="http://www.w3.org/2000/svg"><rect fill="u\\72 l(http://example.com/x)" width="1" height="1"/></svg>',
+        ]
+        for svg in cases:
+            out, dropped = self.clean(svg)
+            self.assertTrue(dropped, svg)
+            self.assertNotIn("\\", out, svg)
+            self.assertNotIn("file:", out, svg)
+            self.assertIn("<rect", out, svg)
+
     def test_an_illustrator_style_internal_entity_still_reads(self) -> None:
         out, _ = self.clean('<!DOCTYPE svg [<!ENTITY ns_svg "http://www.w3.org/2000/svg">]><svg xmlns="&ns_svg;"><rect width="1" height="1"/></svg>')
         self.assertIn("<rect", out)
@@ -322,6 +367,35 @@ class SvgSanitiseTests(unittest.TestCase):
         with self.assertRaises(imagefile.Refused) as caught:
             svgsafe.sanitise(b"<svg>" + b" " * (svgsafe.MAX_BYTES + 1) + b"</svg>", "a.svg")
         self.assertEqual(caught.exception.code, "too-large")
+
+
+class RasteriseBatchTests(unittest.TestCase):
+    def test_a_file_that_hangs_or_crashes_fails_alone(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            jobs = [(Path(tmp) / f"{name}.svg", Path(tmp) / f"{name}.png") for name in ("a", "b", "hang", "c", "crash", "d", "e")]
+            calls: List[int] = []
+
+            def fake_run(argv: List[str], **_: Any) -> Any:
+                pairs = argv[5:]
+                calls.append(len(pairs) // 2)
+                if any("hang" in p for p in pairs):
+                    raise subprocess.TimeoutExpired(argv, 1)
+                for svg, png in zip(pairs[0::2], pairs[1::2]):
+                    if "crash" in svg:
+                        return subprocess.CompletedProcess(argv, -11)
+                    Path(png).write_bytes(b"png")
+                return subprocess.CompletedProcess(argv, 0)
+
+            with mock.patch("kblib.svgsafe.subprocess.run", fake_run):
+                svgsafe.rasterise(jobs, 64)
+            self.assertEqual(sorted(png.stem for _, png in jobs if png.is_file()), ["a", "b", "c", "d", "e"])
+            self.assertLessEqual(len(calls), 12)
+
+    def test_a_missing_osascript_is_a_refusal_not_a_silent_miss(self) -> None:
+        with mock.patch("kblib.svgsafe.subprocess.run", side_effect=OSError(2, "No such file")):
+            with self.assertRaises(imagefile.Refused) as caught:
+                svgsafe.rasterise([(Path("a.svg"), Path("a.png"))], 64)
+        self.assertEqual(caught.exception.code, "no-decoder")
 
 
 @unittest.skipUnless(DARWIN, "needs macOS's osascript and sips")
@@ -349,6 +423,14 @@ class SvgImportTests(ImportCase):
     def test_a_blank_svg_is_refused(self) -> None:
         self.assertEqual(self.add(str(self.source("empty.svg", b'<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"/>')), code=1)["refused"], "blank")
 
+    def test_an_svg_beside_a_different_png_lands_once(self) -> None:
+        (self.root / "assets" / "mark.png").write_bytes(png_bytes(9, 9))
+        src = self.source("mark.svg", GOOD_SVG)
+        first = self.add(str(src), "--max-size", "64")
+        self.assertEqual(first["path"], "assets/mark-2.png")
+        again = self.add(str(src), "--max-size", "64")
+        self.assertEqual((again["path"], again["copied"]), ("assets/mark-2.png", False))
+
     def test_an_svg_named_png_is_treated_as_an_svg(self) -> None:
         self.assertEqual(self.add(str(self.source("named.png", GOOD_SVG)), "--max-size", "64")["path"], "assets/named.png")
 
@@ -373,6 +455,20 @@ class DeepProbeTests(ImportCase):
         calls = [json.loads(x) for x in self.log.read_text().splitlines()]
         self.assertTrue(any("--pts" in c for c in calls), calls)
         self.assertTrue((self.root / "assets" / ".originals" / "looks-fine.mp4").is_file())
+
+    def test_a_clip_both_decoders_have_read_isnt_decoded_again(self) -> None:
+        self.fake_cli(caps=MEDIA, log=self.log)
+        src = self.fake_video("clean.mp4")
+        first = self.add(str(src))
+        self.assertEqual((first["conformed"], first["checked"]), (False, True))
+        self.log.write_text("")
+        again = self.add(str(src))
+        self.assertEqual((again["path"], again["copied"]), ("assets/clean.mp4", False))
+        self.assertFalse(any("--pts" in c for c in (json.loads(x) for x in self.log.read_text().splitlines())))
+        (self.root / "assets" / "clean.mp4").write_bytes(src.read_bytes())
+        os.utime(self.root / "assets" / "clean.mp4", (1, 1))
+        self.add(str(src))
+        self.assertTrue(any("--pts" in c for c in (json.loads(x) for x in self.log.read_text().splitlines())), "new mtime, so it reads again")
 
     def test_a_static_verdict_saves_the_decode(self) -> None:
         self.fake_cli(caps=MEDIA, log=self.log)
@@ -475,6 +571,31 @@ class FolderTests(ImportCase):
         (folder / "blank.png").unlink()
         again = self.folder(str(folder))
         self.assertEqual((again["copied"], [i["copied"] for i in again["items"]]), (0, [False, False]))
+
+    def test_names_that_slug_alike_land_once_each_across_reruns(self) -> None:
+        folder = self.outside / "clash"
+        folder.mkdir()
+        (folder / "a b.png").write_bytes(png_bytes(4, 4))
+        (folder / "a-b.png").write_bytes(png_bytes(5, 5))
+        first = self.folder(str(folder))
+        self.assertEqual(sorted(i["path"] for i in first["items"]), ["assets/a-b-2.png", "assets/a-b.png"])
+        again = self.folder(str(folder))
+        self.assertEqual(again["copied"], 0)
+        self.assertEqual(sorted(p.name for p in (self.root / "assets").iterdir()), ["a-b-2.png", "a-b.png", "logo.png"])
+
+    def test_a_file_that_cant_be_read_doesnt_stop_the_rest(self) -> None:
+        folder = self.kit()
+        locked = folder / "locked.mov"
+        locked.write_bytes(b"x")
+        locked.chmod(0)
+        try:
+            if os.access(locked, os.R_OK):
+                self.skipTest("this user can read anything")
+            res = self.folder(str(folder), "--no-conform", code=1)
+        finally:
+            locked.chmod(0o644)
+        self.assertEqual([r["file"] for r in res["refused"]], ["locked.mov"])
+        self.assertEqual(res["copied"], 2)
 
     def test_dedupe_lands_the_same_bytes_once(self) -> None:
         folder = self.kit()

@@ -235,6 +235,21 @@ def _same_file(a: Path, b: Path) -> bool:
         return False
 
 
+def _identical_sibling(src: Path, dest_dir: Path, name: str) -> Optional[Path]:
+    """The name-2, name-3 ... free_sibling_name made earlier, if one already holds these bytes: a rerun lands nothing twice."""
+    stem, dot, ext = name.rpartition(".")
+    if not dot or not stem:
+        stem, ext = name, ""
+    n = 2
+    while True:
+        other = dest_dir / (f"{stem}-{n}.{ext}" if ext else f"{stem}-{n}")
+        if not other.exists():
+            return None
+        if _same_file(src, other):
+            return other
+        n += 1
+
+
 def _plain_writes(rel: str) -> List[Dict[str, Any]]:
     return [{"path": rel, "action": "create", "base": lockmod.ABSENT}]
 
@@ -245,6 +260,9 @@ def _copy_plain(project: Project, src: Path, dest_dir: Path, final_name: str, dr
     if dest.exists():
         if _same_file(src, dest):
             return {"path": dest.relative_to(project.root).as_posix(), "copied": False, "note": "identical file already in assets/", "writes": [], "dryRun": dry_run}
+        twin = _identical_sibling(src, dest_dir, final_name)
+        if twin:
+            return {"path": twin.relative_to(project.root).as_posix(), "copied": False, "note": f"identical file already in assets/ as {twin.name}", "writes": [], "dryRun": dry_run}
         free = free_sibling_name(dest_dir, final_name)
         note = f"{final_name} already exists with different content, so this copy is {free}"
         dest = dest_dir / free
@@ -382,9 +400,10 @@ def add_file(
         result = _copy_plain(project, src, dest_dir, final_name, dry_run)
         probe_block = None
         checked = False
-        if timing_record(project, result["path"]) is None:
+        if timing_record(project, result["path"]) is None and not _decoded_clean(project, result["path"]):
             decision = conformmod.import_decision(src, say=progress)
             checked, probe_block = decision["checked"], decision["probe"]
+            _remember_decision(project, result["path"], decision, dry_run)
             if decision["conform"]:
                 warnings.append(f"{result['path']} is already in assets/, but it only looks conformed ({', '.join(decision['probe']['why'])}): ./kb assets conform {result['path']}")
         result.update({"conformed": False, "checked": checked, "probe": probe_block, "warnings": warnings})
@@ -397,13 +416,14 @@ def add_file(
                 "dryRun": dry_run, "conformed": True, "checked": True, "probe": None, "warnings": warnings}
     decision = conformmod.import_decision(src, say=progress)
     if not decision["checked"]:
-        warnings.append(f"{src.name} was not checked for conforming ({decision['why']}); once the app is installed, ./kb assets probe it")
+        warnings.append(f"{src.name} was not checked for conforming ({decision['why']}); ./kb assets probe it --deep once that is fixed")
     if decision.get("refused"):
         warnings.append(f"not conformed: {decision['refused'].get('hint')}")
     if not decision["conform"]:
         if not decision["checked"] and decision["probe"].get("recommended"):
             warnings.append(f"its container says it needs conforming ({', '.join(decision['probe']['why'])}): ./kb assets conform it once the app is installed")
         result = _copy_plain(project, src, dest_dir, final_name, dry_run)
+        _remember_decision(project, result["path"], decision, dry_run)
         result.update({"conformed": False, "checked": decision["checked"], "probe": decision["probe"], "warnings": warnings})
         return result
     if subdir:
@@ -446,6 +466,17 @@ def add_file(
     return dict(common, path=target_rel, copied=True, conformed=True, bytes=int(done.get("bytes") or (project.root / target_rel).stat().st_size),
                 frames=done.get("frames"), durationMs=done.get("durationMs"), verdict=done.get("verdict"), reasons=done.get("reasons") or [],
                 writes=writes, dryRun=False)
+
+
+def _remember_decision(project: Project, rel: str, decision: Dict[str, Any], dry_run: bool) -> None:
+    """A clip both decoders have read needs no second decode while its bytes stay the same, and kb check can use the verdict."""
+    if not dry_run and decision.get("checks"):
+        remember_verdict(project, rel, {"verdict": decision["probe"].get("verdict"), "reasons": decision["probe"].get("reasons"), "checks": decision["checks"]})
+
+
+def _decoded_clean(project: Project, rel: str) -> bool:
+    known = known_verdict(project, rel)
+    return bool(known) and "decode" in (known.get("checks") or []) and known.get("verdict") == "ok" and not set(known.get("reasons") or []) - {"b-frames"}
 
 
 def _rasterise_svg(src: Path, stage: Path, edge: int, source_name: str) -> Tuple[Path, Optional[str]]:
@@ -536,7 +567,7 @@ def _add_image(
         "transforms": transforms,
     })
     if transforms and result["copied"]:
-        record = {"rel": result["path"], "origin": asset_meta.origin("import", "kb assets add", source_name=source_name.replace("/", "_"), source_sha256=sha), "transforms": transforms}
+        record = {"rel": result["path"], "origin": asset_meta.origin("import", "kb assets add", source_name=source_name.replace("/", "_").replace("\\", "_"), source_sha256=sha), "transforms": transforms}
         if records is not None:
             records.append(record)
         else:

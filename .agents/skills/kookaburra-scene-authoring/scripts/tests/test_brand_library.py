@@ -128,6 +128,18 @@ class TagsAndPairsTests(LibraryCase):
         self.assertEqual(self.brand("library", "acme").returncode, 0)
         self.assertEqual(self.library()["images"]["logos/white/acme.png"]["pair"], "logos/black/acme.png")
 
+    def test_a_pair_can_be_a_name_and_a_folder(self) -> None:
+        self.image("logos/acme-black.png", ink_on_clear(16, 16, (10, 10, 10)))
+        self.image("logos/white/acme.png", ink_on_clear(16, 16, (250, 250, 250)))
+        self.assertEqual(self.brand("library", "acme").returncode, 0)
+        self.assertEqual(self.library()["images"]["logos/acme-black.png"]["pair"], "logos/white/acme.png")
+
+    def test_a_hostile_library_record_doesnt_crash_tag(self) -> None:
+        write_json(self.home / "library.json", {"version": 1, "images": {"icons/a.png": "not an object"}})
+        run = self.brand("tag", "acme", "icons/*", "x")
+        self.assertEqual(run.returncode, 1)
+        self.assertIn("no image in the library matches", run.stderr)
+
     def test_an_opaque_picture_falls_back_on_its_name(self) -> None:
         self.image("logos/acme-on-dark.png", png_bytes(8, 8))
         self.image("logos/acme.png", png_bytes(8, 9))
@@ -169,6 +181,28 @@ class SceneCopyTests(LibraryCase):
         self.assertEqual(self.library()["sceneEdge"], 100)
         self.assertEqual(self.library()["images"]["backgrounds/wide.png"]["scene"], "scene/backgrounds/wide.png")
 
+    def test_a_scene_folder_that_is_a_link_is_never_written_or_emptied(self) -> None:
+        outside = self.tmp / "elsewhere"
+        outside.mkdir()
+        (outside / "precious.png").write_bytes(png_bytes())
+        os.symlink(outside, self.home / "scene")
+        self.image("backgrounds/wide.png", self.big())
+        run = self.brand("library", "acme", "--scene-edge", "100")
+        self.assertEqual(run.returncode, 1)
+        self.assertIn("is a link", run.stderr)
+        self.assertEqual([p.name for p in outside.iterdir()], ["precious.png"])
+
+    def test_a_link_inside_scene_is_never_written_through(self) -> None:
+        outside = self.tmp / "elsewhere"
+        outside.mkdir()
+        (self.home / "scene").mkdir()
+        os.symlink(outside, self.home / "scene" / "backgrounds")
+        self.image("backgrounds/wide.png", self.big())
+        run = self.brand("library", "acme", "--scene-edge", "100")
+        self.assertEqual(run.returncode, 1)
+        self.assertIn("leads out of the brand", run.stdout + run.stderr)
+        self.assertEqual(list(outside.iterdir()), [])
+
     def test_copies_follow_their_image(self) -> None:
         wide = self.image("backgrounds/wide.png", self.big())
         self.assertEqual(self.brand("library", "acme", "--scene-edge", "100").returncode, 0)
@@ -207,6 +241,11 @@ class IconsCommandTests(LibraryCase):
         self.assertEqual(self.brand("tag", "acme", "icons/credit-card.png", "wallet-alternative").returncode, 0)
         res = self.icons("--search", "wallet")
         self.assertEqual([i["rel"] for i in res["items"]], ["icons/wallet.png", "icons/wallet-white.png", "icons/credit-card.png"])
+
+    def test_an_exact_name_beats_longer_names_on_a_multi_word_search(self) -> None:
+        self.seed()
+        self.image("icons/credit-card-white.png", png_bytes(5, 5))
+        self.assertEqual([i["rel"] for i in self.icons("--search", "credit card")["items"]], ["icons/credit-card.png", "icons/credit-card-white.png"])
 
     def test_every_word_must_match_and_partial_words_count(self) -> None:
         self.seed()

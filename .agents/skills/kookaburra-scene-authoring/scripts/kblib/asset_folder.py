@@ -307,6 +307,9 @@ def add_folder(
                 except KbError as e:
                     refused.append({"file": rel, "code": (e.data or {}).get("refused") or e.kind, "error": e.message})
                     continue
+                except OSError as e:
+                    refused.append({"file": rel, "code": "unreadable", "error": f"{rel} could not be copied: {e.strerror}"})
+                    continue
                 warnings += res.get("warnings") or []
                 writes.update((w["path"], w) for w in res.get("writes") or [])
                 items.append({"file": rel, "path": res["path"], "kind": res.get("kind") or assetmod.kind_of(res["path"]), "copied": bool(res.get("copied")), "bytes": res.get("bytes"),

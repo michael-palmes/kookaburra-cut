@@ -243,6 +243,7 @@ def _jpeg_facts(f: BinaryIO, path: Path) -> Dict[str, Any]:
 def _webp_facts(f: BinaryIO, path: Path) -> Dict[str, Any]:
     f.seek(12)
     out: Dict[str, Any] = {"format": "webp", "bits": 8, "space": "rgb", "alpha": False}
+    extended = False
     for _ in range(MAX_CHUNKS):
         head = f.read(8)
         if len(head) < 8:
@@ -254,6 +255,7 @@ def _webp_facts(f: BinaryIO, path: Path) -> Dict[str, Any]:
             if len(body) < 10:
                 raise _unreadable(path, "its header is cut short")
             flags = body[0]
+            extended = True
             out.update(alpha=bool(flags & 0x10), animated=bool(flags & 0x02))
             out["width"] = 1 + int.from_bytes(body[4:7], "little")
             out["height"] = 1 + int.from_bytes(body[7:10], "little")
@@ -264,7 +266,9 @@ def _webp_facts(f: BinaryIO, path: Path) -> Dict[str, Any]:
                 raise _unreadable(path, "its frame header is cut short")
             out.setdefault("width", struct.unpack("<H", body[6:8])[0] & 0x3FFF)
             out.setdefault("height", struct.unpack("<H", body[8:10])[0] & 0x3FFF)
-            return out
+            if not extended:
+                return out
+            f.seek(max(0, step - 10), os.SEEK_CUR)
         elif kind == b"VP8L":
             body = f.read(5)
             if len(body) < 5 or body[0] != 0x2F:
@@ -273,7 +277,9 @@ def _webp_facts(f: BinaryIO, path: Path) -> Dict[str, Any]:
             out.setdefault("width", (bits & 0x3FFF) + 1)
             out.setdefault("height", ((bits >> 14) & 0x3FFF) + 1)
             out["alpha"] = out["alpha"] or bool((bits >> 28) & 1)
-            return out
+            if not extended:
+                return out
+            f.seek(max(0, step - 5), os.SEEK_CUR)
         elif kind == b"ICCP" and length <= MAX_ICC_BYTES:
             out["profile"] = icc_name(f.read(length)) or "unnamed profile"
             f.seek(length & 1, os.SEEK_CUR)
