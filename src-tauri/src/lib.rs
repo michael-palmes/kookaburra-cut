@@ -31,6 +31,7 @@ mod fonts;
 mod global_screenshots;
 mod gradients;
 mod history;
+mod app_edits;
 mod kit;
 mod library;
 mod library_previews;

@@ -2141,9 +2141,26 @@ pub(crate) fn restamping_trust<T>(
     slug: &str,
     write: impl FnOnce() -> Result<T, String>,
 ) -> Result<T, String> {
+    restamping_trust_as(app, state, slug, true, write)
+}
+
+/// `restamping_trust`, saying whether the person made this write: the agent's own bridge inserts are its work, not an app edit it needs telling about.
+pub(crate) fn restamping_trust_as<T>(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    slug: &str,
+    journal: bool,
+    write: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
     let dir = project_dir(app, state, slug)?;
+    // Templates and presets have no agent beside them, and dev builds edit the bundled sets in the checkout.
+    let workspace = matches!(parse_project_id(slug), Ok((ProjectScope::Workspace, _)));
+    let before = (journal && workspace).then(|| crate::app_edits::snapshot(&dir));
     let trusted = stored_trust_matches(app, state, slug, &dir)?;
     let out = write()?;
+    if let Some(before) = &before {
+        crate::app_edits::record(&dir, before);
+    }
     if trusted {
         let fingerprint = trust_fingerprint(&dir);
         update_settings(app, state, |settings| {

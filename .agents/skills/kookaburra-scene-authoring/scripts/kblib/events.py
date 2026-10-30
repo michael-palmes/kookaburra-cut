@@ -28,6 +28,7 @@ EXIT_AFTER_S = 1740
 HEARTBEAT_POLL_S = 1.0
 APP_BY = {"name": "app", "session": None, "agentId": None}
 QUIET_KINDS = ("files.changed",)
+SOURCES = ("app", "kb", "edit", "bash")
 NOTE_LINE = re.compile(r"^- (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) · ([A-Za-z0-9._-]+)(?: · ([A-Za-z0-9._-]+))?: (.*)$")
 
 
@@ -277,16 +278,60 @@ def kind_matches(kind: str, kinds: Optional[List[str]]) -> bool:
     return any(kind == k or kind.startswith(k.rstrip(".*") + ".") for k in kinds or [])
 
 
-def wanted(root: str, event: Dict[str, Any], caller: Any, kinds: Optional[List[str]], all_agents: bool) -> bool:
+def source_of(event: Dict[str, Any]) -> str:
+    """Where a change or event came from: app (the app itself), edit or bash (an agent's Edit, Write or Bash call), else kb."""
+    by = event.get("by")
+    if isinstance(by, dict) and by.get("name") == APP_BY["name"]:
+        return "app"
+    via = event.get("via")
+    return via if via in ("edit", "bash") else "kb"
+
+
+def wanted(root: str, event: Dict[str, Any], caller: Any, kinds: Optional[List[str]], all_agents: bool, sources: Optional[List[str]] = None) -> bool:
     kind = str(event.get("kind"))
+    if sources and source_of(event) not in sources:
+        return False
     if kinds:
         if not kind_matches(kind, kinds):
             return False
-    elif kind in QUIET_KINDS:
+    elif kind in QUIET_KINDS and not sources:
         return False
     if all_agents or event.get("by") == APP_BY:
         return True
     return not same_caller(root, event.get("by"), caller)
+
+
+def with_source(event: Dict[str, Any]) -> Dict[str, Any]:
+    return dict(event, source=source_of(event))
+
+
+def split_sources(raw: Optional[List[str]]) -> Optional[List[str]]:
+    from .util import EXIT_ENV, KbError
+
+    picked = split_kinds(raw)
+    for source in picked or []:
+        if source not in SOURCES:
+            raise KbError(f'--source "{source}" is not one of {", ".join(SOURCES)}', EXIT_ENV, kind="usage")
+    return picked
+
+
+def app_edits_since(root: str, since: Tuple[str, Any], seen: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """The app's edits for a `--since`, as feed events. A journal cursor says nothing about the app's file, so it uses
+    this agent's own mark there, else the last 10 minutes."""
+    from . import appedits
+
+    mode, value = since
+    if mode == "end":
+        return []
+    if mode == "all":
+        entries = appedits.since_ms(root, 0)
+    elif mode == "ms":
+        entries = appedits.since_ms(root, value)
+    elif isinstance(seen.get("eventsAppInode"), int):
+        entries = appedits.from_mark(root, seen.get("eventsAppInode"), seen.get("eventsAppOffset"))[0]
+    else:
+        entries = appedits.since_ms(root, now_ms() - 600_000)
+    return appedits.as_events(entries, make, APP_BY)
 
 
 def split_kinds(raw: Optional[List[str]]) -> Optional[List[str]]:
@@ -297,11 +342,15 @@ def split_kinds(raw: Optional[List[str]]) -> Optional[List[str]]:
 
 
 class AppWatch:
-    """Synthesises app events from the serving instance's heartbeat: load, export.*, render.stalled/recovered, app.opened/closed."""
+    """Synthesises app events from the serving instance's heartbeat (load, export.*, render.stalled/recovered,
+    app.opened/closed) and from the app's edit journal (app.edit)."""
 
     def __init__(self, project: Any) -> None:
+        from . import appedits
+
         self.project = project
         self.state = self.read()
+        self.edits_mark = appedits.end_mark(root_of(project))
 
     def read(self) -> Dict[str, Any]:
         from . import bridge
@@ -337,6 +386,11 @@ class AppWatch:
         def emit(kind: str, **fields: Any) -> None:
             out.append(make(kind, APP_BY, **fields))
 
+        from . import appedits
+
+        found, inode, offset = appedits.from_mark(root_of(self.project), self.edits_mark[0], self.edits_mark[1])
+        self.edits_mark = (inode, offset)
+        out += appedits.as_events(found, make, APP_BY)
         if old.get("pid") != new.get("pid"):
             if old.get("pid") is not None:
                 emit("app.closed", pid=old.get("pid"))
@@ -424,15 +478,17 @@ def write_line(out: IO[str], event: Dict[str, Any]) -> None:
 
 
 def follow(project: Any, caller: Any, since: Tuple[str, Any], kinds: Optional[List[str]], all_agents: bool, exit_after: float,
-           out: IO[str] = sys.stdout, app_events: bool = True, on_cursor: Optional[Callable[[str], None]] = None) -> str:
+           out: IO[str] = sys.stdout, app_events: bool = True, on_cursor: Optional[Callable[[str], None]] = None, sources: Optional[List[str]] = None, seen: Optional[Dict[str, Any]] = None) -> str:
     """Stream matching events as compact lines until exit_after seconds pass; ends with follow.end and returns its cursor."""
     root = root_of(project)
     path = kb_path(root, EVENTS)
     deadline = time.monotonic() + max(0.0, exit_after)
     found, cur = read_since(root, since)
+    if app_events:
+        found = sorted(found + app_edits_since(root, since, seen or {}), key=lambda e: e.get("atMs") or 0)
     for event in found:
-        if wanted(root, event, caller, kinds, all_agents):
-            write_line(out, event)
+        if wanted(root, event, caller, kinds, all_agents, sources):
+            write_line(out, with_source(event))
     ino, offset = (int(x) for x in cur.split(":"))
     watch = AppWatch(project) if app_events else None
     next_poll = time.monotonic() + HEARTBEAT_POLL_S
@@ -450,8 +506,8 @@ def follow(project: Any, caller: Any, since: Tuple[str, Any], kinds: Optional[Li
                 if _inode(old) == ino:
                     rest, _end = _read_lines(old, offset)
                     for event in rest:
-                        if wanted(root, event, caller, kinds, all_agents):
-                            write_line(out, event)
+                        if wanted(root, event, caller, kinds, all_agents, sources):
+                            write_line(out, with_source(event))
                 ino, offset = now_ino, 0
                 _unwatch(watcher)
                 watcher = _watcher(path) if ino else None
@@ -461,13 +517,13 @@ def follow(project: Any, caller: Any, since: Tuple[str, Any], kinds: Optional[Li
             if ino:
                 fresh, offset = _read_lines(path, offset)
                 for event in fresh:
-                    if wanted(root, event, caller, kinds, all_agents):
-                        write_line(out, event)
+                    if wanted(root, event, caller, kinds, all_agents, sources):
+                        write_line(out, with_source(event))
             if watch is not None and time.monotonic() >= next_poll:
                 next_poll = time.monotonic() + HEARTBEAT_POLL_S
                 for event in watch.poll():
-                    if not kinds or kind_matches(event["kind"], kinds):
-                        write_line(out, event)
+                    if (not kinds or kind_matches(event["kind"], kinds)) and (not sources or "app" in sources):
+                        write_line(out, with_source(event))
             if on_cursor is not None and time.monotonic() - saved > 5:
                 saved = time.monotonic()
                 on_cursor(f"{ino}:{offset}")
@@ -652,8 +708,10 @@ def describe(event: Dict[str, Any]) -> str:
         bits.append(f"\"{one_line(str(event['text']))[:120]}\"")
     if event.get("via") and event.get("kind") == "files.changed":
         bits.append(f"via {event['via']}")
+    if event.get("summary"):
+        bits.append(str(event["summary"]))
     return " ".join(bits)
 
 
-def iter_wanted(root: str, events: Iterable[Dict[str, Any]], caller: Any, kinds: Optional[List[str]], all_agents: bool) -> List[Dict[str, Any]]:
-    return [e for e in events if wanted(root, e, caller, kinds, all_agents)]
+def iter_wanted(root: str, events: Iterable[Dict[str, Any]], caller: Any, kinds: Optional[List[str]], all_agents: bool, sources: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    return [with_source(e) for e in events if wanted(root, e, caller, kinds, all_agents, sources)]

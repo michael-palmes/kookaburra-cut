@@ -64,6 +64,25 @@ def kit_info(project: Project) -> str:
     return f"kit {data.get('kitVersion', '?')} (app {data.get('appVersion', '?')})"
 
 
+def agent_name_of(project: Project, caller: Any = None) -> str:
+    """The name this caller's read marks live under: a hook caller's bound name or session, else kb's own identity."""
+    from . import hookfast, identity
+
+    if isinstance(caller, dict):
+        return hookfast.agent_name(str(project.root), caller)
+    who = caller if caller is not None else identity.current()
+    return str(getattr(who, "name", None) or "user")
+
+
+def app_edit_entries(project: Project, caller: Any = None, mark: bool = True) -> List[Dict[str, Any]]:
+    from . import appedits
+
+    try:
+        return appedits.unseen(project, agent_name_of(project, caller), mark=mark)
+    except Exception:  # advisory, like coordination state: status must still print
+        return []
+
+
 def last_load_for(project: Project, hb: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     last = hb.get("lastLoad") if isinstance(hb, dict) else None
     if isinstance(last, dict) and last.get("project") == project.project_id:
@@ -383,8 +402,13 @@ def status_data(project: Project) -> Dict[str, Any]:
         "leases": coord[2],
         "notes": coord[3],
         "drift": drift_of(project),
+        "appEdits": app_edits_data(project),
         "kitProblems": kit_problem_lines(project),
     }
+
+
+def app_edits_data(project: Project) -> List[Dict[str, Any]]:
+    return app_edit_entries(project)
 
 
 def kit_problem_lines(project: Project) -> List[str]:
@@ -423,6 +447,9 @@ def status_text(project: Project) -> str:
 
     lines += health_lines(hb)
     lines += load_lines(last_load_for(project, hb))
+    from . import appedits
+
+    lines += appedits.summary_text(app_edit_entries(project))
     edits = edits_line(edits_summary(project))
     if edits:
         lines.append(edits)
@@ -464,6 +491,9 @@ def context_text(project: Project, check_summary: Optional[List[str]] = None, cw
     head += load_lines(last_load_for(project, hb), limit=4)
     if check_summary:
         head += check_summary
+    from . import appedits
+
+    head += appedits.summary_text(app_edit_entries(project, caller))
     try:
         edits = edits_line(edits_summary(project), limit=3)
         if edits:

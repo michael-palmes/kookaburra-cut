@@ -85,7 +85,7 @@ the cwd, or uses $CLAUDE_PROJECT_DIR.
              undo [REV] [--scene S | --all] | diff [REV] [--scene S] | plan COMMAND ...
   Agents     lease S [--ttl 2h] [--note T] [--for NAME] | lease S --release [--force] | leases [--all]
              note TEXT [--scene S] | notes [--all]
-             events [--follow] [--since 10m|CURSOR|all] [--kinds ...] [--all-agents] [--exit-after S]
+             events [--follow] [--since 10m|CURSOR|all] [--kinds ...] [--source ...] [--all-agents] [--exit-after S]
   Music      beats [--scene S] | beats set-grid|set-downbeat|clear-grid|cue|section|resolve ...
              timeline | timeline apply PLAN [--ripple]   (cuts and transitions in bars and ms)
              song analyse [--force] [--tracker nn|dsp] [--lyrics] [--accept]

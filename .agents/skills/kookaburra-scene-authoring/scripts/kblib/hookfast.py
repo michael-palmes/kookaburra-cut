@@ -1,4 +1,4 @@
-"""The Bash hooks (`hook bash-pre`, `hook bash-post`): kb.py runs this before importing kblib.cli.
+"""The Bash hooks (`hook bash-pre`, `hook bash-post`) and `hook user-prompt`: kb.py runs this before importing kblib.cli.
 
 Standard library only, and nothing heavy until a command actually changed a project file: the pre-hook stamps
 project.json, scenes/** and edits/*.json, binds `--agent NAME` to the hook's agent id, denies a visible write to a
@@ -576,6 +576,35 @@ def bash_post(payload: Dict[str, Any]) -> Tuple[int, str, str]:
     return 0, "", ""
 
 
+# ── user-prompt ───────────────────────────────────────────────────────────────
+
+
+def agent_name(root: str, caller: Dict[str, Any]) -> str:
+    """The name kb itself would use for this caller, so the hook and kb status share one read mark."""
+    session = caller.get("session")
+    bound = leases.bound_name(root, session, caller.get("agentId"))
+    return bound or (f"session-{SAFE_SESSION.sub('_', session[:8])}" if session else "user")
+
+
+def user_prompt(payload: Dict[str, Any]) -> Tuple[int, str, str]:
+    """Each prompt: what the app changed since this agent last looked, and a missing ./kb. Silent otherwise."""
+    root = project_root(payload)
+    if root is None:
+        return 0, "", ""
+    lines: List[str] = []
+    from . import kitstate
+
+    lines += kitstate.missing_shim_lines(root)
+    if os.path.isfile(os.path.join(root, ".kookaburra", "app-edits.jsonl")):
+        from . import appedits
+
+        found = appedits.unseen(root, agent_name(root, hook_caller(payload)))
+        lines += appedits.summary_text(found)
+    if not lines:
+        return 0, "", ""
+    return 0, context("UserPromptSubmit", "\n".join(lines)), ""
+
+
 # ── entry ─────────────────────────────────────────────────────────────────────
 
 
@@ -586,6 +615,8 @@ def run(event: str, payload: Any) -> Tuple[int, str, str]:
         return bash_pre(payload)
     if event == "bash-post":
         return bash_post(payload)
+    if event == "user-prompt":
+        return user_prompt(payload)
     return 0, "", ""
 
 
