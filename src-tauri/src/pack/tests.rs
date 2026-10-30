@@ -5,14 +5,15 @@
 use super::error::PackError;
 use super::hash::{sha256_bytes, sha256_file};
 use super::limits::{
-    MANIFEST_ENTRY, MAX_ENTRIES, MAX_MANIFEST_BYTES, MAX_PATH_BYTES, SIGNATURE_ENTRY, STAGING_DIR,
+    MANIFEST_ENTRY, MAX_ENTRIES, MAX_MANIFEST_BYTES, MAX_PATH_BYTES, MAX_TOTAL_UNCOMPRESSED,
+    SIGNATURE_ENTRY, STAGING_DIR,
 };
 use super::model::{
     FontEmbedding, ItemKind, PackBrand, PackContents, PackFile, PackFont, PackItemBase,
     PackManifest, PackMeta, PackObject, PackProject, PackPublisher, PackScreenshot,
     PackSimpleItem, PackTheme, PackTotals, PACK_FORMAT, PACK_FORMAT_VERSION,
 };
-use super::read::{inspect, stage, sweep_stale};
+use super::read::{check_staging_space, inspect, stage, sweep_stale};
 use super::write::{write_pack, PackEntry};
 use crate::workspace::STATE_DIR_NAME;
 use base64::Engine as _;
@@ -1710,6 +1711,25 @@ fn refuses_declared_total_over_the_limit() {
             .declared_sizes(u32::MAX - 1),
         "tooLarge",
     );
+}
+
+/// The signed total bounds what staging writes, so it is checked against the pack limit and the free disk before the staging folder exists.
+#[test]
+fn staging_refuses_a_total_the_disk_cannot_hold() {
+    let total = 300 * 1024 * 1024;
+    let need = total + crate::DISK_FLOOR;
+    assert!(check_staging_space(total, need).is_ok());
+    let short = check_staging_space(total, need - 1).unwrap_err();
+    assert_eq!(short.variant(), "notEnoughSpace");
+    assert!(
+        short
+            .user_message()
+            .contains("which has 2.3 GB. Free up at least 1 MB and try again"),
+        "{}",
+        short.user_message()
+    );
+    let over = check_staging_space(MAX_TOTAL_UNCOMPRESSED + 1, u64::MAX).unwrap_err();
+    assert_eq!(over.variant(), "tooLarge");
 }
 
 #[test]

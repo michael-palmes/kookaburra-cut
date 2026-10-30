@@ -437,7 +437,9 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
   and zero-width characters, absolute paths, `..`, dotted folders, drive
   letters and extensions outside each kind's allow-list; symlinks and any
   non-regular file are refused; staging is a fresh folder under
-  `<workspace>/.kookaburra/import-staging/` removed on drop. Per-kind payload
+  `<workspace>/.kookaburra/import-staging/` removed on drop, and refused before
+  it exists when the signed file total would take the volume under 2 GB
+  (`check_staging_space`). Per-kind payload
   caps (`limits::kind_cap`: fonts 64 MiB, 3D models 512 MiB, images 256 MiB,
   audio 512 MiB, text 16 MiB, video 4 GiB) are checked against the central
   directory before consent and against the stream while staging; an
