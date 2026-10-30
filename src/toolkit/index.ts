@@ -223,7 +223,11 @@ export {
 } from "./stage/screenFills";
 export { AnimatedCounter, type AnimatedCounterProps } from "./text/AnimatedCounter";
 // Text primitives
-export { AnimatedHeadline, type AnimatedHeadlineProps } from "./text/AnimatedHeadline";
+export {
+  AnimatedHeadline,
+  type AnimatedHeadlineProps,
+  type HeadlineDepth,
+} from "./text/AnimatedHeadline";
 // Horizontal app-icon + title/subtitle lockup revealed as one unit.
 export { BrandLockup, type BrandLockupProps } from "./text/BrandLockup";
 export { ManagedTextStack, type ManagedTextStackProps } from "./text/ManagedTextStack";
@@ -238,7 +242,12 @@ export {
 } from "./text/presets";
 // Title + optional subtitle with theme-scale sizing and safe-area alignment.
 export { TitleBlock, type TitleBlockProps } from "./text/TitleBlock";
-export { type TextMetricsOptions, useTextMetrics } from "./text/useTextMetrics";
+export {
+  fitFontSize,
+  type MeasuredText,
+  type TextMetricsOptions,
+  useTextMetrics,
+} from "./text/useTextMetrics";
 // Extruded 3D text.
 export { ExtrudedText, type ExtrudedTextProps } from "./text3d/ExtrudedText";
 // Transition helpers

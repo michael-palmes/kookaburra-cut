@@ -55,6 +55,46 @@ export function textPresetHasMotion(name: TextPresetName): boolean {
   return name !== "none" && name !== STATIC_TEXT_PRESET;
 }
 
+/** How a motion reads on more than one line, exhaustive so a new preset must say: "single" plays badly on a `\n` or a wrap (it re-centres one line, walks one line, underlines one line, or rises word by word so a wrapped line catches words at different heights); "two-line" holds its block together. */
+export const TEXT_PRESET_LINES: Record<TextPresetName, "two-line" | "single"> = {
+  none: "two-line",
+  static: "two-line",
+  fade: "two-line",
+  "fade-up": "two-line",
+  "blur-in": "two-line",
+  slide: "two-line",
+  "mask-reveal": "two-line",
+  "fade-scale": "two-line",
+  "twist-scale": "two-line",
+  "scatter-scale": "two-line",
+  tracking: "two-line",
+  slam: "two-line",
+  dolly: "two-line",
+  chromatic: "two-line",
+  "line-stretch": "two-line",
+  "highlight-wipe": "two-line",
+  "rise-mask": "single",
+  "word-cycle": "single",
+  ribbon: "two-line",
+  "stand-up": "two-line",
+  "spring-pop": "two-line",
+  spotlight: "two-line",
+  "underline-draw": "single",
+  orbit: "two-line",
+  "weight-build": "two-line",
+  develop: "two-line",
+  "flip-cascade": "two-line",
+  converge: "two-line",
+  "glint-wipe": "two-line",
+  vapor: "two-line",
+  stamp: "two-line",
+  build: "single",
+  typewriter: "two-line",
+};
+
+/** Rises staggered by word (`stagger="word"`) join the single-line set: the block is safe, the wave isn't. */
+export const WORD_STAGGER_SINGLE_LINE: ReadonlySet<TextPresetName> = new Set(["fade-up"]);
+
 /** The wave-2 pack, in TEXT_PRESET_NAMES order: every one samples v2 per-unit fields, per-unit hashing/slotting, companion quads or the accent shine tint, none of which the legacy block path carries. */
 const SHADER_PATH_PRESETS: ReadonlySet<TextPresetName> = new Set([
   "tracking",
@@ -568,8 +608,10 @@ export interface TextAnimTiming {
   anim: ResolvedTextAnimation;
   from: number;
   to: number;
-  /** Out start, ms; the out plays over the same duration as the in. Absent = no out. */
+  /** Out start, ms; the out plays over the same duration as the in unless `outDurationMs` sets its own. Absent = no out. */
   outAt?: number;
+  /** How long the out lasts, ms; absent plays it over the in's duration. */
+  outDurationMs?: number;
 }
 
 /** One unit's sampled state: offsets/blur are in em, sweep is a [left, right] 0..1 window; the motion-pack fields carry NEUTRAL defaults (0 / −1 off-sentinel) so every legacy preset case ships verbatim. */
@@ -616,6 +658,13 @@ export interface ScatterSampleContext {
   lineShiftEm?: number;
 }
 
+/** The out's own duration, ms: `outDurationMs` when set, else the in's. */
+function outDurationOf(timing: TextAnimTiming): number {
+  return timing.outDurationMs === undefined
+    ? Math.max(1, timing.to - timing.from)
+    : Math.max(1, timing.outDurationMs);
+}
+
 const FULL_SWEEP: readonly [number, number] = [0, 1];
 const HIGHLIGHT_OFF: readonly [number, number] = [0, 0];
 
@@ -656,8 +705,12 @@ export function sampleTextUnit(
       durationMs * (VAPOR_RATE_MIN + (1 - VAPOR_RATE_MIN) * unitHash01(unitIndex, 6));
   }
   const p = ease(anim.ease, clamp01((localMs - from - delay) / unitDurationMs));
+  // An own out duration keeps each unit's jitter, scaled to it; the out's stagger stays authored.
+  const outScale = timing.outDurationMs === undefined ? 1 : outDurationOf(timing) / durationMs;
+  const outUnitMs = outScale === 1 ? unitDurationMs : unitDurationMs * outScale;
+  const outWindowMs = outScale === 1 ? durationMs : durationMs * outScale;
   const q =
-    outAt === undefined ? 0 : ease(anim.ease, clamp01((localMs - outAt - delay) / unitDurationMs));
+    outAt === undefined ? 0 : ease(anim.ease, clamp01((localMs - outAt - delay) / outUnitMs));
 
   let alpha = 1;
   let dxEm = 0;
@@ -1003,7 +1056,7 @@ export function sampleTextUnit(
       // The in's slot walk rewound; alpha is assigned (the in already zeroed passed words).
       case "word-cycle": {
         const count = Math.max(1, ctx?.count ?? 1);
-        const t = 1 - clamp01((localMs - (outAt ?? 0)) / durationMs);
+        const t = 1 - clamp01((localMs - (outAt ?? 0)) / outWindowMs);
         const slot = Math.min(count - 1, Math.floor(t * count));
         if (slot !== unitIndex) {
           alpha = 0;
@@ -1097,7 +1150,7 @@ export function sampleTextUnit(
         break;
       // The backspace runs through the mask; the block only gates off once it has emptied.
       case "typewriter":
-        if (clamp01((localMs - (outAt ?? 0) - delay) / unitDurationMs) >= 1) alpha = 0;
+        if (clamp01((localMs - (outAt ?? 0) - delay) / outUnitMs) >= 1) alpha = 0;
         break;
     }
   }
@@ -1159,7 +1212,8 @@ export function underlineProgress(timing: TextAnimTiming, localMs: number): numb
   const durationMs = Math.max(1, to - timing.from);
   // The same delay shift as sampleTextUnit: the rule draws late with the text, the out never shifts.
   const from = anim.delayMs === undefined ? timing.from : timing.from + anim.delayMs;
-  const q = outAt === undefined ? 0 : ease(anim.ease, clamp01((localMs - outAt) / durationMs));
+  const q =
+    outAt === undefined ? 0 : ease(anim.ease, clamp01((localMs - outAt) / outDurationOf(timing)));
   if (q > 0) {
     if (!outActive) {
       const p = ease(anim.ease, clamp01((localMs - from) / durationMs));
@@ -1237,7 +1291,10 @@ export function typewriterCount(timing: TextAnimTiming, localMs: number, total: 
       ? Math.min(total, Math.floor(total * clamp01((localMs - from) / durationMs)))
       : total;
   if (outAt !== undefined && anim.outPreset === "typewriter") {
-    const gone = Math.min(total, Math.floor(total * clamp01((localMs - outAt) / durationMs)));
+    const gone = Math.min(
+      total,
+      Math.floor(total * clamp01((localMs - outAt) / outDurationOf(timing))),
+    );
     n = Math.min(n, total - gone);
   }
   return n;
