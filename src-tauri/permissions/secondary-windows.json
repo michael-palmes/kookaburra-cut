@@ -71,6 +71,7 @@
           "cancel_pack_build",
           "reveal_pack",
           "inspect_pack",
+          "read_pack_scene_docs",
           "read_pack_scene_source",
           "stage_pack",
           "apply_import",

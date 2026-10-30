@@ -15,7 +15,7 @@
     },
     {
       "file": "scenes/02-breaking.tsx",
-      "durationMs": 4400,
+      "durationMs": 4800,
       "transition": {
         "type": "dip",
         "durationMs": 380
@@ -30,15 +30,7 @@
       }
     },
     {
-      "file": "scenes/04-api-diff.tsx",
-      "durationMs": 4800,
-      "transition": {
-        "type": "dip",
-        "durationMs": 380
-      }
-    },
-    {
-      "file": "scenes/05-migration.tsx",
+      "file": "scenes/04-migration.tsx",
       "durationMs": 4600,
       "transition": {
         "type": "dip",
@@ -46,7 +38,7 @@
       }
     },
     {
-      "file": "scenes/06-adoption-chart.tsx",
+      "file": "scenes/05-adoption-chart.tsx",
       "durationMs": 4400,
       "transition": {
         "type": "dip",
@@ -54,7 +46,7 @@
       }
     },
     {
-      "file": "scenes/07-docs-cta.tsx",
+      "file": "scenes/06-docs-cta.tsx",
       "durationMs": 3600
     }
   ]

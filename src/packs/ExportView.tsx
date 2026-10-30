@@ -639,7 +639,6 @@ function DetailsPane({
                 {profile.organisation ? `${profile.organisation} · ` : ""}
                 {profile.effectiveName}
               </span>
-              <span className="packs-row-detail">{profile.device}</span>
             </span>
           </div>
         ) : (

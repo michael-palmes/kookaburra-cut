@@ -35,12 +35,12 @@ class CheckpointTests(KbTestCase):
 
     def test_checkpoint_leaves_other_staged_work_alone(self) -> None:
         self.assertExit(self.kb(["checkpoint"], cwd=self.root), 0)
-        (self.root / "assets" / "new.png").write_bytes(b"x")
-        run_git(self.root, ["add", "assets/new.png"])
+        (self.root / "NOTES.md").write_text("staged by someone else\n")
+        run_git(self.root, ["add", "NOTES.md"])
         write_json(self.root / "scenes" / "02-hero.json", {"version": 1, "name": "Changed"})
         self.assertExit(self.kb(["checkpoint"], cwd=self.root), 0)
-        self.assertNotIn("assets/new.png", self.committed())
-        self.assertIn("A  assets/new.png", run_git(self.root, ["status", "--porcelain"]))
+        self.assertNotIn("NOTES.md", self.committed())
+        self.assertIn("A  NOTES.md", run_git(self.root, ["status", "--porcelain"]))
 
     def test_history_diff_and_undo_round_trip(self) -> None:
         self.assertExit(self.kb(["checkpoint", "base"], cwd=self.root), 0)

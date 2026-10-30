@@ -602,6 +602,30 @@ fn run_preview(ffmpeg: &Path, dir: &Path, count: CountRecord, chunk: u32) -> Res
     outcome
 }
 
+/// The most `frames` PNGs can take: three bytes a pixel, the raw RGB ceiling the deflate never exceeds.
+pub(crate) fn extraction_ceiling(frames: u32, width: u32, height: u32) -> u64 {
+    u64::from(frames) * u64::from(width) * u64::from(height) * 3
+}
+
+/// Refuses an extraction whose ceiling would take the volume under the floor, naming the space it needs.
+pub(crate) fn check_extraction_space(
+    free: u64,
+    frames: u32,
+    count: CountRecord,
+) -> Result<(), String> {
+    let need = extraction_ceiling(frames, count.width, count.height) + crate::DISK_FLOOR;
+    if free >= need {
+        return Ok(());
+    }
+    let gb = |bytes: u64| bytes as f64 / 1e9;
+    Err(format!(
+        "extracting {frames} frames needs up to {:.1} GB free and {:.1} GB is available: free {:.1} GB, or lower the clip cache cap in Settings so older frames make room",
+        gb(need),
+        gb(free),
+        gb(need - free),
+    ))
+}
+
 /// Groups sorted chunk indices into consecutive runs, each one ffmpeg pass.
 pub(crate) fn chunk_runs(chunks: &[u32]) -> Vec<(u32, u32)> {
     let mut sorted = chunks.to_vec();
@@ -843,6 +867,16 @@ pub(crate) async fn ensure_clip_chunks(
                 _ => None,
             })
             .collect();
+        let frames: u32 = mine
+            .iter()
+            .map(|&c| {
+                let (start, end) = chunk_range(c, count.frames);
+                end - start
+            })
+            .sum();
+        if frames > 0 {
+            check_extraction_space(crate::free_disk_bytes(&root)?, frames, count)?;
+        }
         for (first, last) in chunk_runs(&mine) {
             let permit = background_permit(&app).await?;
             let ffmpeg = crate::tools::sidecar_path("ffmpeg")?;
@@ -1428,6 +1462,31 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn the_extraction_guard_adds_the_floor_to_the_raw_ceiling_and_names_the_shortfall() {
+        let count = CountRecord {
+            frames: 600,
+            width: 1920,
+            height: 1080,
+        };
+        let one_chunk = extraction_ceiling(CHUNK_FRAMES, 1920, 1080);
+        assert_eq!(one_chunk, 120 * 1920 * 1080 * 3);
+        let need = one_chunk + crate::DISK_FLOOR;
+        assert!(check_extraction_space(need, CHUNK_FRAMES, count).is_ok());
+        assert!(check_extraction_space(u64::MAX, 0, count).is_ok());
+        let short = check_extraction_space(need - 1, CHUNK_FRAMES, count).unwrap_err();
+        assert!(
+            short.starts_with("extracting 120 frames needs up to 2.9 GB free"),
+            "{short}"
+        );
+        assert!(short.contains("free 0.0 GB"), "{short}");
+        let empty = check_extraction_space(0, 600, count).unwrap_err();
+        assert!(
+            empty.contains("needs up to 5.9 GB free and 0.0 GB is available: free 5.9 GB"),
+            "{empty}"
+        );
     }
 
     #[test]

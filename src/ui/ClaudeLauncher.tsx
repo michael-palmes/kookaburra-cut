@@ -125,7 +125,7 @@ export function EditWithClaudeButton({
 
 /** What starting a session means for a confidential project, in one line (docs/agent-kit.md, "Stamping"). */
 const CLAUDE_DISCLOSURE =
-  "Sends this project’s files to Anthropic as you work. Scene edits and kb commands run without asking; other commands ask.";
+  "Sends this project’s files to Anthropic as you work. Scene edits and kb commands run without asking; Claude Code decides which other commands are safe to run and asks about the rest.";
 
 const STARTERS: { kind: ClaudeStarter; label: string; icon: ReactNode }[] = [
   { kind: "scene", label: "Scene", icon: <path d="M10 4v12M4 10h12" /> },

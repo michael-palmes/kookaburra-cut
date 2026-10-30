@@ -1,18 +1,21 @@
+import type { PackReview } from "../packReview";
 import { formatBytes, formatDate, formatKeyId, type PackInspection } from "../types";
 
-/** Screen 1. The honesty rule: a publisher name is rendered as self-declared, always. No tick, no badge, no green for a name. The publisher verdict comes first and the integrity tick below it, so "Contents verified" never heads a pack from a stranger or a changed key. */
+/** Screen 1. The honesty rule: a publisher name is rendered as self-declared, always. No tick, no badge, no green for a name. The publisher verdict comes first and the integrity tick below it, so "Contents verified" never heads a pack from a stranger or a changed key. Scene code counts, pre-typed terminal commands and website origins come from the signed files the reader checked, never the manifest's description of itself, and are all here before Continue. Continue is primary only for a publisher this Mac knows under this key; otherwise Cancel is. */
 export function TrustView({
   inspection,
+  review,
   onViewCode,
   onCancel,
   onContinue,
 }: {
   inspection: PackInspection;
+  review: PackReview;
   onViewCode: () => void;
   onCancel: () => void;
   onContinue: () => void;
 }) {
-  const { manifest, archiveBytes, installBytes } = inspection;
+  const { manifest, archiveBytes, installBytes, sceneSources } = inspection;
   const projects = manifest.contents.projects;
   const itemCount =
     projects.length +
@@ -23,7 +26,9 @@ export function TrustView({
     manifest.contents.gradients.length +
     manifest.contents.exportPresets.length +
     manifest.contents.screenshots.length;
-  const sceneFileCount = projects.reduce((n, p) => n + p.sceneCount, 0);
+  const sceneFileCount = sceneSources.length;
+  const codeItems = new Set(sceneSources.map((s) => `${s.kind}:${s.slug}`)).size;
+  const knownPublisher = inspection.publisher.kind === "known";
 
   return (
     <div className="packs-main">
@@ -40,27 +45,76 @@ export function TrustView({
             ✓
           </span>
           <div className="packs-verdict-body">
-            <strong>Contents verified</strong>
-            Every file matches the signed list inside this pack. That proves the pack is whole, not
-            who made it.
+            <strong>Manifest signature valid</strong>
+            The signed list inside this pack has not been changed. Every file is checked against it
+            as it is unpacked. That proves the pack is whole, not who made it.
           </div>
         </div>
 
-        {projects.length > 0 && (
+        {sceneFileCount > 0 && (
           <div className="packs-verdict packs-verdict-warn">
             <span className="packs-verdict-icon" aria-hidden="true">
               !
             </span>
             <div className="packs-verdict-body">
               <strong>This pack contains scene code</strong>
-              {projects.length} project{projects.length === 1 ? "" : "s"} include {sceneFileCount}{" "}
-              scene file{sceneFileCount === 1 ? "" : "s"} that run on your Mac when you open them.
-              Importing only copies files. You will be asked again before any code runs.
+              {codeItems} item{codeItems === 1 ? "" : "s"} carry {sceneFileCount} scene file
+              {sceneFileCount === 1 ? "" : "s"} that run on your Mac when you open them. Importing
+              only copies files. You will be asked again before any code runs, and a project this
+              pack replaces asks again on its next open.
               <div style={{ marginTop: 8 }}>
                 <button type="button" className="btn" onClick={onViewCode}>
                   View the code
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {review.terminals.length > 0 && (
+          <div className="packs-verdict packs-verdict-warn">
+            <span className="packs-verdict-icon" aria-hidden="true">
+              !
+            </span>
+            <div className="packs-verdict-body">
+              <strong>Terminal scenes come with pre-typed commands</strong>
+              Nothing runs on its own: a pre-typed command only runs when you press Enter on it.
+              Review these before presenting, since they were written by the pack's author.
+              {review.terminals.map((row) => (
+                <div className="packs-terminal-review-row" key={`${row.project}:${row.file}`}>
+                  <span className="packs-verdict-note">
+                    {row.project} · {row.scene}
+                    {row.startPath ? ` · opens at ${row.startPath}` : ""}
+                  </span>
+                  {row.command && <code className="packs-terminal-command">{row.command}</code>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {review.websites.length > 0 && (
+          <div className="packs-verdict packs-verdict-warn">
+            <span className="packs-verdict-icon" aria-hidden="true">
+              !
+            </span>
+            <div className="packs-verdict-body">
+              <strong>Website scenes request network access</strong>
+              Nothing loads and no approval travels with the pack. Each origin asks for local
+              approval before its first request.
+              {review.websites.map((row) => (
+                <div className="packs-terminal-review-row" key={`${row.project}:${row.file}`}>
+                  <span className="packs-verdict-note">
+                    {row.project} · {row.scene}
+                  </span>
+                  {row.origins.map((origin) => (
+                    <code className="packs-terminal-command" key={origin.origin}>
+                      {origin.origin}
+                      {origin.loopback ? " · local address, session approval only" : ""}
+                    </code>
+                  ))}
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -72,10 +126,18 @@ export function TrustView({
           {formatBytes(installBytes)} installed
         </div>
         <div className="packs-actions">
-          <button type="button" className="btn" onClick={onCancel}>
+          <button
+            type="button"
+            className={knownPublisher ? "btn" : "btn primary"}
+            onClick={onCancel}
+          >
             Cancel
           </button>
-          <button type="button" className="btn primary" onClick={onContinue}>
+          <button
+            type="button"
+            className={knownPublisher ? "btn primary" : "btn"}
+            onClick={onContinue}
+          >
             Continue
           </button>
         </div>

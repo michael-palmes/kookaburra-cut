@@ -3,9 +3,10 @@ import type { StagePointerEvent, StageRole } from "../engine/stageProtocol";
 import type { FrameRect } from "../toolkit/frame/frameLayout";
 import { StageClient } from "./stageClient";
 
-/** The stage as a window mounts it: one canvas the stage worker draws into, sized by its container, with pointer events forwarded to the worker's raycaster and the cursor the worker asks for. Replaces the editor's `<Canvas>`; the chrome around it is untouched. The canvas element is made inside the mount effect, since a canvas whose control was transferred cannot be transferred again (StrictMode mounts twice). */
+/** The stage as a window mounts it: one canvas the stage worker draws into, sized by its container, with pointer events forwarded to the worker's raycaster and the cursor the worker asks for. Replaces the editor's `<Canvas>`; the chrome around it is untouched. The canvas element is made inside the mount effect, since a canvas whose control was transferred cannot be transferred again (StrictMode mounts twice, and a Retry needs a fresh one). */
 export function StageView({
   stageRole,
+  attempt = 0,
   frameloop = "demand",
   dpr,
   cutout = null,
@@ -14,6 +15,8 @@ export function StageView({
   onClient,
 }: {
   stageRole: StageRole;
+  /** Bumped by a host's Retry: the worker is terminated and a fresh canvas and worker take its place, with a fresh ready window. */
+  attempt?: number;
   frameloop?: "demand" | "never";
   /** The preview pixel ratio, clamped to the device's. */
   dpr: number | [number, number];
@@ -31,6 +34,8 @@ export function StageView({
   onClientRef.current = onClient;
 
   useLayoutEffect(() => {
+    // A new attempt rebuilds the canvas and worker with otherwise-identical inputs.
+    void attempt;
     const host = container.current;
     if (!host) return;
     const canvas = document.createElement("canvas");
@@ -53,7 +58,7 @@ export function StageView({
       canvas.remove();
       setClient(null);
     };
-  }, [stageRole]);
+  }, [stageRole, attempt]);
 
   useEffect(() => {
     dprRef.current = dpr;

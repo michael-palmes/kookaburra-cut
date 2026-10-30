@@ -29,6 +29,8 @@ export function createInlineStage(element?: HTMLCanvasElement): StageHandle {
   const noop = () => () => {};
   return {
     ready: Promise.resolve(),
+    boot: () => ({ status: "ready", late: false }),
+    subscribeBoot: noop,
     element: element ?? ({} as HTMLCanvasElement),
     stamps: () => ({
       ...localCommitStamps(),
