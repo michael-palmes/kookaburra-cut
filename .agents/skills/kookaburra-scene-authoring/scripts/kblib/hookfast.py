@@ -31,7 +31,7 @@ FILE_OPS = re.compile(r"(?:^|[\s;&|(])(mv|rm|cp|install|rsync|truncate|touch|ln)
 HEREDOC = re.compile(r"<<-?\s*[\"']?[A-Za-z_]\w*")
 PY_WRITE = re.compile(r"\.write_(?:text|bytes)\s*\(|\bopen\s*\([^)]*,\s*[\"'][rwax]?[wax+]|\bjson\.dump\s*\(|\bos\.(?:replace|rename|remove|unlink)\s*\(|\bshutil\.(?:copy\w*|move)\s*\(")
 SCENE_TOKEN = re.compile(r"(?:[^\s\"'=;&|<>()]*/)?scenes/[^\s\"';&|<>(),]*")
-ASSET_TOKEN = re.compile(r"(?:[^\s\"'=;&|<>()]*/)?(?:assets/|\.originals/)[^\s\"';&|<>(),]*")
+ASSET_TOKEN = re.compile(r"(?<![^\s\"'=;&|<>()])(?:[^\s\"'=;&|<>()]*/)?(?:a(?:ss|ß)ets/|\.originals/)[^\s\"';&|<>(),]*", re.IGNORECASE)
 RECORD_WORDS = ("assets", ".originals", "_meta.json", ".timing.json")
 KB_WRITE = re.compile(
     r"\bkb(?:\.py)?[\"']?\s+(?:--?[\w-]+(?:[= ][^\s-][^\s]*)?\s+)*"
@@ -163,15 +163,32 @@ def scripted_write(command: str) -> bool:
 
 def asset_record_reason(rel: str) -> Optional[str]:
     """Why a hand write to an asset record is refused: the provenance file, a conform's timing record or a kept original."""
-    if rel == "assets/_meta.json":
+    folded = rel.casefold()
+    if folded == "assets/_meta.json":
         return "assets/_meta.json is the provenance record kb and the app keep in step with the files; change it only with ./kb assets meta <asset> --set key=value."
-    if rel.startswith("assets/") and rel.endswith(".timing.json"):
+    if folded.startswith("assets/") and folded.endswith(".timing.json"):
         return (f"{rel} is a conform's frame map, written with its video; only ./kb assets conform (or the app's Conform) writes it. "
                 "To swap the video use ./kb assets replace, which moves the record aside with the old file (./kb assets restore undoes it).")
-    if rel == "assets/.originals" or rel.startswith("assets/.originals/"):
+    if folded == "assets/.originals" or folded.startswith("assets/.originals/"):
         return ("assets/.originals/ keeps the untouched original of each conformed video, the only copy of its source frames. "
                 "./kb assets conform keeps originals there and the app's media library removes them; to swap a clip's file use ./kb assets replace "
                 "(./kb assets restore undoes it).")
+    return None
+
+
+def rel_within(root: str, real: str) -> Optional[str]:
+    """A resolved path relative to the resolved root, however the path spells the root's folders; None outside it."""
+    rel = os.path.relpath(real, root).replace(os.sep, "/")
+    if rel != ".." and not rel.startswith("../"):
+        return rel
+    parent = os.path.dirname(real)
+    while parent != os.path.dirname(parent):
+        try:
+            if os.path.samefile(parent, root):
+                return os.path.relpath(real, parent).replace(os.sep, "/")
+        except OSError:
+            pass
+        parent = os.path.dirname(parent)
     return None
 
 
@@ -188,15 +205,16 @@ def _project_rels(root: str, cwd: Any, token: str) -> List[str]:
         paths = sorted(glob.glob(path)) or paths
     out = []
     for p in paths:
-        rel = os.path.relpath(os.path.realpath(p), root).replace(os.sep, "/")
-        if rel != ".." and not rel.startswith("../"):
+        rel = rel_within(root, os.path.realpath(p))
+        if rel is not None:
             out.append(rel)
     return out
 
 
 def asset_record_write(root: str, command: str, cwd: Any) -> Optional[Tuple[str, str]]:
     """(rel, reason) for the first asset record the command visibly writes; kb's own commands write them through kb."""
-    if not any(word in command for word in RECORD_WORDS) or kb_only(command):
+    folded = command.casefold()
+    if not any(word in folded for word in RECORD_WORDS) or kb_only(command):
         return None
     tokens = write_targets(command)
     if SED_I.search(command) or PY_WRITE.search(command):
