@@ -8,9 +8,11 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ..util import EXIT_ENV, KbError
+from ..util import EXIT_ENV, KbError, atomic_write_json, now_ms
 from ..video import appcli
 from ..video.passes import Tools
+from . import accepts as acc
+from . import strips as st
 from . import timeline as tl
 
 CHECK_TIMEOUT_S = 3600
@@ -107,11 +109,12 @@ def run_cli(info: appcli.CliInfo, path: Path, standard: str) -> Dict[str, Any]:
 
 
 def place_issues(report: Dict[str, Any], slots: List[Dict[str, Any]], poster_ms: float) -> None:
-    """Fills each issue's `scene` from the timeline (file time minus any poster frame) and its project-time stamps."""
+    """Fills each issue's `scene` from the timeline (file time minus any poster frame) and its project time (`projectMs`)."""
     for issue in report.get("issues") or []:
         if not isinstance(issue, dict):
             continue
         at = max(0.0, float(issue.get("startMs") or 0) - poster_ms)
+        issue["projectMs"] = int(round(at))
         where = tl.scene_at(slots, at) if slots else None
         if where is None:
             continue
@@ -134,6 +137,59 @@ def check(tools: Tools, path: Path, fps: float, *, standard: str = "both", slots
     return report
 
 
+def strips_folder(project: Any, film: Path) -> Path:
+    """`<film>.flashes/` beside a film inside the project (exports/, .kb/verify/), else a kb film run folder."""
+    from . import report as rp
+
+    try:
+        film.resolve().relative_to(project.root.resolve())
+    except ValueError:
+        return rp.film_dir(project, "flashes")
+    return film.with_name(film.name + ".flashes")
+
+
+def last_path(project: Any) -> Path:
+    from .. import lock
+
+    return lock.kb_dir(project) / "flashes" / "last.json"
+
+
+def settle(project: Any, report: Optional[Dict[str, Any]], source: str, *, film: Optional[Path] = None, tools: Optional[Tools] = None,
+           fps: Optional[float] = None, poster_ms: float = 0.0, meta: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+    """After every flash check: the person's accepted warnings marked, strips of a film's flagged moments, and the report kept as the last check (`kb flashes accept` reads it)."""
+    if not isinstance(report, dict):
+        return report
+    acc.apply(report, acc.load(project))
+    if film is not None and tools is not None and fps:
+        try:
+            st.attach(report, st.film_strips(tools.ffmpeg, film, report, strips_folder(project, film), fps, poster_ms))
+        except (KbError, OSError) as e:
+            report["stripsError"] = getattr(e, "message", None) or str(e)
+    try:
+        atomic_write_json(last_path(project), dict(meta or {}, version=1, atMs=now_ms(), source=source,
+                                                   file=str(film) if film else None, report=report))
+    except (KbError, OSError):
+        pass
+    return report
+
+
+def load_last(project: Any) -> Optional[Dict[str, Any]]:
+    try:
+        doc = json.loads(last_path(project).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return doc if isinstance(doc, dict) and isinstance(doc.get("report"), dict) else None
+
+
+def open_warnings(report: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Warnings nobody has accepted yet."""
+    return [i for i in (report or {}).get("issues") or [] if isinstance(i, dict) and i.get("severity") != "fail" and not i.get("accepted")]
+
+
+def accepted(report: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [i for i in (report or {}).get("issues") or [] if isinstance(i, dict) and i.get("accepted")]
+
+
 def failures(report: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
     if not report:
         return []
@@ -143,8 +199,13 @@ def failures(report: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def issue_line(issue: Dict[str, Any]) -> str:
     scene = issue.get("scene") or {}
     where = f" in {scene.get('stem')} at {scene.get('localMs', 0) / 1000:.2f}s" if scene.get("stem") else ""
-    return (f"{issue.get('severity')}: {issue.get('type')} flash ({issue.get('standard')}) at {issue.get('tc')}{where}, "
-            f"{issue.get('flashesPerSecond')} a second over {issue.get('areaPct')}% (ΔL {issue.get('deltaL')}); {issue.get('hint')}")
+    head = f"{issue.get('type')} flash ({issue.get('standard')}) at {issue.get('tc')}{where}"
+    taken = issue.get("accepted") if isinstance(issue.get("accepted"), dict) else None
+    if taken:
+        return f"accepted: {head} ({taken.get('why')})"
+    strip = f"; Read {issue['strip']}" if isinstance(issue.get("strip"), str) else ""
+    return (f"{issue.get('severity')}: {head}, {issue.get('flashesPerSecond')} a second over {issue.get('areaPct')}% "
+            f"(ΔL {issue.get('deltaL')}); {issue.get('hint')}{strip}")
 
 
 def summary_lines(report: Optional[Dict[str, Any]]) -> List[str]:
@@ -155,9 +216,11 @@ def summary_lines(report: Optional[Dict[str, Any]]) -> List[str]:
         lines.append(f"flashes: gate unavailable ({report.get('note')})")
     else:
         fails = failures(report)
-        warns = [i for i in report.get("issues") or [] if isinstance(i, dict) and i.get("severity") == "warn"]
+        warns = open_warnings(report)
+        taken = accepted(report)
         verdict = "FAIL" if fails else "ok"
-        lines.append(f"flashes: {verdict} ({len(fails)} fail, {len(warns)} warn; approximate, {', '.join(report.get('standards') or [])})")
+        extra = f", {len(taken)} accepted" if taken else ""
+        lines.append(f"flashes: {verdict} ({len(fails)} fail, {len(warns)} warn{extra}; approximate, {', '.join(report.get('standards') or [])})")
         lines += [f"  {issue_line(i)}" for i in report.get("issues") or [] if isinstance(i, dict)]
     pre = report.get("precheck") or {}
     if pre:

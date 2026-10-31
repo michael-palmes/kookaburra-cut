@@ -52,19 +52,26 @@ export function RenderApp() {
   useEffect(() => {
     const stage = stageOrNull();
     if (!stage) return;
+    let mounted = true;
     stage.ready.catch((error: unknown) => {
+      // A stage disposed before it started (StrictMode's first mount, in dev) has not failed.
+      if (!mounted) return;
       console.warn("[render-gl] the stage failed to start:", error);
       markCanvasFailed(error);
       void invoke("render_report_gpu_event", { reason: "canvasFailed", deliberate: false }).catch(
         () => {},
       );
     });
-    return stage.subscribeContextLost(() => {
+    const stopLossReports = stage.subscribeContextLost(() => {
       markCanvasFailed("the stage lost its context");
       void invoke("render_report_gpu_event", { reason: "contextLost", deliberate: false }).catch(
         () => {},
       );
     });
+    return () => {
+      mounted = false;
+      stopLossReports();
+    };
   }, []);
 
   return (

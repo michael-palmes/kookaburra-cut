@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { Mesh, MeshBasicMaterial, PerspectiveCamera, Scene } from "three";
+import { Mesh, MeshBasicMaterial, PerspectiveCamera, Scene, Vector2 } from "three";
 import { Text } from "troika-three-text";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createInlineStage } from "../stage/inlineStage";
@@ -16,6 +16,7 @@ import {
 } from "./exporter";
 import { isExporting } from "./exportState";
 import { FORMATS } from "./format";
+import { renderRange } from "./rangeRender";
 import type { SceneDoc } from "./sceneDocSchema";
 import { setStage } from "./stageHandle";
 import { reportTextDerivedPending } from "./textDerivedState";
@@ -237,6 +238,39 @@ describe("export readback guard", () => {
     mountCanvas();
     const shot = await captureFrameRgba(opts, 0);
     expect(Array.from(shot.rgba)).toEqual(Array.from(drawn(0)));
+  });
+});
+
+describe("ranged render", () => {
+  it("renders each frame through the stage, drawing the first twice, then gives everything back", async () => {
+    mountCanvas();
+    useClockStore.getState().setCurrentMs(7);
+    const drawsAt: number[] = [];
+    vi.mocked(renderComposited).mockImplementation(() => {
+      drawsAt.push(useClockStore.getState().currentMs);
+    });
+    const seen: number[][] = [];
+    const times = [10, 20, 30];
+    await renderRange(opts, times, async ({ rgba }) => {
+      expect(isExporting()).toBe(true);
+      seen.push(Array.from(rgba));
+    });
+    expect(seen).toEqual([0, 1, 2].map((f) => Array.from(drawn(f))));
+    expect(drawsAt.filter((t) => t === 10).length).toBeGreaterThan(
+      drawsAt.filter((t) => t === 20).length,
+    );
+    expect(vi.mocked(prepareExportClips).mock.lastCall?.[1]).toMatchObject({ spanMs: [10, 30] });
+    expect(isExporting()).toBe(false);
+    expect(useClockStore.getState().currentMs).toBe(7);
+    expect(canvasHandle.current?.gl.getSize(new Vector2()).x).toBe(1280);
+  });
+
+  it("closes the run when a frame fails, so the next can open", async () => {
+    mountCanvas([0]);
+    await expect(renderRange(opts, [0, 10], async () => {})).rejects.toThrow("GPU stalled");
+    expect(isExporting()).toBe(false);
+    mountCanvas();
+    await expect(renderRange(opts, [0], async () => {})).resolves.toBeUndefined();
   });
 });
 
