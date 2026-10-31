@@ -15,6 +15,9 @@ pub struct ScannedItem {
     pub modified_at: SystemTime,
 }
 
+/// A person's accepted flash warnings, their decision about their own film: it never travels and never lands (docs/packs.md).
+pub const ACCEPTED_FLASHES_FILE: &str = "flashes.accepted.json";
+
 /// Generated files that never travel and never count towards an item's identity.
 ///
 /// Export and import MUST agree on this exactly. If they disagree, a project re-imported from its own pack hashes
@@ -22,7 +25,9 @@ pub struct ScannedItem {
 /// conflict model rests on.
 pub fn is_excluded(rel: &str) -> bool {
     let first = rel.split('/').next().unwrap_or("");
-    if matches!(first, "exports" | ".git" | ".kookaburra" | ".kb") {
+    if matches!(first, "exports" | ".git" | ".kookaburra" | ".kb")
+        || first.eq_ignore_ascii_case(ACCEPTED_FLASHES_FILE)
+    {
         return true;
     }
     // The app's managed `./kb` shim, restamped on every load.
@@ -206,6 +211,24 @@ mod tests {
         assert!(is_excluded("assets/.originals/rec.mov"));
         assert!(!is_excluded("assets/rec.timing.json"));
         assert!(!is_excluded("assets/originals/rec.mov"));
+        assert!(is_excluded("flashes.accepted.json"));
+        assert!(is_excluded("Flashes.Accepted.JSON"));
+        assert!(!is_excluded("assets/flashes.accepted.json"));
+    }
+
+    /// A project's own acceptances do not change what it is, so it still reads identical to its own pack.
+    #[test]
+    fn accepted_flashes_do_not_change_the_content_hash() {
+        let base = std::env::temp_dir().join("kbpack-scan-accepted-test");
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("project.json"), b"{}").unwrap();
+        let before = scan_dir(&base).unwrap();
+        std::fs::write(base.join(ACCEPTED_FLASHES_FILE), br#"{"accepted":[]}"#).unwrap();
+        let after = scan_dir(&base).unwrap();
+        assert_eq!(before.content_hash, after.content_hash);
+        assert_eq!(before.bytes, after.bytes);
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

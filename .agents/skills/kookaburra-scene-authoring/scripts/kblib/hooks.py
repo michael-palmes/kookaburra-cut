@@ -90,6 +90,9 @@ def blocked_reason(rel: str) -> Optional[str]:
     for kit in MANAGED_SKILLS:
         if rel == kit or rel.startswith(kit + "/"):
             return f"{rel} is the managed kit; the app replaces it on every launch, so edits are lost. Put project notes in CLAUDE.md instead."
+    if rel == "flashes.accepted.json":
+        return (f"{rel} holds accepted flash warnings, each with a person's reason; change it only through kb "
+                "(./kb flashes accept TIME --why \"...\", ./kb flashes forget TIME). Failures are never accepted.")
     if KB_STATE.match(rel):
         return (f"{rel} is kb's own coordination state; change it only through kb (./kb lease, ./kb note, ./kb events). "
                 "Scratch files belong in .kb/agents/<your name>/ instead.")

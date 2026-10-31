@@ -530,6 +530,18 @@ export class StageClient implements StageHandle {
       tMs,
     });
   }
+  rangeBegin(opts: StageExportOptions, spanMs: [number, number]): Promise<void> {
+    return this.request({ type: "rangeBegin", opts, spanMs });
+  }
+  rangeFrame(index: number, tMs: number, buffer: ArrayBuffer | null, texts: boolean) {
+    return this.request<Awaited<ReturnType<StageHandle["rangeFrame"]>>>(
+      { type: "rangeFrame", index, tMs, buffer, texts },
+      buffer ? [buffer] : [],
+    );
+  }
+  rangeEnd(): Promise<void> {
+    return this.request({ type: "rangeEnd" });
+  }
   stillsBegin(
     opts: StageExportOptions,
     settings: StillsSettings,

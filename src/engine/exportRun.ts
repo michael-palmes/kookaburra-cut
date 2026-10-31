@@ -158,6 +158,8 @@ export async function exportPreamble(
   onStep?: (step: number) => void,
   /** A one-frame capture's project time: clips extract only the frames that instant shows. */
   atMs?: number,
+  /** A ranged render's project span: clips extract only the frames it shows. */
+  spanMs?: readonly [number, number],
 ): Promise<void> {
   configureDeterministicEngine();
   // Explicit, not incidental: an object, chart, device, image or terminal gizmo selected when an export starts must never reach a frame.
@@ -184,7 +186,7 @@ export async function exportPreamble(
   setClipLane(laneForCodec(opts.encode?.codec ?? opts.codec));
   // Extracts, before frame 0, the chunks every sidecar-declared video needs over its scene window, mirroring font preload so no frame races an async decode; cached chunks make it a no-op after the first.
   const declaredClips = declaredClipDemands(opts);
-  await prepareExportClips(declaredClips, { consumers: false, atMs });
+  await prepareExportClips(declaredClips, { consumers: false, atMs, spanMs });
   onStep?.(1);
   // Fetches + parses bundled 3D models and this project's screen images (and warms drei's caches) before frame 0, so a cold export never captures a still-loading DeviceMockup; no-op once cached. See docs/determinism.md.
   await preloadDeviceModels();
@@ -251,13 +253,13 @@ export async function exportPreamble(
   // Last barrier: the scenes must actually be in the canvas tree. A cold-load suspense (shared boundary) can still be holding every scene out of the graph at this point, but the preloads above have resolved its assets so the retry commit is imminent; wait for it or frame 0 captures a scene-less frame. See awaitSceneHostsCommitted.
   await awaitSceneHostsCommitted(opts.slots.length);
   // A second extract pass over every mounted consumer's own window and held frame: clips registered by primitives that only mounted at the barrier above (a video background or code-authored VideoClip behind the shared suspense), plus the timing only a mounted consumer knows; a no-op when the first pass already covered them all.
-  await prepareExportClips(declaredClips, { consumers: true, atMs });
+  await prepareExportClips(declaredClips, { consumers: true, atMs, spanMs });
   // In-world TitleBlocks measure their own title/subtitle blocks, and their props only exist once the scenes are in the tree, so this barrier runs last: settle those typesets and let the tree re-render with them, or frame 0 captures the pre-measure layout (engine/titleBlockMeasure).
   await awaitTitleMeasuresSettled();
 }
 
 /** Present holds freeze staged text mid-timeline, so a video frame or capture rendered while the stills export holds scenes would not be the pure function of `t` the contract promises. */
-function assertNoSceneHolds(run: "export" | "capture"): void {
+export function assertNoSceneHolds(run: "export" | "capture" | "ranged render"): void {
   if (hasSceneHolds()) {
     throw new Error(
       `Scene holds are active (a stills export is running), so the ${run} cannot start.`,
@@ -275,7 +277,7 @@ export interface ExportRun {
 }
 
 /** The preview state a run or capture snapshots first and gives back whole in its finally, so a failed preamble leaves no export-sized buffer, aspect or clip lane behind. Returns the playhead the run started from. */
-function snapshotPreviewState(gl: WebGLRenderer, camera: Camera): () => number {
+export function snapshotPreviewState(gl: WebGLRenderer, camera: Camera): () => number {
   const cam = camera as PerspectiveCamera;
   const prevSize = gl.getSize(new Vector2());
   const prevPixelRatio = gl.getPixelRatio();
@@ -296,7 +298,12 @@ function snapshotPreviewState(gl: WebGLRenderer, camera: Camera): () => number {
 }
 
 /** Sizes the drawing buffer to the export resolution (no CSS resize) and the camera to its aspect. */
-function sizeForExport(gl: WebGLRenderer, camera: Camera, width: number, height: number): void {
+export function sizeForExport(
+  gl: WebGLRenderer,
+  camera: Camera,
+  width: number,
+  height: number,
+): void {
   const cam = camera as PerspectiveCamera;
   gl.setPixelRatio(1);
   gl.setSize(width, height, false);

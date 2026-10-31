@@ -30,7 +30,7 @@ class HookTests(KbTestCase):
         return self.kb(["hook", event], cwd=self.root, stdin=stdin)
 
     def test_pre_edit_blocks_app_owned_and_managed_paths(self) -> None:
-        for rel in ("exports/cut.mp4", "edits/a.json", ".kookaburra-cache/x", ".claude/skills/kookaburra-scene-authoring/SKILL.md"):
+        for rel in ("exports/cut.mp4", "edits/a.json", ".kookaburra-cache/x", ".claude/skills/kookaburra-scene-authoring/SKILL.md", "flashes.accepted.json"):
             proc = self.hook("pre-edit", payload(self.root / rel))
             self.assertExit(proc, 2)
             self.assertIn("blocked", proc.stderr)

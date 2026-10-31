@@ -15,7 +15,7 @@ from .project import MANIFEST, Project
 from .realdir import no_follow
 from .util import EXIT_ENV, EXIT_PROBLEMS, EXIT_TRANSIENT, KbError, ago, now_ms, trash_dir
 
-TRACKED = ["project.json", "scenes", "edits"]
+TRACKED = ["project.json", "scenes", "edits", "flashes.accepted.json"]
 EXCLUDES = ["/assets/", "/exports/", "edits/*.json.tmp", "edits/.*.tmp", "edits/.renders/", ".kb/", "/kb"]
 FALLBACK_IDENTITY = ["-c", "user.name=Kookaburra Cut", "-c", "user.email=kookaburra@localhost"]
 INDEX_LOCK_BACKOFF_MS = (50, 100, 200, 400, 800, 1600)
