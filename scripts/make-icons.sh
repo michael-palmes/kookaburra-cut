@@ -1,17 +1,5 @@
 #!/usr/bin/env bash
-#
-# Generates Kookaburra Cut's fallback icon set from the Icon Composer document.
-#
-# src-tauri/icons/AppIcon.icon is the source: the bundler compiles it to Assets.car,
-# which gives macOS its dark, clear and tinted modes. The flat set here serves dev
-# builds, the DMG volume icon and anything that reads the .icns.
-#
-# ictool renders the squircle edge to edge, so the master gains macOS's 100px margin
-# and soft shadow below. `tauri icon` must get that master verbatim: re-masking it
-# double-borders the Dock icon.
-#
-# Re-run after changing the document:  pnpm setup:icon
-#
+# Renders the flat fallback icon set from AppIcon.icon; run after changing it (docs/architecture.md, "Icon / identity refresh").
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -39,6 +27,7 @@ BODY="$WORK/body.png"
 SHADOW="$WORK/shadow.png"
 
 echo "Rendering the master with ictool..."
+# ictool renders edge to edge, so add macOS's margin and shadow; never re-mask the result.
 "$ICTOOL" "$DOCUMENT" --export-image --output-file "$BODY" \
   --platform macOS --rendition Default --width 824 --height 824 --scale 1 >/dev/null
 magick -size 1024x1024 xc:black \( "$BODY" -alpha extract \) -geometry +100+108 -composite \
