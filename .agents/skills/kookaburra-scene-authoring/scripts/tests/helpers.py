@@ -277,7 +277,7 @@ def png_bytes(width: int = 2, height: int = 3) -> bytes:
     def chunk(kind: bytes, data: bytes) -> bytes:
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
 
-    raw = b"".join(b"\x00" + b"\x00\x00\x00\xff" * width for _ in range(height))
+    raw = b"".join(b"\x00" + b"".join(b"\xff\xff\xff\xff" if (x + y) % 2 else b"\x00\x00\x00\xff" for x in range(width)) for y in range(height))
     ihdr = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
 

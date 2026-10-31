@@ -4,10 +4,23 @@
 
 - Everything a scene shows lives in `assets/` and is referenced as `assets/<file>`
   (exact case). Never absolute paths or URLs.
-- Bring files in with `./kb assets add <path> [--name <name>] [--dir D]`: it copies, never
-  overwrites (renames on collision) and prints the path to use. Always use the printed
-  path: a video can land under another name (Screen recordings, below). `--dry-run` lists
-  the writes.
+- Bring files in with `./kb assets add <path> [--name <name>] [--dir D] [--max-size N]`: it
+  copies, never overwrites (renames on collision) and prints the path to use. Always use the
+  printed path: a video or still can land under another name (Screen recordings and Stills,
+  below). `--name` keeps the source's extension: `--name cover` on a `.png` is `cover.png`,
+  and `--name cover.jpg` on a `.png` is still `cover.png`. `--max-size N` caps an image's long
+  edge (it never scales up, and a video keeps its size). `--dry-run` lists the writes.
+- `./kb assets add-folder DIR [--dedupe] [--thumbs WxH] [--limit N] [--dir D] [--max-size N]`
+  brings in a whole folder of logos, icons and screenshots, keeping its shape under kebab-case
+  names (`Logos/Mark Final.PNG` lands as `assets/logos/mark-final.png`). Each file gets what
+  `assets add` gives it, and one file's trouble never stops the rest: refused files are listed
+  with their reasons and the exit is 1, and a rerun lands nothing twice. `--dedupe` lands the
+  same bytes once, whether the twin is in the folder, in `assets/` or was imported before.
+  `--thumbs 240x160` writes contact sheets of what landed to `.kb/thumbs/` and prints their
+  paths: Read them to see what you have. Links, hidden files and other file types are passed
+  over. Past 500 media files kb stops before copying and asks for `--limit` (at most 2000).
+- A brand's own pictures are in its library: `./kb brand icons --search TERM --sheet`
+  (reference/project.md, Brands).
 - `./kb assets probe assets/<file> [--deep]`: duration, size, frame rate, codecs; for a
   video `decode.verdict` (`ok`; `suspect`, a non-trivial edit list; `ffmpeg-misdecodes`,
   preview and export show other frames than QuickTime), `reasons`, `colour.needsConvert`
@@ -45,8 +58,8 @@
   through `./kb assets replace` (its timing record moves aside with the old file;
   `./kb assets restore` undoes it). `./kb assets list` folds a conformed clip's timing and
   provenance into its entry.
-- Formats: images png, jpg, jpeg, webp; video mp4, mov, m4v, webm; audio mp3, wav, m4a,
-  aac, flac, ogg; environments hdr, exr; grades `.cube`.
+- Formats: images png, jpg, jpeg, webp (and svg, which comes in as a png); video mp4, mov,
+  m4v, webm; audio mp3, wav, m4a, aac, flac, ogg; environments hdr, exr; grades `.cube`.
 - Adding a file to `assets/` does not reload the project; the sidecar edit that uses it
   does. New bytes under an existing name refresh the preview within a couple of seconds.
 - Bundled placeholders (`*-sample.*`, `sample-phone-recording.mp4`,
@@ -54,6 +67,25 @@
 
 Videos are pre-extracted to 60 fps frames on first use (the first preview of a long clip
 takes a moment), then sampled from the clock, so preview and export match.
+
+## Stills
+
+Scenes draw an image's raw pixel values, so what a viewer applies never reaches a frame.
+`./kb assets add` reads each still on the way in and settles it there:
+
+- A file that isn't what its name says lands under its real extension: `shot.png` holding a
+  JPEG prints `assets/shot.jpg`. One that isn't an image the app reads (TIFF, HEIC, PDF,
+  damaged, over 100 MP or 16384 px a side) is refused, exit 1.
+- A colour profile other than sRGB (every P3 screenshot), CMYK pixels or an EXIF turn would
+  draw wrong, so they are baked into plain sRGB, upright pixels. `--no-conform` copies it as
+  it is, with a warning. `./kb assets probe` shows `image.conform` for a still already here.
+- A fully transparent or one-colour result is refused, exit 1. `--allow-blank` takes one on
+  purpose, such as a matte.
+- An SVG is stripped of scripts and of anything that reaches outside the file, then rasterised
+  to a png at `--max-size` px on its long edge (default 2048). kb names what it left out, so
+  look at the result. Malformed XML and external entities are refused.
+- A changed file records its source and what was done in `assets/_meta.json`, and adding the
+  same file the same way again lands nothing new.
 
 ## Screen recordings
 
@@ -64,7 +96,9 @@ preview and export decode with, misplays some of them, so they are checked on th
   A recording from a phone usually imports as it is, unless it carries an edit list (a
   trim saved without re-encoding). Simulator recordings (a variable frame rate, P3
   colour), edit lists, and clips the two decoders disagree on are conformed the way the
-  app's drop does it.
+  app's drop does it. A clip that looks clean is decoded by both decoders before its conform
+  is skipped, so adding a long clean clip takes a moment. A file already in `assets/` that
+  only looks conformed gets a warning with the command, and is never changed.
 - A conformed import lands as a constant 60 fps `assets/<stem>.mp4` (so `rec.mov` prints
   `assets/rec.mp4`; `--dir` doesn't apply), with the original in
   `assets/.originals/<stem>.<ext>` and `assets/<stem>.timing.json` recording which source

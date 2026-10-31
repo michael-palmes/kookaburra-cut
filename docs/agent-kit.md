@@ -167,11 +167,11 @@ under the project lock (`kblib.lock`) and re-validated after writing.
 | `doc S get [path]`, `doc S set path value`, `doc S unset path`, `doc S merge JSON` | Sidecar edits by dotted path; values parsed as JSON else string (`--string` forces a string, reading `\n`, `\t` and `\\`); enums validated against the catalogue; `get` prints the raw value (`--json`: `{ file, path, value }`). The detach rule (`beats.model.settle_written` over `timed_slots`): a key `tMs` or a screen or media video `startMs` the write moved off its `at` loses the `at`, and every remaining `at` refreshes its time; `merge` never detaches, so an `at` stays unless the patch nulls it (arrays replace whole, so a rewritten field without `at` gets its `at` back). A string `at` this write adds where the app takes no position (chart or layered screenshot keys, taps, anything but the timed slots, `cameraKicks` and `room` keys) is exit 2 `usage` (`stray_positions`) |
 | `project get [path]`, `project set path value`, `project unset path` | `project.json` fields other than `scenes` (`get --json`: `{ path, value }`) |
 | `theme list`, `theme show [id]`, `theme set path value` | Bundled tokens from the catalogue; workspace themes editable (`show --json`: `{ id, bundled, path, theme }`) |
-| `brand list`, `brand show [NAME]`, `brand use NAME`, `brand clear` | Workspace brands (docs/brands.md); `use` matches a name, slug or `ws:` id and applies it as the Project picker does (`brand`, default theme, headline and body fonts, `BRAND.md`); `clear` drops `brand` and `BRAND.md` |
+| `brand list`, `brand show [NAME]`, `brand use NAME`, `brand clear`, `brand icons [--search TERM] [--sheet] [--brand NAME] [--category C] [--all] [--limit N] [--cell PX]` | Workspace brands (docs/brands.md); `use` matches a name, slug or `ws:` id and applies it as the Project picker does (`brand`, default theme, headline and body fonts, `BRAND.md`); `clear` drops `brand` and `BRAND.md`; `icons` searches the brand's library by name, tag and path, and `--sheet` writes contact sheets to `.kb/thumbs/` (`--json`: `items`, `total`, `sheets`, `shownOnSheets`) |
 | `fonts safe`, `fonts check REF...`, `fonts list` | Bundled faces are always safe; `check` and `list` use the app's real parser when it runs, else a static verdict (`--json`: `faces`, `results`, `families` or the static `bundled` and `pinned`) |
 | `presets [list \| show SLUG]` | Scene presets with what they show and a preview image path to Read (`--json`: `presets`) |
 | `catalog [FAMILY] [--search Q]` | Query `catalog.json` (`--json`: `families`; a family's raw entries as `{ family, items }`, or `{ family, value }` when it is not a list; a search's `items`) |
-| `assets list`, `assets add PATH [--name N] [--dir D] [--no-conform]`, `assets probe ASSET [--deep]`, `assets conform ASSET [--repoint]`, `assets replace NAME FILE [--keep-old archive\|trash\|none] [--as-new]`, `assets unused [--kind K] [--archive [DIR]]`, `assets restore [ID \| --list]`, `assets meta NAME [--set K=V]` | Media in (never overwrites, renames on collision; a video the app's probe flags is conformed through `<exe> media conform`, gated on `edit caps.media`), the decode verdict (`ok`, `suspect`, `ffmpeg-misdecodes`; the container's own `elst`/`stts`/`ctts` parse without the app, AVFoundation's view with it; an edit opening inside a sample is `ffmpeg-misdecodes` on both sides, `mp4box.rs` and `mp4box.py` replaying one `edit-start-vectors.json`), an in-place conform (`--repoint` turns a `.mov` into `<stem>.mp4` and rewrites literals), an in-place replace with the old bytes in `.kb/archive/`, the app's shared in-use rule (`unused`, archived and restorable; `media.rs` and `asset_refs.py` replay one `asset-ref-vectors.json`), and `assets/_meta.json` provenance (`list --json`: `assets`, each with a conformed clip's timing and provenance folded in). Code: `kblib/assets_cli.py`, `asset_ops.py`, `conform.py`, `mp4box.py`, `asset_refs.py`, `archive.py`, `asset_meta.py` |
+| `assets list`, `assets add PATH [--name N] [--dir D] [--no-conform] [--max-size N] [--allow-blank]`, `assets add-folder DIR [--dedupe] [--thumbs WxH] [--limit N] [--dir D] [--no-conform] [--max-size N] [--allow-blank]`, `assets probe ASSET [--deep]`, `assets conform ASSET [--repoint]`, `assets replace NAME FILE [--keep-old archive\|trash\|none] [--as-new]`, `assets unused [--kind K] [--archive [DIR]]`, `assets restore [ID \| --list]`, `assets meta NAME [--set K=V]` | Media in (never overwrites, renames on collision; `--name` keeps the source's extension; a video the app's probe flags, or that both decoders disagree on once decoded, is conformed through `<exe> media conform`, gated on `edit caps.media`; stills and SVGs as in "Stills on the way in" below), a whole folder (`assets add-folder`, below), the decode verdict (`ok`, `suspect`, `ffmpeg-misdecodes`; the container's own `elst`/`stts`/`ctts` parse without the app, AVFoundation's view with it; an edit opening inside a sample is `ffmpeg-misdecodes` on both sides, `mp4box.rs` and `mp4box.py` replaying one `edit-start-vectors.json`), an in-place conform (`--repoint` turns a `.mov` into `<stem>.mp4` and rewrites literals), an in-place replace with the old bytes in `.kb/archive/`, the app's shared in-use rule (`unused`, archived and restorable; `media.rs` and `asset_refs.py` replay one `asset-ref-vectors.json`), and `assets/_meta.json` provenance (`list --json`: `assets`, each with a conformed clip's timing and provenance folded in). Code: `kblib/assets_cli.py`, `assets.py`, `asset_folder.py`, `asset_ops.py`, `imagefile.py`, `svgsafe.py`, `contact.py`, `conform.py`, `mp4box.py`, `asset_refs.py`, `archive.py`, `asset_meta.py` |
 | `checkpoint [MESSAGE] [--scene S]... [--files P]...`, `history [--scene S]`, `undo [REV] [--scene S \| --all]`, `diff [REV] [--scene S]` | Git checkpoints of `project.json`, `scenes/` and `edits/`, or only some scenes' files; `undo` checkpoints first, so it is itself undoable, never trashes `edits/`, and names any render it leaves stale (`history --json`: `checkpoints`, each with `atMs`). See Coordination |
 | `lease S [--ttl 2h] [--note T] [--for NAME]`, `lease S --release [--force]`, `leases [--all]` | Opt-in scene leases (`lease --json`: `scene`, `action`, `lease`; `leases --json`: `leases`) |
 | `note "TEXT" [--scene S]`, `notes [--all]` | Shared notes in `.kb/notes.md` (`notes --json`: `notes`, `total`) |
@@ -218,12 +218,46 @@ As built (`scripts/kblib/`):
   app keeps those folders in memory (`PickedFolders`, fed by every folder dialog and the
   Save dialog's parent, forgotten on quit) and publishes them in the heartbeat as
   `pickedDirs`, which kb and the headless CLI read. Reads of a path the agent names
-  (`assets add`, `assets replace`, `chart set-data`, `doc merge @file`, `verify-export FILE`)
+  (`assets add`, `assets add-folder`, `assets replace`, `chart set-data`, `doc merge @file`, `verify-export FILE`)
   are silent inside the workspace, announced on stderr with the resolved path and size
   outside it (`kb: reading /Users/x/Desktop/deck.csv (812 bytes) from outside the
   workspace`), and refused outright for `~/.ssh`, `~/.aws`, `~/.config`, `~/.gnupg`,
   `~/Library/Keychains`, `.env*`, `.netrc`, `*.pem`, `*.p12`, `*.key` and shell history
   files.
+- **Stills on the way in** (`kblib/imagefile.py`). An imported still is untrusted. Its header
+  is read with no decoder and capped first (256 MB, 16384 px a side, 100 MP), so a
+  decompression bomb never reaches one; what the first bytes say decides the format, whatever
+  the name says. The stage reads raw pixel values (`decode_png`, and `createImageBitmap` with
+  `colorSpaceConversion: "none"`), so a non-sRGB ICC profile, CMYK pixels and an EXIF
+  orientation would each draw wrong and only show up in a frame: `prepare` bakes them into
+  plain sRGB, upright pixels through `sips`, which is ImageIO, the decoder WebKit itself uses
+  (kb never decodes WebP or JPEG itself; off macOS it can only read PNG, and refuses others,
+  exit 2). `sips` can't write WebP or GIF, so one that has to change becomes a PNG. A fully
+  transparent or one-colour result is refused (`refuse_blank`, `--allow-blank`), measured on
+  a 64 px reduction with a tolerance of 3 levels. Provenance is recorded only when kb changed
+  the bytes, with `origin.sourceSha256`, so adding the same file the same way lands nothing
+  new. Images in the app's own drop path are not checked.
+- **SVGs** (`kblib/svgsafe.py`). AppKit's parser reads a `file://` image straight off the disk
+  into the raster, so the rasteriser (the brand skill's `svg2png.js`) never sees the source. The
+  source is parsed with expat and rewritten to a temp copy from an allowlist of drawing
+  elements: no script, `foreignObject`, event handler, DOCTYPE or processing instruction, and no
+  `href`, `url()` or `@import` that leaves the document (`#fragment` and a raster `data:` URI
+  stay). Whatever a person would notice missing is named in a warning. Malformed XML, a root
+  that isn't `<svg>`, an external or nested entity, and files past the size, depth or expansion
+  caps are refused. `kb assets add` and `brand.py images` share it.
+- **`assets add-folder`** (`kblib/asset_folder.py`). `reach.guard_read` guards the folder, which
+  is announced once, and refuses one that holds the project or sits inside `assets/`. The walk
+  never follows a link, in or out, and skips hidden names, credentials (`denied_reason`, per
+  file) and other file types. It stops before copying anything past 500 media files without
+  `--limit` (2000 at most), 20000 entries, 12 levels, 32 GB in total or the free disk; one file
+  over 16 GB is refused alone. Files land through `assets.add_file`, keeping the folder's shape
+  under `--dir` in slugged names, and refused ones are collected (exit 1, `invalid`, with the
+  whole report in the envelope). SVGs rasterise in one `osascript` per 80, split down when one
+  hangs or crashes so the file at fault fails alone, and provenance is one write at the end. `--dedupe` hashes a file against the batch, `origin.sourceSha256` and, only
+  where the size matches, `assets/` and `assets/.originals/`. `--thumbs WxH` and `kb brand icons
+  --sheet` draw sheets in plain Python (`kblib/contact.py`), on the surface each picture suits,
+  into `.kb/thumbs/<time>-<tag>/` (the newest 20 kept), so they are never in `assets/`, a pack or
+  project history.
 - **Output escaping** (`kblib/util.py` `clean_text`). Every string kb prints (`emit`,
   `emit_err`, `emit_json` leaves and keys, the export stream, hook `additionalContext` and
   deny reasons, `KbError` messages and `Report` issues) has its control characters (newline
@@ -389,7 +423,7 @@ Every kb command, including new ones, follows these rules. Code: `scripts/kblib/
   it while `CLAUDECODE` is set, so an inherited value never names every agent alike).
   `--dry-run` and `--wait [SECONDS]` on every structural command (scene add, duplicate, move,
   remove and set; doc set, unset and merge; project set and unset; theme set; assets add,
-  conform, replace, unused, restore and meta; beats set-grid, set-downbeat, clear-grid, cue and
+  add-folder, conform, replace, unused, restore and meta; beats set-grid, set-downbeat, clear-grid, cue and
   section; song analyse; checkpoint; undo); `./kb plan <command ...>` is the same dry run for
   the ones it covers.
 - **Output.** Plain text for people. `--json` prints exactly one object on stdout:
@@ -463,6 +497,7 @@ packs and duplicates.
 .kb/song/<sha12>.json           kb song analyse's copy of the app's analysis
 .kb/footage/<name>.json         kb video log (sheets in .kb/footage/<name>/, pairs in .kb/footage/pairs/)
 .kb/archive/<id>/<rel>          files kb assets replace and unused moved aside; index.jsonl beside them
+.kb/thumbs/<time>-<tag>/        contact sheets from kb assets add-folder --thumbs and kb brand icons --sheet; the newest 20 kept
 ```
 
 - **Identity.** A caller is `{ name, session, agentId }` (`kblib/identity.py`). kb run from

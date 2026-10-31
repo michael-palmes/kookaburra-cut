@@ -251,7 +251,7 @@ def conform_asset(project: Project, ref: str, *, repoint: bool, opts: Any, warn:
         if "/" in rel[len("assets/"):]:
             warn(f"the app's conform writes {target} flat in assets/, not beside {rel}")
     export_guard(project, [rel], wait, "conforming it")
-    probe = conformmod.import_decision(project.root / rel).get("probe")
+    probe = conformmod.import_decision(project.root / rel, deep=False).get("probe")
     if probe and probe.get("refused"):
         raise KbError(f"{rel} can't be conformed: {probe['refused'].get('hint')}", EXIT_PROBLEMS, kind="invalid")
     if probe and not probe.get("recommended"):

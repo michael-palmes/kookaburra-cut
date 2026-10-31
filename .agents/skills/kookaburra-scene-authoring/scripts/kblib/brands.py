@@ -9,8 +9,9 @@ import shutil
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
+from . import brandlib
 from .project import BRAND_GUIDE, Project
-from .util import KbError
+from .util import EXIT_OK, KbError, emit
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 
@@ -52,6 +53,8 @@ def image_counts(project: Project, slug: str) -> Dict[str, int]:
 
 
 FILLER = {"the", "a", "an", "our", "my", "brand", "brands", "pack", "use"}
+MIN_CELL = 32
+MAX_CELL = 512
 
 
 def normalise(text: str) -> str:
@@ -139,3 +142,68 @@ def guide_staged(project: Project, brand: Optional[Dict[str, Any]], write: bool 
             else:
                 target.write_bytes(previous)
         raise
+
+
+def cmd_icons(ctx: Any) -> int:
+    """kb brand icons: find a picture in the brand's library by name or tag, and look at the results on a contact sheet."""
+    a = ctx.args
+    project = ctx.project
+    manifest = project.manifest()
+    current = manifest.get("brand") if isinstance(manifest.get("brand"), str) else None
+    if not a.brand and not current:
+        raise KbError("this project has no brand; kb brand list shows the installed ones", 2, kind="usage", hint="./kb brand use NAME, or pass --brand NAME")
+    if a.limit is not None and a.limit < 1:
+        raise KbError("--limit is at least 1", 2, kind="usage")
+    if not MIN_CELL <= a.cell <= MAX_CELL:
+        raise KbError(f"--cell is {MIN_CELL} to {MAX_CELL} px", 2, kind="usage")
+    brand = match(project, a.brand or current)
+    folder = brands_root(project) / brand["slug"]
+    scoped = brandlib.scope(brandlib.entries(folder), a.category, a.all)
+    items = brandlib.search(scoped, a.search)
+    shown = items[:a.limit] if a.limit else items
+    payload: Dict[str, Any] = {"brand": brand["id"], "search": a.search, "total": len(items), "items": shown}
+    if a.sheet and shown:
+        from . import contact
+
+        cells = [{"label": f"{n} {row['name']}", "image": Path(row["path"]), "surface": row.get("surface")} for n, row in enumerate(shown, 1)]
+        out = contact.new_folder(project, f"{brand['slug']}-{a.search or 'icons'}")
+        sheets, fitted = contact.write_sheets(cells, out, (a.cell, a.cell))
+        payload.update(sheets=[str(s) for s in sheets], shownOnSheets=fitted)
+    if ctx.json:
+        ctx.out(payload)
+        return EXIT_OK
+    if not items:
+        emit(f"nothing in {brand['name']}'s library matches{' ' + repr(a.search) if a.search else ''}" + ("" if a.all else "; --all looks past the icon folders"))
+        return EXIT_OK
+    for n, row in enumerate(shown, 1):
+        parts = [row["rel"]] + ([f"{row['width']}x{row['height']}"] if row.get("width") else [])
+        parts += [f"[{row['surface']}]"] if row.get("surface") else []
+        parts += [f"pair: {row['pair']}"] if row.get("pair") else []
+        parts += [f"tags: {', '.join(row['tags'])}"] if row["tags"] else []
+        emit(f"{n:>3}  " + "  ".join(parts))
+    if len(shown) < len(items):
+        emit(f"{len(items) - len(shown)} more past --limit {a.limit}")
+    for sheet in payload.get("sheets") or []:
+        emit(f"sheet to Read: {sheet}")
+    if a.sheet and len(shown) > payload.get("shownOnSheets", len(shown)):
+        emit(f"the sheets show the first {payload['shownOnSheets']}; narrow it with --search")
+    first = shown[0]["path"]
+    emit(f'bring one in: ./kb assets add "{first}"')
+    return EXIT_OK
+
+
+def register_icons(bsub: Any, common: Any, Formatter: Any) -> None:
+    y = bsub.add_parser("icons", help="find pictures in the brand's library by name or tag, and write a contact sheet to look at", parents=[common], formatter_class=Formatter,
+                        epilog="  ./kb brand icons --search wallet --sheet\n"
+                        "Searches the name, tags and path; every word must match. Without --all or --category it looks in\n"
+                        "the icon-like folders (icons, glyphs, pictograms, symbols), or everywhere when the brand has none.\n"
+                        "Each cell sits on the surface the picture is made for. Paths are the size-limited copy for scenes\n"
+                        "when the brand has one.")
+    y.add_argument("--search", metavar="TERM", help="words to find in the name, tags and path")
+    y.add_argument("--sheet", action="store_true", help="write contact sheets to .kb/thumbs/ and print their paths to Read")
+    y.add_argument("--brand", metavar="NAME", help="another installed brand (default: this project's)")
+    y.add_argument("--category", metavar="C", help="only this folder of the library")
+    y.add_argument("--all", action="store_true", help="every image, not just the icon folders")
+    y.add_argument("--limit", type=int, metavar="N", help="at most N results")
+    y.add_argument("--cell", type=int, default=120, metavar="PX", help="contact sheet cell size (default 120)")
+    y.set_defaults(fn=cmd_icons)

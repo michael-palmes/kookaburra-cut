@@ -15,6 +15,8 @@ pub const BRANDS_DIR_NAME: &str = "brands";
 const BRAND_FILENAME: &str = "brand.json";
 const DEFAULT_GUIDELINES: &str = "guidelines.md";
 const IMAGES_DIR: &str = "images";
+/// `brand.py`'s size-limited copies of images larger than a scene needs, at the same relative path; never listed on their own.
+const SCENE_DIR: &str = "scene";
 /// The project-side copy of the applied brand's guidelines, rewritten on every apply.
 pub const PROJECT_BRAND_DOC: &str = "BRAND.md";
 const BRAND_ID_PREFIX: &str = "ws:";
@@ -71,7 +73,7 @@ pub struct BrandSummary {
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct BrandImage {
-    /// Absolute path: the webview previews it via the asset protocol, and copy-on-use imports it.
+    /// Absolute path of what a project should take, its size-limited copy when it has one: the webview previews it via the asset protocol, and copy-on-use imports it.
     pub path: String,
     /// Relative to the brand's `images/`, always `/`-separated.
     pub rel: String,
@@ -335,9 +337,13 @@ fn walk_images(base: &Path, dir: &Path, out: &mut Vec<BrandImage>) {
         } else {
             String::new()
         };
-        let meta = entry.metadata().ok();
+        let scene = scene_copy(base, rel_path);
+        let meta = match &scene {
+            Some(copy) => std::fs::metadata(copy).ok(),
+            None => entry.metadata().ok(),
+        };
         out.push(BrandImage {
-            path: path.to_string_lossy().into_owned(),
+            path: scene.unwrap_or(path).to_string_lossy().into_owned(),
             rel: parts.join("/"),
             category,
             name,
@@ -345,6 +351,17 @@ fn walk_images(base: &Path, dir: &Path, out: &mut Vec<BrandImage>) {
             modified_ms: meta.as_ref().map(modified_ms).unwrap_or(0),
         });
     }
+}
+
+/// An image's copy under `scene/`: the same path, or a PNG where its format had to change. Never a link, and never out of the brand folder.
+fn scene_copy(images: &Path, rel: &Path) -> Option<PathBuf> {
+    let brand = images.parent()?;
+    let same = brand.join(SCENE_DIR).join(rel);
+    let png = same.with_extension("png");
+    [same, png].into_iter().find(|copy| {
+        std::fs::symlink_metadata(copy).is_ok_and(|meta| meta.is_file())
+            && workspace::confine_to_roots(&copy.to_string_lossy(), &[brand.to_path_buf()]).is_ok()
+    })
 }
 
 /// Whether `dir` holds a listable image at any depth (the `walk_images` rules), stopping at the first.
@@ -687,6 +704,48 @@ mod tests {
         assert_eq!(images[2].name, "acme.png");
         assert_eq!(images[2].bytes, 3);
         assert!(Path::new(&images[2].path).is_absolute());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_size_limited_copy_is_what_a_project_takes() {
+        let root = scratch("scene-copy");
+        let dir = acme_brand(&root);
+        std::fs::create_dir_all(dir.join("scene/backgrounds")).unwrap();
+        std::fs::write(dir.join("scene/backgrounds/ink.jpg"), b"small").unwrap();
+        std::fs::create_dir_all(dir.join("scene/logos")).unwrap();
+        std::fs::write(dir.join("scene/logos/acme.png"), b"a png copy").unwrap();
+        std::fs::create_dir_all(dir.join("images/webp")).unwrap();
+        std::fs::write(dir.join("images/webp/hero.webp"), b"img").unwrap();
+        std::fs::create_dir_all(dir.join("scene/webp")).unwrap();
+        std::fs::write(dir.join("scene/webp/hero.png"), b"as png").unwrap();
+        let images = list_images_in(&dir);
+        let find = |rel: &str| images.iter().find(|i| i.rel == rel).unwrap();
+        assert_eq!(images.len(), 5, "copies are never listed on their own");
+        let ink = find("backgrounds/ink.jpg");
+        assert_eq!(Path::new(&ink.path), dir.join("scene/backgrounds/ink.jpg"));
+        assert_eq!(ink.bytes, 5);
+        assert_eq!(
+            Path::new(&find("webp/hero.webp").path),
+            dir.join("scene/webp/hero.png")
+        );
+        assert_eq!(
+            Path::new(&find("logos/mono/acme-white.PNG").path),
+            dir.join("images/logos/mono/acme-white.PNG")
+        );
+        #[cfg(unix)]
+        {
+            let outside = root.join("elsewhere.jpg");
+            std::fs::write(&outside, b"secret").unwrap();
+            std::fs::remove_file(dir.join("scene/backgrounds/ink.jpg")).unwrap();
+            std::os::unix::fs::symlink(&outside, dir.join("scene/backgrounds/ink.jpg")).unwrap();
+            let again = list_images_in(&dir);
+            let ink = again
+                .iter()
+                .find(|i| i.rel == "backgrounds/ink.jpg")
+                .unwrap();
+            assert_eq!(Path::new(&ink.path), dir.join("images/backgrounds/ink.jpg"));
+        }
         let _ = std::fs::remove_dir_all(&root);
     }
 

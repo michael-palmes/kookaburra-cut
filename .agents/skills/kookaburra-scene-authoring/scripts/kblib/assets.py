@@ -1,4 +1,4 @@
-"""Project media: list with usage, copy in (never overwrite; a flagged video is conformed through the app), probe."""
+"""Project media: list with usage, copy in (never overwrite; a flagged video is conformed through the app, a still is checked and cleaned by kblib/imagefile.py), probe."""
 
 from __future__ import annotations
 
@@ -8,8 +8,9 @@ import os
 import shutil
 import struct
 import subprocess
+import tempfile
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from . import lock as lockmod
 from . import reach
@@ -31,6 +32,8 @@ KINDS = {
 META_REL = "assets/_meta.json"
 TIMING_SUFFIX = ".timing.json"
 ORIGINALS = "assets/.originals"
+KNOWN_EXTS = SUPPORTED_ASSET_EXTS | {"svg", "tif", "tiff", "heic", "heif", "bmp", "avif", "jxl"}
+MIN_MAX_SIZE = 16
 
 
 def kind_of(name: str) -> str:
@@ -232,6 +235,21 @@ def _same_file(a: Path, b: Path) -> bool:
         return False
 
 
+def _identical_sibling(src: Path, dest_dir: Path, name: str) -> Optional[Path]:
+    """The name-2, name-3 ... free_sibling_name made earlier, if one already holds these bytes: a rerun lands nothing twice."""
+    stem, dot, ext = name.rpartition(".")
+    if not dot or not stem:
+        stem, ext = name, ""
+    n = 2
+    while True:
+        other = dest_dir / (f"{stem}-{n}.{ext}" if ext else f"{stem}-{n}")
+        if not other.exists():
+            return None
+        if _same_file(src, other):
+            return other
+        n += 1
+
+
 def _plain_writes(rel: str) -> List[Dict[str, Any]]:
     return [{"path": rel, "action": "create", "base": lockmod.ABSENT}]
 
@@ -242,6 +260,9 @@ def _copy_plain(project: Project, src: Path, dest_dir: Path, final_name: str, dr
     if dest.exists():
         if _same_file(src, dest):
             return {"path": dest.relative_to(project.root).as_posix(), "copied": False, "note": "identical file already in assets/", "writes": [], "dryRun": dry_run}
+        twin = _identical_sibling(src, dest_dir, final_name)
+        if twin:
+            return {"path": twin.relative_to(project.root).as_posix(), "copied": False, "note": f"identical file already in assets/ as {twin.name}", "writes": [], "dryRun": dry_run}
         free = free_sibling_name(dest_dir, final_name)
         note = f"{final_name} already exists with different content, so this copy is {free}"
         dest = dest_dir / free
@@ -255,6 +276,57 @@ def _copy_plain(project: Project, src: Path, dest_dir: Path, final_name: str, dr
     return {"path": rel, "copied": True, "note": note, "kind": kind_of(dest.name), "bytes": dest.stat().st_size, "writes": _plain_writes(rel), "dryRun": False}
 
 
+def final_name_of(source_name: str, name: Optional[str]) -> Tuple[str, Optional[str]]:
+    """The name a file lands under, and a note when --name was overruled: --name keeps the source's extension, since a
+    new name doesn't change the bytes. `hero` on a .png is hero.png, and hero.jpg on a .png is still a .png."""
+    if not name:
+        return source_name, None
+    if "/" in name or "\\" in name or name.startswith("."):
+        raise KbError("--name must be a plain file name (no folders, not hidden)", 2)
+    from .imagefile import SAME_FORMAT
+
+    ext = ext_of(source_name)
+    head, dot, tail = name.rpartition(".")
+    given = tail.lower() if dot and head and tail.lower() in KNOWN_EXTS else ""
+    if not ext:
+        return name, None
+    if not given:
+        return f"{name}.{ext}", None
+    if SAME_FORMAT.get(given, given) == SAME_FORMAT.get(ext, ext):
+        return name, None
+    if ext == "svg":
+        return f"{head}.svg", None
+    return f"{head}.{ext}", f"--name said .{given} but the file is .{ext}, so it lands as {head}.{ext}"
+
+
+def clean_subdir(project: Project, subdir: Optional[str]) -> Path:
+    """--dir as a folder under assets/: relative, never hidden (assets/.originals is the app's), and no link out."""
+    if not subdir:
+        return project.assets_dir
+    if not tsxmod.is_project_asset_ref(f"assets/{subdir}/x") or any(p.startswith(".") for p in subdir.split("/")):
+        raise KbError("--dir must be a plain relative folder under assets/", 2)
+    folder = project.assets_dir / subdir
+    resolved = reach.resolve(str(folder))
+    assets = reach.resolve(str(project.assets_dir))
+    if assets not in resolved.parents and resolved != assets:
+        raise KbError(f"--dir {subdir} leads outside assets/ through a link", 2, kind="usage")
+    return folder
+
+
+def check_max_size(max_size: Optional[int]) -> None:
+    from .imagefile import MAX_EDGE
+
+    if max_size is not None and not MIN_MAX_SIZE <= max_size <= MAX_EDGE:
+        raise KbError(f"--max-size is the long edge in pixels, from {MIN_MAX_SIZE} to {MAX_EDGE}", 2, kind="usage")
+
+
+def refusal(e: Any, source_name: str) -> KbError:
+    """An imagefile.Refused as kb's error: the file is the problem (exit 1) unless this machine has no decoder (exit 2)."""
+    if e.code == "no-decoder":
+        return KbError(e.message, EXIT_ENV, kind="env", hint=e.hint, data={"refused": e.code, "file": source_name})
+    return KbError(e.message, EXIT_PROBLEMS, kind="too-large" if e.code == "too-large" else "invalid", hint=e.hint, data={"refused": e.code, "file": source_name})
+
+
 def add(
     project: Project,
     source: str,
@@ -265,27 +337,60 @@ def add(
     conform: bool = True,
     opts: Any = None,
     progress: Optional[Callable[[str], None]] = None,
+    max_size: Optional[int] = None,
+    allow_blank: bool = False,
 ) -> Dict[str, Any]:
     """Copy a file into assets/ (never overwriting). A video the probe flags (VFR, an edit list, P3 and so on) lands
     the way the app's import lands it: the original in assets/.originals/<stem>.<ext>, the conformed assets/<stem>.mp4
-    and its timing record, with provenance in assets/_meta.json. conform=False, or no app, copies as before."""
+    and its timing record, with provenance in assets/_meta.json. A still is checked and cleaned (_add_image). conform=False,
+    or no app, copies as before."""
     src = reach.guard_read(project, source, "the source")
     if not src.is_file():
         raise KbError(f"{source} is not a file")
-    final_name = name or Path(source).expanduser().name
+    return add_file(project, src, Path(source).expanduser().name, name, subdir, dry_run, conform=conform, opts=opts, progress=progress, max_size=max_size, allow_blank=allow_blank)
+
+
+def add_file(
+    project: Project,
+    src: Path,
+    source_name: str,
+    name: Optional[str],
+    subdir: Optional[str],
+    dry_run: bool = False,
+    *,
+    conform: bool = True,
+    opts: Any = None,
+    progress: Optional[Callable[[str], None]] = None,
+    max_size: Optional[int] = None,
+    allow_blank: bool = False,
+    records: Optional[List[Dict[str, Any]]] = None,
+    raster: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """add() past the reach check. records collects provenance for a batch to write at once; raster is an SVG a batch
+    already rasterised ({ png, note, edge })."""
+    from . import imagefile
+
+    final_name, name_note = final_name_of(source_name, name)
     if "/" in final_name or final_name.startswith("."):
         raise KbError("--name must be a plain file name (no folders, not hidden)", 2)
+    check_max_size(max_size)
+    real = imagefile.sniff_file(src)
+    if not ext_of(final_name) and real in imagefile.EXT_OF:
+        final_name = f"{final_name}.{imagefile.EXT_OF[str(real)]}"
     ext = ext_of(final_name)
-    if ext not in SUPPORTED_ASSET_EXTS:
+    image = ext == "svg" or ext in KINDS["image"]
+    if ext != "svg" and ext not in SUPPORTED_ASSET_EXTS:
         raise KbError(f'".{ext}" is not a media type the app reads; convert it to png/jpg/webp, mp4/mov/webm or mp3/wav/m4a first', 1)
     if final_name == "_meta.json" or final_name.endswith(TIMING_SUFFIX):
         raise KbError(f"{final_name} is a name kb keeps for its own records; pick another --name", 2, kind="usage")
-    dest_dir = project.assets_dir / subdir if subdir else project.assets_dir
-    if subdir and not tsxmod.is_project_asset_ref(f"assets/{subdir}/x"):
-        raise KbError("--dir must be a plain relative folder under assets/", 2)
+    dest_dir = clean_subdir(project, subdir)
+    if max_size is not None and not image:
+        raise KbError(f"--max-size caps images; {final_name} is a {kind_of(final_name)} file and keeps its size", 2, kind="usage")
     from . import conform as conformmod
 
-    warnings: List[str] = []
+    warnings: List[str] = [name_note] if name_note else []
+    if image:
+        return _add_image(project, src, source_name, final_name, dest_dir, dry_run, real, conform, max_size, allow_blank, warnings, opts, records, raster)
     if not conform or ext not in conformmod.CONFORMABLE_EXTS:
         result = _copy_plain(project, src, dest_dir, final_name, dry_run)
         result.update({"conformed": False, "checked": False, "probe": None, "warnings": warnings})
@@ -293,23 +398,32 @@ def add(
     plain = dest_dir / final_name
     if plain.exists() and _same_file(src, plain):
         result = _copy_plain(project, src, dest_dir, final_name, dry_run)
-        result.update({"conformed": False, "checked": False, "probe": None, "warnings": warnings})
+        probe_block = None
+        checked = False
+        if timing_record(project, result["path"]) is None and not _decoded_clean(project, result["path"]):
+            decision = conformmod.import_decision(src, say=progress)
+            checked, probe_block = decision["checked"], decision["probe"]
+            _remember_decision(project, result["path"], decision, dry_run)
+            if decision["conform"]:
+                warnings.append(f"{result['path']} is already in assets/, but it only looks conformed ({', '.join(decision['probe']['why'])}): ./kb assets conform {result['path']}")
+        result.update({"conformed": False, "checked": checked, "probe": probe_block, "warnings": warnings})
         return result
     base = final_name.rsplit(".", 1)[0]
     kept = project.root / ORIGINALS / f"{base}.{ext}"
     mezzanine = f"assets/{base}.mp4"
-    if kept.is_file() and _same_file(src, kept) and timing_record(project, mezzanine) is not None:
+    if kept.is_file() and _same_file(src, kept) and timing_record(project, mezzanine) is not None and (project.root / mezzanine).is_file():
         return {"path": mezzanine, "copied": False, "note": f"identical file already conformed (its original is {ORIGINALS}/{kept.name})", "writes": [],
                 "dryRun": dry_run, "conformed": True, "checked": True, "probe": None, "warnings": warnings}
-    decision = conformmod.import_decision(src)
+    decision = conformmod.import_decision(src, say=progress)
     if not decision["checked"]:
-        warnings.append(f"{src.name} was not checked for conforming ({decision['why']}); once the app is installed, ./kb assets probe it")
+        warnings.append(f"{src.name} was not checked for conforming ({decision['why']}); ./kb assets probe it --deep once that is fixed")
     if decision.get("refused"):
         warnings.append(f"not conformed: {decision['refused'].get('hint')}")
     if not decision["conform"]:
         if not decision["checked"] and decision["probe"].get("recommended"):
             warnings.append(f"its container says it needs conforming ({', '.join(decision['probe']['why'])}): ./kb assets conform it once the app is installed")
         result = _copy_plain(project, src, dest_dir, final_name, dry_run)
+        _remember_decision(project, result["path"], decision, dry_run)
         result.update({"conformed": False, "checked": decision["checked"], "probe": decision["probe"], "warnings": warnings})
         return result
     if subdir:
@@ -352,6 +466,137 @@ def add(
     return dict(common, path=target_rel, copied=True, conformed=True, bytes=int(done.get("bytes") or (project.root / target_rel).stat().st_size),
                 frames=done.get("frames"), durationMs=done.get("durationMs"), verdict=done.get("verdict"), reasons=done.get("reasons") or [],
                 writes=writes, dryRun=False)
+
+
+def _remember_decision(project: Project, rel: str, decision: Dict[str, Any], dry_run: bool) -> None:
+    """A clip both decoders have read needs no second decode while its bytes stay the same, and kb check can use the verdict."""
+    if not dry_run and decision.get("checks"):
+        remember_verdict(project, rel, {"verdict": decision["probe"].get("verdict"), "reasons": decision["probe"].get("reasons"), "checks": decision["checks"]})
+
+
+def _decoded_clean(project: Project, rel: str) -> bool:
+    known = known_verdict(project, rel)
+    return bool(known) and "decode" in (known.get("checks") or []) and known.get("verdict") == "ok" and not set(known.get("reasons") or []) - {"b-frames"}
+
+
+def _rasterise_svg(src: Path, stage: Path, edge: int, source_name: str) -> Tuple[Path, Optional[str]]:
+    """The rasteriser only ever sees the sanitised copy."""
+    from . import imagefile, svgsafe
+
+    try:
+        data = src.read_bytes()
+    except OSError as e:
+        raise imagefile.Refused("unreadable", f"{source_name} can't be read: {e.strerror}") from None
+    clean, dropped = svgsafe.sanitise(data, source_name)
+    svg, png = stage / "clean.svg", stage / "raster.png"
+    svg.write_bytes(clean)
+    svgsafe.rasterise([(svg, png)], edge)
+    if not png.is_file():
+        raise imagefile.Refused("unreadable", f"{source_name} did not rasterise: macOS could not draw it", "export it again as a PNG")
+    return png, svgsafe.dropped_note(source_name, dropped)
+
+
+def _add_image(
+    project: Project,
+    src: Path,
+    source_name: str,
+    final_name: str,
+    dest_dir: Path,
+    dry_run: bool,
+    real: Optional[str],
+    conform: bool,
+    max_size: Optional[int],
+    allow_blank: bool,
+    warnings: List[str],
+    opts: Any,
+    records: Optional[List[Dict[str, Any]]],
+    raster: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """A still, or an SVG rasterised through the brand rasteriser: what it really is decides its extension, whatever would
+    draw wrong is baked out (imagefile.prepare), and a result that draws nothing is refused. Provenance only when kb changed the bytes."""
+    from . import asset_meta, imagefile, svgsafe
+
+    stem = final_name.rsplit(".", 1)[0]
+    try:
+        with tempfile.TemporaryDirectory(prefix="kb-import-") as tmp:
+            stage = Path(tmp)
+            if real == "svg" or ext_of(final_name) == "svg":
+                edge = max_size or svgsafe.DEFAULT_EDGE
+                if raster is not None:
+                    png, svg_note = Path(raster["png"]), raster.get("note")
+                else:
+                    png, svg_note = _rasterise_svg(src, stage, edge, source_name)
+                if svg_note:
+                    warnings.append(svg_note)
+                g = imagefile.facts(png)
+                done: Dict[str, Any] = {"path": png, "facts": g, "ext": "png", "conformed": [], "resized": False, "transforms": [{"op": "rasterise", "longEdge": edge}]}
+                final_name = f"{stem}.png"
+            else:
+                done = imagefile.prepare(src, stage, max_edge=max_size, conform=conform)
+                g = done["facts"]
+                if imagefile.SAME_FORMAT.get(ext_of(final_name)) != g["format"]:
+                    corrected = f"{stem}.{done['ext']}"
+                    if not done["transforms"]:
+                        warnings.append(f"{source_name} is really a {g['format'].upper()}, so it lands as {corrected}")
+                    final_name = corrected
+                if not conform:
+                    skipped = imagefile.needs_conform(g)
+                    if skipped:
+                        warnings.append(f"copied as it is with --no-conform; it will draw wrong in a frame ({', '.join(skipped)})")
+            if not allow_blank:
+                imagefile.refuse_blank(Path(done["path"]), g, source_name)
+            if max(g["width"], g["height"]) > imagefile.LARGE_EDGE and not max_size:
+                warnings.append(f"{source_name} is {g['width']}x{g['height']}, more than a 4K frame shows: --max-size 3840 keeps a smaller copy")
+            if g.get("animated"):
+                warnings.append(f"{source_name} is animated, but only its first frame draws")
+            transforms = done["transforms"]
+            sha = lockmod.file_sha256(src) if transforms else None
+            result = _land_image(project, Path(done["path"]), dest_dir, final_name, dry_run, sha, transforms)
+    except imagefile.Refused as e:
+        raise refusal(e, source_name) from None
+    if done["conformed"]:
+        result["note"] = "; ".join(filter(None, [result.get("note"), f"converted for the stage ({', '.join(done['conformed'])})"]))
+    if done["resized"]:
+        result["note"] = "; ".join(filter(None, [result.get("note"), f"resized from a longer edge to {g['width']}x{g['height']}"]))
+    result.update({
+        "conformed": bool(done["conformed"]),
+        "checked": True,
+        "probe": {"verdict": "ok", "reasons": list(done["conformed"]), "recommended": bool(done["conformed"]), "why": list(done["conformed"]), "refused": None},
+        "warnings": warnings,
+        "image": {k: g.get(k) for k in ("format", "width", "height", "alpha", "profile")},
+        "transforms": transforms,
+    })
+    if transforms and result["copied"]:
+        record = {"rel": result["path"], "origin": asset_meta.origin("import", "kb assets add", source_name=source_name.replace("/", "_").replace("\\", "_"), source_sha256=sha), "transforms": transforms}
+        if records is not None:
+            records.append(record)
+        else:
+            try:
+                asset_meta.record_origins(project, [record], opts=opts)
+            except KbError as e:
+                warnings.append(f"the provenance record was not written: {e.message}")
+    return result
+
+
+def _land_image(project: Project, out: Path, dest_dir: Path, final_name: str, dry_run: bool, source_sha: Optional[str], transforms: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """_copy_plain, but a converted file that came from these same bytes the same way is the file already here."""
+    from . import asset_meta
+
+    dest = dest_dir / final_name
+    if source_sha and dest.is_file():
+        rel = dest.relative_to(project.root).as_posix()
+        try:
+            record = asset_meta.read(project.root)["assets"].get(rel)
+        except KbError:
+            record = None
+        origin = record.get("origin") if isinstance(record, dict) else None
+        if isinstance(origin, dict) and origin.get("sourceSha256") == source_sha and record.get("transforms") == transforms and not asset_meta.is_stale(record, asset_meta.file_hash(project.root, rel)):
+            return {"path": rel, "copied": False, "note": "the same file was already imported this way", "kind": "image", "bytes": dest.stat().st_size, "writes": [], "dryRun": dry_run}
+    result = _copy_plain(project, out, dest_dir, final_name, dry_run)
+    if transforms and result["writes"]:
+        meta_base = lockmod.current_hash(project.root / META_REL)
+        result["writes"].append({"path": META_REL, "action": "create" if meta_base == lockmod.ABSENT else "modify", "base": meta_base})
+    return result
 
 
 def _give_back(project: Project, original_rel: str, dest_dir: Path, final_name: str) -> str:
@@ -444,13 +689,31 @@ def probe(project: Project, ref: str, deep: bool = False) -> Dict[str, Any]:
         if dims:
             info["width"], info["height"] = dims
             info["probe"] = "built-in image reader"
+            if info["kind"] == "image":
+                _image_facts(path, info)
             return info
         raise KbError("no ffprobe found (the app bundle's Contents/MacOS/ffprobe is missing); only png/jpg sizes can be read without it", EXIT_ENV)
     else:
         info["probe"] = "built-in container reader"
     if info["kind"] == "video":
         _video_facts(project, rel, path, info, deep)
+    elif info["kind"] == "image":
+        _image_facts(path, info)
     return info
+
+
+def _image_facts(path: Path, info: Dict[str, Any]) -> None:
+    """What a still really is, whether it would draw wrong, and whether it draws anything."""
+    from . import imagefile
+
+    try:
+        f = imagefile.facts(path)
+        seen = imagefile.look(path, f)
+    except imagefile.Refused as e:
+        info["image"] = {"refused": e.code, "error": e.message}
+        return
+    info["image"] = dict({k: f.get(k) for k in ("format", "width", "height", "bits", "alpha", "space", "profile", "orientation", "animated")},
+                         blank=seen["blank"], conform=imagefile.needs_conform(f))
 
 
 def _video_facts(project: Project, rel: str, path: Path, info: Dict[str, Any], deep: bool) -> None:

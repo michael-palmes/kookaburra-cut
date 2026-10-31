@@ -5,7 +5,7 @@ import json
 from kblib import git
 from kblib.cli import build_parser
 
-from .helpers import SCRIPTS, FakeApp, KbTestCase, fake_worktree, make_project, run_git, write_json
+from .helpers import SCRIPTS, FakeApp, KbTestCase, fake_worktree, make_project, png_bytes, run_git, write_json
 
 
 class HelpTests(KbTestCase):
@@ -122,7 +122,7 @@ class ReportCommandTests(KbTestCase):
         added = self.kb(["assets", "add", str(src), "--name", "logo.png"], cwd=self.root)
         self.assertExit(added, 0)
         self.assertEqual(added.stdout.strip(), "assets/logo.png")
-        src.write_bytes(b"different")
+        src.write_bytes(png_bytes(3, 3))
         clash = self.kb(["assets", "add", str(src), "--name", "logo.png"], cwd=self.root)
         self.assertEqual(clash.stdout.strip(), "assets/logo-2.png")
         self.assertIn("already exists", clash.stderr)

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from . import brandlib
 from . import bridge
 from . import git as gitmod
 from .project import BRAND_GUIDE, MANIFEST, Project, find_root, scene_name, stem_of, worktree_of
@@ -152,7 +153,10 @@ def brand_line(project: Project) -> Optional[str]:
     except Exception:
         name = f"{brand} (not in this workspace's brands/)"
     guide = BRAND_GUIDE if (project.root / BRAND_GUIDE).is_file() else f"no {BRAND_GUIDE} yet (re-pick the brand under Project)"
-    return f"Brand {name} ({brand}): read {guide} before designing; its colours, fonts, imagery and voice are safe defaults and guidance, not hard rules"
+    line = f"Brand {name} ({brand}): read {guide} before designing; its colours, fonts, imagery and voice are safe defaults and guidance, not hard rules"
+    folder = brandlib.folder_of(project.workspace_root, brand)
+    hint = brandlib.status_hint(folder) if folder else None
+    return f"{line}; {hint}" if hint else line
 
 
 def roster(project: Project) -> List[Dict[str, Any]]:
@@ -343,6 +347,12 @@ def coordination(project: Project, caller: Any = None, mark: bool = True) -> Tup
         return None, [], [], []
 
 
+def brand_images(project: Project, brand: Any) -> Optional[Dict[str, int]]:
+    """The project's brand library by folder (kb status --json); None with no brand here."""
+    folder = brandlib.folder_of(project.workspace_root, brand)
+    return brandlib.counts_by_category(folder) if folder else None
+
+
 def status_data(project: Project) -> Dict[str, Any]:
     hb = bridge.live_heartbeat(project)
     rows = bridge.instance_rows(project)
@@ -357,6 +367,7 @@ def status_data(project: Project) -> Dict[str, Any]:
         "name": manifest.get("name"),
         "themeId": manifest.get("themeId"),
         "brand": manifest.get("brand"),
+        "brandImages": brand_images(project, manifest.get("brand")),
         "formats": manifest.get("formats"),
         "scenes": len(entries),
         "totalMs": project.total_ms(),

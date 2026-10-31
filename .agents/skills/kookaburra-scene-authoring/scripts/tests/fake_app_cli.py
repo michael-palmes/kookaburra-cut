@@ -7,7 +7,7 @@ FAKE_CLI_NOISE=1 mixes junk lines into render output, FAKE_CLI_RACE=marker makes
 is touched on every run. `check flashes` answers FAKE_CLI_FLASH_REPORT (a JSON file), else a clean report. `song
 analyse` answers FAKE_CLI_SONG (a JSON analysis), else a steady 120 bpm click; FAKE_CLI_SONG_CACHED=1 says it was cached.
 `media probe|conform` mirror cli_media.rs (caps lists `media` only when FAKE_CLI_CAPS adds MEDIA_CAPS);
-FAKE_CLI_FAIL=media-probe or media-conform fails them.
+FAKE_CLI_FAIL=media-probe or media-conform fails them; media-probe-pts fails only a deep probe.
 """
 
 from __future__ import annotations
@@ -346,7 +346,8 @@ ORIGINALS = "assets/.originals"
 
 
 def media_report(path: Path, pts: bool) -> Dict[str, Any]:
-    canned = Path(str(path) + ".media.json")
+    deep = Path(str(path) + ".media-pts.json")
+    canned = deep if pts and deep.is_file() else Path(str(path) + ".media.json")
     if canned.is_file():
         report = json.loads(canned.read_text(encoding="utf-8"))
     else:
@@ -393,6 +394,8 @@ def cmd_media(argv: List[str]) -> None:
     f = flags(argv[1:])
     if f"media-{argv[0]}" in (os.environ.get("FAKE_CLI_FAIL") or "").split(",") and argv[0] != "conform":
         fail("invalid", f"fake media {argv[0]} failure")
+    if argv[0] == "probe" and f.get("pts") and "media-probe-pts" in (os.environ.get("FAKE_CLI_FAIL") or "").split(","):
+        fail("ffmpeg", "fake deep probe failure")
     if argv[0] == "caps":
         emit({"ok": True, "cli": 1, "commands": ["caps", "probe", "conform"], "timingVersion": 1, "fps": 60, "keepOriginal": ["move", "copy"],
               "exitCodes": {"ok": 0, "failed": 1, "usage": 2, "interrupted": 130}})

@@ -14,7 +14,7 @@ from kblib import git, identity, lock, scenes
 from kblib.project import Project
 from kblib.util import KbError
 
-from .helpers import KbTestCase, make_project, read_json, run_git, write_json
+from .helpers import KbTestCase, make_project, png_bytes, read_json, run_git, write_json
 
 HOLD = (
     "import fcntl, json, os, sys, time\n"
@@ -312,7 +312,7 @@ class DryRunTests(KbTestCase):
         self.assertEqual(self.actions(self.plan("doc", "02-hero", "merge", '{"headerIcon": "assets/logo.png"}')), [("modify", "scenes/02-hero.json")])
         self.assertEqual(self.actions(self.plan("project", "set", "themeId", "kookaburra-midnight")), [("modify", "project.json")])
         src = self.tmp / "shot.png"
-        src.write_bytes(b"new image")
+        src.write_bytes(png_bytes())
         self.assertEqual(self.actions(self.plan("assets", "add", str(src))), [("create", "assets/shot.png")])
 
     def test_dry_run_text_says_nothing_was_written(self) -> None:
