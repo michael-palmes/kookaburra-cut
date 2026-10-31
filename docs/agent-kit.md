@@ -365,7 +365,8 @@ Hooks:
   (`assets/_meta.json`, `assets/**/*.timing.json`, anything under `assets/.originals/`),
   each reason naming the kb command to use (`kblib/hookfast.py` `asset_record_reason`), and to
   `flashes.accepted.json` (only `kb flashes accept` and `forget` write it, each entry with a
-  reason). An edit to a scene leased to
+  reason). These names compare case-folded, since APFS opens any folded spelling as the same
+  file, and a respelled project folder still counts as the project. An edit to a scene leased to
   someone else is denied with `permissionDecision: "deny"`, naming the holder, the expiry
   and how to bind or leave a note; the holder's own edit renews the lease. Before the first
   write of a session into `project.json` or `scenes/` it makes a checkpoint when the tree

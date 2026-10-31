@@ -47,6 +47,25 @@ class HookTests(KbTestCase):
         for rel in ("assets/rec.mp4", "assets/notes.json", "assets/originals/rec.mov", "_meta.json"):
             self.assertExit(self.hook("pre-edit", payload(self.root / rel)), 0)
 
+    def test_pre_edit_blocks_every_spelling_the_volume_opens_as_the_same_file(self) -> None:
+        for rel in ("FLASHES.ACCEPTED.JSON", "ﬂashes.accepted.json", "flaſhes.accepted.json", "EXPORTS/cut.mp4", "Edits/a.json", ".KOOKABURRA-cache/x",
+                    ".Kookaburra-cache/x", ".CLAUDE/skills/kookaburra-scene-authoring/SKILL.md", ".claude/skills/KOOKABURRA-video-editing/SKILL.md",
+                    ".KB/lock", ".kb/LEASES/x.json", ".kb/agents/a/IDENTITY.JSON", "assets/_META.JSON", "AßETS/_meta.json", "assets/rec.TIMING.JSON",
+                    "ASSETS/.ORIGINALS/rec.mov"):
+            proc = self.hook("pre-edit", payload(self.root / rel))
+            self.assertExit(proc, 2)
+            self.assertIn("blocked", proc.stderr)
+        for rel in ("Assets/New.PNG", "CLAUDE.MD", "flashes.accepted.json.bak", "flashes.ACCEPTED", "assets/ORIGINALS/rec.mov"):
+            self.assertExit(self.hook("pre-edit", payload(self.root / rel)), 0)
+        self.assertIn("kb video show a)", self.hook("pre-edit", payload(self.root / "Edits" / "a.JSON")).stderr)
+
+    def test_pre_edit_sees_through_a_respelled_project_folder(self) -> None:
+        respelled = Path(str(self.root).upper())
+        if not respelled.exists():
+            self.skipTest("this volume is case-sensitive")
+        self.assertExit(self.hook("pre-edit", payload(respelled / "flashes.accepted.json")), 2)
+        self.assertExit(self.hook("pre-edit", payload(respelled / "CLAUDE.md")), 0)
+
     def test_hooks_ignore_files_outside_the_project(self) -> None:
         self.real_process = True
         outside = self.tmp / "elsewhere" / "exports" / "x.json"

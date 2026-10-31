@@ -238,6 +238,28 @@ class BashPreTests(BashHookCase):
         ):
             self.assertIsNone(self.denial(command), command)
 
+    def test_respelled_asset_records_are_denied(self) -> None:
+        for command, rel in (
+            ("echo '{}' > ASSETS/_META.JSON", "ASSETS/_META.JSON"),
+            ("rm assets/rec.TIMING.JSON", "assets/rec.TIMING.JSON"),
+            ("echo x > AßETS/.originals/rec.mov", "AßETS/.originals/rec.mov"),
+            ("sed -i '' 's/1/2/' Assets/_meta.json", "Assets/_meta.json"),
+            ("sed -i '' 's/1/2/' aßets/_meta.json", "aßets/_meta.json"),
+        ):
+            self.assertIn(f"it writes {rel} by hand", self.denial(command) or "", command)
+        respelled = str(self.root).upper()
+        if os.path.exists(respelled):
+            self.assertIn("it writes assets/_meta.json by hand", self.denial(f"rm {respelled}/assets/_meta.json") or "")
+        self.assertIsNone(self.denial("cat ASSETS/_META.JSON"))
+        self.assertIsNone(self.denial("sed -i '' 's/1/2/' BrandAssets/_meta.json"))
+
+    def test_rel_within_knows_the_project_by_any_path_to_it(self) -> None:
+        link = self.tmp / "link"
+        link.symlink_to(self.root)
+        self.assertEqual(hookfast.rel_within(str(link), str(self.root / "assets" / "a.png")), "assets/a.png")
+        self.assertEqual(hookfast.rel_within(str(self.root), str(self.root / "assets" / "a.png")), "assets/a.png")
+        self.assertIsNone(hookfast.rel_within(str(link), str(self.tmp / "elsewhere" / "a.png")))
+
     def test_kbs_own_asset_record_writes_pass_the_hook(self) -> None:
         write(self.root / "assets" / "rec.mp4", "video")
         command = "./kb assets meta assets/rec.mp4 --set licence.id=CC-BY-4.0"
