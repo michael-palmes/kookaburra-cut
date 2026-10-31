@@ -374,8 +374,14 @@ function schedulePins(): void {
   });
 }
 
-/** A demand's chunks over its window, or at one capture instant (`atMs`, project time) when only that frame renders. */
-function addDemand(chunks: Set<number>, demand: ClipDemand, info: ClipInfo, atMs?: number): void {
+/** A demand's chunks over its window, at one capture instant (`atMs`, project time) when only that frame renders, or over a ranged render's span (`spanMs`, project time). */
+function addDemand(
+  chunks: Set<number>,
+  demand: ClipDemand,
+  info: ClipInfo,
+  atMs?: number,
+  spanMs?: readonly [number, number],
+): void {
   if (atMs !== undefined) {
     const local = atMs - (demand.sceneStartMs ?? 0);
     const window = demand.window;
@@ -383,6 +389,12 @@ function addDemand(chunks: Set<number>, demand: ClipDemand, info: ClipInfo, atMs
       for (const c of chunksForFrames([demand.frameAt(local, info)], info.frameCount))
         chunks.add(c);
     }
+  } else if (spanMs) {
+    const start = demand.sceneStartMs ?? 0;
+    const from = Math.max(spanMs[0] - start, demand.window?.[0] ?? -Infinity);
+    const to = Math.min(spanMs[1] - start, demand.window?.[1] ?? Infinity);
+    if (to >= from)
+      windowChunks((ms) => demand.frameAt(ms, info), from, to, info.frameCount, chunks);
   } else if (!demand.window) {
     for (const c of allChunks(info.frameCount)) chunks.add(c);
   } else {
@@ -450,6 +462,7 @@ export async function prepareExportClips(
   options: {
     consumers: boolean;
     atMs?: number;
+    spanMs?: readonly [number, number];
     onStatus?: (line: string) => void;
     conformWaitMs?: number;
   },
@@ -468,11 +481,12 @@ export async function prepareExportClips(
       if (!info || !frames) return;
       const chunks = new Set<number>();
       const listed = declared.get(entry.source);
-      for (const demand of listed ?? []) addDemand(chunks, demand, info, options.atMs);
+      for (const demand of listed ?? [])
+        addDemand(chunks, demand, info, options.atMs, options.spanMs);
       let known = (listed?.length ?? 0) > 0;
       if (options.consumers) {
         for (const read of entry.consumers.values()) {
-          addDemand(chunks, read(), info, options.atMs);
+          addDemand(chunks, read(), info, options.atMs, options.spanMs);
           known = true;
         }
         // A capture's late mount extracts its one frame inside the frame barrier instead.

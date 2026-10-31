@@ -10,8 +10,14 @@ from kblib import verify
 
 from .helpers import FakeApp, KbTestCase, make_project, png_bytes
 
-FEATURES = ["scale", "width", "probe", "client", "deadline", "recycle", "debug"]
-KINDS = ["capture", "check", "fonts", "insertPreset", "mediaChanged", "openEdit", "debug"]
+FEATURES = ["scale", "width", "probe", "client", "deadline", "recycle", "debug", "range", "texts"]
+KINDS = ["capture", "check", "fonts", "insertPreset", "mediaChanged", "openEdit", "debug", "range"]
+SAFE = {"x": 0.05, "y": 0.0889, "w": 0.9, "h": 0.8222}
+
+
+def flash_report(issues: List[Dict[str, Any]], frames: int) -> Dict[str, Any]:
+    return {"version": 1, "approximate": True, "standards": ["wcag-2.3.1", "itu-bt1702"], "source": "range", "fps": 30, "frames": frames,
+            "grid": [64, 36], "ok": not any(i["severity"] == "fail" for i in issues), "issues": issues}
 
 
 def health() -> Dict[str, Any]:
@@ -24,8 +30,10 @@ def cuts(stems: List[str], ms: int) -> List[Dict[str, Any]]:
 
 
 class VerifyTests(KbTestCase):
-    def app(self, project: Path, check: Dict[str, Any], white: Any = None, stall: bool = False) -> FakeApp:
-        """check answers `check`; captures write PNGs and probe white for scenes `white(stem, label)` picks, else black."""
+    def app(self, project: Path, check: Dict[str, Any], white: Any = None, stall: bool = False, issues: Any = None,
+            texts: Any = None, kinds: Any = None) -> FakeApp:
+        """check answers `check`; captures write PNGs and probe white for scenes `white(stem, label)` picks, else black, with the
+        text boxes `texts(stem, at)` gives; a ranged check reports `issues(req)`."""
         shots = self.tmp / "shots"
         shots.mkdir(exist_ok=True)
 
@@ -34,6 +42,11 @@ class VerifyTests(KbTestCase):
                 return dict({"project": req.get("project"), "scenes": [], "fonts": [], "assets": [], "warnings": [], "rendered": req.get("render")}, **check)
             if stall:
                 return {"ok": False, "gpuStalled": True, "reason": "blankReadback", "recycled": True, "retryAfterMs": 0, "wedged": False, "error": "GPU stalled"}
+            if req["kind"] == "range":
+                frames = int((req["endMs"] - req["startMs"]) * req["fps"] / 1000)
+                return {"ok": True, "project": req.get("project"), "format": req.get("aspect") or "16:9", "size": {"width": 640, "height": 360},
+                        "fps": req["fps"], "startMs": req["startMs"], "endMs": req["endMs"], "firstFrame": 0, "frames": frames,
+                        "flashes": flash_report(issues(req) if issues else [], frames), "strips": [], "timing": {"renderMs": 1200}}
             frames = []
             for n, f in enumerate(req["frames"]):
                 path = shots / f"{req['id']}-{n}.png"
@@ -41,13 +54,19 @@ class VerifyTests(KbTestCase):
                 lit = bool(white and white(f["scene"], f["at"]))
                 value = 255 if lit else 0
                 probes = [{"x": x, "y": y, "rgba": [value, value, value, 255], "hex": "#ffffff" if lit else "#000000"} for x, y in req.get("probe") or []]
-                frames.append({"scene": f["scene"], "at": f["at"], "tMs": 0, "path": str(path), "index": n, "probes": probes})
+                frame = {"scene": f["scene"], "at": f["at"], "tMs": 0, "path": str(path), "index": n, "probes": probes}
+                if req.get("texts"):
+                    frame["texts"] = texts(f["scene"], f["at"]) if texts else []
+                frames.append(frame)
             sheet = shots / f"{req['id']}-sheet.png"
             sheet.write_bytes(png_bytes())
-            return {"ok": True, "project": req.get("project"), "format": req.get("aspect"), "frames": frames, "path": frames[0]["path"],
-                    "paths": [f["path"] for f in frames], "sheetPath": str(sheet), "size": {"width": req.get("width"), "height": 720}}
+            out = {"ok": True, "project": req.get("project"), "format": req.get("aspect"), "frames": frames, "path": frames[0]["path"],
+                   "paths": [f["path"] for f in frames], "sheetPath": str(sheet), "size": {"width": req.get("width"), "height": 720}}
+            if req.get("texts"):
+                out["safe"] = SAFE
+            return out
 
-        return FakeApp(self.bridge, handler, kinds=KINDS, health=health(), openProject="ws:demo")
+        return FakeApp(self.bridge, handler, kinds=kinds or KINDS, health=health(), openProject="ws:demo")
 
     def verify(self, project: Path, *args: str, code: int = 0) -> Dict[str, Any]:
         proc = self.kb(["verify", "--json"] + list(args), cwd=project)
@@ -57,20 +76,50 @@ class VerifyTests(KbTestCase):
     def steps(self, out: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         return {s["name"]: s for s in out["steps"]}
 
-    def test_without_an_app_only_the_static_check_runs(self) -> None:
+    def test_without_an_app_nothing_is_checked_and_exit_2_says_so(self) -> None:
         root = make_project(self.tmp)
-        out = self.verify(root)
+        out = self.verify(root, code=2)
         steps = self.steps(out)
-        self.assertEqual(list(steps), ["static", "app", "captures", "handoffs", "flashes"])
+        self.assertEqual(list(steps), ["static", "app", "captures", "safe-areas", "handoffs", "flashes"])
         self.assertTrue(steps["static"]["ok"] and "skipped" not in steps["static"])
-        for name in ("app", "captures", "handoffs", "flashes"):
+        self.assertTrue(steps["app"]["notRun"] and steps["flashes"]["notRun"])
+        self.assertEqual(steps["app"]["code"], "no-app")
+        self.assertIn("not running", steps["app"]["errors"][0])
+        for name in ("captures", "safe-areas", "handoffs"):
             self.assertIn("skipped", steps[name], name)
-        self.assertIn("not running", steps["app"]["skipped"])
+        self.assertFalse(out["ok"])
         for s in out["steps"]:
             self.assertEqual(set(s) >= {"name", "ok", "ms", "errors", "warnings"}, True)
         text = self.kb(["verify"], cwd=root)
-        self.assertExit(text, 0)
-        self.assertIn("static checks only", text.stdout)
+        self.assertExit(text, 2)
+        self.assertIn("NOT CHECKED", text.stdout.splitlines()[-1])
+
+    def test_the_last_verdict_is_saved_and_read_back_with_its_exit_code(self) -> None:
+        root = make_project(self.tmp)
+        self.verify(root, code=2)
+        last = self.kb(["verify", "--last"], cwd=root)
+        self.assertExit(last, 2)
+        self.assertIn("NOT CHECKED", last.stdout)
+        saved = json.loads((root / ".kb" / "verify" / "last.json").read_text(encoding="utf-8"))
+        self.assertEqual((saved["exit"], saved["tier"], saved["ok"]), (2, "standard", False))
+        with self.app(root, {"ok": True}):
+            self.verify(root, "--quick")
+        self.assertExit(self.kb(["verify", "--last"], cwd=root), 0)
+        status = self.kb(["status"], cwd=root)
+        self.assertIn("Last verify: ok (quick, flashes not checked)", status.stdout)
+        (root / "scenes" / "02-hero.json").write_text('{"version": 1, "text": {"title": "Changed"}}\n', encoding="utf-8")
+        future = time.time() + 5
+        os.utime(root / "scenes" / "02-hero.json", (future, future))
+        self.assertIn("stale: scenes/02-hero.json changed since", self.kb(["verify", "--last"], cwd=root).stdout)
+
+    def test_quick_runs_no_flash_check_and_says_so(self) -> None:
+        root = make_project(self.tmp)
+        with self.app(root, {"ok": True}) as app:
+            out = self.verify(root, "--quick")
+        self.assertNotIn("flashes", self.steps(out))
+        self.assertEqual(out["tier"], "quick")
+        self.assertFalse([r for r in app.requests if r["kind"] == "range"])
+        self.assertIn("flashes NOT checked", out["summary"])
 
     def test_static_errors_fail_with_exit_1(self) -> None:
         root = make_project(self.tmp)
@@ -107,6 +156,13 @@ class VerifyTests(KbTestCase):
         check = [r for r in app.requests if r["kind"] == "check"]
         self.assertEqual(len(check), 1)
         self.assertTrue(check[0]["render"])
+        (ranged,) = [r for r in app.requests if r["kind"] == "range"]
+        self.assertEqual((ranged["startMs"], ranged["endMs"], ranged["fps"], ranged["flashes"]), (0, 30000 - 9 * 600, 30, True))
+        self.assertTrue(steps["flashes"]["ranged"])
+        with self.app(root, {"ok": True}) as again:
+            reused = self.steps(self.verify(root, "--aspect", "16:9"))["flashes"]
+        self.assertFalse([r for r in again.requests if r["kind"] == "range"], "an unchanged project reuses its ranged check")
+        self.assertIn("reused", reused)
 
     def test_no_render_and_scene_scope(self) -> None:
         root = make_project(self.tmp)
@@ -118,6 +174,79 @@ class VerifyTests(KbTestCase):
         (cap,) = [r for r in app.requests if r["kind"] == "capture"]
         self.assertEqual([f["scene"] for f in cap["frames"]], ["02-hero", "02-hero", "03-outro", "03-outro"])
         self.assertEqual(len(self.steps(out)["handoffs"]["seams"]), 1)
+        (ranged,) = [r for r in app.requests if r["kind"] == "range"]
+        self.assertEqual(ranged["startMs"], 2400 - 1000, "a scene's check reaches a second before it")
+        self.assertEqual(self.steps(out)["flashes"]["spans"][0]["label"], "02-hero+03-outro")
+
+    def test_formats_capture_every_aspect_and_text_past_the_safe_area_warns(self) -> None:
+        root = make_project(self.tmp)
+        manifest = json.loads((root / "project.json").read_text(encoding="utf-8"))
+        manifest["formats"] = ["16:9", "9:16"]
+        (root / "project.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+        def texts(stem: str, at: float) -> List[Dict[str, Any]]:
+            if stem != "02-hero":
+                return [{"text": "Fine", "x": 0.3, "y": 0.4, "w": 0.2, "h": 0.05, "scene": 1}]
+            return [{"text": "Hello", "x": 0.02, "y": 0.4, "w": 0.3, "h": 0.05, "scene": 1},
+                    {"text": "sliding in", "x": -0.5, "y": 0.6, "w": 0.4, "h": 0.05, "scene": 1}]
+
+        with self.app(root, {"ok": True}, texts=texts) as app:
+            out = self.verify(root, "--formats", "--quick", "--aspect", "16:9")
+        aspects = sorted({r["aspect"] for r in app.requests if r["kind"] == "capture"})
+        self.assertEqual(aspects, ["16:9", "9:16"])
+        self.assertTrue(all(r.get("texts") for r in app.requests if r["kind"] == "capture"))
+        safe = self.steps(out)["safe-areas"]
+        self.assertEqual(len(safe["warnings"]), 2, safe["warnings"])
+        self.assertTrue(all("text.title crosses the safe area (left by 3.0%)" in w for w in safe["warnings"]), safe["warnings"])
+        self.assertEqual(sorted(w.split()[0] for w in safe["warnings"]), ["16:9", "9:16"])
+        self.assertEqual(len(self.steps(out)["handoffs"]["seams"]), 2, "handoffs read the first aspect only")
+
+    def test_a_ranged_flash_failure_fails_and_an_accepted_warning_is_a_note(self) -> None:
+        root = make_project(self.tmp)
+        warn = {"type": "general", "standard": "wcag", "severity": "warn", "startMs": 3500, "endMs": 4500, "tc": "00:03.500",
+                "flashesPerSecond": 2.5, "areaPct": 20.0, "region": [0, 0, 0.5, 0.5], "deltaL": 0.4, "hint": "close to the limit"}
+        fail = dict(warn, severity="fail", standard="itu", startMs=5000, endMs=6000, tc="00:05.000", flashesPerSecond=4.0)
+        with self.app(root, {"ok": True}, issues=lambda req: [warn, fail]):
+            out = self.verify(root, code=1)
+        flashes = self.steps(out)["flashes"]
+        self.assertEqual(len(flashes["errors"]), 1)
+        self.assertIn("00:05.000", flashes["errors"][0])
+        refused = self.kb(["flashes", "accept", "00:05.2", "--why", "fine"], cwd=root)
+        self.assertExit(refused, 1)
+        self.assertIn("never be accepted", refused.stderr)
+        self.assertExit(self.kb(["flashes", "accept", "00:03.6", "--why", "a soft glint, checked by eye"], cwd=root), 0)
+        saved = json.loads((root / "flashes.accepted.json").read_text(encoding="utf-8"))
+        self.assertEqual(saved["accepted"][0]["why"], "a soft glint, checked by eye")
+        self.assertEqual(saved["accepted"][0]["scene"], "02-hero")
+        # The fix: a changed source, so the next verify checks again instead of reusing the failing report.
+        future = time.time() + 2
+        os.utime(root / "scenes" / "03-outro.tsx", (future, future))
+        with self.app(root, {"ok": True}, issues=lambda req: [warn]):
+            out = self.verify(root)
+        flashes = self.steps(out)["flashes"]
+        self.assertEqual(flashes["warnings"], [])
+        self.assertIn("accepted:", flashes["accepted"][0])
+        listed = self.kb(["flashes"], cwd=root)
+        self.assertIn("a soft glint", listed.stdout)
+        self.assertExit(self.kb(["flashes", "forget", "00:03.500"], cwd=root), 0)
+        self.assertEqual(json.loads((root / "flashes.accepted.json").read_text(encoding="utf-8"))["accepted"], [])
+
+    def test_only_a_ranged_check_of_both_standards_is_reused(self) -> None:
+        span = {"startMs": 0, "endMs": 1000}
+        last = {"source": "range", "aspect": "16:9", "atMs": 2000, "spans": [span],
+                "report": {"standards": ["wcag-2.3.1", "itu-bt1702"]}}
+        self.assertTrue(verify.covers(last, [span], "16:9", 1.0))
+        last["report"]["standards"] = ["wcag-2.3.1"]
+        self.assertFalse(verify.covers(last, [span], "16:9", 1.0))
+
+    def test_an_app_without_ranged_checks_leaves_flashes_not_checked(self) -> None:
+        root = make_project(self.tmp)
+        old = [k for k in KINDS if k != "range"]
+        with self.app(root, {"ok": True}, kinds=old):
+            out = self.verify(root, code=2)
+        flashes = self.steps(out)["flashes"]
+        self.assertTrue(flashes["notRun"])
+        self.assertIn("update Kookaburra Cut", flashes["errors"][0])
 
     def test_an_app_load_error_fails_the_app_step(self) -> None:
         root = make_project(self.tmp)
@@ -136,7 +265,7 @@ class VerifyTests(KbTestCase):
         manifest["scenes"] = cuts(stems, 300)
         (root / "project.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         with self.app(root, {"ok": True}, white=lambda stem, at: stem in ("01-a", "03-c", "05-e")):
-            out = self.verify(root)
+            out = self.verify(root, "--quick")
         handoffs = self.steps(out)["handoffs"]
         self.assertTrue(handoffs["ok"])
         self.assertEqual([s["kind"] for s in handoffs["seams"]], ["cut"] * 4)
@@ -162,9 +291,10 @@ class VerifyTests(KbTestCase):
         film.write_bytes(b"not really a film")
         old = time.time() - 600
         os.utime(film, (old, old))
-        out = self.verify(root)
+        out = self.verify(root, code=2)
         flashes = self.steps(out)["flashes"]
-        self.assertIn("older than", flashes["skipped"])
+        self.assertTrue(flashes["notRun"])
+        self.assertIn("older than", flashes["errors"][0])
         self.assertEqual(verify.newest_film(self._project(root)), film)
         newest, name = verify.newest_source(self._project(root))
         self.assertGreater(newest, old)
@@ -175,7 +305,7 @@ class VerifyTests(KbTestCase):
         mine = root / "exports" / "demo-16x9-custom.mp4"
         mine.parent.mkdir(parents=True, exist_ok=True)
         mine.write_bytes(b"the user's film")
-        out = self.verify(root, "--film", code=1)
+        out = self.verify(root, "--film", code=2)
         self.assertEqual(mine.read_bytes(), b"the user's film")
         steps = self.steps(out)
         self.assertEqual(list(steps)[-2:], ["export", "film"])

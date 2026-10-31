@@ -16,6 +16,12 @@ SHORT_SCENE_MS = 1000
 STROBE_CUTS = 4
 
 
+def seam_short(slots: List[Dict[str, Any]], i: int) -> bool:
+    """Whether the seam after scene i sits next to a short scene; the film's last scene holds on its last frame, so it never counts."""
+    durations = [slots[i]["durationMs"]] + ([slots[i + 1]["durationMs"]] if i + 2 < len(slots) else [])
+    return min(durations) < SHORT_SCENE_MS
+
+
 def seam_frames(slots: List[Dict[str, Any]], fps: float, offset: int, total_frames: int) -> List[Dict[str, Any]]:
     """Per seam: the frame pair, the seam's kind (`cut` or the transition type) and its project time."""
     out: List[Dict[str, Any]] = []
@@ -33,7 +39,7 @@ def seam_frames(slots: List[Dict[str, Any]], fps: float, offset: int, total_fram
             kind = "cut"
         out.append({"index": i, "from": a.get("stem"), "to": b.get("stem"), "kind": kind, "atMs": int(round(b["startMs"])),
                     "frames": [min(before, last), min(after, last)],
-                    "short": min(a["durationMs"], b["durationMs"]) < SHORT_SCENE_MS})
+                    "short": seam_short(slots, i)})
     return out
 
 
