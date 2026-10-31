@@ -22,6 +22,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
+from .realdir import open_own_file, real_dir
 from .util import EXIT_ENV, EXIT_PROBLEMS, EXIT_TRANSIENT, KbError, dump_json, load_json_text, now_ms
 
 KB_DIR = ".kb"
@@ -69,8 +70,8 @@ class FileLock:
             fd, depth = _held[key]
             _held[key] = (fd, depth + 1)
             return self
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(key, os.O_RDWR | os.O_CREAT, 0o644)
+        _real_parent(self.path)
+        fd = open_own_file(key, os.O_RDWR)
         deadline = time.monotonic() + self.wait
         while True:
             try:
@@ -140,11 +141,10 @@ class ProjectLock(FileLock):
 def kb_dir(project: Any) -> Path:
     """The project's .kb/ folder; the first call makes it ignore itself (.gitignore "*", and .kb/ in .git/info/exclude)."""
     root = _root(project)
-    folder = root / KB_DIR
+    folder = real_dir(root, KB_DIR)
     ignore = folder / ".gitignore"
     if not ignore.is_file():
         try:
-            folder.mkdir(parents=True, exist_ok=True)
             write_if_unchanged(ignore, ABSENT, b"*\n")
         except OSError as e:
             raise KbError(f"cannot create {folder}: {e.strerror}", EXIT_ENV, kind="env") from None
@@ -199,8 +199,18 @@ def current_hash(path: Path) -> str:
     return file_sha256(path)
 
 
+def _real_parent(path: Path, make: bool = True) -> None:
+    """Inside a .kb/ every folder must be real; anywhere else the parent is just made."""
+    parts = path.parent.parts
+    if KB_DIR in parts:
+        at = len(parts) - 1 - parts[::-1].index(KB_DIR)
+        real_dir(Path(*parts[:at]), *parts[at:], make=make)
+    elif make:
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+
 def _temp_beside(path: Path) -> str:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    _real_parent(path)
     fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".kbtmp", dir=str(path.parent))
     os.close(fd)
     return tmp
@@ -627,6 +637,8 @@ class Txn:
             return
         with project_lock(self.project, self.op, self.wait, self.caller):
             guard(self.project, self.caller, touched)
+            for rel in touched:
+                _real_parent(self.root / rel, make=False)
             for o in ordered:
                 now = current_hash(self.root / o.rel)
                 if now != o.base:

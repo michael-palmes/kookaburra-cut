@@ -21,6 +21,7 @@ from . import capture as capturemod
 from . import catalog as catmod
 from . import check as checkmod
 from . import queue
+from .realdir import real_dir
 from .util import EXIT_ENV, EXIT_OK, EXIT_PROBLEMS, EXIT_TRANSIENT, KbError, Report, emit, emit_err
 
 MAX_FRAMES = 16
@@ -398,7 +399,7 @@ def kb_script() -> Path:
 def drafts_root(project: Any) -> Path:
     from . import lock
 
-    return lock.kb_dir(project) / "verify"
+    return real_dir(lock.kb_dir(project), "verify")
 
 
 def hold_custom_exports(project: Any, hold: Path) -> List[Tuple[Path, Path]]:

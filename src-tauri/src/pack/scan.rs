@@ -29,6 +29,10 @@ pub fn is_excluded(rel: &str) -> bool {
     if rel == crate::kit::SHIM_NAME {
         return true;
     }
+    // What a stamp moved aside to make way for the shim or a real `.claude`.
+    if crate::kit::is_moved_aside(first) {
+        return true;
+    }
     // Agent configuration never travels: the app stamps its own on first open (docs/packs.md, "What travels").
     if rel.starts_with(".claude/") {
         return true;
@@ -179,6 +183,8 @@ mod tests {
         assert!(is_excluded("assets/.emoji-cache/a.png"));
         assert!(is_excluded("edits/_tap_prefs.json"));
         assert!(is_excluded(".kb/x"));
+        assert!(is_excluded("kb.moved-aside"));
+        assert!(is_excluded(".claude.moved-aside/settings.json"));
         assert!(is_excluded(".kb/agents/alpha/scratch.json"));
         assert!(is_excluded("kb"));
         assert!(!is_excluded("assets/kb"));

@@ -36,7 +36,8 @@ contract for the kit, the bridge it talks to and the app behaviour it relies on.
 | `assets/.originals/`, `assets/<stem>.timing.json`, `assets/_meta.json` | app and kb | A conform's kept original (never packed: `pack/scan.rs` `is_excluded`), its frame map, and provenance records; written by the app's conform and `kb assets`, never by hand (the hooks block it) |
 | `edits/` | app, and `kb video` | Video edit documents; Rust is the only writer (the editor window and `kb video` through the app's CLI); never hand-edited |
 | `exports/`, `.kookaburra*` | app | Never edited by Claude |
-| `./kb` | app (managed) | The zsh-safe shim from `src-tauri/templates/project-kb.sh` (mode 0755): `exec python3 -I .claude/skills/kookaburra-scene-authoring/scripts/kb.py "$@"`, exit 2 "the kit is missing" without the kit; replaced only while one of its first three lines starts `# kookaburra-cut kb shim` (a user's own `kb`, folder or link is left alone); `/kb` is in `.git/info/exclude`; never packed |
+| `./kb` | app (managed) | The zsh-safe shim from `src-tauri/templates/project-kb.sh` (mode 0755): `exec python3 -I .claude/skills/kookaburra-scene-authoring/scripts/kb.py "$@"`, exit 2 "the kit is missing" without the kit; rewritten while one of its first three lines starts `# kookaburra-cut kb shim`; anything else named `kb` (a file, folder or link) is moved aside and logged, since it would run under the `Bash(./kb *)` allow rule; `/kb` is in `.git/info/exclude`; never packed |
+| `kb.moved-aside`, `.claude.moved-aside` (then `-2` and so on) | the person | What a stamp moved out of the way, named in the `[kit]` log; never run, packed or duplicated |
 | `.kb/` | kb | Multi-agent state (lock, leases, notes, events, per-agent scratch, capture copies), song analyses, footage logs and the asset archive; ignores itself; never packed (`pack/scan.rs` `is_excluded`) or duplicated (`duplicate_project`) |
 
 Skill tree (the source lives at `.agents/skills/kookaburra-scene-authoring/`):
@@ -89,8 +90,9 @@ scripts/
   first heading. Nothing else in a user-edited `CLAUDE.md` is touched. Changing the
   template means archiving the old one first (a test pins its digest).
 - `./kb`: the shim (`stamp_shim`), written from `src-tauri/templates/project-kb.sh` with mode
-  0755 when missing, and rewritten (content or mode) while it carries the marker; any other
-  `kb` at the project root is the user's and is never touched. kb adds `/kb` to
+  0755 when missing, and rewritten (content or mode) while it carries the marker. Any other
+  `kb` at the project root (a file, folder or link) arrived with the folder and would run with
+  no prompt, so it is renamed to `kb.moved-aside` and logged as `[kit]`. kb adds `/kb` to
   `.git/info/exclude` with its other entries, so the shim never lands in a user's commit.
 - `.claude/settings.json`: created when missing, and app-owned. Every stamp replaces
   `hooks` with the managed set (identified by a command containing
@@ -99,8 +101,9 @@ scripts/
   other `permissions` key, `env` and `apiKeyHelper`; each removal is logged as `[kit]`
   with the path and value. Other keys (`model`, say) are left. An unparseable file is left
   alone. The file is only rewritten when its content changes, and then with sorted keys.
-  Before the settings, the stamp removes `.claude/commands/`, `.claude/agents/` and any
-  `.claude/skills/*` the app does not ship, logging them. Nothing a folder arrives with can
+  Before the settings, a `.claude` that isn't a real folder is moved aside to
+  `.claude.moved-aside`, so the stamp never reaches through a link, and the stamp removes
+  `.claude/commands/`, `.claude/agents/` and any `.claude/skills/*` the app does not ship, logging them. Nothing a folder arrives with can
   configure the agent; what the person wants the agent told goes in `CLAUDE.md`, which
   Claude Code reads as instructions and the stamp leaves alone past the RULES import.
 
@@ -224,6 +227,12 @@ As built (`scripts/kblib/`):
   workspace`), and refused outright for `~/.ssh`, `~/.aws`, `~/.config`, `~/.gnupg`,
   `~/Library/Keychains`, `.env*`, `.netrc`, `*.pem`, `*.p12`, `*.key` and shell history
   files.
+- **Real folders** (`kblib/realdir.py` `real_dir`, `src-tauri/src/real_dir.rs`). A folder shared by zip, copy or
+  clone keeps the links a pack refuses, so a link or file at `.kb/`, a `.kb/*` scratch folder or `assets/.kc-render` is
+  refused by name (kb: exit 1, kind `not-a-folder`; the CLI: `invalid`) before anything is written or deleted. kb opens
+  `.kb/lock`, `.kb/events.jsonl` and `.kb/notes.md` with `O_NOFOLLOW` (`open_own_file`). A new scratch folder goes
+  through the helper and into the hostile-folder fixtures (`tests/helpers.py`, `real_dir.rs` `hostile`). A linked
+  `assets/` or project folder stays the person's choice.
 - **Output escaping** (`kblib/util.py` `clean_text`). Every string kb prints (`emit`,
   `emit_err`, `emit_json` leaves and keys, the export stream, hook `additionalContext` and
   deny reasons, `KbError` messages and `Report` issues) has its control characters (newline
@@ -418,7 +427,8 @@ Every kb command, including new ones, follows these rules. Code: `scripts/kblib/
   as a command where one exists; `kind` is a stable kebab-case id printed as the
   envelope's `code`: `usage`, `env`, `no-app`, `needs-trust`, `invalid`, `leased`,
   `others-changed`, `conflict`, `locked`, `index-locked`, `app-busy`, `bridge-timeout`,
-  `gpu-stalled`, `gpu-wedged`, `throttled`, `too-large`, `flashes`, `no-grid` (a musical
+  `gpu-stalled`, `gpu-wedged`, `throttled`, `too-large`, `flashes`, `not-a-folder` (a link or
+  file where kb keeps its own folder or file; exit 1), `no-grid` (a musical
   position, `--duration-bars` or `--cut-at` with no `audio.grid`; exit 1). Each kind has a
   default hint (`DEFAULT_HINTS`). Never print a traceback.
 - **Writes.** Every write to `project.json`, `scenes/**` or `.kb/**` goes through

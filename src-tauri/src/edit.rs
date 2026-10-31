@@ -1720,7 +1720,7 @@ impl Staging {
         // A concurrent render may remove the empty folder between our mkdir and create; retry.
         let mut last = String::new();
         for _ in 0..3 {
-            std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+            crate::real_dir::real_dir(out_dir, STAGING_DIR)?;
             match std::fs::File::create(&file) {
                 Ok(_) => return Ok(Self { dir, file }),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => last = e.to_string(),
@@ -1744,6 +1744,9 @@ impl Drop for Staging {
 }
 
 fn sweep_stale_stagings(dir: &Path) {
+    if !crate::real_dir::is_real_dir(dir) {
+        return;
+    }
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -3868,6 +3871,39 @@ mod tests {
         assert!(!stale.exists());
         assert!(live.exists());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_linked_staging_folder_is_refused_by_name_and_its_old_files_survive() {
+        use crate::real_dir::hostile;
+        let (dir, victim) = hostile::folder("edit-staging");
+        std::fs::write(dir.join("assets/a.mp4"), b"source").unwrap();
+        std::fs::write(dir.join("assets/cut-edited.mp4"), b"OLD").unwrap();
+        write_doc_checked(&dir, "cut", &doc(), None).unwrap();
+        hostile::plant(&dir, "assets/.kc-render", &victim);
+        let ffmpeg = fake_ffmpeg(&dir, "printf NEW > \"$out\"");
+        let e = render_doc(
+            canonical_job(&dir, ffmpeg, false),
+            &mut |_| {},
+            &AtomicBool::new(false),
+        )
+        .unwrap_err();
+        assert_eq!(e.code, "invalid");
+        assert!(e.message.contains(".kc-render is a link or a file"), "{}", e.message);
+        hostile::assert_untouched(&victim);
+        assert_eq!(std::fs::read(dir.join("assets/cut-edited.mp4")).unwrap(), b"OLD");
+        assert!(std::fs::symlink_metadata(dir.join("assets/.kc-render")).unwrap().is_symlink());
+        hostile::clean_up(&dir);
+    }
+
+    #[test]
+    fn the_sweep_never_follows_a_link() {
+        use crate::real_dir::hostile;
+        let (dir, victim) = hostile::folder("edit-sweep");
+        hostile::plant(&dir, "assets/.kc-render", &victim);
+        sweep_stale_stagings(&dir.join("assets/.kc-render"));
+        hostile::assert_untouched(&victim);
+        hostile::clean_up(&dir);
     }
 
     #[test]

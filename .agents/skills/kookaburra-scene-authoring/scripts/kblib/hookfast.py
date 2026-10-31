@@ -17,6 +17,7 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from . import leases
+from .realdir import real_dir
 
 BLOCK = 2
 CHECK_ALL_OVER = 20
@@ -336,6 +337,7 @@ def bind(root: str, command: str, caller: Dict[str, Any]) -> List[str]:
 
     events.ensure_kb(root)
     for name in names:
+        real_dir(root, *leases.AGENTS, name)
         path = leases.binding_path(root, name)
         current = leases.binding(root, name)
         if current and current.get("session") == caller["session"] and current.get("agentId") == caller["agentId"]:

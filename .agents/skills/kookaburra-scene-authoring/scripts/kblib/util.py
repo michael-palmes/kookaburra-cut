@@ -86,6 +86,7 @@ DEFAULT_HINTS: Dict[str, str] = {
     "too-large": "use the default sheet size or --scale, and fewer frames",
     "flashes": "fix the flagged moments, or pass --allow-flashes after checking them",
     "no-grid": "./kb song analyse, then ./kb beats set-grid --from-analysis",
+    "not-a-folder": "it came with the folder: move it aside with mv, then rerun",
     "transient": "rerun in a moment",
 }
 

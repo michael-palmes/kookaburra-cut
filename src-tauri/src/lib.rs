@@ -48,6 +48,7 @@ mod present;
 mod preset_posters;
 mod privacy;
 mod pty;
+mod real_dir;
 mod render_win;
 mod scene_doc;
 mod settings_win;
