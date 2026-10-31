@@ -1,0 +1,29 @@
+name: T7 throwaway
+on:
+  push:
+    branches: [test/t7-tag-key]
+permissions: {}
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-26]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Secure Enclave keys through the real checks
+        run: |
+          set -uo pipefail
+          ssh -V
+          git fetch --force --no-tags origin "+refs/tags/t7-throwaway-*:refs/tags/t7-throwaway-*"
+          git -c gpg.ssh.allowedSignersFile=.github/allowed_signers -c gpg.minTrustLevel=fully verify-commit --verbose HEAD || { echo "::error::commit key refused"; exit 1; }
+          git -c gpg.ssh.allowedSignersFile=.github/allowed_tag_signers -c gpg.minTrustLevel=fully verify-tag --verbose t7-throwaway-tagkey || { echo "::error::tag key refused"; exit 1; }
+          if git -c gpg.ssh.allowedSignersFile=.github/allowed_tag_signers -c gpg.minTrustLevel=fully verify-tag --verbose t7-throwaway-commitkey; then echo "::error::commit key tag accepted"; exit 1; fi
+          echo "commit key tag refused, as it should be"
