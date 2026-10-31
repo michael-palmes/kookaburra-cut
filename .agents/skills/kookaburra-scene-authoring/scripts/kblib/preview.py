@@ -14,6 +14,7 @@ from . import bridge, queue
 from .film import ranged as rg
 from .film import report as rp
 from .film import timeline as tl
+from .realdir import real_dir
 from .util import EXIT_ENV, EXIT_OK, KbError, emit, emit_err
 
 DEFAULT_FPS = 12
@@ -37,7 +38,7 @@ motion; open the clip to watch it."""
 def previews_root(project: Any) -> Path:
     from . import lock
 
-    return lock.kb_dir(project) / "previews"
+    return real_dir(lock.kb_dir(project), "previews")
 
 
 def out_path(project: Any, label: str, ext: str) -> Path:

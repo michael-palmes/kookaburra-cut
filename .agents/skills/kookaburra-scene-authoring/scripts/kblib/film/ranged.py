@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from .. import bridge, music, queue
+from ..realdir import real_dir
 from ..util import EXIT_ENV, EXIT_PROBLEMS, KbError, atomic_write_json, emit_err
 from . import flashes as fl
 from . import strips as st
@@ -130,7 +131,7 @@ def merge_issues(issues: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def runs_root(project: Any) -> Path:
     from .. import lock
 
-    return lock.kb_dir(project) / "flashes"
+    return real_dir(lock.kb_dir(project), "flashes")
 
 
 def run_folder(project: Any) -> Path:

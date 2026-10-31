@@ -11,6 +11,8 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
+from .realdir import real_parent
+
 EXIT_OK = 0
 EXIT_PROBLEMS = 1
 EXIT_ENV = 2
@@ -268,7 +270,7 @@ def dump_json(value: Any) -> str:
 
 def atomic_write_text(path: Path, text: str) -> None:
     """Temp file in the same folder, fsync, then rename: the bytes land whole or not at all."""
-    path.parent.mkdir(parents=True, exist_ok=True)
+    real_parent(path)
     fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".kbtmp", dir=str(path.parent))
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:

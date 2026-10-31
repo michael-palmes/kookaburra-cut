@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from ..realdir import real_dir
 from ..util import EXIT_ENV, KbError, atomic_write_json, now_ms
 from ..video import appcli
 from ..video.passes import Tools
@@ -145,13 +146,13 @@ def strips_folder(project: Any, film: Path) -> Path:
         film.resolve().relative_to(project.root.resolve())
     except ValueError:
         return rp.film_dir(project, "flashes")
-    return film.with_name(film.name + ".flashes")
+    return real_dir(film.parent, film.name + ".flashes", make=False)
 
 
 def last_path(project: Any) -> Path:
     from .. import lock
 
-    return lock.kb_dir(project) / "flashes" / "last.json"
+    return real_dir(lock.kb_dir(project), "flashes", make=False) / "last.json"
 
 
 def settle(project: Any, report: Optional[Dict[str, Any]], source: str, *, film: Optional[Path] = None, tools: Optional[Tools] = None,
@@ -176,7 +177,7 @@ def settle(project: Any, report: Optional[Dict[str, Any]], source: str, *, film:
 def load_last(project: Any) -> Optional[Dict[str, Any]]:
     try:
         doc = json.loads(last_path(project).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    except (KbError, OSError, ValueError):
         return None
     return doc if isinstance(doc, dict) and isinstance(doc.get("report"), dict) else None
 

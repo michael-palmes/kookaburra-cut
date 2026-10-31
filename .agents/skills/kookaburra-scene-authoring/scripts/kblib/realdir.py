@@ -8,6 +8,8 @@ import os
 import stat
 from typing import Any
 
+KB_DIR = ".kb"
+
 def _refuse(path: Any, what: str) -> Exception:
     from .util import EXIT_PROBLEMS, KbError
 
@@ -42,6 +44,18 @@ def real_dir(root: Any, *parts: str, make: bool = True) -> Any:
         except OSError as e:
             raise _failed(path, "read", e) from None
     return os.path.join(os.fspath(root), *parts) if isinstance(root, str) else root.joinpath(*parts)
+
+
+def real_parent(path: Any, make: bool = True) -> None:
+    """Before a write to path: inside a .kb/ every folder must be real; anywhere else the parent is just made."""
+    from pathlib import Path
+
+    parts = Path(path).parent.parts
+    if KB_DIR in parts:
+        at = len(parts) - 1 - parts[::-1].index(KB_DIR)
+        real_dir(Path(*parts[:at]), *parts[at:], make=make)
+    elif make:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
 
 
 def no_follow(path: Any, flags: int) -> int:

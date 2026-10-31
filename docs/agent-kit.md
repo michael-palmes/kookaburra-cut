@@ -231,7 +231,7 @@ As built (`scripts/kblib/`):
   files.
 - **Real folders** (`kblib/realdir.py` `real_dir`, `src-tauri/src/real_dir.rs`). A folder shared by zip, copy or
   clone keeps the links a pack refuses, so a link or file at `.kb/`, a `.kb/*` scratch folder or `assets/.kc-render` is
-  refused by name (kb: exit 1, kind `not-a-folder`; the CLI: `invalid`) before anything is written or deleted. kb opens
+  refused by name (kb: exit 1, kind `not-a-folder`; the CLI: `invalid`) before anything is written or deleted, and a linked `<film>.flashes` is left alone (the check still reports, with `stripsError`). kb opens
   `.kb/lock`, `.kb/events.jsonl` and `.kb/notes.md` with `O_NOFOLLOW` (`open_own_file`). A new scratch folder goes
   through the helper and into the hostile-folder fixtures (`tests/helpers.py`, `real_dir.rs` `hostile`). A linked
   `assets/` or project folder stays the person's choice.

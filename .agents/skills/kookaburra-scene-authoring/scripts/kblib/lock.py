@@ -22,10 +22,9 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
-from .realdir import open_own_file, real_dir
+from .realdir import KB_DIR, open_own_file, real_dir, real_parent
 from .util import EXIT_ENV, EXIT_PROBLEMS, EXIT_TRANSIENT, KbError, dump_json, load_json_text, now_ms
 
-KB_DIR = ".kb"
 LOCK_WAIT_S = 10.0
 RETRIES = 3
 RETRY_AFTER_MS = 1000
@@ -70,7 +69,7 @@ class FileLock:
             fd, depth = _held[key]
             _held[key] = (fd, depth + 1)
             return self
-        _real_parent(self.path)
+        real_parent(self.path)
         fd = open_own_file(key, os.O_RDWR)
         deadline = time.monotonic() + self.wait
         while True:
@@ -199,18 +198,8 @@ def current_hash(path: Path) -> str:
     return file_sha256(path)
 
 
-def _real_parent(path: Path, make: bool = True) -> None:
-    """Inside a .kb/ every folder must be real; anywhere else the parent is just made."""
-    parts = path.parent.parts
-    if KB_DIR in parts:
-        at = len(parts) - 1 - parts[::-1].index(KB_DIR)
-        real_dir(Path(*parts[:at]), *parts[at:], make=make)
-    elif make:
-        path.parent.mkdir(parents=True, exist_ok=True)
-
-
 def _temp_beside(path: Path) -> str:
-    _real_parent(path)
+    real_parent(path)
     fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".kbtmp", dir=str(path.parent))
     os.close(fd)
     return tmp
@@ -638,7 +627,7 @@ class Txn:
         with project_lock(self.project, self.op, self.wait, self.caller):
             guard(self.project, self.caller, touched)
             for rel in touched:
-                _real_parent(self.root / rel, make=False)
+                real_parent(self.root / rel, make=False)
             for o in ordered:
                 now = current_hash(self.root / o.rel)
                 if now != o.base:

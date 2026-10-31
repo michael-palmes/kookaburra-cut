@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
+from ..realdir import real_dir
 from ..util import EXIT_ENV, KbError
 
 MAX_STRIPS = 8
@@ -108,7 +109,8 @@ def film_strips(ffmpeg: str, film: Path, report: Optional[Dict[str, Any]], out_d
     for issue in issues:
         at = int(round(float(issue.get("startMs") or 0) * fps / 1000.0))
         wanted.append([min(last, max(0, at + d)) if last else max(0, at + d) for d in (-1, 0, 1)])
-    scratch = out_dir / ".frames"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    scratch = real_dir(out_dir, ".frames")
     try:
         pngs = seek_frames(ffmpeg, film, [k for w in wanted for k in w], fps, scratch)
         out: List[Dict[str, Any]] = []

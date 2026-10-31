@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import types
 from typing import List
 
 from .helpers import HOSTILE_KB_FILES, HOSTILE_KB_FOLDERS, KbTestCase, git_init, make_project, plant_link, tree_bytes
@@ -119,6 +120,14 @@ class HostileFolder(KbTestCase):
                 (self.project / rel).unlink()
         self.untouched()
 
+    def test_atomic_writes_refuse_a_linked_folder_too(self) -> None:
+        from kblib.util import KbError, atomic_write_json
+
+        self.link_folder(".kb/verify")
+        with self.assertRaises(KbError):
+            atomic_write_json(self.project / ".kb" / "verify" / "last.json", {})
+        self.untouched()
+
     def test_a_transaction_never_moves_or_trashes_through_a_link(self) -> None:
         from kblib import lock
         from kblib.util import KbError
@@ -158,6 +167,52 @@ class HostileFolder(KbTestCase):
         self.assertNotIn("Traceback", proc.stderr)
         self.untouched()
         self.assertTrue(os.path.islink(self.project / "assets" / ".kc-render"))
+
+    def test_flash_and_preview_prunes_never_follow_a_link(self) -> None:
+        from kblib import preview
+        from kblib.film import flashes, ranged
+        from kblib.project import Project
+        from kblib.util import KbError
+
+        project = Project(self.project)
+        self.link_folder(".kb/flashes")
+        with self.assertRaises(KbError):
+            ranged.run_folder(project)
+        self.assertIsNone(flashes.load_last(project))
+        self.assertEqual(flashes.settle(project, {"issues": []}, "test")["issues"], [])
+        self.untouched()
+
+        self.link_folder(".kb/previews")
+        (self.victim / "a.mp4").write_bytes(b"mine")
+        self.before = tree_bytes(self.victim)
+        with self.assertRaises(KbError):
+            preview.out_path(project, "span", ".mp4")
+        self.untouched()
+
+    def test_a_linked_strips_folder_is_refused_and_the_check_still_reports(self) -> None:
+        from kblib.film import flashes
+        from kblib.project import Project
+
+        (self.project / "exports").mkdir()
+        film = self.project / "exports" / "cut.mp4"
+        film.write_bytes(b"film")
+        (self.victim / "strip-01.png").write_bytes(b"mine")
+        self.before = tree_bytes(self.victim)
+        self.link_folder("exports/cut.mp4.flashes")
+        tools = types.SimpleNamespace(ffmpeg="/nonexistent/ffmpeg")
+        report = flashes.settle(Project(self.project), {"issues": []}, "test", film=film, tools=tools, fps=30.0)
+        self.assertIn("cut.mp4.flashes", report["stripsError"])
+        self.untouched()
+
+    def test_a_linked_frames_folder_inside_the_strips_folder_is_refused(self) -> None:
+        from kblib.film import strips
+        from kblib.util import KbError
+
+        self.link_folder("exports/cut.mp4.flashes/.frames")
+        folder = self.project / "exports" / "cut.mp4.flashes"
+        with self.assertRaises(KbError):
+            strips.film_strips("/nonexistent/ffmpeg", self.project / "exports" / "cut.mp4", {"issues": [{"startMs": 100}]}, folder, 30.0)
+        self.untouched()
 
     def test_git_excludes_never_append_through_a_link(self) -> None:
         git_init(self.project)

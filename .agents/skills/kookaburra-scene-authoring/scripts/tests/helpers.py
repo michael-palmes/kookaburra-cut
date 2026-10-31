@@ -344,7 +344,7 @@ def make_project(root: Path, scenes: Optional[List[str]] = None, git: bool = Fal
 
 
 # Every path a hostile folder can link for kb. Add a new .kb/ scratch folder here as it lands.
-HOSTILE_KB_FOLDERS = [".kb", ".kb/leases", ".kb/agents", ".kb/captures", ".kb/verify", ".kb/archive", ".kb/song", ".kb/footage"]
+HOSTILE_KB_FOLDERS = [".kb", ".kb/leases", ".kb/agents", ".kb/captures", ".kb/verify", ".kb/archive", ".kb/song", ".kb/footage", ".kb/flashes", ".kb/previews"]
 HOSTILE_KB_FILES = [".kb/lock", ".kb/events.jsonl", ".kb/notes.md"]
 
 
