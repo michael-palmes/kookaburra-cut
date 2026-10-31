@@ -431,7 +431,7 @@ sidecars are signed and stapled together or Gatekeeper blocks them.
 
 The release is cut by `.github/workflows/release.yml` from a signed `v*` tag
 (`pnpm release` only tags). Its build job holds no signing secret: it checks the
-tag against `main`'s `.github/allowed_signers`, builds the ffmpeg sidecar from
+tag against `main`'s `.github/allowed_tag_signers`, builds the ffmpeg sidecar from
 pinned source, fetches the licensed device models and runs `pnpm tauri build
 --no-sign`. A sign job in the protected `release` environment then runs
 `scripts/sign-and-notarize.sh` on that payload: it signs the two sidecars and

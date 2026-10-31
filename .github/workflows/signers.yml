@@ -1,7 +1,7 @@
 name: Signers
 
-# Runs the base branch's copy of this file (pull_request_target), so a pull request cannot edit the
-# check away. The pull request's commits are fetched as data only and never executed.
+# Runs the default branch's copy of this file (pull_request_target), so a pull request cannot edit
+# the check away. The pull request's commits are fetched as data only and never executed.
 on:
   pull_request_target:
     types: [opened, synchronize, reopened]
@@ -32,17 +32,29 @@ jobs:
           git fetch --no-tags origin "+refs/pull/${PR}/head:refs/remotes/pr/head"
           [ "$(git rev-parse refs/remotes/pr/head)" = "$HEAD_SHA" ] || { echo "::error::the fetched head is not the event's head"; exit 1; }
 
-      # The head commit's signature covers the whole tree, so one check guards every path.
+      # The head's signature covers the whole tree; a change to either list needs the tag key, so a stolen commit key can't add a key.
       - name: Require an allowed signature on the head commit
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          git show "${BASE_SHA}:.github/allowed_signers" > "$RUNNER_TEMP/allowed_signers"
-          if git -c gpg.ssh.allowedSignersFile="$RUNNER_TEMP/allowed_signers" -c gpg.minTrustLevel=fully verify-commit --verbose "$HEAD_SHA"; then
-            echo "The head commit is signed by an allowed key"
+          signers=allowed_signers
+          fix="git commit --amend --no-edit -S with that key, then push (for Dependabot, check out its branch, re-sign the head the same way and push)"
+          changed=false
+          bases="$(git merge-base --all "$BASE_SHA" "$HEAD_SHA")" || changed=true
+          for merge_base in $bases; do
+            git diff --quiet "$merge_base" "$HEAD_SHA" -- .github/allowed_signers .github/allowed_tag_signers || changed=true
+          done
+          if [ "$changed" = true ]; then
+            signers=allowed_tag_signers
+            fix="git -c user.signingkey=\"\$(git config --path kookaburra.tagkey)\" commit --amend --no-edit -S, then push"
+            echo "This pull request changes a signer list, so the head must carry the tag key"
+          fi
+          git show "${BASE_SHA}:.github/${signers}" > "$RUNNER_TEMP/signers"
+          if git -c gpg.ssh.allowedSignersFile="$RUNNER_TEMP/signers" -c gpg.minTrustLevel=fully verify-commit --verbose "$HEAD_SHA"; then
+            echo "The head commit is signed by a key in ${signers}"
           else
-            echo "::error::the head commit must be signed by a key in the base branch's .github/allowed_signers. Fix: git commit --amend --no-edit -S with that key, then push (for Dependabot, check out its branch, re-sign the head the same way and push)"
+            echo "::error::the head commit must be signed by a key in the base branch's .github/${signers}. Fix: ${fix}"
             exit 1
           fi

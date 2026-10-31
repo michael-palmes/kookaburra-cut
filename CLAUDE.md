@@ -84,7 +84,7 @@ pnpm look-lab --look <id> --gpu                          # --compare 4,8 for mot
 
 # Release: a signed v* tag on main; .github/workflows/release.yml builds, signs (protected
 # environment), verifies and drafts the GitHub release (kookaburra-release skill).
-pnpm release           # tag v<version> (signed, checked against .github/allowed_signers) and push it
+pnpm release           # tag v<version> (signed, checked against .github/allowed_tag_signers) and push it
 pnpm release:rehearse  # local ad-hoc rehearsal: build, sign ad hoc, plain DMG, verify; no key, no tag
 pnpm package:signed    # local Developer ID sign + notarise + staple (needs the identity and a notary profile)
 pnpm package:dmg       # styled DMG only, from release/Kookaburra Cut.app (needs a GUI session)
