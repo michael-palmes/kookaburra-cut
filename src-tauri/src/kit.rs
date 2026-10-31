@@ -8,6 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde_json::{json, Value};
 
 use crate::pack::hash::sha256_bytes;
+use crate::real_dir::is_real_dir;
 
 /// The primary skill: CLAUDE.md imports its RULES and the managed hooks run its kb.
 pub(crate) const SKILL_NAME: &str = "kookaburra-scene-authoring";
@@ -25,6 +26,9 @@ const SHIM_TEMPLATE: &str = include_str!("../templates/project-kb.sh");
 const SHIM_MARKER: &str = "# kookaburra-cut kb shim";
 pub(crate) const SHIM_NAME: &str = "kb";
 const SHIM_MODE: u32 = 0o755;
+const CLAUDE_DIR: &str = ".claude";
+/// A folder's own `kb` or a linked `.claude` becomes `<name>.moved-aside`, then `-2` and so on.
+const ASIDE_SUFFIX: &str = ".moved-aside";
 /// Every default `CLAUDE.md` shipped before the current one: a file still matching one is the app's to replace.
 const PREVIOUS_CLAUDE_MD: [&str; 3] = [
     include_str!("../templates/claude-md-history/gannet.md"),
@@ -93,8 +97,15 @@ pub(crate) fn stamp_project(
     opts: &StampOptions,
 ) -> Result<(), String> {
     let _guard = STAMP_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    let skills_dir = dir.join(".claude").join("skills");
-    let removed = prune_foreign_agent_files(&dir.join(".claude"));
+    let claude = dir.join(CLAUDE_DIR);
+    if std::fs::symlink_metadata(&claude).is_ok() && !is_real_dir(&claude) {
+        if let Err(e) = move_aside(dir, CLAUDE_DIR) {
+            let _ = stamp_shim(dir);
+            return Err(e);
+        }
+    }
+    let skills_dir = claude.join("skills");
+    let removed = prune_foreign_agent_files(&claude);
     if !removed.is_empty() {
         log::warn!(
             "[kit] {}: removed agent files that did not come from the app: {}",
@@ -104,7 +115,7 @@ pub(crate) fn stamp_project(
     }
     let mut results = vec![
         stamp_claude_md(dir),
-        stamp_settings(&dir.join(".claude").join("settings.json")),
+        stamp_settings(&claude.join("settings.json")),
         stamp_shim(dir),
     ];
     results.extend(skills.iter().map(|(name, src)| {
@@ -116,13 +127,24 @@ pub(crate) fn stamp_project(
         .map(|_| ())
 }
 
+/// A new file at `tmp`: whatever is already there goes first, so a planted link is never written through.
+fn write_fresh(tmp: &Path, text: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    remove_tree(tmp);
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(tmp)?
+        .write_all(text.as_bytes())
+}
+
 fn atomic_write(path: &Path, text: &str) -> Result<(), String> {
     let name = path
         .file_name()
         .and_then(|n| n.to_str())
         .ok_or_else(|| format!("bad path {}", path.display()))?;
     let tmp = path.with_file_name(format!(".{name}.kit-tmp"));
-    std::fs::write(&tmp, text).map_err(|e| format!("writing {name}: {e}"))?;
+    write_fresh(&tmp, text).map_err(|e| format!("writing {name}: {e}"))?;
     std::fs::rename(&tmp, path).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
         format!("writing {name}: {e}")
@@ -477,7 +499,11 @@ fn stamp_settings(path: &Path) -> Result<(), String> {
 /// Remove every `.claude/skills/*` the app does not ship and the whole `commands/` and `agents/` folders; returns what went (paths relative to `.claude/`). The kit's own dot-prefixed staging copies are left to `remove_stale_siblings`.
 fn prune_foreign_agent_files(claude_dir: &Path) -> Vec<String> {
     let mut removed = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(claude_dir.join("skills")) {
+    let skills = claude_dir.join("skills");
+    if !is_real_dir(&skills) && std::fs::symlink_metadata(&skills).is_ok() {
+        remove_tree(&skills);
+        removed.push("skills".to_owned());
+    } else if let Ok(entries) = std::fs::read_dir(&skills) {
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().into_owned();
             if name.starts_with('.') || SHIPPED_SKILLS.contains(&name.as_str()) {
@@ -504,28 +530,63 @@ fn is_managed_shim(text: &str) -> bool {
     text.lines().take(3).any(|line| line.starts_with(SHIM_MARKER))
 }
 
-/// Write the root `kb` shim (mode 0755) when it is missing or still carries the marker; a user's own `kb`, folder or link is left alone.
+/// Whether a top-level name is something a stamp moved aside: it stays home, like the shim it made way for.
+pub(crate) fn is_moved_aside(name: &str) -> bool {
+    [SHIM_NAME, CLAUDE_DIR].iter().any(|own| {
+        name.strip_prefix(own)
+            .is_some_and(|rest| rest.starts_with(ASIDE_SUFFIX))
+    })
+}
+
+/// Rename `name` in `dir` to the first free `<name>.moved-aside` and log it; a link moves as a link.
+fn move_aside(dir: &Path, name: &str) -> Result<(), String> {
+    for n in 1..1000 {
+        let aside = match n {
+            1 => format!("{name}{ASIDE_SUFFIX}"),
+            n => format!("{name}{ASIDE_SUFFIX}-{n}"),
+        };
+        if std::fs::symlink_metadata(dir.join(&aside)).is_ok() {
+            continue;
+        }
+        std::fs::rename(dir.join(name), dir.join(&aside))
+            .map_err(|e| format!("moving {name} aside: {e}"))?;
+        log::warn!(
+            "[kit] {}: moved {name} to {aside}: it did not come from the app",
+            dir.display()
+        );
+        return Ok(());
+    }
+    Err(format!(
+        "moving {name} aside: every {ASIDE_SUFFIX} name is taken"
+    ))
+}
+
+/// Write the root `kb` shim (mode 0755) when it is missing or still carries the marker. Anything else there (a file, folder or link) would run under the `Bash(./kb *)` allow rule, so it moves aside first.
 fn stamp_shim(dir: &Path) -> Result<(), String> {
     use std::os::unix::fs::PermissionsExt;
     let path = dir.join(SHIM_NAME);
     match std::fs::symlink_metadata(&path) {
-        Ok(meta) if !meta.is_file() => return Ok(()),
         Ok(meta) => {
-            let Ok(text) = std::fs::read_to_string(&path) else {
-                return Ok(());
-            };
-            if !is_managed_shim(&text) {
-                return Ok(());
-            }
-            if text == SHIM_TEMPLATE && meta.permissions().mode() & 0o777 == SHIM_MODE {
-                return Ok(());
+            let marked = meta
+                .is_file()
+                .then(|| std::fs::read_to_string(&path).ok())
+                .flatten()
+                .filter(|text| is_managed_shim(text));
+            match marked {
+                Some(text)
+                    if text == SHIM_TEMPLATE && meta.permissions().mode() & 0o777 == SHIM_MODE =>
+                {
+                    return Ok(())
+                }
+                Some(_) => {}
+                None => move_aside(dir, SHIM_NAME)?,
             }
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(_) => return Ok(()),
+        Err(e) => return Err(format!("reading the kb shim: {e}")),
     }
     let tmp = dir.join(format!(".{SHIM_NAME}.kit-tmp"));
-    let result = std::fs::write(&tmp, SHIM_TEMPLATE)
+    let result = write_fresh(&tmp, SHIM_TEMPLATE)
         .and_then(|()| {
             std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(SHIM_MODE))
         })
@@ -1419,18 +1480,74 @@ mod tests {
     }
 
     #[test]
-    fn a_users_own_kb_is_left_alone() {
-        let dir = scratch("shim-user");
+    fn a_kb_that_is_not_ours_is_moved_aside_and_replaced() {
+        let dir = scratch("shim-file");
         let mine = "#!/bin/sh\necho my own kb\n";
         write(&dir.join(SHIM_NAME), mine);
         stamp_shim(&dir).unwrap();
-        assert_eq!(std::fs::read_to_string(dir.join(SHIM_NAME)).unwrap(), mine);
+        assert_eq!(std::fs::read_to_string(dir.join(SHIM_NAME)).unwrap(), SHIM_TEMPLATE);
+        assert_eq!(std::fs::read_to_string(dir.join("kb.moved-aside")).unwrap(), mine);
+
+        write(&dir.join(SHIM_NAME), "second");
+        stamp_shim(&dir).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("kb.moved-aside-2")).unwrap(), "second");
+        assert_eq!(std::fs::read_to_string(dir.join("kb.moved-aside")).unwrap(), mine);
+        stamp_shim(&dir).unwrap();
+        assert!(!dir.join("kb.moved-aside-3").exists());
+
         let folder = scratch("shim-folder");
-        std::fs::create_dir_all(folder.join(SHIM_NAME)).unwrap();
+        write(&folder.join(SHIM_NAME).join("inside.txt"), "kept");
         stamp_shim(&folder).unwrap();
-        assert!(folder.join(SHIM_NAME).is_dir());
-        let _ = std::fs::remove_dir_all(&dir);
-        let _ = std::fs::remove_dir_all(&folder);
+        assert_eq!(std::fs::read_to_string(folder.join(SHIM_NAME)).unwrap(), SHIM_TEMPLATE);
+        assert!(folder.join("kb.moved-aside/inside.txt").exists());
+
+        let binary = scratch("shim-binary");
+        std::fs::write(binary.join(SHIM_NAME), [0xff, 0xfe, 0x00]).unwrap();
+        stamp_shim(&binary).unwrap();
+        assert_eq!(std::fs::read_to_string(binary.join(SHIM_NAME)).unwrap(), SHIM_TEMPLATE);
+        assert_eq!(std::fs::read(binary.join("kb.moved-aside")).unwrap(), [0xff, 0xfe, 0x00]);
+
+        for gone in [&dir, &folder, &binary] {
+            let _ = std::fs::remove_dir_all(gone);
+        }
+    }
+
+    #[test]
+    fn a_linked_kb_moves_as_a_link_and_its_target_is_never_written() {
+        use crate::real_dir::hostile;
+        let (project, victim) = hostile::folder("kb-link");
+        hostile::plant(&project, SHIM_NAME, &victim.join("old.txt"));
+        stamp_shim(&project).unwrap();
+        hostile::assert_untouched(&victim);
+        assert_eq!(std::fs::read_to_string(project.join(SHIM_NAME)).unwrap(), SHIM_TEMPLATE);
+        assert!(!std::fs::symlink_metadata(project.join(SHIM_NAME)).unwrap().is_symlink());
+        assert!(std::fs::symlink_metadata(project.join("kb.moved-aside")).unwrap().is_symlink());
+        hostile::clean_up(&project);
+    }
+
+    #[test]
+    fn a_planted_temp_file_is_replaced_not_written_through() {
+        use crate::real_dir::hostile;
+        let (project, victim) = hostile::folder("kit-tmp");
+        let old = victim.join("old.txt");
+        hostile::plant(&project, ".kb.kit-tmp", &old);
+        hostile::plant(&project, ".CLAUDE.md.kit-tmp", &old);
+        hostile::plant(&project, ".claude/.settings.json.kit-tmp", &old);
+        stamp_project(&[], &project, &opts("0.19.0", false, 1)).unwrap();
+        hostile::assert_untouched(&victim);
+        assert_eq!(std::fs::read_to_string(project.join(SHIM_NAME)).unwrap(), SHIM_TEMPLATE);
+        assert_eq!(mode(&victim.join("old.txt")) & 0o111, 0);
+        hostile::clean_up(&project);
+    }
+
+    #[test]
+    fn what_moved_aside_stays_home() {
+        for name in ["kb.moved-aside", "kb.moved-aside-2", ".claude.moved-aside"] {
+            assert!(is_moved_aside(name), "{name}");
+        }
+        for name in ["kb", ".claude", "kb.txt", "moved-aside", "kb.moved", ".claude.json"] {
+            assert!(!is_moved_aside(name), "{name}");
+        }
     }
 
     #[test]
@@ -1456,6 +1573,65 @@ mod tests {
         assert_eq!(ran.status.code(), Some(0));
         assert_eq!(String::from_utf8_lossy(&ran.stdout), "kb status --json two words\n");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_planted_executable_kb_is_moved_aside_and_kb_status_runs_ours() {
+        use crate::real_dir::hostile;
+        use std::os::unix::fs::PermissionsExt;
+        let (project, victim) = hostile::folder("kb-run");
+        let planted = victim.join("planted-ran");
+        let script = format!("#!/bin/sh\necho pwned > {}\n", planted.display());
+        write(&project.join(SHIM_NAME), &script);
+        std::fs::set_permissions(project.join(SHIM_NAME), std::fs::Permissions::from_mode(0o755)).unwrap();
+        let kit = Path::new(env!("CARGO_MANIFEST_DIR")).join("../.agents/skills").join(SKILL_NAME);
+        stamp_project(&[(SKILL_NAME, &kit)], &project, &opts("0.19.0", false, 1)).unwrap();
+        let out = std::process::Command::new("./kb")
+            .arg("status")
+            .current_dir(&project)
+            .env("HOME", project.parent().unwrap())
+            .output()
+            .unwrap();
+        assert!(!planted.exists(), "the planted kb ran");
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        assert!(String::from_utf8_lossy(&out.stdout).contains("Project:"));
+        assert_eq!(std::fs::read_to_string(project.join(SHIM_NAME)).unwrap(), SHIM_TEMPLATE);
+        assert_eq!(std::fs::read_to_string(project.join("kb.moved-aside")).unwrap(), script);
+        hostile::clean_up(&project);
+    }
+
+    #[test]
+    fn a_linked_claude_folder_never_steers_the_stamp() {
+        use crate::real_dir::hostile;
+        let (project, victim) = hostile::folder("claude-link");
+        write(&victim.join("commands/mine.md"), "mine");
+        write(&victim.join("skills/mine/SKILL.md"), "mine");
+        write(&victim.join("settings.json"), r#"{"env":{"MINE":"1"}}"#);
+        hostile::plant(&project, CLAUDE_DIR, &victim);
+        let src = skill_source(project.parent().unwrap());
+        stamp_project(&[(SKILL_NAME, &src)], &project, &opts("0.19.0", false, 1)).unwrap();
+        assert_eq!(std::fs::read_to_string(victim.join("commands/mine.md")).unwrap(), "mine");
+        assert!(victim.join("skills/mine/SKILL.md").exists());
+        assert!(!victim.join(format!("skills/{SKILL_NAME}")).exists());
+        assert!(std::fs::read_to_string(victim.join("settings.json")).unwrap().contains("MINE"));
+        assert!(is_real_dir(&project.join(CLAUDE_DIR)));
+        assert!(project.join(format!(".claude/skills/{SKILL_NAME}/kit.json")).is_file());
+        assert!(std::fs::symlink_metadata(project.join(".claude.moved-aside")).unwrap().is_symlink());
+        hostile::clean_up(&project);
+    }
+
+    #[test]
+    fn a_linked_skills_folder_goes_and_its_target_stays() {
+        use crate::real_dir::hostile;
+        let (project, victim) = hostile::folder("skills-link");
+        write(&victim.join("mine/SKILL.md"), "mine");
+        hostile::plant(&project, ".claude/skills", &victim);
+        let src = skill_source(project.parent().unwrap());
+        stamp_project(&[(SKILL_NAME, &src)], &project, &opts("0.19.0", false, 1)).unwrap();
+        assert!(victim.join("mine/SKILL.md").exists());
+        assert!(is_real_dir(&project.join(".claude/skills")));
+        assert!(project.join(format!(".claude/skills/{SKILL_NAME}/kit.json")).is_file());
+        hostile::clean_up(&project);
     }
 
     #[test]

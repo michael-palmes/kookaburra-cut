@@ -14,6 +14,7 @@ import time
 from typing import Any, Callable, Dict, IO, Iterable, List, Optional, Tuple
 
 from .leases import as_by, root_of, same_caller
+from .realdir import no_follow, open_own_file, real_dir
 
 VERSION = 1
 EVENTS = "events.jsonl"
@@ -41,11 +42,10 @@ def kb_path(root: str, *parts: str) -> str:
 
 def ensure_kb(root: str) -> str:
     """.kb/ that ignores itself, made without kblib.lock's imports (the Bash hooks call this)."""
-    folder = kb_path(root)
+    folder = real_dir(root, ".kb")
     ignore = os.path.join(folder, ".gitignore")
     if os.path.isfile(ignore):
         return folder
-    os.makedirs(folder, exist_ok=True)
     try:
         fd = os.open(ignore, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
         try:
@@ -57,7 +57,7 @@ def ensure_kb(root: str) -> str:
     exclude = os.path.join(root, ".git", "info", "exclude")
     if os.path.isdir(os.path.join(root, ".git")):
         try:
-            with open(exclude, "a+", encoding="utf-8") as f:
+            with open(exclude, "a+", encoding="utf-8", opener=no_follow) as f:
                 f.seek(0)
                 current = f.read()
                 if ".kb/" not in current.splitlines():
@@ -109,7 +109,7 @@ def append(project: Any, kind: str, caller: Any, **fields: Any) -> Dict[str, Any
 
     event = make(kind, resolve(root, caller), **fields)
     path = kb_path(root, EVENTS)
-    fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+    fd = open_own_file(path, os.O_WRONLY | os.O_APPEND)
     try:
         os.write(fd, encode(event))
         size = os.fstat(fd).st_size
@@ -516,7 +516,7 @@ def save_seen(project: Any, name: str, **changes: Any) -> None:
         if merged == current:
             return
         ensure_kb(root)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        real_dir(root, ".kb", "agents", name)
         if lock.write_if_unchanged(path, base, lock.encode_json(merged)):
             return
 
@@ -553,7 +553,7 @@ def add_note(project: Any, caller: Any, text: str, scene: Optional[str] = None, 
                 os.replace(path, kb_path(root, NOTES_OLD))
         except OSError:
             pass
-        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+        fd = open_own_file(path, os.O_WRONLY | os.O_APPEND)
         try:
             os.write(fd, line.encode("utf-8"))
         finally:
