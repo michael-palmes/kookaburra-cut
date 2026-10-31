@@ -198,6 +198,15 @@ what the author wanted the agent told and moves what they agree with into
 `CLAUDE.md` themselves. The stamped RULES.md tells the agent `NOTES.md` is
 notes, not rules.
 
+Accepted flash warnings never land. `flashes.accepted.json` (`docs/agent-kit.md`,
+"Accepted flash warnings") is one person's decision about their own film, and
+a warning it matches stops reading as a warning, so nobody else's may arrive in
+a pack. Export leaves it out. Apply removes it from anything a hand-built pack
+carried and says so on the summary, and the film's flash checks show those
+moments as warnings. A project keeps its own file: export never touches it, it does
+not count towards `contentHash` (so the project still reads `identical` to its
+own pack), and a `replace` moves it to the backup with the rest of the old film.
+
 Terminal and Website scene content get their review before Continue, on the
 trust screen: `read_pack_scene_docs` reads every scene sidecar beside a staged
 scene source straight from the pack, checks each against its signed hash (one
@@ -212,8 +221,8 @@ import (`docs/scene-website.md`).
 
 ## Extraction checklist
 
-Implemented in `pack::read` and `pack::paths`, one test per item in
-`pack::tests`. Limits live in `pack::limits`.
+Implemented in `pack::read` and `pack::paths` (item 16 in `pack::apply`), one
+test per item in `pack::tests`. Limits live in `pack::limits`.
 
 1. Read the central directory only. Refuse over `MAX_ENTRIES` or a declared
    total over `MAX_TOTAL_UNCOMPRESSED`, before inflating anything, then any
@@ -263,7 +272,12 @@ Implemented in `pack::read` and `pack::paths`, one test per item in
     mismatch aborts the whole import.
 15. Only then resolve and move. `StagedPack` implements `Drop`, so every failure
     path removes the tree.
-16. Force `0644` on files and `0755` on directories, whatever the archive said:
+16. Before the first move, remove `flashes.accepted.json` from each landing
+    project, template and preset, and name it on the summary. By path, never by
+    matching the name: the volume decides what reads as that file (APFS folds
+    `FLASHES.ACCEPTED.JSON` and `ﬂashes.accepted.json` onto it). One that will
+    not delete stops the import.
+17. Force `0644` on files and `0755` on directories, whatever the archive said:
     imported items are the user's documents, unlike the app's own caches.
 
 An `object.json` `glb` or `thumbnail` is validated like an asset rel on both
@@ -343,6 +357,9 @@ Excluded, because it is generated (`pack::scan::is_excluded`, extending
 `edits/_tap_prefs.json`, `.DS_Store`, `._*`. Templates and presets are project
 folders, so the same list applies to them; the unused-file review is not offered
 for either, because a template or preset carries only what it was saved with.
+
+Excluded, because it is a person's decision and not the film's:
+`flashes.accepted.json` ("Pack trust is not code trust").
 
 Included despite looking generated: `CLAUDE.md`, because authors write notes
 there; import swaps it for the app's default and keeps the text as `NOTES.md`
