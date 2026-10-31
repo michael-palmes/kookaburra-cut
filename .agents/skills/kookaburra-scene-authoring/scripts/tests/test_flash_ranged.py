@@ -118,6 +118,14 @@ class AcceptTests(KbTestCase):
         self.assertEqual(acc.without(doc, [rows[0]["id"]]), {"version": 1, "accepted": []})
         self.assertIsNone(acc.without(doc, ["nope"]))
 
+    def test_a_saved_report_loses_the_mark_of_a_forgotten_warning(self) -> None:
+        rows = acc.new_entries(self.report(), 3600, "a soft glint", "agent", "range")
+        saved = self.report()
+        acc.apply(saved, rows)
+        self.assertIn("accepted", saved["issues"][0])
+        self.assertEqual(acc.apply(saved, []), 0)
+        self.assertNotIn("accepted", saved["issues"][0])
+
 
 class StripTests(KbTestCase):
     def test_the_box_never_vanishes_and_stays_in_frame(self) -> None:

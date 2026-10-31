@@ -53,13 +53,14 @@ def matches(entry: Dict[str, Any], issue: Dict[str, Any]) -> bool:
 
 
 def apply(report: Optional[Dict[str, Any]], accepted: List[Dict[str, Any]]) -> int:
-    """Marks each warning a person accepted (`accepted: { id, why }`); failures stay as they are. Returns how many."""
-    if not report or not accepted:
+    """Marks each warning a person accepted (`accepted: { id, why }`), clearing marks a saved report kept for entries since forgotten; failures stay as they are. Returns how many."""
+    if not report:
         return 0
     n = 0
     for issue in report.get("issues") or []:
         if not isinstance(issue, dict):
             continue
+        issue.pop("accepted", None)
         hit = next((e for e in accepted if matches(e, issue)), None)
         if hit is not None:
             issue["accepted"] = {"id": hit.get("id"), "why": hit.get("why"), "by": hit.get("by")}

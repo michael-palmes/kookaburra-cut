@@ -489,8 +489,10 @@ def flash_lines(report: Optional[Dict[str, Any]]) -> Tuple[List[str], List[str],
 
 
 def covers(last: Optional[Dict[str, Any]], spans: List[Dict[str, Any]], aspect: str, newest: float) -> bool:
-    """A ranged check newer than every source, at this aspect, over every span asked for."""
+    """A ranged check of both standards, newer than every source, at this aspect, over every span asked for."""
     if not last or last.get("source") != "range" or (last.get("aspect") or "") != aspect:
+        return False
+    if not {"wcag-2.3.1", "itu-bt1702"} <= set((last.get("report") or {}).get("standards") or []):
         return False
     if float(last.get("atMs") or 0) / 1000.0 <= newest:
         return False
@@ -923,7 +925,7 @@ def show_last(ctx: Any) -> int:
         return code
     emit(f"last verify ({last.get('tier')}, {age_text(float(last.get('atMs') or 0))}, by {last.get('agent') or '?'}): exit {last['exit']}")
     for step in last.get("steps") or []:
-        state = "skip" if step.get("skipped") else ("ok" if step.get("ok") else ("NOT RUN" if step.get("notRun") else "FAIL"))
+        state = "skip" if step.get("skipped") else "ok" if step.get("ok") else "WAIT" if step.get("transient") else "NOT RUN" if step.get("notRun") else "FAIL"
         emit(f"  {state:<7} {step.get('name'):<10} " + (str(step.get("skipped")) if step.get("skipped") else
                                                         f"{len(step.get('errors') or [])} errors, {step.get('warningCount', 0)} warnings"))
         for line in step.get("errors") or []:

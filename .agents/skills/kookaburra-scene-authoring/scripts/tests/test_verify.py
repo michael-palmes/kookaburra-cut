@@ -231,6 +231,14 @@ class VerifyTests(KbTestCase):
         self.assertExit(self.kb(["flashes", "forget", "00:03.500"], cwd=root), 0)
         self.assertEqual(json.loads((root / "flashes.accepted.json").read_text(encoding="utf-8"))["accepted"], [])
 
+    def test_only_a_ranged_check_of_both_standards_is_reused(self) -> None:
+        span = {"startMs": 0, "endMs": 1000}
+        last = {"source": "range", "aspect": "16:9", "atMs": 2000, "spans": [span],
+                "report": {"standards": ["wcag-2.3.1", "itu-bt1702"]}}
+        self.assertTrue(verify.covers(last, [span], "16:9", 1.0))
+        last["report"]["standards"] = ["wcag-2.3.1"]
+        self.assertFalse(verify.covers(last, [span], "16:9", 1.0))
+
     def test_an_app_without_ranged_checks_leaves_flashes_not_checked(self) -> None:
         root = make_project(self.tmp)
         old = [k for k in KINDS if k != "range"]
