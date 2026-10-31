@@ -5,6 +5,26 @@ fn dsp(samples: &[f32]) -> Core {
     analyse_pcm(samples, TrackerChoice::Dsp, Err("dsp"), &|| false).unwrap()
 }
 
+/// Bursts at scattered times: music with no pulse to find.
+fn scattered(seconds: usize, bursts: usize) -> Vec<f32> {
+    let mut x = vec![0.0f32; SR as usize * seconds];
+    let mut state = 99u64;
+    let mut step = || {
+        state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        (state >> 33) as usize
+    };
+    for _ in 0..bursts {
+        let at = step() % (x.len() - 2400);
+        for j in 0..2400 {
+            let tone = (j as f32 * 0.4).sin();
+            x[at + j] += 0.5 * (-(j as f32) / 400.0).exp() * tone;
+        }
+    }
+    x
+}
+
 fn fitted_beats(core: &Core) -> Vec<f64> {
     core.beats.iter().map(|b| b.ms).collect()
 }
@@ -18,6 +38,27 @@ fn assert_grid(core: &Core, truth: &[f64], bpm: f64, max_ms: f64) {
     );
     let err = synth::max_error(&fitted_beats(core), truth);
     assert!(err < max_ms, "max beat error {err:.2} ms at {bpm} BPM");
+}
+
+#[test]
+fn a_tracked_fit_carries_how_far_its_beats_stray() {
+    let (x, _) = synth::clicks(Clicks::new(120.0, 500.0, 20_000.0));
+    let mut fit = dsp(&x).fit.expect("a fit");
+    fit.beat_stray = Some((105.24, 43_500.2));
+    let v = fit_json(&fit);
+    assert_eq!(v["beatStrayMs"], 105.2);
+    assert_eq!(v["beatStrayAtMs"], 43_500.0);
+}
+
+#[test]
+fn scattered_hits_give_no_grid_to_trust() {
+    let core = dsp(&scattered(40, 120));
+    assert!(
+        core.fit.is_none(),
+        "{:?}",
+        core.fit.as_ref().map(|f| f.line.bpm())
+    );
+    assert!(core.beats.is_empty());
 }
 
 #[test]
@@ -162,7 +203,7 @@ fn an_explicit_nn_request_without_the_model_fails() {
 }
 
 #[test]
-fn the_v2_document_carries_every_contract_field() {
+fn the_v3_document_carries_every_contract_field() {
     let (x, _) = synth::clicks(Clicks::new(120.0, 500.0, 12_000.0));
     let core = analyse_pcm(&x, TrackerChoice::Auto, Err("missing"), &|| false).unwrap();
     let extras = Extras {
@@ -185,10 +226,13 @@ fn the_v2_document_carries_every_contract_field() {
             "breaths",
             "decoder",
             "durationMs",
+            "ending",
             "energy",
             "envelope",
             "fallbackReason",
             "fit",
+            "form",
+            "hits",
             "keyMoments",
             "lyrics",
             "model",
@@ -199,7 +243,7 @@ fn the_v2_document_carries_every_contract_field() {
             "version"
         ]
     );
-    assert_eq!(v["version"], 2);
+    assert_eq!(v["version"], 3);
     assert_eq!(v["tracker"], "dsp");
     assert_eq!(v["fallbackReason"], "missing");
     assert_eq!(v["model"], Value::Null);
@@ -217,6 +261,10 @@ fn the_v2_document_carries_every_contract_field() {
     ] {
         assert!(fit[key].is_f64(), "{key}");
     }
+    assert!(
+        fit["beatStrayMs"].is_null() && fit["beatStrayAtMs"].is_null(),
+        "no tracker, no stray: {fit}"
+    );
     assert_eq!(fit["beatsPerBar"], 4);
     assert_eq!(fit["constantTempo"], true);
     assert!((fit["periodMs"].as_f64().unwrap() - 500.0).abs() < 0.5);
@@ -232,6 +280,48 @@ fn the_v2_document_carries_every_contract_field() {
     assert!(v["sections"].is_array() && v["breaths"].is_array());
     assert_eq!(v["envelope"]["hopMs"], 21.333);
     assert!(v["keyMoments"].is_array());
+    let hit = &v["hits"]["full"][0];
+    assert!(hit[0].is_f64() && hit[1].is_f64());
+    for band in ["low", "mid", "high"] {
+        assert!(v["hits"][band].is_array(), "{band}");
+    }
+    assert!(v["ending"]["audibleEndMs"].is_f64());
+    assert!(v["ending"]["trailingSilenceMs"].is_f64());
+    assert!(v["ending"]["lastHitMs"].is_f64());
+    assert!(v["form"]["phrase"]["bars"].is_u64());
+    assert!(v["form"]["bars"][0]["lufs"].is_f64());
+    assert!(v["form"]["parts"].is_array() && v["form"]["moments"].is_array());
+}
+
+#[test]
+fn a_fit_within_one_frame_at_30_fps_is_constant_and_a_wider_one_is_not() {
+    let wander = |amp: f64| -> fit::LineFit {
+        let points: Vec<fit::LinePoint> = (0..64)
+            .map(|k| fit::LinePoint {
+                k,
+                t: k as f64 * 500.0 + amp * (k as f64 / 10.0).sin(),
+                w: 1.0,
+            })
+            .collect();
+        let max_drift_ms = points
+            .windows(8)
+            .map(|w| (w.iter().map(|q| q.t - q.k as f64 * 500.0).sum::<f64>() / 8.0).abs())
+            .fold(0.0, f64::max);
+        fit::LineFit {
+            period_ms: 500.0,
+            phase_ms: 0.0,
+            residual_ms: 1.0,
+            max_drift_ms,
+            points,
+        }
+    };
+    assert!(
+        wander(20.0).max_drift_ms > 15.0,
+        "the case that used to be refused"
+    );
+    assert!(wander(20.0).constant_tempo());
+    assert!(wander(60.0).max_drift_ms > 33.0);
+    assert!(!wander(60.0).constant_tempo());
 }
 
 #[test]
@@ -239,18 +329,18 @@ fn caches_are_versioned_by_name_and_go_stale_when_the_model_arrives() {
     let dir = Path::new("/x/cache/beats");
     assert_eq!(
         cache_path(dir, "abc", TrackerChoice::Auto),
-        dir.join("abc-v2.json")
+        dir.join("abc-v3.json")
     );
     assert_eq!(
         cache_path(dir, "abc", TrackerChoice::Nn),
-        dir.join("abc-v2.json")
+        dir.join("abc-v3.json")
     );
     assert_eq!(
         cache_path(dir, "abc", TrackerChoice::Dsp),
-        dir.join("abc-v2-dsp.json")
+        dir.join("abc-v3-dsp.json")
     );
     let fallback =
-        json!({ "version": 2, "sha256": "abc", "tracker": "dsp", "fallbackReason": "no model" });
+        json!({ "version": 3, "sha256": "abc", "tracker": "dsp", "fallbackReason": "no model" });
     let yes = || true;
     let no = || false;
     let unasked = || -> bool { panic!("the model is only looked for to refresh a fallback") };
@@ -268,24 +358,24 @@ fn caches_are_versioned_by_name_and_go_stale_when_the_model_arrives() {
         TrackerChoice::Auto,
         unasked
     ));
-    let forced = json!({ "version": 2, "sha256": "abc", "tracker": "dsp", "fallbackReason": null });
+    let forced = json!({ "version": 3, "sha256": "abc", "tracker": "dsp", "fallbackReason": null });
     assert!(cache_is_fresh(&forced, "abc", TrackerChoice::Dsp, unasked));
     assert!(cache_is_fresh(&forced, "abc", TrackerChoice::Auto, unasked));
-    let nn = json!({ "version": 2, "sha256": "abc", "tracker": "nn", "model": { "sha256": nn::BEAT_MODEL_SHA256 } });
+    let nn = json!({ "version": 3, "sha256": "abc", "tracker": "nn", "model": { "sha256": nn::BEAT_MODEL_SHA256 } });
     assert!(cache_is_fresh(&nn, "abc", TrackerChoice::Auto, unasked));
     assert!(cache_is_fresh(&nn, "abc", TrackerChoice::Nn, unasked));
     assert!(!cache_is_fresh(&nn, "abc", TrackerChoice::Dsp, unasked));
     let old_model =
-        json!({ "version": 2, "sha256": "abc", "tracker": "nn", "model": { "sha256": "0" } });
+        json!({ "version": 3, "sha256": "abc", "tracker": "nn", "model": { "sha256": "0" } });
     assert!(!cache_is_fresh(
         &old_model,
         "abc",
         TrackerChoice::Auto,
         unasked
     ));
-    let tried = json!({ "version": 2, "sha256": "abc", "tracker": "dsp", "fallbackReason": "the model found too few beats", "model": { "sha256": nn::BEAT_MODEL_SHA256 } });
+    let tried = json!({ "version": 3, "sha256": "abc", "tracker": "dsp", "fallbackReason": "the model found too few beats", "model": { "sha256": nn::BEAT_MODEL_SHA256 } });
     assert!(cache_is_fresh(&tried, "abc", TrackerChoice::Auto, unasked));
-    let tried_old = json!({ "version": 2, "sha256": "abc", "tracker": "dsp", "fallbackReason": "x", "model": { "sha256": "0" } });
+    let tried_old = json!({ "version": 3, "sha256": "abc", "tracker": "dsp", "fallbackReason": "x", "model": { "sha256": "0" } });
     assert!(!cache_is_fresh(
         &tried_old,
         "abc",
@@ -519,7 +609,7 @@ fn song_file_analysis_caches_and_reads_lyrics() {
     assert!(second.cached);
     assert_eq!(second.analysis, first.analysis);
     assert!(first.cache_path.unwrap().ends_with(format!(
-        "{}-v2.json",
+        "{}-v3.json",
         first.analysis["sha256"].as_str().unwrap()
     )));
     let _ = std::fs::remove_dir_all(&dir);

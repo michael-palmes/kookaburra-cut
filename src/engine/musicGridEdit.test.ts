@@ -15,7 +15,7 @@ const fit: BeatFit = {
 };
 
 const analysis = (over: Partial<BeatAnalysis> = {}): BeatAnalysis => ({
-  version: 2,
+  version: 3,
   sha256: "sha",
   tracker: "nn",
   fallbackReason: null,
@@ -31,6 +31,7 @@ const analysis = (over: Partial<BeatAnalysis> = {}): BeatAnalysis => ({
   sections: [],
   breaths: [],
   stabs: [],
+  hits: [],
   lyrics: null,
   ...over,
 });
@@ -39,7 +40,7 @@ const authored: AudioGridSpec = {
   bpm: 120,
   offsetMs: 250,
   beatsPerBar: 4,
-  source: { sha256: "sha", analysisVersion: 2, tracker: "nn", residualMs: 0.9 },
+  source: { sha256: "sha", analysisVersion: 3, tracker: "nn", residualMs: 0.9 },
 };
 
 describe("detectedGrid", () => {

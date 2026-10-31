@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { BeatAnalysis } from "../engine/beatAnalysis";
 import type { AudioGridSpec } from "../engine/project";
-import { beatGridMenuItems } from "./BeatLane";
+import { beatGridMenuItems, hitTicks } from "./BeatLane";
 
 const analysis: BeatAnalysis = {
-  version: 2,
+  version: 3,
   sha256: "sha",
   tracker: "nn",
   fallbackReason: null,
@@ -29,6 +29,7 @@ const analysis: BeatAnalysis = {
   sections: [],
   breaths: [],
   stabs: [],
+  hits: [],
   lyrics: null,
 };
 
@@ -72,5 +73,55 @@ describe("beat lane grid menu", () => {
     expect(items.every((item) => item.disabled)).toBe(true);
     for (const item of items) item.onSelect();
     expect(onSetGrid).not.toHaveBeenCalled();
+  });
+});
+
+describe("beat lane hit ticks", () => {
+  const linear = (ms: number) => ms / 1000;
+
+  it("places hits in project time, taller by strength, and drops the weak ones", () => {
+    const ticks = hitTicks(
+      [
+        { ms: 100, strength: 0.3 },
+        { ms: 300, strength: 0.5 },
+        { ms: 600, strength: 1 },
+      ],
+      100,
+      1000,
+      1000,
+      linear,
+    );
+    expect(ticks.map((t) => t.x)).toEqual([200, 500]);
+    expect(ticks[1].height).toBeGreaterThan(ticks[0].height);
+    expect(ticks[1].height).toBeLessThanOrEqual(1);
+  });
+
+  it("keeps the stronger of two ticks too close to read", () => {
+    const ticks = hitTicks(
+      [
+        { ms: 500, strength: 0.6 },
+        { ms: 501, strength: 0.9 },
+        { ms: 700, strength: 0.6 },
+      ],
+      0,
+      1000,
+      1000,
+      linear,
+    );
+    expect(ticks.map((t) => t.x)).toEqual([501, 700]);
+  });
+
+  it("leaves hits outside the film off the lane", () => {
+    const ticks = hitTicks(
+      [
+        { ms: 50, strength: 1 },
+        { ms: 2000, strength: 1 },
+      ],
+      100,
+      1000,
+      1000,
+      linear,
+    );
+    expect(ticks).toEqual([]);
   });
 });

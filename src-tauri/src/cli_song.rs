@@ -1,4 +1,4 @@
-//! `<app binary> song <command>`: the beat lane's song analyser, headless, with the edit CLI's conventions (one JSON object on stdout, diagnostics on stderr, exit 0 ok, 1 failed, 2 usage or environment, 130 interrupted). `song caps` says what this build can track; `song analyse` decodes with the bundled ffmpeg and writes the same `<sha>-v2.json` cache the app reads. Contract: docs/agent-kit.md (headless CLI).
+//! `<app binary> song <command>`: the beat lane's song analyser, headless, with the edit CLI's conventions (one JSON object on stdout, diagnostics on stderr, exit 0 ok, 1 failed, 2 usage or environment, 130 interrupted). `song caps` says what this build can track; `song analyse` decodes with the bundled ffmpeg and writes the same `<sha>-v3.json` cache the app reads. Contract: docs/agent-kit.md (headless CLI).
 
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -145,7 +145,7 @@ mod tests {
     #[test]
     fn caps_names_the_version_trackers_and_model() {
         let caps = caps(&[]).unwrap();
-        assert_eq!(caps["analysisVersion"], 2);
+        assert_eq!(caps["analysisVersion"], 3);
         assert_eq!(caps["trackers"], json!(["nn", "dsp"]));
         assert_eq!(caps["commands"], json!(["caps", "analyse"]));
         assert_eq!(caps["model"]["name"], "beat_this_small");

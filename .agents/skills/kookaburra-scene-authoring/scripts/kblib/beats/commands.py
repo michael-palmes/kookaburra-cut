@@ -23,7 +23,7 @@ NO_SOUNDTRACK_HINT = "add one: ./kb assets add FILE, then ./kb project set audio
 EPILOG = """\
   ./kb beats                              the grid, each scene's bars, cues and sections
   ./kb beats --scene 03-drop              every bar line and beat in one scene (scene-local ms)
-  ./kb beats set-grid --from-analysis     the fitted grid from ./kb song analyse (refuses a drifting tempo without --force)
+  ./kb beats set-grid --from-analysis     the fitted grid from ./kb song analyse (refuses a drift over 33 ms without --force)
   ./kb beats set-grid --bpm 120 --offset 250 --beats-per-bar 4   by hand (offset: track ms of bar 1 beat 1)
   ./kb beats set-downbeat 12.48s          the nearest bar line moves there; --bar 9 makes it bar 9 instead
   ./kb beats cue set drop bar:29          named times: a position or a time (12.5s, 12500ms)
@@ -156,7 +156,7 @@ def show_data(project: Project) -> Dict[str, Any]:
             "keyMoments": [{"tMs": music.round_ms(mo["tMs"] - start), "strength": round(mo["strength"], 3)} for mo in moments if start <= mo["tMs"] <= end],
             "cues": [{"id": c["id"], "localMs": c["projectMs"] - music.round_ms(start)} for c in cues if "projectMs" in c and start <= c["projectMs"] < end],
         })
-    fit = analysis.get("fit") if analysis is not None and version == 2 else None
+    fit = analysis.get("fit") if analysis is not None and version in cache.FITTED_VERSIONS else None
     return {
         "soundtrack": rel, "startOffsetMs": offset, "projectTotalMs": music.round_ms(total),
         "grid": (dict(grid, beatMs=60000 / grid["bpm"], barMs=model.bar_ms(grid), source=source) if grid else None),
@@ -396,6 +396,9 @@ def cmd_set_grid(ctx: Any) -> int:
             grid = js_json(grid)
         else:
             grid = from_analysis(project, manifest, a.force, a.beats_per_bar)
+            note = grid_note(load_analysis(project, manifest)[0] or {})
+            if note:
+                notes.append(note)
         audio["grid"] = grid
         accepted.update(grid)
         lost = unresolved_after(project, manifest)
@@ -405,6 +408,20 @@ def cmd_set_grid(ctx: Any) -> int:
 
     code = write_music(ctx, edit)
     return code
+
+
+def grid_note(analysis: Dict[str, Any]) -> Optional[str]:
+    """What a fit that drifts yet holds says when it is accepted."""
+    fit = analysis.get("fit")
+    if not model.drift_holds(fit):
+        return None
+    stray = model.stray_note(fit)
+    if stray:
+        return f"accepted a grid, but {stray}"
+    drift = fit.get("maxDriftMs") if isinstance(fit, dict) else None
+    if not is_number(drift) or drift <= model.STEADY_DRIFT_MS:
+        return None
+    return f"accepted a tempo that drifts by up to {drift:g} ms: under one frame at 30 fps ({model.MAX_GRID_DRIFT_MS} ms)"
 
 
 def grid_summary(grid: Dict[str, Any]) -> str:
@@ -426,7 +443,7 @@ def from_analysis(project: Project, manifest: Dict[str, Any], force: bool, beats
         raise invalid(f"the soundtrack {rel} is missing on disk", hint="restore the file, or set another with ./kb project set audio.file")
     if analysis is None:
         raise invalid(f"no analysis of {rel} yet", hint="./kb song analyse --accept")
-    if analysis.get("version") != cache.ANALYSIS_VERSION:
+    if analysis.get("version") not in cache.FITTED_VERSIONS:
         raise invalid(f"the only analysis of {rel} is version {analysis.get('version')}, which has no fitted grid", hint="./kb song analyse --accept")
     return grid_from(analysis, rel, force, beats_per_bar)
 
@@ -436,9 +453,9 @@ def grid_from(analysis: Dict[str, Any], rel: str, force: bool, beats_per_bar: Op
     if grid is None:
         raise invalid(f"the analysis of {rel} found no steady tempo in 30..300 bpm to fit a grid to", hint="set one by hand: ./kb beats set-grid --bpm B --offset MS")
     fit = analysis.get("fit") or {}
-    if fit.get("constantTempo") is False and not force:
+    if not model.drift_holds(fit) and not force:
         raise invalid(
-            f"the analysis says the tempo of {rel} drifts (residual {fit.get('residualMs')} ms, max drift {fit.get('maxDriftMs')} ms), so one grid won't hold for the whole track",
+            f"the tempo of {rel} drifts too far for one grid: max drift {fit.get('maxDriftMs')} ms is over one frame at 30 fps ({model.MAX_GRID_DRIFT_MS} ms), residual {fit.get('residualMs')} ms",
             hint="check it with ./kb song analyse, then ./kb beats set-grid --from-analysis --force to use it anyway",
         )
     if beats_per_bar is not None:
@@ -593,8 +610,8 @@ def register(sub: Any, common: argparse.ArgumentParser, Formatter: Any) -> None:
 
     x = op("set-grid", "author audio.grid: the fitted one (--from-analysis) or by hand (--bpm and --offset)", writes,
            epilog="--offset is track ms of bar 1 beat 1 (the decoded file, before audio.startOffsetMs).\n"
-           "--from-analysis takes ./kb song analyse's fit and records grid.source; a tempo the analysis calls drifting\n"
-           "(constantTempo false) needs --force.")
+           "--from-analysis takes ./kb song analyse's fit and records grid.source; a max drift over one frame at 30 fps\n"
+           "(33 ms) needs --force.")
     x.add_argument("--bpm", type=float, metavar="B", help="beats per minute, 30..300 (kept to 3 decimals)")
     x.add_argument("--offset", type=float, metavar="MS", help="track ms of bar 1 beat 1")
     x.add_argument("--beats-per-bar", type=int, metavar="N", help="1..16 (default: the current grid's, else 4)")
