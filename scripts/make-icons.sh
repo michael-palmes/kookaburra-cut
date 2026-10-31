@@ -1,27 +1,50 @@
 #!/usr/bin/env bash
 #
-# Generates Kookaburra Cut's app icon set from the brand master.
+# Generates Kookaburra Cut's fallback icon set from the Icon Composer document.
 #
-# The master (icon-source-macos-1024.png) is exported from Icon Composer with the
-# macOS shape, margins and edge treatment ALREADY baked in — do not re-mask or
-# re-tile it here (doing so double-borders the Dock icon). This script only runs
-# `tauri icon` to emit every platform size into src-tauri/icons/ and prunes the
-# mobile output. The raw square layer is kept beside it as icon-source-1024.png
-# for reference only.
+# src-tauri/icons/AppIcon.icon is the source: the bundler compiles it to Assets.car,
+# which gives macOS its dark, clear and tinted modes. The flat set here serves dev
+# builds, the DMG volume icon and anything that reads the .icns.
 #
-# Re-run after replacing the master:  pnpm setup:icon
+# ictool renders the squircle edge to edge, so the master gains macOS's 100px margin
+# and soft shadow below. `tauri icon` must get that master verbatim: re-masking it
+# double-borders the Dock icon.
+#
+# Re-run after changing the document:  pnpm setup:icon
 #
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ICONS_DIR="$ROOT/src-tauri/icons"
+DOCUMENT="$ICONS_DIR/AppIcon.icon"
 MASTER="$ICONS_DIR/icon-source-macos-1024.png"
+ICTOOL="$(xcode-select -p)/../Applications/Icon Composer.app/Contents/Executables/ictool"
 
-if [[ ! -f "$MASTER" ]]; then
-  echo "error: master not found at $MASTER" >&2
-  echo "       export a 1024px icon from Icon Composer and place it there." >&2
+if [[ ! -d "$DOCUMENT" ]]; then
+  echo "error: Icon Composer document not found at $DOCUMENT" >&2
   exit 1
 fi
+if [[ ! -x "$ICTOOL" ]]; then
+  echo "error: ictool not found at $ICTOOL (needs Xcode 26 or later)" >&2
+  exit 1
+fi
+if ! command -v magick >/dev/null; then
+  echo "error: ImageMagick not found (brew install imagemagick)" >&2
+  exit 1
+fi
+
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+BODY="$WORK/body.png"
+SHADOW="$WORK/shadow.png"
+
+echo "Rendering the master with ictool..."
+"$ICTOOL" "$DOCUMENT" --export-image --output-file "$BODY" \
+  --platform macOS --rendition Default --width 824 --height 824 --scale 1 >/dev/null
+magick -size 1024x1024 xc:black \( "$BODY" -alpha extract \) -geometry +100+108 -composite \
+  -blur 0x16 -evaluate multiply 0.26 "$SHADOW"
+magick -size 1024x1024 xc:black "$SHADOW" -compose CopyOpacity -composite \
+  -compose Over "$BODY" -geometry +100+100 -composite -strip "$MASTER"
 
 echo "Generating icon set via tauri icon..."
 cd "$ROOT"

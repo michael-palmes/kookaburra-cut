@@ -306,7 +306,7 @@ The stills contract (PDF handout and PNG images) is in [stills.md](./stills.md).
 | Shortcuts | Native menu accelerators are the reliable shortcut channel; DOM listeners are the fallback | AppKit owns keys like ⌘Z and ⌘K before the webview ever sees them |
 | Overlay contract | Every overlay mounts on the shared modal-overlay layer; Escape closes top-most first | Transport/nudge key arbitration keys off it |
 | Migration pattern | Replace a UI surface by extracting its write funnel to a shared hook, running old and new against it, then deleting the old surface | Deletion becomes a zero-behaviour-risk change |
-| Icon & wordmark | The icon is original Icon Composer artwork used verbatim (never re-masked); the wordmark is a one-off SVG; no display typeface is bundled | Re-masking a finished export double-borders it; type licensing stays clean |
+| Icon & wordmark | The icon is the layered Icon Composer document `src-tauri/icons/AppIcon.icon` (ink plates with glass off), compiled to `Assets.car`, with a flat `.icns` rendered from it as the fallback and never re-masked; the wordmark is a one-off SVG; no display typeface is bundled | Layers give macOS its dark, clear and tinted modes while the art stays a print; re-masking a finished render double-borders it; type licensing stays clean |
 
 ## Licensing posture
 
