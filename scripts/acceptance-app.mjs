@@ -169,7 +169,6 @@ function run() {
   execFileSync(
     "pnpm",
     [
-      "exec",
       "tauri",
       "build",
       "--debug",

@@ -57,7 +57,7 @@
     "package:signed": "bash scripts/sign-and-notarize.sh",
     "release": "bash scripts/release.sh",
     "release:rehearse": "bash scripts/release.sh --adhoc",
-    "tauri": "tauri"
+    "tauri": "PATH=\"$PWD/scripts/tauri-path:$PATH\" tauri"
   },
   "engines": {
     "node": ">=20.19"

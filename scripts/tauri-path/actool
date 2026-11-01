@@ -1,0 +1,3 @@
+#!/bin/sh
+# The Node tauri CLI closes stdin, and an ibtoold started without one fails with EBADF until it idles out.
+exec /usr/bin/actool "$@" </dev/null
