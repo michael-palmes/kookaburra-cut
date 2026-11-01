@@ -841,8 +841,8 @@ export default function App() {
     },
     [],
   );
-  /** Audio types the soundtrack picker accepts; keep in sync with Rust AUDIO_EXTENSIONS. */
-  const AUDIO_EXTENSIONS = ["mp3", "wav", "m4a", "aac", "flac", "ogg"];
+  /** Types the soundtrack picker accepts; keep in sync with Rust AUDIO_EXTENSIONS and SOUNDTRACK_VIDEO_EXTENSIONS. */
+  const SOUNDTRACK_EXTENSIONS = ["mp3", "wav", "m4a", "aac", "flac", "ogg", "mp4"];
   /** Make a project image the app icon: the media drill-in picks a rel, the native side converts it over assets/app-icon.png. */
   async function handleSetAppIcon(pickedRel: string) {
     const current = loadedProjectRef.current;
@@ -871,7 +871,7 @@ export default function App() {
     const picked = await openFolderPicker({
       multiple: false,
       directory: false,
-      filters: [{ name: "Audio", extensions: AUDIO_EXTENSIONS }],
+      filters: [{ name: "Audio or video", extensions: SOUNDTRACK_EXTENSIONS }],
     });
     if (typeof picked !== "string") return;
     try {
