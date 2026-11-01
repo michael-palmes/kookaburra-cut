@@ -378,6 +378,7 @@ def status_data(project: Project) -> Dict[str, Any]:
         "lastLoad": last_load_for(project, hb),
         "kit": kit_info(project),
         "checkpoint": checkpoint_line(project),
+        "lastVerify": last_verify(project),
         "edits": edits_summary(project),
         "videoCli": video_cli(),
         "leases": coord[2],
@@ -396,6 +397,18 @@ def video_cli() -> Dict[str, Any]:
     from .video import appcli
 
     return appcli.locate_status()
+
+
+def last_verify(project: Project) -> Optional[Dict[str, Any]]:
+    from . import verify
+
+    return verify.status_summary(project)
+
+
+def verify_lines(project: Project) -> List[str]:
+    from . import verify
+
+    return verify.status_lines(project)
 
 
 def status_text(project: Project) -> str:
@@ -420,6 +433,7 @@ def status_text(project: Project) -> str:
     if edits:
         lines.append(edits)
     lines.append(checkpoint_line(project))
+    lines += verify_lines(project)
     lines += [f"Timeline: {d['message']}" for d in drift_of(project)]
     lease_line, note_lines, _rows, _unseen = coordination(project)
     if lease_line:

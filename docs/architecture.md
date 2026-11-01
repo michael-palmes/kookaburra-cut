@@ -98,7 +98,7 @@ frame bodies and the scene trees. The split, and why it is drawn where it is:
 - **Orchestration stays in the window.** `exporter.ts` and `stillsExport.ts`
   own `start_export`, `push_frame`, `push_still` and `finish_*`; the worker
   renders one frame or page per request into a buffer that ping-pongs by
-  transfer. A frame body (`src/engine/exportRun.ts`, `stillsRun.ts`) is the
+  transfer. A frame body (`src/engine/exportRun.ts`, `stillsRun.ts`, `rangeRun.ts`) is the
   same code the main thread ran, moved verbatim.
 - **Fonts preload in the worker, in the window's order.** troika's shared SDF
   atlas is per realm and its cell order is export contract, so the server
@@ -141,6 +141,7 @@ window that has no project IPC of its own.
 | `src/engine/format.ts` | `FormatInfo`, `FORMATS`, `useFormat()`, safe-area maths |
 | `src/engine/exporter.ts` | deterministic frame loop (window side: orchestration and IPC) |
 | `src/engine/exportRun.ts` | the per-frame render body, in the stage worker |
+| `src/engine/rangeRun.ts` | a ranged check's frames, the same body over a span, in the stage worker |
 | `src/engine/stageProtocol.ts` | the versioned window ↔ worker protocol |
 | `src/stage/` | the stage worker: `stageWorker.ts` (realm shims), `stageServer.tsx` (r3f root, trees), `stageClient.ts` (the window's handle), `StageView.tsx` |
 | `src/engine/compositor.ts` | `renderComposited`: single-scene direct render / two-scene transition composite |
@@ -522,12 +523,14 @@ Where the live Tauri-2 setup matters for working in the code:
    and the `Info.plist` (app name) into the dev binary at **compile time** and
    does not re-run when `src-tauri/icons/` changes, so `pnpm tauri dev` keeps
    showing the old icon/name until the shell recompiles. `pnpm setup:icon`
-   regenerates icons from the Icon Composer master and cleans the shell;
-   `pnpm clean:shell` cleans manually (e.g. after identity edits in
+   regenerates the flat icon set from the Icon Composer document and cleans the
+   shell; `pnpm clean:shell` cleans manually (e.g. after identity edits in
    `tauri.conf.json`); the next `pnpm tauri dev` recompiles and re-embeds. If
    the Dock still shows the old icon after that, it's macOS's own icon cache:
-   `killall Dock`. The icon master is the Icon Composer 1024px export, used
-   verbatim: never re-mask it (see `scripts/make-icons.sh`).
+   `killall Dock`. The source is `src-tauri/icons/AppIcon.icon`, which the
+   bundler compiles to `Assets.car`; `pnpm tauri dev` shows only the flat set, so
+   dark, clear and tinted modes need a bundled app. Never re-mask the flat master
+   (see `scripts/make-icons.sh`).
 10. **The stills seam.** The stills export (`src/engine/stillsExport.ts`) shares
     the video loop's per-frame body, `renderFrameInto` in
     `src/engine/exportFrame.ts` (moved verbatim out of `exporter.ts`), but

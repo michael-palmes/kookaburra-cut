@@ -1197,8 +1197,8 @@ struct Staging {
 impl Staging {
     fn create(assets: &Path, file_name: &str) -> Result<Self, CoreError> {
         static SEQ: AtomicU64 = AtomicU64::new(0);
-        let dir = assets.join(STAGING_DIR);
-        std::fs::create_dir_all(&dir).map_err(io("invalid"))?;
+        let dir = crate::real_dir::real_dir(assets, STAGING_DIR)
+            .map_err(|e| CoreError::new("invalid", e))?;
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
         let file = dir.join(format!("{}-{seq}-conform-{file_name}", std::process::id()));
         Ok(Self { dir, file })
@@ -1534,6 +1534,18 @@ pub(crate) mod tests {
 
     fn at(ms: i64) -> MediaTime {
         MediaTime::new(ms, 1000)
+    }
+
+    #[test]
+    fn a_linked_staging_folder_is_refused_by_name() {
+        use crate::real_dir::hostile;
+        let (project, victim) = hostile::folder("conform-staging");
+        hostile::plant(&project, "assets/.kc-render", &victim);
+        let e = Staging::create(&project.join("assets"), "clip.mp4").err().unwrap();
+        assert_eq!(e.code, "invalid");
+        assert!(e.message.contains(".kc-render is a link or a file"), "{}", e.message);
+        hostile::assert_untouched(&victim);
+        hostile::clean_up(&project);
     }
 
     #[test]
