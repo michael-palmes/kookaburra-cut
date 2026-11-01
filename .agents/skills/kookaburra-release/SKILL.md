@@ -67,8 +67,9 @@ Set up a Mac (the files `ssh-keygen -K` writes are references to the Secure Encl
 ```bash
 sc_auth create-ctk-identity -l kookaburra-tag -k p-256-ne -t bio
 sc_auth create-ctk-identity -l kookaburra-commit -k p-256-ne -t none
-mkdir -m 700 -p ~/.ssh/kookaburra && cd ~/.ssh/kookaburra && ssh-keygen -w /usr/lib/ssh-keychain.dylib -K -N ""   # press Return at the PIN prompt
+mkdir -m 700 -p ~/.ssh/kookaburra && (cd ~/.ssh/kookaburra && ssh-keygen -w /usr/lib/ssh-keychain.dylib -K -N "")   # press Return at the PIN prompt
 echo 'export SSH_SK_PROVIDER=/usr/lib/ssh-keychain.dylib' >> ~/.zshenv
+# from here, run inside this repository
 git config kookaburra.tagkey ~/.ssh/kookaburra/id_ecdsa_sk_rk_kookaburra-tag.pub
 git config gpg.format ssh && git config commit.gpgsign true && git config tag.gpgsign true
 git config user.signingkey ~/.ssh/kookaburra/id_ecdsa_sk_rk_kookaburra-commit.pub   # only once main lists this key

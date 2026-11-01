@@ -4,7 +4,8 @@ name: Signers
 # the check away. The pull request's commits are fetched as data only and never executed.
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened]
+    # edited covers a retarget: a pass against one base must not carry to another.
+    types: [opened, synchronize, reopened, edited]
 
 permissions: {}
 
