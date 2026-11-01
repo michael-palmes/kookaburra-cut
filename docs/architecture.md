@@ -530,7 +530,10 @@ Where the live Tauri-2 setup matters for working in the code:
    `killall Dock`. The source is `src-tauri/icons/AppIcon.icon`, which the
    bundler compiles to `Assets.car`; `pnpm tauri dev` shows only the flat set, so
    dark, clear and tinted modes need a bundled app. Never re-mask the flat master
-   (see `scripts/make-icons.sh`).
+   (see `scripts/make-icons.sh`). Bundle through `pnpm tauri`, never `pnpm exec
+   tauri`: the Node CLI hands `actool` a closed stdin, which poisons a freshly
+   started `ibtoold` (`Bad file descriptor`) for every client until it idles out,
+   so the script puts `scripts/tauri-path/actool` first on `PATH` to open it.
 10. **The stills seam.** The stills export (`src/engine/stillsExport.ts`) shares
     the video loop's per-frame body, `renderFrameInto` in
     `src/engine/exportFrame.ts` (moved verbatim out of `exporter.ts`), but
