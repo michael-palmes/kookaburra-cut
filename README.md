@@ -1,8 +1,6 @@
-<p align="center">
-  <img src="docs/assets/app-icon.png" width="140" alt="Kookaburra Cut app icon">
-</p>
-
-<h1 align="center">Kookaburra Cut</h1>
+<h1 align="center">
+  <img src="docs/assets/readme-banner.jpg" width="900" alt="Kookaburra Cut: give every feature its moment">
+</h1>
 
 <p align="center">An AI driven, <strong>deterministic</strong> animated-video studio for macOS (Apple Silicon).</p>
 
