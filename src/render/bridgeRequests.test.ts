@@ -12,18 +12,24 @@ import {
   buildCheckReport,
   captureFormat,
   collectAssetRefs,
+  frameLabel,
   frameScene,
   isNativeBridgeKind,
   MAX_CAPTURE_FRAMES,
   MAX_PROBES,
   NATIVE_BRIDGE_KINDS,
   parseProbes,
+  rangeFormat,
+  rangePlan,
+  rangeUnits,
   requestCaptureFormat,
   requestFormat,
   requestFrames,
   resolvePresetRef,
   responseVersion,
   samplePixels,
+  shiftFlashReport,
+  stripFrames,
   trustDeniedSlug,
   trustSentence,
   unitsFor,
@@ -417,5 +423,72 @@ describe("lastLoadReport", () => {
       sceneErrors: [],
     });
     expect(lastLoadReport("ws:demo", { error: "boom" }, 6).error).toBe("boom");
+  });
+});
+
+describe("ranged renders", () => {
+  const req = (fields: Partial<BridgeRequest>): BridgeRequest => ({
+    version: 2,
+    id: "0001-1-a",
+    kind: "range",
+    requestedAtMs: 0,
+    ...fields,
+  });
+
+  it("render the 360 px short edge, mirroring range_size", () => {
+    expect(rangeFormat(FORMATS["16:9"])).toMatchObject({ width: 640, height: 360 });
+    expect(rangeFormat(FORMATS["9:16"])).toMatchObject({ width: 360, height: 640 });
+    expect(rangeFormat(FORMATS["4:5"])).toMatchObject({ width: 360, height: 450 });
+    expect(rangeFormat(FORMATS.phone)).toMatchObject({ width: 360, height: 782 });
+    expect(rangeFormat(FORMATS["16:9"], 480)).toMatchObject({ width: 480, height: 270 });
+    expect(rangeUnits(300, { width: 640, height: 360 })).toBe(19);
+    expect(rangeUnits(1800, { width: 640, height: 360 })).toBe(113);
+  });
+
+  it("plan frames on the export's own grid, clamped to the film", () => {
+    const plan = rangePlan(req({ startMs: 1000, endMs: 1100 }), 10_000);
+    expect(plan.frames).toEqual([30, 31, 32]);
+    expect(plan.times[0]).toBe(1000);
+    expect(rangePlan(req({ startMs: 9950, endMs: 20_000 }), 10_000).frames).toEqual([299]);
+    expect(rangePlan(req({ startMs: 0, endMs: 1000, fps: 12 }), 10_000).frames).toHaveLength(12);
+    expect(() => rangePlan(req({ startMs: 500, endMs: 500 }), 10_000)).toThrow();
+    expect(() => rangePlan(req({ startMs: 0, endMs: 1000, fps: 120 }), 10_000)).toThrow();
+    expect(() => rangePlan(req({ startMs: 20_000, endMs: 21_000 }), 10_000)).toThrow();
+  });
+
+  it("move flagged moments to project time and frame them before, at and after", () => {
+    const shifted = shiftFlashReport(
+      { ok: false, issues: [{ startMs: 250, endMs: 1250, tc: "00:00.250" }] },
+      35_000,
+    );
+    expect(shifted.issues[0]).toMatchObject({ startMs: 35_250, endMs: 36_250, tc: "00:35.250" });
+    expect(shifted.offsetMs).toBe(35_000);
+    const plan = rangePlan(req({ startMs: 35_000, endMs: 36_000 }), 60_000);
+    expect(stripFrames(plan, 35_233)).toEqual([1056, 1057, 1058]);
+    expect(stripFrames(plan, 35_000)).toEqual([1050, 1050, 1051]);
+  });
+});
+
+describe("frameLabel", () => {
+  const project = {
+    sceneFiles: ["scenes/01-a.tsx", "scenes/02-b.tsx"],
+    slots: [
+      { index: 0, id: "a", startMs: 0, endMs: 3000, durationMs: 3000 },
+      {
+        index: 1,
+        id: "b",
+        startMs: 2000,
+        endMs: 5000,
+        durationMs: 3000,
+        transitionIn: { type: "crossfade" as const, durationMs: 1000 },
+      },
+    ],
+  };
+
+  it("names both scenes, the type and the linear progress mid-transition", () => {
+    expect(frameLabel(project, 2400, { index: 1, scene: "02-b", at: 0.4 })).toBe(
+      "01-a → 02-b (crossfade, 40%)",
+    );
+    expect(frameLabel(project, 1000, { index: 0, scene: "01-a", at: 1 })).toBe("0  01-a  @ 1.00s");
   });
 });

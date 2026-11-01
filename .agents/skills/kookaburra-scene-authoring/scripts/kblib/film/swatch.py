@@ -1,9 +1,10 @@
-"""Colour on the finished film: corner swatches of flat-background scenes against the colour the project asks for (CIEDE2000), measured colours elsewhere, and the static tone-mapping warning. Never fails a film."""
+"""Colour on the finished film: corner swatches of flat-background scenes at each scene's settled moment against the colour the project asks for (CIEDE2000), measured colours elsewhere, and the static tone-mapping warning. Never fails a film."""
 
 from __future__ import annotations
 
 import json
 import math
+import re
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -12,8 +13,17 @@ from ..project import Project
 from ..util import EXIT_ENV, KbError
 
 PATCH_PX = 24
+SUB_PX = 4
 INSET = 0.03
 DELTA_E_WARN = 2.0
+# A corner this far off, or this patchy inside, while another corner matches is covered (a device in a device scene).
+DELTA_E_FAR = 10.0
+DELTA_E_PATCHY = 3.0
+CORNERS = ("top-left", "top-right", "bottom-left", "bottom-right")
+# Present's hold with no registered timings (presentHoldPoint.ts).
+SETTLE_MS = 400
+FRAME_MS = 1000.0 / 60
+_DEVICE_RE = re.compile(r"<(?:Device|DeviceMockup)\b|\buseSceneDevices\s*\(")
 EXACT_TONE_MAPPINGS = ("neutral", "linear")
 DECODE_TIMEOUT_S = 600
 
@@ -144,13 +154,64 @@ def corner_origins(width: int, height: int, patch: int = PATCH_PX) -> List[Tuple
     return [(dx, dy), (right, dy), (dx, bottom), (right, bottom)]
 
 
-def measure_corners(ffmpeg: str, path: Path, frames: Sequence[int], width: int, height: int) -> Dict[int, List[Tuple[int, int, int]]]:
-    """The mean colour of each corner patch (area-scaled to one pixel), per frame."""
+def measure_corner_patches(ffmpeg: str, path: Path, frames: Sequence[int], width: int, height: int) -> Dict[int, List[Dict[str, Any]]]:
+    """Per frame, each corner patch's mean colour and its spread (the largest ΔE of a 4 x 4 sub-cell from that mean)."""
     patch = max(1, min(PATCH_PX, width // 4, height // 4))
-    legs = [f"[c{i}]crop={patch}:{patch}:{x}:{y},scale=1:1:flags=area[p{i}]" for i, (x, y) in enumerate(corner_origins(width, height, patch))]
+    sub = max(1, min(SUB_PX, patch))
+    legs = [f"[c{i}]crop={patch}:{patch}:{x}:{y},scale={sub}:{sub}:flags=area[p{i}]" for i, (x, y) in enumerate(corner_origins(width, height, patch))]
     tail = "[sel]split=4[c0][c1][c2][c3];" + ";".join(legs) + ";[p0][p1][p2][p3]hstack=inputs=4[out]"
-    raw = raw_frames(ffmpeg, path, frames, tail, 12)
-    return {n: [tuple(b[i * 3:i * 3 + 3]) for i in range(4)] for n, b in raw.items()}  # type: ignore[misc]
+    raw = raw_frames(ffmpeg, path, frames, tail, 4 * sub * sub * 3)
+    out: Dict[int, List[Dict[str, Any]]] = {}
+    for n, b in raw.items():
+        row_px = 4 * sub
+        patches = []
+        for i in range(4):
+            cells = [tuple(b[(y * row_px + i * sub + x) * 3:(y * row_px + i * sub + x) * 3 + 3]) for y in range(sub) for x in range(sub)]
+            mean = tuple(int(round(sum(c[k] for c in cells) / len(cells))) for k in range(3))
+            patches.append({"mean": mean, "spread": round(max(delta_e(c, mean) for c in cells), 2)})
+        out[n] = patches
+    return out
+
+
+def measure_corners(ffmpeg: str, path: Path, frames: Sequence[int], width: int, height: int) -> Dict[int, List[Tuple[int, int, int]]]:
+    """The mean colour of each corner patch, per frame."""
+    return {n: [p["mean"] for p in patches] for n, patches in measure_corner_patches(ffmpeg, path, frames, width, height).items()}  # type: ignore[misc]
+
+
+def settled_ms(project: Project, slots: List[Dict[str, Any]], i: int) -> float:
+    """Project ms where scene i has settled, as the automatic still picks it without registered timings: Present's 400 ms
+    hold past the incoming transition, or the last keyed move when later, kept inside the window where the scene shows alone."""
+    from .pacing import keyed_times
+
+    s = slots[i]
+    start, duration = float(s["startMs"]), float(s["durationMs"])
+    lo = float((s.get("transitionIn") or {}).get("durationMs", 0))
+    hi = (float(slots[i + 1]["startMs"]) - start if i + 1 < len(slots) else duration) - FRAME_MS
+    if hi < lo:
+        return start + max(0.0, min(duration, (lo + hi) / 2))
+    try:
+        doc = project.load_sidecar(str(s.get("stem") or ""))
+    except KbError:
+        doc = None
+    known = [t for t in keyed_times(doc) if lo <= t <= hi]
+    return start + min(hi, max([lo + SETTLE_MS] + known))
+
+
+def stages_device(project: Project, stem: str, doc: Optional[Dict[str, Any]]) -> bool:
+    """A sidecar device (or device layout), or a TSX Device, DeviceMockup or useSceneDevices."""
+    if doc and ((isinstance(doc.get("devices"), list) and doc["devices"]) or doc.get("deviceLayout")):
+        return True
+    try:
+        return bool(_DEVICE_RE.search(project.read_tsx(stem)))
+    except (OSError, UnicodeDecodeError):
+        return False
+
+
+def covered_corners(scores: Sequence[float], spreads: Sequence[float]) -> List[int]:
+    """Corners a device covers: far off or patchy while another corner matches; none when no corner matches."""
+    if not any(s <= DELTA_E_WARN for s in scores):
+        return []
+    return [i for i, (s, spread) in enumerate(zip(scores, spreads)) if s > DELTA_E_WARN and (s > DELTA_E_FAR or spread > DELTA_E_PATCHY)]
 
 
 # ── what the project asks for ────────────────────────────────────────────────
@@ -242,24 +303,36 @@ def tone_mapping_warning(project: Project, catalog: Any) -> Optional[str]:
 
 def check(ffmpeg: str, path: Path, project: Project, slots: List[Dict[str, Any]], frames_by_scene: Dict[int, int],
           width: int, height: int, catalog: Any) -> Dict[str, Any]:
-    """Swatches at each scene's settled frame: compared on flat backgrounds (warn over ΔE 2), measured elsewhere."""
-    measured = measure_corners(ffmpeg, path, list(frames_by_scene.values()), width, height)
+    """Swatches at each scene's settled frame: compared on flat backgrounds (warn over ΔE 2, corners a device covers skipped), measured elsewhere."""
+    measured = measure_corner_patches(ffmpeg, path, list(frames_by_scene.values()), width, height)
     swatches: List[Dict[str, Any]] = []
     warnings: List[str] = []
     for index, frame in sorted(frames_by_scene.items()):
         stem = slots[index].get("stem") or str(index)
-        corners = measured.get(frame)
-        if not corners:
+        patches = measured.get(frame)
+        if not patches:
             continue
+        corners = [p["mean"] for p in patches]
         want = expected_background(project, index, stem, catalog)
         row: Dict[str, Any] = {"index": index, "stem": stem, "frame": frame, "corners": [rgb_hex(c) for c in corners]}
         if want.get("colour"):
             target = hex_rgb(want["colour"]) or (0, 0, 0)
             scores = [round(delta_e(c, target), 2) for c in corners]
-            row.update({"expected": want["colour"], "source": want["source"], "deltaE": scores, "ok": max(scores) <= DELTA_E_WARN})
-            if max(scores) > DELTA_E_WARN:
-                warnings.append(f"{stem}: corners measure {', '.join(row['corners'])} against {want['colour']} ({want['source']}); "
-                                f"ΔE up to {max(scores)} (over {DELTA_E_WARN})")
+            try:
+                doc = project.load_sidecar(stem)
+            except KbError:
+                doc = None
+            covered = covered_corners(scores, [p["spread"] for p in patches]) if stages_device(project, stem, doc) else []
+            kept = [s for i, s in enumerate(scores) if i not in covered]
+            worst = max(kept)
+            row.update({"expected": want["colour"], "source": want["source"], "deltaE": scores, "worstDeltaE": worst, "ok": worst <= DELTA_E_WARN})
+            if covered:
+                row["skipped"] = [CORNERS[i] for i in covered]
+                row["note"] = f"skipped the {', '.join(row['skipped'])} corner{'s' if len(covered) != 1 else ''}: a device covers {'them' if len(covered) != 1 else 'it'}"
+            if worst > DELTA_E_WARN:
+                shown = [row["corners"][i] for i in range(4) if i not in covered]
+                warnings.append(f"{stem}: corners measure {', '.join(shown)} against {want['colour']} ({want['source']}); "
+                                f"ΔE up to {worst} (over {DELTA_E_WARN})")
         else:
             row["note"] = f"measured only ({want.get('reason')})"
         swatches.append(row)

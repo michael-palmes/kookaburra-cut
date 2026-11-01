@@ -49,13 +49,14 @@ describe("resolveSharedPath", () => {
   });
 });
 
+let seen: unknown;
+const useAny = useProjectShared as (path?: string, fallback?: unknown) => unknown;
+function Probe({ path, fallback }: { path?: string; fallback?: unknown }) {
+  seen = useAny(path, fallback);
+  return null;
+}
+
 describe("useProjectShared", () => {
-  let seen: unknown;
-  const useAny = useProjectShared as (path?: string, fallback?: unknown) => unknown;
-  function Probe({ path, fallback }: { path?: string; fallback?: unknown }) {
-    seen = useAny(path, fallback);
-    return null;
-  }
   const read = (value: unknown, path?: string, fallback?: unknown) => {
     seen = Symbol("unset");
     const probe = createElement(Probe, { path, fallback });

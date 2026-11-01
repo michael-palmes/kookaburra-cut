@@ -160,7 +160,8 @@ class FlagTests(KbTestCase):
         self.assertExit(scaled, 0)
         self.assertExit(wide, 0)
         self.assertEqual(app.requests[0]["scale"], 0.5)
-        self.assertEqual(app.requests[0]["probe"], [[10, 20], [30, 40], [5, 6]])
+        # Probes are native pixels at any scale; kb maps them into the half-size image.
+        self.assertEqual(app.requests[0]["probe"], [[5, 10], [15, 20], [2, 3]])
         self.assertEqual(app.requests[1]["width"], 960)
         self.assertNotIn("scale", app.requests[1])
 
