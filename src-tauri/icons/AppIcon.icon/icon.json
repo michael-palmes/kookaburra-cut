@@ -1,0 +1,73 @@
+{
+  "fill": {
+    "solid": "srgb:0.05490,0.09412,0.14510,1.00000"
+  },
+  "groups": [
+    {
+      "name": "Bird",
+      "layers": [
+        {
+          "glass": false,
+          "image-name": "cream.png",
+          "name": "cream"
+        },
+        {
+          "glass": false,
+          "image-name": "buff.png",
+          "name": "buff"
+        },
+        {
+          "glass": false,
+          "image-name": "slate.png",
+          "name": "slate"
+        },
+        {
+          "glass": false,
+          "image-name": "stripe.png",
+          "name": "stripe"
+        },
+        {
+          "glass": false,
+          "image-name": "blue.png",
+          "name": "blue"
+        },
+        {
+          "glass": false,
+          "image-name": "rust.png",
+          "name": "rust"
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.35
+      },
+      "specular": false,
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      }
+    },
+    {
+      "name": "Ground",
+      "layers": [
+        {
+          "glass": false,
+          "image-name": "ground.png",
+          "name": "ground"
+        }
+      ],
+      "shadow": {
+        "kind": "none",
+        "opacity": 0
+      },
+      "specular": false,
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": ["macOS"]
+  }
+}

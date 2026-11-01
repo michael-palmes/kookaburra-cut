@@ -76,6 +76,10 @@ verify_app() {
   [[ -z "$ent" || "$ent" == "{}" ]] || die "$app carries entitlements, expected none: $ent"
   [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" == "$VERSION" ]] \
     || die "$app is not version $VERSION"
+  # The bundler only logs when actool is missing or too old, so a lost icon must fail here.
+  [[ -f "$app/Contents/Resources/Assets.car" ]] || die "$app has no Assets.car"
+  [[ -n "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' "$app/Contents/Info.plist" 2>/dev/null)" ]] \
+    || die "$app has no CFBundleIconName"
   if [[ "$ADHOC" == 0 ]]; then
     xcrun stapler validate "$app"
     spctl -a -t exec -vv "$app" 2>&1 | tee "$WORK/spctl.txt"

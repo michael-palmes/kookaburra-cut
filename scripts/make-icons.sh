@@ -1,27 +1,39 @@
 #!/usr/bin/env bash
-#
-# Generates Kookaburra Cut's app icon set from the brand master.
-#
-# The master (icon-source-macos-1024.png) is exported from Icon Composer with the
-# macOS shape, margins and edge treatment ALREADY baked in — do not re-mask or
-# re-tile it here (doing so double-borders the Dock icon). This script only runs
-# `tauri icon` to emit every platform size into src-tauri/icons/ and prunes the
-# mobile output. The raw square layer is kept beside it as icon-source-1024.png
-# for reference only.
-#
-# Re-run after replacing the master:  pnpm setup:icon
-#
+# Renders the flat fallback icon set from AppIcon.icon; run after changing it (docs/architecture.md, "Icon / identity refresh").
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ICONS_DIR="$ROOT/src-tauri/icons"
+DOCUMENT="$ICONS_DIR/AppIcon.icon"
 MASTER="$ICONS_DIR/icon-source-macos-1024.png"
+ICTOOL="$(xcode-select -p)/../Applications/Icon Composer.app/Contents/Executables/ictool"
 
-if [[ ! -f "$MASTER" ]]; then
-  echo "error: master not found at $MASTER" >&2
-  echo "       export a 1024px icon from Icon Composer and place it there." >&2
+if [[ ! -d "$DOCUMENT" ]]; then
+  echo "error: Icon Composer document not found at $DOCUMENT" >&2
   exit 1
 fi
+if [[ ! -x "$ICTOOL" ]]; then
+  echo "error: ictool not found at $ICTOOL (needs Xcode 26 or later)" >&2
+  exit 1
+fi
+if ! command -v magick >/dev/null; then
+  echo "error: ImageMagick not found (brew install imagemagick)" >&2
+  exit 1
+fi
+
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+BODY="$WORK/body.png"
+SHADOW="$WORK/shadow.png"
+
+echo "Rendering the master with ictool..."
+# ictool renders edge to edge, so add macOS's margin and shadow; never re-mask the result.
+"$ICTOOL" "$DOCUMENT" --export-image --output-file "$BODY" \
+  --platform macOS --rendition Default --width 824 --height 824 --scale 1 >/dev/null
+magick -size 1024x1024 xc:black \( "$BODY" -alpha extract \) -geometry +100+108 -composite \
+  -blur 0x16 -evaluate multiply 0.26 "$SHADOW"
+magick -size 1024x1024 xc:black "$SHADOW" -compose CopyOpacity -composite \
+  -compose Over "$BODY" -geometry +100+100 -composite -strip "$MASTER"
 
 echo "Generating icon set via tauri icon..."
 cd "$ROOT"
