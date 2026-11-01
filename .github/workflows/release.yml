@@ -491,3 +491,4 @@ jobs:
             "release/KookaburraCut-${VERSION}.dmg" "release/KookaburraCut-${VERSION}.zip" \
             "release/KookaburraCut-${VERSION}-updater.app.tar.gz" release/latest.json release/SHA256SUMS
           echo "Draft release ${TAG} created; publish it on GitHub." >> "$GITHUB_STEP_SUMMARY"
+# throwaway signers test
