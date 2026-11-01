@@ -164,6 +164,19 @@ def dmg(scale):
     ])
 
 
+def roundel(size):
+    # Where a layout has no sheet edge to bleed off, the bird is cut hard to its moon.
+    rng = np.random.default_rng(1777)
+    shape = (size, size)
+    r = size / 2 - 2
+    bs = r / 950
+    ox, oy = size / 2 - 1080 * bs, size / 2 - 670 * bs
+    c = NAVY * tooth(rng, shape, 0.10)[..., None]
+    c = moon(c, rng, size / 2, size / 2, r, bs)
+    c = bird(c, bs, int(round(ox)), int(round(oy)))
+    return np.dstack([c, disc(shape, size / 2, size / 2, r)])
+
+
 def shrink(c, w, h):
     return cv2.resize(c, (w, h), interpolation=cv2.INTER_AREA)
 
@@ -182,6 +195,7 @@ def save(c, path, colours=None, quality=None):
 
 card = print_sheet(2560, 1280, 0.54, -30, 1150, 610, 178, 830)
 save(card, "docs/assets/social-preview.jpg", quality=88)
+save(shrink(roundel(2000), 1000, 1000), "docs/assets/print-roundel.png")
 save(shrink(print_sheet(2400, 1260, 0.5, -30, 1070, 600, 170, 815), 1200, 630), "docs/assets/og.png", colours=256)
 save(print_sheet(2400, 800, 0.38, -24, 860, 390, 148, 575), "docs/assets/readme-banner.jpg", quality=88)
 save(shrink(print_sheet(1920, 640, 0.3, -18, 700, 0, 0, 390), 960, 320), "src/assets/update-banner.jpg", quality=88)

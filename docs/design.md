@@ -759,7 +759,8 @@ controls (§3.10) and never in an exported frame (§14).
 A print holds one of each, and nothing else:
 
 1. **The bird**: always the icon's own plates (`src-tauri/icons/AppIcon.icon`), never redrawn or
-   flipped. It faces right and bleeds off the left and bottom edges.
+   flipped. It faces right and bleeds off the left and bottom edges. Where a layout has no sheet edge
+   to bleed off, as on a web page, cut it hard to the moon instead.
 2. **The moon**: one rust disc behind the head, with the beak inside it. Its shading is a stripe
    screen, never a gradient.
 3. **The title**: "Kookaburra Cut" large, in cream, on plain navy. At least 1,300 px wide on a
@@ -791,6 +792,7 @@ navy measures 14.3:1 and the subtitle ink 9.8:1.
 |---|---|---|
 | GitHub social preview (uploaded in repository settings) | `docs/assets/social-preview.jpg` | 2560 × 1280, under 1 MB |
 | Website link card | `docs/assets/og.png` | 1200 × 630 |
+| Website hero (transparent, cut to the moon) | `docs/assets/print-roundel.png` | 1000 × 1000 |
 | README header | `docs/assets/readme-banner.jpg` | 2400 × 800 |
 | Update dialogs (no type: the dialog has its own) | `src/assets/update-banner.jpg` | 960 × 320 |
 | Styled DMG (no bird: the app icon is there) | `src-tauri/dmg/dmg_bg.png`, `dmg_bg@2x.png` | 806 × 488, 1612 × 976 |
