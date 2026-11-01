@@ -32,7 +32,7 @@ FILE_OPS = re.compile(r"(?:^|[\s;&|(])(mv|rm|cp|install|rsync|truncate|touch|ln)
 HEREDOC = re.compile(r"<<-?\s*[\"']?[A-Za-z_]\w*")
 PY_WRITE = re.compile(r"\.write_(?:text|bytes)\s*\(|\bopen\s*\([^)]*,\s*[\"'][rwax]?[wax+]|\bjson\.dump\s*\(|\bos\.(?:replace|rename|remove|unlink)\s*\(|\bshutil\.(?:copy\w*|move)\s*\(")
 SCENE_TOKEN = re.compile(r"(?:[^\s\"'=;&|<>()]*/)?scenes/[^\s\"';&|<>(),]*")
-ASSET_TOKEN = re.compile(r"(?<![^\s\"'=;&|<>()])(?:[^\s\"'=;&|<>()]*/)?(?:a(?:ss|ß)ets/|\.originals/)[^\s\"';&|<>(),]*", re.IGNORECASE)
+ASSET_TOKEN = re.compile(r"(?<![\w.-])(?:[^\s\"'=;&|<>()]*/)?(?:a(?:ss|ß)ets/|\.originals/)[^\s\"';&|<>(),]*", re.IGNORECASE)
 RECORD_WORDS = ("assets", ".originals", "_meta.json", ".timing.json")
 KB_WRITE = re.compile(
     r"\bkb(?:\.py)?[\"']?\s+(?:--?[\w-]+(?:[= ][^\s-][^\s]*)?\s+)*"

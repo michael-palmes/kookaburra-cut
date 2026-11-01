@@ -399,7 +399,7 @@ Hooks:
     kb runs. It denies a command that names `scenes/<stem>` of a scene leased to someone else
     (globs included) and visibly writes it: a redirection, `tee`, `mv`, `rm`, `touch`, a `cp`
     or `install` destination, `sed -i`, `perl -i`, a heredoc, `write_text` or `open(..., 'w')`.
-    It denies the same visible writes to an asset record (a glob expands as the shell would,
+    It denies the same visible writes to an asset record in any case-folded spelling (a glob expands as the shell would,
     relative paths resolve from the hook's `cwd`; `sed -i` and Python writes count when they
     name one; a read, a `cp` out of `assets/.originals/` and kb-only commands pass). It makes the session checkpoint before a command that visibly writes `scenes/` or
     `project.json` or runs a kb write, and records the errors the scene files and `project.json`

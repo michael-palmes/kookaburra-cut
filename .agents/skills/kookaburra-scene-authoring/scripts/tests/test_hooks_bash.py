@@ -245,6 +245,7 @@ class BashPreTests(BashHookCase):
             ("echo x > AßETS/.originals/rec.mov", "AßETS/.originals/rec.mov"),
             ("sed -i '' 's/1/2/' Assets/_meta.json", "Assets/_meta.json"),
             ("sed -i '' 's/1/2/' aßets/_meta.json", "aßets/_meta.json"),
+            ("sed -i '' 's/1/2/' {assets/_meta.json,x}", "assets/_meta.json"),
         ):
             self.assertIn(f"it writes {rel} by hand", self.denial(command) or "", command)
         respelled = str(self.root).upper()
