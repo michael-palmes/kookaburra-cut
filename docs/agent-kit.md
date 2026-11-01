@@ -44,7 +44,7 @@ Skill tree (the source lives at `.agents/skills/kookaburra-scene-authoring/`):
 
 ```
 SKILL.md            brief first, the loop, capture etiquette, multi-agent habits, hard rules, capability map, routing (about 18 KB)
-RULES.md            always-on rules imported by CLAUDE.md, the only rules subagents get; "Untrusted text" and "Stop and ask" live here (keep it under about 4.5 KB)
+RULES.md            always-on rules imported by CLAUDE.md, the only rules subagents get; "Untrusted text" and "Stop and ask" live here (keep it under about 4.7 KB)
 DESIGN.md           playbook: the brief, presentations, product demos, launch videos
 catalog.json        GENERATED (pnpm agent:catalog); never hand-edited
 reference/          topic files loaded on demand
