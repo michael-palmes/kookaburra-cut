@@ -343,6 +343,23 @@ def make_project(root: Path, scenes: Optional[List[str]] = None, git: bool = Fal
     return project
 
 
+# Every path a hostile folder can link for kb. Add a new .kb/ scratch folder here as it lands.
+HOSTILE_KB_FOLDERS = [".kb", ".kb/leases", ".kb/agents", ".kb/captures", ".kb/verify", ".kb/archive", ".kb/song", ".kb/footage", ".kb/flashes", ".kb/previews"]
+HOSTILE_KB_FILES = [".kb/lock", ".kb/events.jsonl", ".kb/notes.md"]
+
+
+def plant_link(project: Path, rel: str, target: Path) -> None:
+    """A symlink at project/rel, as a folder shared by zip, copy or clone can carry."""
+    link = project / rel
+    link.parent.mkdir(parents=True, exist_ok=True)
+    link.symlink_to(target)
+
+
+def tree_bytes(folder: Path) -> Dict[str, bytes]:
+    """Everything under folder, to prove a link never let kb change it."""
+    return {str(p.relative_to(folder)): p.read_bytes() for p in sorted(folder.rglob("*")) if p.is_file()}
+
+
 def fake_worktree(main: Path, tree: Path) -> Path:
     """A linked-worktree lookalike of main at tree: a copy whose .git file points into main/.git/worktrees/."""
     shutil.copytree(main, tree, ignore=shutil.ignore_patterns(".git"))

@@ -132,7 +132,7 @@ Each of these produces a build that signs and notarises happily, then misbehaves
 
 ## DMG artwork
 
-CI ships a **plain** DMG (`--plain-dmg`: the app, an Applications link, no background): Finder styles the DMG and there is no Finder on a headless runner. The styled Retina DMG stays for local builds (`pnpm package:dmg` from a `release/Kookaburra Cut.app`): `src-tauri/dmg/dmg_bg.png` (806×488) and `dmg_bg@2x.png` (1612×976), an exact 2:1 pair that `make-dmg.sh` merges into a multi-rep TIFF (**1x first**). Icon positions are measured off the artwork: drop-target circles at `(170,253)` and `(635,253)` with Finder landing icons ~3pt low, and label plates at `y=316..345` because Finder draws labels in the system colour. Swapping art means re-measuring both.
+CI ships a **plain** DMG (`--plain-dmg`: the app, an Applications link, no background): Finder styles the DMG and there is no Finder on a headless runner. The styled Retina DMG stays for local builds (`pnpm package:dmg` from a `release/Kookaburra Cut.app`): `src-tauri/dmg/dmg_bg.png` (806×488) and `dmg_bg@2x.png` (1612×976), an exact 2:1 pair that `make-dmg.sh` merges into a multi-rep TIFF (**1x first**). Icon positions are measured off the artwork: either end of the printed rule at `(170,253)` and `(635,253)` with Finder landing icons ~3pt low, and label plates at `y=316..345` because Finder draws labels in the system colour. Swapping art means re-measuring both.
 
 ## Verify by hand
 

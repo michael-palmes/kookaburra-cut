@@ -4,7 +4,7 @@ import { openPrivacyPage } from "../engine/claudeApp";
 import { ManagedLock } from "./ManagedLock";
 import { useEscapeClose } from "./useEscapeClose";
 
-/** The update lane's two modals, in their own module so the Settings window can import them without dragging in NewProjectDialog.tsx's theme-picker graph (40 bundled preview images). Both share the moonlit-kookaburra banner (chrome-only imagery; exported pixels never touch the DOM). */
+/** The update lane's two modals, in their own module so the Settings window can import them without dragging in NewProjectDialog.tsx's theme-picker graph (40 bundled preview images). Both share the printed kookaburra banner (chrome-only imagery; exported pixels never touch the DOM). */
 
 /** First-launch welcome, which carries the one-time update-check ask (shown while the tri-state preference is undecided). The switch starts on as the recommendation and Get started saves what it shows; Escape is a dismissal, not consent, so it saves off. Either answer settles it and the ask never repeats. Where a profile turns update checks off, the row says so in place of the switch and Get started saves off. */
 export function WelcomeDialog({

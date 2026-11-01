@@ -1292,9 +1292,11 @@ pub fn duplicate_project(
     Ok(new_slug)
 }
 
-/// Top-level entries a duplicate leaves behind: exports, app state and kb's agent state (leases, events, notes).
+/// Top-level entries a duplicate leaves behind: exports, app state, kb's agent state (leases, events, notes) and what a stamp moved aside.
 fn duplicate_skips(name: &std::ffi::OsStr) -> bool {
-    matches!(name.to_str(), Some("exports" | ".kookaburra" | ".kb"))
+    name.to_str().is_some_and(|name| {
+        matches!(name, "exports" | ".kookaburra" | ".kb") || crate::kit::is_moved_aside(name)
+    })
 }
 
 /// Move a project to the TRASH, never `rm -rf`, so Finder's Put Back works; a matching `last_project` is cleared so the next boot lands on the welcome screen. The decoded frames and previews of its footage leave the caches with it (a project put back decodes again).
