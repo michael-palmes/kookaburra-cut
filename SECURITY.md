@@ -340,7 +340,8 @@ drop a request, which is the out-of-scope case above.
   project is open and allowed this session re-stamps from the hash Rust
   computes, and content changed while the project was closed re-asks. Present
   and `KOOKABURRA_TRUST=stored-only` loads never re-stamp; an autorun
-  (`KOOKABURRA_ACTION` set) mints its nonce without a sheet. All three commands
+  (`KOOKABURRA_ACTION` set) mints its nonce without a sheet, and in a release
+  build that grant lasts for the launch and never reaches `trustedProjects`. All three commands
   are in the `trust` set, main window only. Deleting a project removes its
   grant. Declining stamps nothing. `copy_scene_to_project` (main and render
   windows) refuses a workspace project, user template or user preset as its
@@ -475,7 +476,7 @@ A release is a signed `v*` tag on `main`; `.github/workflows/release.yml`
 builds it in separate jobs, each on a fresh runner.
 
 - **Build, with no signing secret in reach.** The build job checks that the tag
-  is signed by a key in `main`'s `.github/allowed_signers` (read from `main`,
+  is signed by a key in `main`'s `.github/allowed_tag_signers` (read from `main`,
   never from the tagged tree) and sits on `main`, builds the ffmpeg sidecar from
   sources pinned by SHA-256 and commit (`scripts/build-ffmpeg-sidecar.sh`),
   fetches the beat model against its pins, unpacks the licensed device models
@@ -511,9 +512,10 @@ builds it in separate jobs, each on a fresh runner.
   The manifest's notes are never rendered.
 - **Repository controls.** `scripts/release.sh` only tags: it refuses unless on
   `main` equal to `origin/main`, signs the tag and verifies it against
-  `.github/allowed_signers` before pushing. Every pull request's head commit
-  must be signed by a listed key (`.github/workflows/signers.yml`, run from the
-  base branch's copy); `CODEOWNERS` names the maintainer; `audit.yml` runs
+  `.github/allowed_tag_signers` before pushing. Every pull request's head commit
+  must be signed by a key in `.github/allowed_signers`, or in the tag list when
+  it changes either list (`.github/workflows/signers.yml`, run from the default
+  branch's copy); `CODEOWNERS` names the maintainer; `audit.yml` runs
   `pnpm audit --prod` and `cargo deny check advisories` on every pull request
   and weekly. Every workflow starts from `permissions: {}` or `contents: read`,
   pins actions to a commit SHA and sets `persist-credentials: false`.
@@ -529,8 +531,9 @@ builds it in separate jobs, each on a fresh runner.
   ```
 
 One maintainer holds admin rights on the repository; a hardware security key
-on the account and a hardware-backed tag key in `allowed_signers` are the
-backstop against an account takeover.
+on the account and a Touch ID tag key in the Mac's Secure Enclave are the
+backstop against an account takeover. The tag key can't be copied off the Mac,
+and the promptless commit key, which agents use, can't tag.
 
 ## Process
 

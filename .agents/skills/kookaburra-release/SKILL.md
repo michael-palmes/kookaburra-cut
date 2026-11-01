@@ -1,6 +1,6 @@
 ---
 name: kookaburra-release
-description: Cutting a macOS release of Kookaburra Cut through the GitHub Actions release pipeline: the signed v* tag that triggers it, the build / sign / verify / publish jobs, the protected release environment and its secrets, the private licensed-models archive, ad-hoc rehearsals, Developer ID signing, Apple notarisation, the plain and styled DMGs, the updater manifest and the packaged-parity gate. Use when asked to "cut a release", "tag a release", "rehearse the release", "build a release build", "make a DMG", "sign the app", "notarise", "staple", "ship it", "publish a build", "bump the version and release", "rotate the signing key", or when touching .github/workflows/release.yml, scripts/release.sh, scripts/sign-and-notarize.sh, scripts/verify-release.sh, scripts/make-dmg.sh, scripts/build-ffmpeg-sidecar.sh, src-tauri/dmg/, or bundle.macOS and plugins.updater in tauri.conf.json.
+description: Cutting a macOS release of Kookaburra Cut through the GitHub Actions release pipeline: the signed v* tag that triggers it, the Touch ID tag key and the commit key, recovery for a lost Mac, the build / sign / verify / publish jobs, the protected release environment and its secrets, the private licensed-models archive, ad-hoc rehearsals, Developer ID signing, Apple notarisation, the plain and styled DMGs, the updater manifest and the packaged-parity gate. Use when asked to "cut a release", "tag a release", "rehearse the release", "build a release build", "make a DMG", "sign the app", "notarise", "staple", "ship it", "publish a build", "bump the version and release", "rotate the signing key", "rotate the tag key", "lost my Mac", or when touching .github/allowed_tag_signers, .github/allowed_signers, .github/workflows/release.yml, .github/workflows/signers.yml, scripts/release.sh, scripts/sign-and-notarize.sh, scripts/verify-release.sh, scripts/make-dmg.sh, scripts/build-ffmpeg-sidecar.sh, src-tauri/dmg/, or bundle.macOS and plugins.updater in tauri.conf.json.
 ---
 
 # kookaburra-release
@@ -9,7 +9,7 @@ Ship a signed, notarised, stapled `.app` and DMG that opens on any Mac with no G
 
 ## The shape, in one paragraph
 
-A release is a **signed `v*` tag on `main`**, pushed by `pnpm release`. `.github/workflows/release.yml` then runs four jobs on fresh runners: **build** (no signing secret in reach) verifies the tag against `main`'s `.github/allowed_signers`, builds the ffmpeg sidecar from pinned source, fetches the beat-this model and the licensed device models, runs `pnpm tauri build --no-sign` and uploads the unsigned app with its SHA-256; **sign**, in the protected `release` environment (one reviewer approves), checks that digest, imports the Developer ID into a temporary keychain, signs inside-out with the hardened runtime, notarises and staples the app and a plain DMG, tars the stapled app for the updater and signs it bound to the version, then deletes every key; **verify**, with no environment, checks signatures, notarisation and Gatekeeper, runs the signed binary's `edit caps` and `check flashes`, and compares the sidecars' signature-stripped digests with the build job's; **publish** writes `SHA256SUMS`, attests provenance and drafts the GitHub release for you to publish. Budget **about an hour**, plus the approval click.
+A release is a **signed `v*` tag on `main`**, pushed by `pnpm release`. `.github/workflows/release.yml` then runs four jobs on fresh runners: **build** (no signing secret in reach) verifies the tag against `main`'s `.github/allowed_tag_signers`, builds the ffmpeg sidecar from pinned source, fetches the beat-this model and the licensed device models, runs `pnpm tauri build --no-sign` and uploads the unsigned app with its SHA-256; **sign**, in the protected `release` environment (one reviewer approves), checks that digest, imports the Developer ID into a temporary keychain, signs inside-out with the hardened runtime, notarises and staples the app and a plain DMG, tars the stapled app for the updater and signs it bound to the version, then deletes every key; **verify**, with no environment, checks signatures, notarisation and Gatekeeper, runs the signed binary's `edit caps` and `check flashes`, and compares the sidecars' signature-stripped digests with the build job's; **publish** writes `SHA256SUMS`, attests provenance and drafts the GitHub release for you to publish. Budget **about an hour**, plus the approval click.
 
 ## Cutting a release
 
@@ -18,7 +18,7 @@ A release is a **signed `v*` tag on `main`**, pushed by `pnpm release`. `.github
    ```bash
    pnpm release
    ```
-   It signs the tag (`git tag -s`), verifies it against `.github/allowed_signers`, pushes only the tag and prints the workflow URL. Nothing is built locally.
+   It signs the tag with the key at `kookaburra.tagkey` (one Touch ID), verifies it against `.github/allowed_tag_signers`, pushes only the tag and prints the workflow URL. Nothing is built locally.
 3. **Approve the sign job** when GitHub asks (the `release` environment's required reviewer). The run waits for you; nothing is signed before.
 4. **Publish the draft** once verify and publish are green: read the run summary (digests, sidecar record), then publish the release on GitHub. The in-app updater only sees a published release (the draft 404s at `releases/latest/download/latest.json`).
 5. **Run the packaged-parity gate** on the published DMG's app (below). The workflow does not run it: it needs this machine's recorded baselines.
@@ -32,8 +32,8 @@ Rehearsals, in order of cost:
 
 Everything here is done by hand, once. Nothing in the repository works until it is.
 
-1. **Tag key, hardware-backed.** Add a signing key to `.github/allowed_signers` (`<principal> namespaces="git" ssh-ed25519 <key>`; the principal is the GitHub noreply address). Prefer a key that lives on a hardware token (`ssh-keygen -t ed25519-sk`), so a laptop compromise cannot tag a release. Configure git locally: `gpg.format ssh`, `user.signingkey <pub key path>`, `tag.gpgsign true`, `commit.gpgsign true`. The Signers check (`.github/workflows/signers.yml`) requires every PR head commit to be signed by a listed key, so commits need the key too; Dependabot's branches are re-signed by hand before merging.
-2. **Rulesets.** `main`: pull request required, the `frontend`, `rust` and `Head commit signed` checks required, no force push, no deletion; no bypass for the repository admin in daily use. Tags `v*`: no update, no deletion, creation only by the maintainer. (Both rulesets exist today; add the Signers check and remove the admin bypass.)
+1. **Signing keys, in the Secure Enclave.** Two non-exportable keys, so a stolen disk signs nothing. See "Signing keys" below.
+2. **Rulesets.** `main`: pull request required, the `frontend`, `rust` and `Head commit signed` checks required, no force push, no deletion; an empty bypass list in daily use. Tags `v*`: no update, no deletion, creation only by the maintainer. (Both rulesets exist today; add the Signers check and remove the admin bypass.)
 3. **The `release` environment** with a required reviewer (yourself) and a deployment branch policy of **tags matching `v*` only**. Its secrets:
    | Secret | What |
    | --- | --- |
@@ -52,6 +52,49 @@ Everything here is done by hand, once. Nothing in the repository works until it 
    age -r <recipient> -o licensed-models.tar.age /tmp/licensed-models.tar
    ```
 6. **Back up and retire the laptop key material.** Export the Developer ID `.p12` and the updater key to an encrypted offline backup, then remove the signing identity from the login keychain, the `kookaburra-cut-updater` keychain item and the `~/.tauri` key file. Nothing local signs releases any more.
+
+## Signing keys
+
+| Key | Protection | Listed in | Signs | Can't |
+| --- | --- | --- | --- | --- |
+| Tag (`kookaburra-tag`) | Touch ID | `.github/allowed_tag_signers` | release tags, PR heads that change a signer list | run without a person |
+| Commit (`kookaburra-commit`) | none, no prompt | `.github/allowed_signers` | every other PR head, including an agent's while you're away | tag a release, change a signer list |
+
+`release.yml` and `release.sh` read only the tag list. `signers.yml` requires the tag key when either list differs between the PR head and its merge base with the base branch. GitHub runs that check from the default branch's copy, whatever the PR's base.
+
+Set up a Mac (the files `ssh-keygen -K` writes are references to the Secure Enclave, useless on another machine):
+
+```bash
+sc_auth create-ctk-identity -l kookaburra-tag -k p-256-ne -t bio
+sc_auth create-ctk-identity -l kookaburra-commit -k p-256-ne -t none
+mkdir -m 700 -p ~/.ssh/kookaburra && (cd ~/.ssh/kookaburra && ssh-keygen -w /usr/lib/ssh-keychain.dylib -K -N "")   # press Return at the PIN prompt
+echo 'export SSH_SK_PROVIDER=/usr/lib/ssh-keychain.dylib' >> ~/.zshenv
+# from here, run inside this repository
+git config kookaburra.tagkey ~/.ssh/kookaburra/id_ecdsa_sk_rk_kookaburra-tag.pub
+git config gpg.format ssh && git config commit.gpgsign true && git config tag.gpgsign true
+git config user.signingkey ~/.ssh/kookaburra/id_ecdsa_sk_rk_kookaburra-commit.pub   # only once main lists this key
+```
+
+A head signed by an unlisted key fails Signers on every PR, so set `user.signingkey` last. Without `SSH_SK_PROVIDER`, signing stops with `No FIDO SecurityKeyProvider specified`; `release.sh` sets it itself. A list line is `<GitHub noreply address> namespaces="git" <first two fields of the .pub>`. Check a key with `ssh-keygen -lf <file>.pub` against `sc_auth list-ctk-identities -t ssh`. Dependabot's branches are re-signed by hand.
+
+**Rotating a key.** Change the list in a PR with the head signed by the current tag key: `git -c user.signingkey="$(git config --path kookaburra.tagkey)" commit --amend --no-edit -S`. Remove the old key once no open PR's head still carries it.
+
+**Testing a change to `signers.yml`.** `pull_request_target` always runs `main`'s copy, so a test PR into a branch does not exercise your edit. Copy the job into a throwaway workflow under `pull_request` on that base branch. Never test with a `v*` tag: the ruleset refuses to delete it and a push starts a release.
+
+## Recovery for a lost Mac
+
+Both keys die with the Mac and neither has a backup, by design. No listed key remains to sign the PR that replaces them, so this goes through a repository admin. It needs the GitHub account, so keep its recovery route off that Mac.
+
+1. **Contain.** Sign the lost Mac out of GitHub (Settings > Sessions), revoke its SSH keys and tokens, and rotate the secrets it could reach. A Mac taken while logged in can still sign with the commit key, which can't tag or change a list. The tag key needs a finger.
+2. **New keys.** Set up the new Mac as above.
+3. **PR.** Replace every line for the lost keys in both lists and sign the head with the new tag key. Signers fails, as it should.
+4. **Admin bypass, for this PR only.** Settings > Rules > `main-branch-protection`: add Repository admin to the bypass list, merge the PR, then empty the bypass list straight away. Check it reads `[]`:
+   ```bash
+   gh api repos/michael-palmes/kookaburra-cut/rulesets --jq '.[] | select(.name=="main-branch-protection") | .id' | xargs -I{} gh api repos/michael-palmes/kookaburra-cut/rulesets/{} --jq .bypass_actors
+   ```
+5. **Prove it.** Open a PR with a one-line change signed by the new commit key: Signers passes. Close it.
+
+Published releases are unaffected, since a tag is checked only at build time. A tag not yet built fails against the new list; bump the version and tag again.
 
 ## Packaged-parity gate (required before publishing)
 
@@ -79,6 +122,8 @@ Each of these produces a build that signs and notarises happily, then misbehaves
 **Never set `bundle.createUpdaterArtifacts`.** It tars the bundle during `tauri build`, BEFORE notarisation staples the ticket. The script tars the stapled app itself.
 
 **Never call `trash::delete`.** The crate's default macOS backend drives Finder over `osascript`; TCC blames the Apple Event on us, and under the hardened runtime it is silently denied. Call `workspace::trash_path` instead.
+
+**The Secure Enclave identities carry a one-year certificate.** `sc_auth list-ctk-identities` shows `Valid To`. Whether signing stops at that date is untested; rotate both keys before it.
 
 **Entitlements must stay empty.** `sign-and-notarize.sh` and `verify-release.sh` fail on any entitlement. Nothing in the shell needs one.
 
@@ -108,7 +153,7 @@ gh attestation verify KookaburraCut-<version>.dmg --repo michael-palmes/kookabur
 
 ## Troubleshooting
 
-- **`verify-tag` fails in the build job**: the tag was not made by `pnpm release`, or its key is not in `main`'s `.github/allowed_signers`. Delete the tag only if the `v*` ruleset lets you; otherwise bump the version.
+- **`verify-tag` fails in the build job**: the tag was not made by `pnpm release`, or its key is not in `main`'s `.github/allowed_tag_signers` (`No principal matched` means the commit key signed it). Delete the tag only if the `v*` ruleset lets you; otherwise bump the version.
 - **The sign job waits forever**: nobody approved the `release` environment. Approve it from the run page.
 - **notarytool returns `Invalid`**: the sign job prints `notarytool log`; usually an unsigned or dylib-linked sidecar.
 - **Verify fails on `edit caps`**: the signed binary could not run its sidecars; check the notary log and the self-containment gate output in the build job.
