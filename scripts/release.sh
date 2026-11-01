@@ -27,7 +27,7 @@ done
 VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
 MIN_OS=$(node -p "require('./src-tauri/tauri.conf.json').bundle.macOS.minimumSystemVersion")
 TAG="v${VERSION}"
-SIGNERS="$ROOT/.github/allowed_signers"
+SIGNERS="$ROOT/.github/allowed_tag_signers"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
@@ -52,12 +52,12 @@ fi
 git fetch --quiet origin main "+refs/tags/*:refs/tags/*"
 [[ "$(git rev-parse HEAD)" == "$(git rev-parse origin/main)" ]] || die "main is not equal to origin/main; pull or push first."
 ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || die "tag $TAG already exists; bump \"version\" in src-tauri/tauri.conf.json."
-[[ -n "$(git config user.signingkey)" ]] || die "no user.signingkey configured; the tag must be signed by a key in .github/allowed_signers."
-[[ "$(git config gpg.format)" == "ssh" ]] || die "set gpg.format to ssh (the keys in .github/allowed_signers are SSH keys)."
+TAG_KEY=$(git config --path kookaburra.tagkey) || die "set kookaburra.tagkey to the public key file of the key in .github/allowed_tag_signers (kookaburra-release skill)."
+[[ "$(git config gpg.format)" == "ssh" ]] || die "set gpg.format to ssh (the keys in .github/allowed_tag_signers are SSH keys)."
 
-echo "==> Tagging $TAG (signed)"
-git tag -s "$TAG" -m "Kookaburra Cut ${VERSION}"
-# The workflow verifies the tag against main's allowed_signers; prove it here before pushing.
+echo "==> Tagging $TAG (Touch ID signs it)"
+SSH_SK_PROVIDER="${SSH_SK_PROVIDER:-/usr/lib/ssh-keychain.dylib}" git -c user.signingkey="$TAG_KEY" tag -s "$TAG" -m "Kookaburra Cut ${VERSION}"
+# The workflow verifies the tag against main's allowed_tag_signers; prove it here before pushing.
 git -c gpg.ssh.allowedSignersFile="$SIGNERS" -c gpg.minTrustLevel=fully verify-tag "$TAG" \
   || { git tag -d "$TAG" >/dev/null; die "the tag's signature is not from a key in $SIGNERS (tag removed)."; }
 
