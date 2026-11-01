@@ -1,14 +1,16 @@
 # Design
 
-Design language and build direction for **Kookaburra Cut**: the macOS application chrome.
-Audience for this file: AI coding tooling (Claude Code, Cursor, Copilot) and any human collaborator.
-Treat it as the source of truth for the editor interface. When a request conflicts with this file,
-surface the conflict rather than quietly overriding it.
+Design language and build direction for **Kookaburra Cut**: the macOS application chrome and the
+brand art around it. Audience for this file: AI coding tooling (Claude Code, Cursor, Copilot) and any
+human collaborator. Treat it as the source of truth for the editor interface and for imagery. When a
+request conflicts with this file, surface the conflict rather than quietly overriding it.
 
 ## 0. Scope & status
 
-This document specifies **Kookaburra Cut's application chrome only**, the editor interface that
-frames the work: the preview stage, timeline, scene list, inspector, transport, dialogs and menus.
+This document specifies **Kookaburra Cut's application chrome**, the editor interface that frames
+the work: the preview stage, timeline, scene list, inspector, transport, dialogs and menus. §16
+specifies **the print**, the art language for the icon, the README, the website, social images and
+the threshold surfaces.
 
 It deliberately does **not** specify the look of the *rendered video*. The colours, type, motion and
 gradients of exported frames are a separate, brandable, per-project concern that lives in the project's
@@ -40,7 +42,7 @@ We borrow the visual grammar of professional non-linear editors, **Final Cut Pro
 Cavalry**: dark, neutral, professional, content-first, one restrained accent. The **kookaburra**
 (moonlit blue-grey wing over night charcoal) is the *palette source*, never a decorative motif in
 the editor. No bird drawings on working surfaces, no outback kitsch: just the colour story.
-(Threshold illustrations at first-run/About are the one sanctioned exception, per voice.md.)
+(The print, §16, is the one sanctioned exception, at thresholds and outside the app.)
 
 The hard rule: **neutral chrome, colourful content.** The greys carry all structure; the single
 accent marks only what is active, selected, or the primary action. Restraint is the house style.
@@ -96,9 +98,9 @@ These are hard constraints, not suggestions. Re-read them before generating any 
     palette (§4.7), confined to the Edit with Claude surfaces.
 11. **Never tint or filter the WebGL preview stage.** No vibrancy, `backdrop-filter`, blend mode, or
     CSS filter touches the canvas: colour fidelity in the preview is a product requirement (§13).
-12. **No emoji or playful illustration in chrome.** Threshold surfaces (first-run, About) may carry
-    the sanctioned editorial silhouette per voice.md; working screens get restrained line art at
-    most. Body text is never centred or set in full-width marketing columns. This is a panelled tool.
+12. **No emoji or playful illustration in chrome.** Threshold surfaces may carry the print (§16);
+    working screens get restrained line art at most. Body text is never centred or set in
+    full-width marketing columns. This is a panelled tool.
 13. **No bird motif on working surfaces.** The kookaburra appears at thresholds only, never as
     watermarks, dividers, patterns or repeated iconography in the editor.
 
@@ -384,8 +386,8 @@ scene.)*
    determinate progress (§8.7).
 9. **Command palette (⌘K)**: fuzzy command list; the natural home for the "describe your video"
    authoring entry point (§8.8).
-10. **Empty / first-run state**: no project open: the wordmark, New / Open / recents, restrained
-    line art (the threshold illustration is sanctioned here, per voice.md). The one display-type moment.
+10. **Empty / first-run state**: no project open: the wordmark, New / Open / recents. The one
+    display-type moment. It carries no art today, by choice: people open it every day (§16.4).
 11. **Onboarding**: minimal: where projects live (the folder model), how authoring works.
 12. **Menus & context menus**: native-style menus (right-click on a scene, on a timeline block).
 13. **Toasts / notifications**: export-done (success), errors (danger); corner-anchored, auto-dismiss.
@@ -728,3 +730,78 @@ wing blue) and no alternate.
   /* plus: disable scale/slide transforms globally; transition opacity only */
 }
 ```
+
+---
+
+## 16. Imagery & illustration: the print
+
+**Every piece of brand art is a screen print made in the night studio:** flat inks, a true halftone
+screen and hard knife edges, on night navy. It should look pulled by hand, never rendered. The app's
+colours and general look stay as they are; this section governs pictures, not chrome.
+
+### 16.1 The inks
+
+Seven inks, taken from the icon. They are art colours, not chrome tokens: never use them for chrome
+controls (§3.10) and never in an exported frame (§14).
+
+| Ink | Hex | Role |
+|---|---|---|
+| Navy | `#0E1825` | The ground. Every print starts here |
+| Cream | `#F6E3CF` | The bird's body, titles, the playhead |
+| Buff | `#ECC49A` | The beak's inner faces |
+| Slate | `#667D8F` | The upper beak, the rule |
+| Blue | `#53768A` | The wing |
+| Rust | `#75422A` | The moon, the back |
+| Stripe | `#341F19` | The eye stripe, the moon's shading |
+
+### 16.2 The sheet
+
+A print holds one of each, and nothing else:
+
+1. **The bird**: always the icon's own plates (`src-tauri/icons/AppIcon.icon`), never redrawn or
+   flipped. It faces right and bleeds off the left and bottom edges. Where a layout has no sheet edge
+   to bleed off, as on a web page, cut it hard to the moon instead.
+2. **The moon**: one rust disc behind the head, with the beak inside it. Its shading is a stripe
+   screen, never a gradient.
+3. **The title**: "Kookaburra Cut" large, in cream, on plain navy. At least 1,300 px wide on a
+   2,560 px sheet.
+4. **The subtitle**: one approved line from voice.md §7, by default "Give every feature its moment."
+5. **The rule**: a timeline ruler and cream playhead, running off the right edge. This is the sign of
+   what the product is: one quiet mark, not a picture of the app.
+
+Type is Inter (bundled, OFL) so rendered art never depends on the licence of a system face. Cream on
+navy measures 14.3:1 and the subtitle ink 9.8:1.
+
+### 16.3 Rules
+
+- **Print, don't paint.** Tone comes from dots. No gradients, fades, blurs, glows or overlays, even
+  behind text. If something needs to stop, cut it on a hard edge.
+- **Nothing sits behind type.** Readability comes from clear ground, not from a scrim.
+- **Say one thing.** If a sheet feels busy, remove an element. Rings, app windows, thumbnail rows and
+  extra scenes were all tried and came out: they made the sheet noisy.
+- **Show the real product in motion, not in art.** The README demo and the website video carry it.
+- **One bird per surface.** Where the app icon is already on screen, as in the DMG, print the moon and
+  the rule without the bird.
+- **Add no new subjects.** No gum leaves, hills or outback texture (voice.md §9). New art comes from
+  the plates and shapes cut in code, not from generated images, so all of it rebuilds from the repo.
+- **Never a mascot.** The bird doesn't wave, wink, wear anything or appear in sequences.
+
+### 16.4 Where it goes
+
+| Surface | File | Size |
+|---|---|---|
+| GitHub social preview (uploaded in repository settings) | `docs/assets/social-preview.jpg` | 2560 × 1280, under 1 MB |
+| Website link card | `docs/assets/og.png` | 1200 × 630 |
+| Website hero (transparent, cut to the moon) | `docs/assets/print-roundel.png` | 1000 × 1000 |
+| README header | `docs/assets/readme-banner.jpg` | 2400 × 800 |
+| Update dialogs (no type: the dialog has its own) | `src/assets/update-banner.jpg` | 960 × 320 |
+| Styled DMG (no bird: the app icon is there) | `src-tauri/dmg/dmg_bg.png`, `dmg_bg@2x.png` | 806 × 488, 1612 × 976 |
+
+Working surfaces carry no art (§3.13). The Welcome screen stays wordmark only, since people open it
+every day.
+
+### 16.5 Making it
+
+`pnpm setup:art` prints every file above from the icon document with `scripts/make-art.py`, the same
+bytes each run on one machine. Run it after changing the icon, and upload the social preview by hand.
+Change the art in that script, not in the output files.
