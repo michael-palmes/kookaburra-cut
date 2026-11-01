@@ -16,6 +16,7 @@ from . import bridge
 from . import catalog as catmod
 from . import music, queue, reach
 from .film import timeline as tl
+from .realdir import real_dir
 from .util import EXIT_ENV, EXIT_OK, EXIT_PROBLEMS, KbError, emit, emit_err, now_ms
 
 CAPTURES = "captures"
@@ -442,7 +443,7 @@ def prune_captures(root: Path, keep: Optional[Path] = None, keep_folders: int = 
 def captures_root(project: Any) -> Path:
     from . import lock
 
-    return lock.kb_dir(project) / CAPTURES
+    return real_dir(lock.kb_dir(project), CAPTURES)
 
 
 def _musical(text: str) -> bool:

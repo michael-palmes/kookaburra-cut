@@ -49,6 +49,7 @@ mod present;
 mod preset_posters;
 mod privacy;
 mod pty;
+mod real_dir;
 mod render_win;
 mod scene_doc;
 mod settings_win;
@@ -249,6 +250,9 @@ fn flash_strips_dir(output: &std::path::Path) -> PathBuf {
 
 fn remove_flash_strips(output: &std::path::Path) {
     let dir = flash_strips_dir(output);
+    if !real_dir::is_real_dir(&dir) {
+        return;
+    }
     let Ok(entries) = std::fs::read_dir(&dir) else {
         return;
     };
@@ -270,6 +274,7 @@ fn write_flash_report(output: &std::path::Path, report: Option<&flashes::FlashRe
                 .map_err(|e| e.to_string())
                 .and_then(|text| {
                     let tmp = path.with_extension("json.tmp");
+                    let _ = std::fs::remove_file(&tmp);
                     std::fs::write(&tmp, text + "\n").map_err(|e| e.to_string())?;
                     std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
                 });
@@ -2240,6 +2245,28 @@ mod tests {
         let mut empty = Some(flashes::FlashDetector::new(0, 0, f64::NAN, flashes::Standards::BOTH));
         tap_flash_frame(&mut empty, &rgba(4, 4, 9));
         assert!(finish_flash_tap(empty).0.is_some());
+    }
+
+    #[test]
+    fn a_new_export_never_reaches_through_linked_flash_files() {
+        use crate::real_dir::hostile;
+        let (project, victim) = hostile::folder("flash-links");
+        let output = project.join("demo-16x9.mp4");
+        std::fs::write(victim.join("strip-01.png"), b"mine").unwrap();
+        hostile::plant(&project, "demo-16x9.mp4.flashes", &victim);
+        hostile::plant(&project, "demo-16x9.mp4.flashes.json.tmp", &victim.join("old.txt"));
+        remove_flash_strips(&output);
+        assert_eq!(std::fs::read(victim.join("strip-01.png")).unwrap(), b"mine");
+
+        let mut tap = Some(flashes::FlashDetector::new(64, 36, 60.0, flashes::Standards::BOTH));
+        let (dark, light) = (rgba(64, 36, 10), rgba(64, 36, 240));
+        for frame in 0..90 {
+            tap_flash_frame(&mut tap, if frame % 12 < 6 { &dark } else { &light });
+        }
+        write_flash_report(&output, Some(&finish_flash_tap(tap).0.unwrap()));
+        assert_eq!(std::fs::read(victim.join("old.txt")).unwrap(), b"mine");
+        assert!(flash_report_path(&output).is_file());
+        hostile::clean_up(&project);
     }
 
     #[test]
