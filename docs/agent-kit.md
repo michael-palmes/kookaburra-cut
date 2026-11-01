@@ -374,7 +374,8 @@ Hooks:
   (`assets/_meta.json`, `assets/**/*.timing.json`, anything under `assets/.originals/`),
   each reason naming the kb command to use (`kblib/hookfast.py` `asset_record_reason`), and to
   `flashes.accepted.json` (only `kb flashes accept` and `forget` write it, each entry with a
-  reason). An edit to a scene leased to
+  reason). These names compare case-folded, since APFS opens any folded spelling as the same
+  file, and a respelled project folder still counts as the project. An edit to a scene leased to
   someone else is denied with `permissionDecision: "deny"`, naming the holder, the expiry
   and how to bind or leave a note; the holder's own edit renews the lease. Before the first
   write of a session into `project.json` or `scenes/` it makes a checkpoint when the tree
@@ -398,7 +399,7 @@ Hooks:
     kb runs. It denies a command that names `scenes/<stem>` of a scene leased to someone else
     (globs included) and visibly writes it: a redirection, `tee`, `mv`, `rm`, `touch`, a `cp`
     or `install` destination, `sed -i`, `perl -i`, a heredoc, `write_text` or `open(..., 'w')`.
-    It denies the same visible writes to an asset record (a glob expands as the shell would,
+    It denies the same visible writes to an asset record in any case-folded spelling (a glob expands as the shell would,
     relative paths resolve from the hook's `cwd`; `sed -i` and Python writes count when they
     name one; a read, a `cp` out of `assets/.originals/` and kb-only commands pass). It makes the session checkpoint before a command that visibly writes `scenes/` or
     `project.json` or runs a kb write, and records the errors the scene files and `project.json`

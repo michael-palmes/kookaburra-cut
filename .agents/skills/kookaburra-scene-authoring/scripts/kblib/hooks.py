@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from . import check as checkmod
 from . import git as gitmod
 from . import leases
-from .hookfast import asset_record_reason, hook_caller
+from .hookfast import asset_record_reason, hook_caller, rel_within
 from .project import KIT_REL, MANIFEST, Project, SAFE_SESSION, find_root, worktree_of
 from .util import EXIT_OK, KbError, Report, ago, clean_lines
 
@@ -71,29 +71,27 @@ def edited_rel(project: Project, payload: Dict[str, Any]) -> Optional[str]:
     real = edited_path(project, payload)
     if real is None:
         return None
-    root = Path(os.path.realpath(str(project.root)))
-    try:
-        return real.relative_to(root).as_posix()
-    except ValueError:
-        return None
+    return rel_within(os.path.realpath(str(project.root)), str(real))
 
 
 def blocked_reason(rel: str) -> Optional[str]:
-    first = rel.split("/", 1)[0]
+    # APFS opens any case-folded spelling as the same file (FLASHES.ACCEPTED.JSON, a ligature, a long s).
+    folded = rel.casefold()
+    first = folded.split("/", 1)[0]
     if first == "exports":
         return f"{rel} is owned by the Kookaburra Cut app (exports/ holds its renders). Do not change it; edit project.json, scenes/ or assets/ instead."
     if first == "edits":
-        name = rel.split("/")[-1].rsplit(".json", 1)[0] if rel.endswith(".json") else "NAME"
+        name = rel.split("/")[-1][:-len(".json")] if folded.endswith(".json") else "NAME"
         return f"{rel}: edits/ holds video edit documents; change them only with kb video (kb video show {name or 'NAME'})."
     if first.startswith(".kookaburra"):
         return f"{rel} is the app's private state. Do not change it; edit project.json, scenes/ or assets/ instead."
     for kit in MANAGED_SKILLS:
-        if rel == kit or rel.startswith(kit + "/"):
+        if folded == kit or folded.startswith(kit + "/"):
             return f"{rel} is the managed kit; the app replaces it on every launch, so edits are lost. Put project notes in CLAUDE.md instead."
-    if rel == "flashes.accepted.json":
+    if folded == "flashes.accepted.json":
         return (f"{rel} holds accepted flash warnings, each with a person's reason; change it only through kb "
                 "(./kb flashes accept TIME --why \"...\", ./kb flashes forget TIME). Failures are never accepted.")
-    if KB_STATE.match(rel):
+    if KB_STATE.match(folded):
         return (f"{rel} is kb's own coordination state; change it only through kb (./kb lease, ./kb note, ./kb events). "
                 "Scratch files belong in .kb/agents/<your name>/ instead.")
     return asset_record_reason(rel)
