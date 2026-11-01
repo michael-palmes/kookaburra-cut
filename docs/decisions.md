@@ -308,7 +308,8 @@ The stills contract (PDF handout and PNG images) is in [stills.md](./stills.md).
 | Shortcuts | Native menu accelerators are the reliable shortcut channel; DOM listeners are the fallback | AppKit owns keys like ⌘Z and ⌘K before the webview ever sees them |
 | Overlay contract | Every overlay mounts on the shared modal-overlay layer; Escape closes top-most first | Transport/nudge key arbitration keys off it |
 | Migration pattern | Replace a UI surface by extracting its write funnel to a shared hook, running old and new against it, then deleting the old surface | Deletion becomes a zero-behaviour-risk change |
-| Icon & wordmark | The icon is original Icon Composer artwork used verbatim (never re-masked); the wordmark is a one-off SVG; no display typeface is bundled | Re-masking a finished export double-borders it; type licensing stays clean |
+| Icon & wordmark | The icon is the layered Icon Composer document `src-tauri/icons/AppIcon.icon` (ink plates with glass off), compiled to `Assets.car`, with a flat `.icns` rendered from it as the fallback and never re-masked; the wordmark is a one-off SVG; no display typeface is bundled | Layers give macOS its dark, clear and tinted modes while the art stays a print; re-masking a finished render double-borders it; type licensing stays clean |
+| Brand art | One print language (`docs/design.md` section 16): the icon's plates, a rust moon, the title, a subtitle and a timeline rule, on navy; tone only through a halftone screen, no fades or overlays; built by `scripts/make-art.py` from the icon document, type in Inter; the real product stays in the demo and website video | Painted, generated art read as generic. Rings, app windows and thumbnail rows were tried and made the sheets noisy. Building from the plates keeps every image reproducible from the repo |
 
 ## Licensing posture
 
@@ -368,7 +369,6 @@ Parked (specs recorded, unbuilt):
 - Device media `contain` fit (dropped; cover is the rule).
 - Mirror/reflective floors; dither-noise anti-banding (determinism unverified).
 - Promoting 4:5 into the standing gate matrix.
-- Threshold illustrations and a marketing page.
 - HEVC software-CRF determinism is unproven: treat it as draft-class until a
   gate proves it.
 

@@ -523,12 +523,14 @@ Where the live Tauri-2 setup matters for working in the code:
    and the `Info.plist` (app name) into the dev binary at **compile time** and
    does not re-run when `src-tauri/icons/` changes, so `pnpm tauri dev` keeps
    showing the old icon/name until the shell recompiles. `pnpm setup:icon`
-   regenerates icons from the Icon Composer master and cleans the shell;
-   `pnpm clean:shell` cleans manually (e.g. after identity edits in
+   regenerates the flat icon set from the Icon Composer document and cleans the
+   shell; `pnpm clean:shell` cleans manually (e.g. after identity edits in
    `tauri.conf.json`); the next `pnpm tauri dev` recompiles and re-embeds. If
    the Dock still shows the old icon after that, it's macOS's own icon cache:
-   `killall Dock`. The icon master is the Icon Composer 1024px export, used
-   verbatim: never re-mask it (see `scripts/make-icons.sh`).
+   `killall Dock`. The source is `src-tauri/icons/AppIcon.icon`, which the
+   bundler compiles to `Assets.car`; `pnpm tauri dev` shows only the flat set, so
+   dark, clear and tinted modes need a bundled app. Never re-mask the flat master
+   (see `scripts/make-icons.sh`).
 10. **The stills seam.** The stills export (`src/engine/stillsExport.ts`) shares
     the video loop's per-frame body, `renderFrameInto` in
     `src/engine/exportFrame.ts` (moved verbatim out of `exporter.ts`), but

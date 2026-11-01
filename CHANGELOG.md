@@ -6,6 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- A new app icon with dark, clear and tinted modes, and new printed art for the
+  README, update dialogs and installer.
+
 ## [0.21.1] - 2026-10-29
 
 ### Added
