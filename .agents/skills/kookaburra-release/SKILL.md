@@ -57,10 +57,10 @@ Everything here is done by hand, once. Nothing in the repository works until it 
 
 | Key | Protection | Listed in | Signs | Can't |
 | --- | --- | --- | --- | --- |
-| Tag (`kookaburra-tag`) | Touch ID | `.github/allowed_tag_signers` | release tags, PR heads that change a signer list | run without a person |
-| Commit (`kookaburra-commit`) | none, no prompt | `.github/allowed_signers` | every other PR head, including an agent's while you're away | tag a release, change a signer list |
+| Tag (`kookaburra-tag`) | Touch ID | `.github/allowed_tag_signers` | release tags, PR heads that change a signer list, `signers.yml` or `release.yml` | run without a person |
+| Commit (`kookaburra-commit`) | none, no prompt | `.github/allowed_signers` | every other PR head, including an agent's while you're away | tag a release, change a signer list, `signers.yml` or `release.yml` |
 
-`release.yml` and `release.sh` read only the tag list. `signers.yml` requires the tag key when either list differs between the PR head and its merge base with the base branch. GitHub runs that check from the default branch's copy, whatever the PR's base.
+`release.yml` and `release.sh` read only the tag list. `signers.yml` requires the tag key when either list, `signers.yml` or `release.yml` differs between the PR head and its merge base with the base branch, so a stolen commit key can't point `release.yml` at the commit list. GitHub runs that check from the default branch's copy, whatever the PR's base.
 
 Set up a Mac (the files `ssh-keygen -K` writes are references to the Secure Enclave, useless on another machine):
 
@@ -75,7 +75,7 @@ git config gpg.format ssh && git config commit.gpgsign true && git config tag.gp
 git config user.signingkey ~/.ssh/kookaburra/id_ecdsa_sk_rk_kookaburra-commit.pub   # only once main lists this key
 ```
 
-A head signed by an unlisted key fails Signers on every PR, so set `user.signingkey` last. Without `SSH_SK_PROVIDER`, signing stops with `No FIDO SecurityKeyProvider specified`; `release.sh` sets it itself. A list line is `<GitHub noreply address> namespaces="git" <first two fields of the .pub>`. Check a key with `ssh-keygen -lf <file>.pub` against `sc_auth list-ctk-identities -t ssh`. Dependabot's branches are re-signed by hand.
+A head signed by an unlisted key fails Signers on every PR, so set `user.signingkey` last. Without `SSH_SK_PROVIDER`, signing stops with `No FIDO SecurityKeyProvider specified`; `release.sh` sets it itself. A list line is `<GitHub noreply address> namespaces="git" <first two fields of the .pub>`. Check a key with `ssh-keygen -lf <file>.pub` against `sc_auth list-ctk-identities -t ssh`. Dependabot's branches are re-signed by hand, with the tag key (one Touch ID) when the bump changes `signers.yml` or `release.yml`.
 
 **Rotating a key.** Change the list in a PR with the head signed by the current tag key: `git -c user.signingkey="$(git config --path kookaburra.tagkey)" commit --amend --no-edit -S`. Remove the old key once no open PR's head still carries it.
 
