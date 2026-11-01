@@ -77,22 +77,27 @@ describe("kookaburra-run busy warning", () => {
     for (const bin of bins) rmSync(bin, { recursive: true, force: true });
   });
 
-  // Fake sysctl and xcrun report the given swap use and booted simulators.
-  function envWithLoad(swapMb, booted) {
+  // An empty `ps` keeps a packaged app open on this machine from ending the run before the warning.
+  function envWithTools(tools) {
     const bin = mkdtempSync(join(tmpdir(), "kb-run-busy-"));
     bins.push(bin);
-    writeFileSync(
-      join(bin, "sysctl"),
-      `#!/bin/sh\necho "total = 20480.00M  used = ${swapMb}.00M  free = 1.00M  (encrypted)"\n`,
-    );
+    for (const [tool, body] of Object.entries({ ps: "exit 0", ...tools })) {
+      writeFileSync(join(bin, tool), `#!/bin/sh\n${body}\n`);
+      chmodSync(join(bin, tool), 0o755);
+    }
+    return { ...process.env, PATH: `${bin}:${process.env.PATH}` };
+  }
+
+  // Fake sysctl and xcrun report the given swap use and booted simulators.
+  function envWithLoad(swapMb, booted) {
     const lines = Array.from(
       { length: booted },
       (_, i) => `    Sim ${i} (0000-${i}) (Booted)`,
     ).join("\\n");
-    writeFileSync(join(bin, "xcrun"), `#!/bin/sh\nprintf '== Devices ==\\n${lines}\\n'\n`);
-    chmodSync(join(bin, "sysctl"), 0o755);
-    chmodSync(join(bin, "xcrun"), 0o755);
-    return { ...process.env, PATH: `${bin}:${process.env.PATH}` };
+    return envWithTools({
+      sysctl: `echo "total = 20480.00M  used = ${swapMb}.00M  free = 1.00M  (encrypted)"`,
+      xcrun: `printf '== Devices ==\\n${lines}\\n'`,
+    });
   }
 
   test("names heavy swap and booted simulators", () => {
@@ -116,16 +121,10 @@ describe("kookaburra-run busy warning", () => {
 
   // Linux CI has neither: a failed sysctl once ended the run under set -e before any other check.
   test("never blocks when sysctl and xcrun fail", () => {
-    const bin = mkdtempSync(join(tmpdir(), "kb-run-busy-"));
-    bins.push(bin);
-    for (const tool of ["sysctl", "xcrun"]) {
-      writeFileSync(join(bin, tool), "#!/bin/sh\nexit 1\n");
-      chmodSync(join(bin, tool), 0o755);
-    }
-    const result = run(["--action", "verify", "--app", "/nonexistent/Fake.app"], {
-      ...process.env,
-      PATH: `${bin}:${process.env.PATH}`,
-    });
+    const result = run(
+      ["--action", "verify", "--app", "/nonexistent/Fake.app"],
+      envWithTools({ sysctl: "exit 1", xcrun: "exit 1" }),
+    );
     assert.equal(result.status, 2);
     assert.match(result.stderr, /no executable found inside/);
   });
