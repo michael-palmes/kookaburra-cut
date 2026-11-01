@@ -514,8 +514,9 @@ builds it in separate jobs, each on a fresh runner.
   `main` equal to `origin/main`, signs the tag and verifies it against
   `.github/allowed_tag_signers` before pushing. Every pull request's head commit
   must be signed by a key in `.github/allowed_signers`, or in the tag list when
-  it changes either list (`.github/workflows/signers.yml`, run from the default
-  branch's copy); `CODEOWNERS` names the maintainer; `audit.yml` runs
+  it changes either list, `signers.yml` or `release.yml`
+  (`.github/workflows/signers.yml`, run from the default branch's copy);
+  `CODEOWNERS` names the maintainer; `audit.yml` runs
   `pnpm audit --prod` and `cargo deny check advisories` on every pull request
   and weekly. Every workflow starts from `permissions: {}` or `contents: read`,
   pins actions to a commit SHA and sets `persist-credentials: false`.
