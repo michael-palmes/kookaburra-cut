@@ -33,7 +33,7 @@ contract for the kit, the bridge it talks to and the app behaviour it relies on.
 | `BRAND.md` | app | The project's brand guidelines, copied from `brands/<slug>/guidelines.md` when a brand is picked under Project; removed when it is cleared; never hand-edited |
 | `.claude/skills/<skill>/kit.json` | app | `{ "kitVersion", "appVersion", "stampedAtMs" }`, one per shipped skill |
 | `project.json`, `scenes/`, `assets/` | user (Claude edits) | The only folders Claude writes by hand |
-| `assets/.originals/`, `assets/<stem>.timing.json`, `assets/_meta.json` | app and kb | A conform's kept original (never packed: `pack/scan.rs` `is_excluded`), its frame map, and provenance records; written by the app's conform and `kb assets`, never by hand (the hooks block it) |
+| `assets/.originals/`, `assets/<stem>.timing.json`, `assets/_meta.json` | app and kb | A conform's kept original and the provenance records (neither packed: `pack/scan.rs` `is_excluded`), and its frame map; written by the app's conform and `kb assets`, never by hand (the hooks block it) |
 | `edits/` | app, and `kb video` | Video edit documents; Rust is the only writer (the editor window and `kb video` through the app's CLI); never hand-edited |
 | `exports/`, `.kookaburra*` | app | Never edited by Claude |
 | `./kb` | app (managed) | The zsh-safe shim from `src-tauri/templates/project-kb.sh` (mode 0755): `exec python3 -I .claude/skills/kookaburra-scene-authoring/scripts/kb.py "$@"`, exit 2 "the kit is missing" without the kit; rewritten while one of its first three lines starts `# kookaburra-cut kb shim`; anything else named `kb` (a file, folder or link) is moved aside and logged, since it would run under the `Bash(./kb *)` allow rule; `/kb` is in `.git/info/exclude`; never packed |

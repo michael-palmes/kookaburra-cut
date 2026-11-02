@@ -35,6 +35,7 @@ import {
 } from "./selection";
 import { reviewProjectTerminals, type TerminalReviewRow } from "./terminalReview";
 import {
+  type AgentNotesGroup,
   formatBytes,
   ITEM_KINDS,
   type ItemKind,
@@ -65,6 +66,7 @@ export function ExportView({ onClose }: { onClose: () => void }) {
   const [publisherName, setPublisherName] = useState("");
   const [warnedKey, setWarnedKey] = useState<string | null>(null);
   const [droppedAssets, setDroppedAssets] = useState<Record<string, string[]>>({});
+  const [includedNotes, setIncludedNotes] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [planning, setPlanning] = useState(false);
   const [query, setQuery] = useState("");
@@ -143,6 +145,8 @@ export function ExportView({ onClose }: { onClose: () => void }) {
     (g) => !trimmedQuery || visibleSlugs.has(g.projectSlug),
   );
 
+  const agentNotes = plan?.agentNotes ?? [];
+
   const onToggle = useCallback((item: SelectableItem, next: boolean) => {
     setState((s) => toggle(s, item, next));
     setWarnedKey(!next && isAuto(item) ? itemKey(item.kind, item.slug) : null);
@@ -165,7 +169,7 @@ export function ExportView({ onClose }: { onClose: () => void }) {
     setPhase({ step: "building", progress: null });
     try {
       const result = await buildPack(
-        toBuildSelection(state, items, droppedAssets),
+        toBuildSelection(state, items, droppedAssets, includedNotes),
         destination,
         {
           name: packName.trim(),
@@ -185,7 +189,7 @@ export function ExportView({ onClose }: { onClose: () => void }) {
           : { step: "failed", message },
       );
     }
-  }, [state, items, droppedAssets, packName, description, profile, publisherName]);
+  }, [state, items, droppedAssets, includedNotes, packName, description, profile, publisherName]);
 
   if (loading) {
     return (
@@ -372,6 +376,14 @@ export function ExportView({ onClose }: { onClose: () => void }) {
                 />
               )}
             </>
+          )}
+
+          {tab !== "details" && agentNotes.length > 0 && (
+            <AgentNotesGroups
+              groups={agentNotes}
+              included={includedNotes}
+              setIncluded={setIncludedNotes}
+            />
           )}
 
           {hasFonts && <p className="packs-disclaimer">{FONT_DISCLAIMER}</p>}
@@ -591,6 +603,50 @@ function UnreferencedGroups({
               {isDropped ? "Keep" : "Drop these"}
             </button>
           </div>
+        );
+      })}
+    </>
+  );
+}
+
+/** Off until ticked: what a person wrote for themselves or for Claude may hold anything. */
+function AgentNotesGroups({
+  groups,
+  included,
+  setIncluded,
+}: {
+  groups: AgentNotesGroup[];
+  included: string[];
+  setIncluded: (next: string[]) => void;
+}) {
+  return (
+    <>
+      <div className="packs-heading">Your notes stay on this Mac</div>
+      {groups.map((group) => {
+        const key = itemKey(group.kind, group.slug);
+        const ticked = included.includes(key);
+        return (
+          <label className="packs-row" key={key}>
+            <input
+              type="checkbox"
+              checked={ticked}
+              onChange={(e) =>
+                setIncluded(
+                  e.target.checked ? [...included, key] : included.filter((k) => k !== key),
+                )
+              }
+            />
+            <span className="packs-row-main">
+              <span className="packs-row-title">
+                {DETAILS_ICON}
+                <span>Include notes from {group.slug}</span>
+              </span>
+              <span className="packs-row-detail">{group.files.map((f) => f.rel).join(", ")}</span>
+            </span>
+            <span className="packs-row-size">
+              {formatBytes(group.files.reduce((s, f) => s + f.bytes, 0))}
+            </span>
+          </label>
         );
       })}
     </>

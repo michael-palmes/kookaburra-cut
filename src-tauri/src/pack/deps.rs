@@ -7,6 +7,7 @@
 use super::error::PackError;
 use super::fonts::{collect_pack_fonts, is_bundled_family};
 use super::hash::{content_hash, sha256_file};
+use super::scan::is_agent_note;
 use super::model::{
     ItemKind, PackBrand, PackContents, PackFont, PackItemBase, PackObject, PackProject,
     PackRequires, PackScreenshot, PackSimpleItem, PackTheme, PackTotals, BRAND_MANIFEST,
@@ -63,6 +64,9 @@ pub struct PackSelection {
     pub include_flattened_renders: bool,
     #[serde(default = "yes")]
     pub include_unreferenced_assets: bool,
+    /// `<kind>:<slug>` of each item whose notes (`scan::is_agent_note`) the person ticked to include; none by default.
+    #[serde(default)]
+    pub include_agent_notes: Vec<String>,
 }
 
 impl Default for PackSelection {
@@ -81,6 +85,7 @@ impl Default for PackSelection {
             exclude: Vec::new(),
             include_flattened_renders: true,
             include_unreferenced_assets: true,
+            include_agent_notes: Vec::new(),
         }
     }
 }
@@ -136,7 +141,7 @@ pub struct ClosureFile {
     pub sha256: String,
 }
 
-/// Which review group an asset falls into. Both are reported and both default to travelling.
+/// Which review group an asset falls into. Unused files and flattened renders default to travelling, notes to staying home.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum AssetGroup {
@@ -144,11 +149,14 @@ pub enum AssetGroup {
     Unreferenced,
     /// An `assets/*-edited.mp4` flattened render, listed even when referenced.
     FlattenedRender,
+    /// A person's `CLAUDE.md` or `NOTES.md` (`scan::is_agent_note`), which may hold anything.
+    AgentNote,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReviewedAsset {
+    pub kind: ItemKind,
     pub project: String,
     /// Project-relative, e.g. `assets/old-take.mp4`.
     pub rel: String,
@@ -519,6 +527,7 @@ fn stage_file(
 fn base_from(slug: &str, name: &str, files: &[StagedFile]) -> PackItemBase {
     let pairs: Vec<(String, String)> = files
         .iter()
+        .filter(|f| !is_agent_note(&f.item_rel))
         .map(|f| (f.item_rel.clone(), f.sha256.clone()))
         .collect();
     let newest = files
@@ -563,7 +572,7 @@ pub(super) fn walk(dir: &Path, prefix: &str, out: &mut Vec<(String, PathBuf)>) {
     }
 }
 
-/// The pack build exclusions (`02-data-model.md`), extending `duplicate_project`'s skip list. Shares `scan::is_excluded` with the import side, so an item exported and re-scanned hashes equal. `CLAUDE.md` rides along (import swaps it for the app's default and keeps the text as `NOTES.md`); nothing under `.claude/` does.
+/// The pack build exclusions (`02-data-model.md`), extending `duplicate_project`'s skip list. Shares `scan::is_excluded` with the import side, so an item exported and re-scanned hashes equal. Nothing under `.claude/` travels; an author's notes travel only when ticked (`scan::is_agent_note`).
 fn project_file_excluded(rel: &str) -> bool {
     super::scan::is_excluded(rel)
 }
@@ -1364,6 +1373,29 @@ fn build_project(
 
     let mut reviewed = Vec::new();
     let mut dropped: BTreeSet<String> = BTreeSet::new();
+    let notes_included = selection
+        .include_agent_notes
+        .contains(&item_key(kind, slug));
+    for (rel, path) in candidates.iter().filter(|(rel, _)| is_agent_note(rel)) {
+        // An unedited default holds nothing of the person's, and the app stamps its own on the other side.
+        let unedited = rel.eq_ignore_ascii_case("CLAUDE.md")
+            && std::fs::read(path).is_ok_and(|bytes| {
+                crate::kit::is_default_claude_md(&String::from_utf8_lossy(&bytes))
+            });
+        if unedited || !notes_included {
+            dropped.insert(rel.clone());
+        }
+        if !unedited {
+            reviewed.push(ReviewedAsset {
+                kind,
+                project: slug.to_owned(),
+                rel: rel.clone(),
+                bytes: std::fs::metadata(path).map(|m| m.len()).unwrap_or(0),
+                group: AssetGroup::AgentNote,
+                included: notes_included,
+            });
+        }
+    }
     let refs = (kind == ItemKind::Project).then(|| crate::media::project_asset_refs(&dir));
     let asset_rels: Vec<String> = candidates
         .iter()
@@ -1372,7 +1404,7 @@ fn build_project(
         .collect();
     for (rel, path) in &candidates {
         // The unused-file review is a project feature: a template or preset carries only what it was saved with.
-        if kind != ItemKind::Project || !rel.starts_with("assets/") {
+        if kind != ItemKind::Project || !rel.starts_with("assets/") || is_agent_note(rel) {
             continue;
         }
         let flattened = rel.ends_with(FLATTENED_SUFFIX);
@@ -1394,6 +1426,7 @@ fn build_project(
             dropped.insert(rel.clone());
         }
         reviewed.push(ReviewedAsset {
+            kind,
             project: slug.to_owned(),
             rel: rel.clone(),
             bytes: std::fs::metadata(path).map(|m| m.len()).unwrap_or(0),
@@ -1513,6 +1546,14 @@ fn build_brand(
     let mut candidates: Vec<(String, PathBuf)> = Vec::new();
     walk(&dir, "", &mut candidates);
     candidates.retain(|(rel, _)| !super::scan::is_excluded(rel));
+    // A brand has no review, so a note in its folder stays home and says so.
+    for (rel, _) in candidates.iter().filter(|(rel, _)| is_agent_note(rel)) {
+        warnings.push(ClosureWarning::FileSkipped {
+            path: format!("brands/{slug}/{rel}"),
+            reason: "notes stay on this Mac".into(),
+        });
+    }
+    candidates.retain(|(rel, _)| !is_agent_note(rel));
     let staged = stage_all(
         candidates
             .into_iter()
@@ -2262,7 +2303,7 @@ mod tests {
             "edits/_tap_prefs.json"
         );
 
-        assert!(has("payload/projects/acme/CLAUDE.md"), "CLAUDE.md travels");
+        assert!(!has("payload/projects/acme/CLAUDE.md"), "notes stay home unless ticked");
         assert!(
             !has("payload/projects/acme/.claude/settings.json"),
             ".claude/settings.json stays home"
@@ -2314,6 +2355,63 @@ mod tests {
         assert!(!paths.iter().any(|p| p.ends_with("cut-edited.mp4")));
         assert!(paths.iter().any(|p| p.ends_with("hero.png")));
         assert!(trimmed.reviewed_assets.iter().all(|a| !a.included));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn notes_stay_home_unless_ticked_and_a_default_stays_out_silently() {
+        let root = fixture("agent-notes");
+        write(&root, "acme/CLAUDE.md", "# Acme\n\nThe launch is on Friday.\n");
+        write(&root, "acme/NOTES.md", "Shot list.\n");
+        write(&root, "acme/assets/NOTES.md", "Beside the footage.\n");
+        write(&root, "acme/assets/_meta.json", r#"{"version":1,"assets":{}}"#);
+        write(&root, "other/project.json", r#"{"id":"other","name":"Other","version":1}"#);
+        write(&root, "other/CLAUDE.md", &crate::kit::render_claude_md("Other"));
+
+        let mut picked = selection(&["acme", "other"]);
+        let left_out = resolve_closure(&root, &picked).unwrap();
+        let paths = archive_paths(&left_out);
+        assert!(!paths.iter().any(|p| p.ends_with("CLAUDE.md") || p.ends_with("NOTES.md")));
+        assert!(!paths.iter().any(|p| p.ends_with("_meta.json")));
+        let notes: Vec<(&str, &str, bool)> = left_out
+            .reviewed_assets
+            .iter()
+            .filter(|a| a.group == AssetGroup::AgentNote)
+            .map(|a| (a.project.as_str(), a.rel.as_str(), a.included))
+            .collect();
+        assert_eq!(
+            notes,
+            vec![
+                ("acme", "CLAUDE.md", false),
+                ("acme", "NOTES.md", false),
+                ("acme", "assets/NOTES.md", false),
+            ]
+        );
+        assert_eq!(
+            left_out.reviewed_assets.iter().filter(|a| a.rel == "assets/NOTES.md").count(),
+            1,
+            "a note is listed once, never as an unused file too"
+        );
+
+        picked.include_agent_notes = vec![item_key(ItemKind::Project, "acme")];
+        let ticked = resolve_closure(&root, &picked).unwrap();
+        let paths = archive_paths(&ticked);
+        assert!(paths.contains(&"payload/projects/acme/CLAUDE.md".to_owned()));
+        assert!(paths.contains(&"payload/projects/acme/NOTES.md".to_owned()));
+        assert!(!paths.contains(&"payload/projects/other/CLAUDE.md".to_owned()));
+
+        let hash_of = |closure: &Closure| {
+            closure
+                .contents
+                .projects
+                .iter()
+                .find(|p| p.base.slug == "acme")
+                .map(|p| p.base.content_hash.clone())
+                .unwrap()
+        };
+        let local = crate::pack::scan::scan_dir(&root.join("acme")).unwrap().content_hash;
+        assert_eq!(hash_of(&left_out), local, "left out reads identical to its own pack");
+        assert_eq!(hash_of(&ticked), local, "ticked reads identical too");
         let _ = std::fs::remove_dir_all(&root);
     }
 
