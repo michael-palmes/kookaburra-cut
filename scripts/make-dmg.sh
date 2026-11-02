@@ -85,7 +85,7 @@ MOUNT=$(grep -Eo '/Volumes/.*$' <<<"$ATTACH" | tail -1)
 SetFile -a C "$MOUNT" # honour the custom .VolumeIcon.icns
 
 # Window is 806x516: the 488pt artwork plus a ~28pt title bar, so the caption is not clipped.
-# Icons sit in the artwork's drop-target circles, centred at (170,253) and (635,253) in 1x
+# Icons sit either end of the artwork's rule, centred at (170,253) and (635,253) in 1x
 # points; Finder lands an icon ~3pt low, hence y=250. That drops each label onto the plate
 # the artwork paints at y=316..345, which is what makes the label readable in Light Mode.
 # Re-measure all of this if the art or the OS title-bar height changes.

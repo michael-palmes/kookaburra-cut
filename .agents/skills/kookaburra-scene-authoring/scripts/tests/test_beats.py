@@ -120,10 +120,10 @@ class BeatsReaderTests(KbTestCase):
         code, _, err = self.run_main()
         self.assertEqual(code, 0)
         self.assertIn("no analysis of this soundtrack yet: ./kb song analyse", err)
-        write_json(self.cache / f"{DIGEST}-v2.json", {**v2(), "version": 3})
+        write_json(self.cache / f"{DIGEST}-v2.json", {**v2(), "version": 4})
         code, _, err = self.run_main()
         self.assertEqual(code, 0)
-        self.assertIn("version 3, which this kit can't read", err)
+        self.assertIn("version 4, which this kit can't read", err)
 
     def test_beat_times_read_both_shapes(self) -> None:
         self.assertEqual(self.mod.beat_times({"beats": [{"ms": 1.5}, {"ms": None}, 3, True]}), [1.5, 3])

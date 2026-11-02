@@ -11,6 +11,7 @@ import { insertPresetScene } from "../engine/presetInsert";
 import { bumpWorkspaceReloadToken, loadProject } from "../engine/project";
 import { withProjectAssetRevision } from "../engine/projectAssetRevision";
 import { TrustDeniedError } from "../engine/projectTrust";
+import { renderRange } from "../engine/rangeRender";
 import { GpuStallError } from "../engine/readback";
 import { DEFAULT_RENDER_SETTINGS } from "../engine/renderSettings";
 import { setStage } from "../engine/stageHandle";
@@ -62,6 +63,7 @@ vi.mock("../engine/exporter", () => ({
   captureFrameRgba: vi.fn(),
   captureScreenshot: vi.fn(),
 }));
+vi.mock("../engine/rangeRender", () => ({ renderRange: vi.fn(), safeAreaBox: vi.fn() }));
 vi.mock("../engine/themePreviews", () => ({ awaitProjectCommitted: vi.fn() }));
 vi.mock("../engine/clips", () => ({ invalidateChangedClips: vi.fn(async () => {}) }));
 vi.mock("../engine/assetRevisions", () => ({
@@ -570,6 +572,86 @@ describe("bridge v2 requests", () => {
     // The editor's 9:16 at 64 wide is 64x114.
     const outside = await serve({ kind: "capture", scene: "0", width: 64, probe: [[64, 0]] });
     expect(outside.error).toContain("probe point 64,0 is outside the 64x114 capture");
+  });
+
+  describe("ranged renders", () => {
+    const pushes = () => vi.mocked(invoke).mock.calls.filter(([c]) => c === "range_flash_push");
+
+    beforeEach(() => {
+      vi.mocked(renderRange).mockImplementation(async (opts, times, onFrame) => {
+        const { width, height } = opts.format;
+        for (const [index, tMs] of times.entries()) {
+          await onFrame({ index, tMs, rgba: new Uint8Array(width * height * 4), width, height });
+        }
+      });
+      const base = vi.mocked(invoke).getMockImplementation();
+      vi.mocked(invoke).mockImplementation(async (command, args) => {
+        if (command === "bridge_request_live") return { live: true };
+        if (command === "range_flash_finish") return { ok: true, issues: [] };
+        return base?.(command, args);
+      });
+    });
+
+    it("feeds the detector one frame per grid step and answers in project time", async () => {
+      const response = await serve({ kind: "range", startMs: 1000, endMs: 1100, aspect: "16:9" });
+      expect(response).toMatchObject({ ok: true, fps: 30, firstFrame: 30, frames: 3 });
+      expect(invoke).toHaveBeenCalledWith("range_flash_begin", {
+        width: 640,
+        height: 360,
+        fps: 30,
+        standard: null,
+      });
+      expect(pushes()).toHaveLength(3);
+      expect(response.flashes).toMatchObject({ offsetMs: 1000 });
+    });
+
+    it("asks the person first for a project the editor does not have open", async () => {
+      allowOther = false;
+      const response = await serve({ kind: "range", project: "ws:other", startMs: 0, endMs: 100 });
+      expect(response).toMatchObject({ ok: false, declined: true });
+      expect(invoke).toHaveBeenCalledWith("bridge_confirm_project", {
+        slug: "ws:other",
+        kind: "range",
+        client: null,
+      });
+      expect(loadProject).not.toHaveBeenCalled();
+      expect(renderRange).not.toHaveBeenCalled();
+    });
+
+    it("stops rendering a flagged moment's frames when an export begins", async () => {
+      let checks = 0;
+      const base = vi.mocked(invoke).getMockImplementation();
+      vi.mocked(invoke).mockImplementation(async (command, args) => {
+        if (command === "bridge_request_live") {
+          checks += 1;
+          return checks > 3 ? { live: false, reason: "busy" } : { live: true };
+        }
+        if (command === "range_flash_finish") {
+          return { ok: false, issues: [{ startMs: 33, severity: "fail" }] };
+        }
+        return base?.(command, args);
+      });
+      const response = await serve({ kind: "range", startMs: 0, endMs: 100, aspect: "16:9" });
+      expect(response).toMatchObject({ ok: false, busy: true });
+      expect(vi.mocked(renderRange)).toHaveBeenCalledTimes(2);
+      expect(invoke).not.toHaveBeenCalledWith(
+        "bridge_write_sheet",
+        expect.anything(),
+        expect.anything(),
+      );
+    });
+
+    it("stops and disarms the detector when the client gives up", async () => {
+      const base = vi.mocked(invoke).getMockImplementation();
+      vi.mocked(invoke).mockImplementation(async (command, args) => {
+        if (command === "bridge_request_live") return { live: false, reason: "cancelled" };
+        return base?.(command, args);
+      });
+      const response = await serve({ kind: "range", startMs: 0, endMs: 100 });
+      expect(response).toMatchObject({ ok: false, cancelled: true });
+      expect(pushes()).toHaveLength(0);
+      expect(invoke).toHaveBeenCalledWith("range_flash_finish");
+    });
   });
 
   it("answers too large before rendering anything", async () => {

@@ -36,14 +36,15 @@ contract for the kit, the bridge it talks to and the app behaviour it relies on.
 | `assets/.originals/`, `assets/<stem>.timing.json`, `assets/_meta.json` | app and kb | A conform's kept original (never packed: `pack/scan.rs` `is_excluded`), its frame map, and provenance records; written by the app's conform and `kb assets`, never by hand (the hooks block it) |
 | `edits/` | app, and `kb video` | Video edit documents; Rust is the only writer (the editor window and `kb video` through the app's CLI); never hand-edited |
 | `exports/`, `.kookaburra*` | app | Never edited by Claude |
-| `./kb` | app (managed) | The zsh-safe shim from `src-tauri/templates/project-kb.sh` (mode 0755): `exec python3 -I .claude/skills/kookaburra-scene-authoring/scripts/kb.py "$@"`, exit 2 "the kit is missing" without the kit; replaced only while one of its first three lines starts `# kookaburra-cut kb shim` (a user's own `kb`, folder or link is left alone); `/kb` is in `.git/info/exclude`; never packed |
+| `./kb` | app (managed) | The zsh-safe shim from `src-tauri/templates/project-kb.sh` (mode 0755): `exec python3 -I .claude/skills/kookaburra-scene-authoring/scripts/kb.py "$@"`, exit 2 "the kit is missing" without the kit; rewritten while one of its first three lines starts `# kookaburra-cut kb shim`; anything else named `kb` (a file, folder or link) is moved aside and logged, since it would run under the `Bash(./kb *)` allow rule; `/kb` is in `.git/info/exclude`; never packed |
+| `kb.moved-aside`, `.claude.moved-aside` (then `-2` and so on) | the person | What a stamp moved out of the way, named in the `[kit]` log; never run, packed or duplicated |
 | `.kb/` | kb | Multi-agent state (lock, leases, notes, events, per-agent scratch, capture copies), song analyses, footage logs and the asset archive; ignores itself; never packed (`pack/scan.rs` `is_excluded`) or duplicated (`duplicate_project`) |
 
 Skill tree (the source lives at `.agents/skills/kookaburra-scene-authoring/`):
 
 ```
 SKILL.md            brief first, the loop, capture etiquette, multi-agent habits, hard rules, capability map, routing (about 18 KB)
-RULES.md            always-on rules imported by CLAUDE.md, the only rules subagents get; "Untrusted text" and "Stop and ask" live here (keep it under about 4.5 KB)
+RULES.md            always-on rules imported by CLAUDE.md, the only rules subagents get; "Untrusted text" and "Stop and ask" live here (keep it under about 4.7 KB)
 DESIGN.md           playbook: the brief, presentations, product demos, launch videos
 catalog.json        GENERATED (pnpm agent:catalog); never hand-edited
 toolkit.d.ts        GENERATED: every public toolkit export's types, in one self-contained ambient module
@@ -91,8 +92,9 @@ scripts/
   first heading. Nothing else in a user-edited `CLAUDE.md` is touched. Changing the
   template means archiving the old one first (a test pins its digest).
 - `./kb`: the shim (`stamp_shim`), written from `src-tauri/templates/project-kb.sh` with mode
-  0755 when missing, and rewritten (content or mode) while it carries the marker; any other
-  `kb` at the project root is the user's and is never touched. kb adds `/kb` to
+  0755 when missing, and rewritten (content or mode) while it carries the marker. Any other
+  `kb` at the project root (a file, folder or link) arrived with the folder and would run with
+  no prompt, so it is renamed to `kb.moved-aside` and logged as `[kit]`. kb adds `/kb` to
   `.git/info/exclude` with its other entries, so the shim never lands in a user's commit.
 - `.claude/settings.json`: created when missing, and app-owned. Every stamp replaces
   `hooks` with the managed set (identified by a command containing
@@ -101,8 +103,9 @@ scripts/
   other `permissions` key, `env` and `apiKeyHelper`; each removal is logged as `[kit]`
   with the path and value. Other keys (`model`, say) are left. An unparseable file is left
   alone. The file is only rewritten when its content changes, and then with sorted keys.
-  Before the settings, the stamp removes `.claude/commands/`, `.claude/agents/` and any
-  `.claude/skills/*` the app does not ship, logging them. Nothing a folder arrives with can
+  Before the settings, a `.claude` that isn't a real folder is moved aside to
+  `.claude.moved-aside`, so the stamp never reaches through a link, and the stamp removes
+  `.claude/commands/`, `.claude/agents/` and any `.claude/skills/*` the app does not ship, logging them. Nothing a folder arrives with can
   configure the agent; what the person wants the agent told goes in `CLAUDE.md`, which
   Claude Code reads as instructions and the stamp leaves alone past the RULES import.
 
@@ -156,12 +159,12 @@ under the project lock (`kblib.lock`) and re-validated after writing.
 
 | Command | Does |
 | --- | --- |
-| `status` | App alive (heartbeat), version, open project, aspect, exporting; this project's last load result; kit version; checkpoint state; a leading STOP banner when the project is a linked git worktree (`--json`: `worktree` is `{ path, main }` or null) |
+| `status` | App alive (heartbeat), version, open project, aspect, exporting; this project's last load result; kit version; checkpoint state; the last verify verdict and whether a source changed since (`--json`: `lastVerify`); a leading STOP banner when the project is a linked git worktree (`--json`: `worktree` is `{ path, main }` or null) |
 | `context` | The SessionStart text: status, scene roster, last load errors, the five rules that matter most (under 4 KB) |
 | `scenes` | Roster: index, stem, name, duration, transition, text, overrides (replaces `inspect.py`) |
-| `check [--app] [--render] [files...]` | Static checks (below); `--app` adds the running app's real compile, load and font checks; `--render` also renders each scene once; `check film ...` hands its arguments to `kblib/film` (`run(ctx, rest)`) |
-| `capture [--scene S] [--at SEC\|POS] [--aspect A] [--frames S@SEC,S@POS,POS,bars:A-B,beats:A-B] [--sheet] [--width N \| --scale F] [--probe X,Y[,X,Y...]] [--out DIR \| --no-copy]` | Frames from the running app (one frame native, several or a sheet at a 1280 px long edge); prints the paths of copies in `.kb/captures/`; `--sheet` adds one contact-sheet PNG; `--probe` returns exact pixel values ("The capture service"). A musical position resolves against `audio.grid` to the scene that owns it (mid-transition, the one the editor shows as current); with `--scene` a position outside it is exit 1; `bars:`/`beats:` ranges expand to downbeats or beats, 48 frames at most; answers carry `position` and `projectMs` |
-| `verify [--scene S]... [--aspect A] [--no-render] [--film]` | Every check before calling the work done, one step at a time (below) |
+| `check [--app] [--render] [files...]` | Static checks (below); `--app` adds the running app's real compile, load and font checks; `--render` also renders each scene once; `check film ...` hands its arguments to `kblib/film` (`run(ctx, rest)`), and `check film --range SPAN \| --scene S` is the ranged flash check ("Ranged checks") |
+| `capture [--scene S] [--at SEC\|POS] [--aspect A] [--frames S@SEC,S@POS,POS,bars:A-B,beats:A-B] [--around SEC\|POS --count N] [--sheet] [--width N \| --scale F] [--probe X,Y[,X,Y...]] [--crop X,Y,W,H] [--diff A B] [--out DIR \| --no-copy]` | Frames from the running app (one frame native, several or a sheet at a 1280 px long edge); prints the paths of copies in `.kb/captures/`; `--sheet` adds one contact-sheet PNG; `--probe` returns exact pixel values ("The capture service"). A musical position resolves against `audio.grid` to the scene that owns it (mid-transition, the one the editor shows as current); with `--scene` a position outside it is exit 1; `bars:`/`beats:` ranges expand to downbeats or beats, 48 frames at most; answers carry `position` and `projectMs`. Motion and joins: "Captures for motion and joins" |
+| `verify [--scene S]... [--aspect A] [--no-render] [--film \| --quick] [--formats]`, `verify --last` | Every check before calling the work done, one step at a time (below); `--last` prints the saved verdict and exits with its code |
 | `debug contexts`, `debug lose-context [--window render\|editor]` | Every window's WebGL contexts; force a context loss to exercise the stall recovery (the editor only in dev builds) |
 | `scene add <stem> [--preset P \| --copy S] [--after S \| --at N] [--duration MS] [--name N]` | New scene, unique stem and `defineScene` id, registered once; presets insert through the app when it runs, else copy from the app bundle |
 | `scene duplicate S`, `scene move S --to N`, `scene remove S`, `scene set S [--duration MS \| --duration-bars N \| --cut-at POS [--align end\|mid]] [--transition TYPE[:MS] [--ripple]]` | Manifest-safe scene operations; remove moves files to the macOS Trash. A `--cut-at` position pins the cut (`cutAt`, `align`: the app's `engine/sceneCuts.ts`, mirrored by `kblib/film/timeline.py` and pinned by `timeline-vectors.json`), so its length re-resolves on every grid, transition or scene-list write; a time, `--duration` and `--duration-bars` write whole ms and unpin. With a grid, `--transition` keeps later cuts in place (`keep_cuts_for_transition`, the transition picker's plan) unless `--ripple`, and the reply names any cut a write moved off the beat. `at` caches refresh in the same transaction |
@@ -174,18 +177,23 @@ under the project lock (`kblib.lock`) and re-validated after writing.
 | `presets [list \| show SLUG]` | Scene presets with what they show and a preview image path to Read (`--json`: `presets`) |
 | `catalog [FAMILY] [--search Q]` | Query `catalog.json` (`--json`: `families`; a family's raw entries as `{ family, items }`, or `{ family, value }` when it is not a list; a search's `items`) |
 | `assets list`, `assets add PATH [--name N] [--dir D] [--no-conform]`, `assets probe ASSET [--deep]`, `assets conform ASSET [--repoint]`, `assets replace NAME FILE [--keep-old archive\|trash\|none] [--as-new]`, `assets unused [--kind K] [--archive [DIR]]`, `assets restore [ID \| --list]`, `assets meta NAME [--set K=V]` | Media in (never overwrites, renames on collision; a video the app's probe flags is conformed through `<exe> media conform`, gated on `edit caps.media`), the decode verdict (`ok`, `suspect`, `ffmpeg-misdecodes`; the container's own `elst`/`stts`/`ctts` parse without the app, AVFoundation's view with it; an edit opening inside a sample is `ffmpeg-misdecodes` on both sides, `mp4box.rs` and `mp4box.py` replaying one `edit-start-vectors.json`), an in-place conform (`--repoint` turns a `.mov` into `<stem>.mp4` and rewrites literals), an in-place replace with the old bytes in `.kb/archive/`, the app's shared in-use rule (`unused`, archived and restorable; `media.rs` and `asset_refs.py` replay one `asset-ref-vectors.json`), and `assets/_meta.json` provenance (`list --json`: `assets`, each with a conformed clip's timing and provenance folded in). Code: `kblib/assets_cli.py`, `asset_ops.py`, `conform.py`, `mp4box.py`, `asset_refs.py`, `archive.py`, `asset_meta.py` |
-| `checkpoint [MESSAGE] [--scene S]... [--files P]...`, `history [--scene S]`, `undo [REV] [--scene S \| --all]`, `diff [REV] [--scene S]` | Git checkpoints of `project.json`, `scenes/` and `edits/`, or only some scenes' files; `undo` checkpoints first, so it is itself undoable, never trashes `edits/`, and names any render it leaves stale (`history --json`: `checkpoints`, each with `atMs`). See Coordination |
+| `checkpoint [MESSAGE] [--scene S]... [--files P]...`, `history [--scene S]`, `undo [REV] [--scene S \| --all]`, `diff [REV] [--scene S]` | Git checkpoints of `project.json`, `scenes/`, `edits/` and `flashes.accepted.json`, or only some scenes' files; `undo` checkpoints first, so it is itself undoable, never trashes `edits/`, and names any render it leaves stale (`history --json`: `checkpoints`, each with `atMs`). See Coordination |
 | `lease S [--ttl 2h] [--note T] [--for NAME]`, `lease S --release [--force]`, `leases [--all]` | Opt-in scene leases (`lease --json`: `scene`, `action`, `lease`; `leases --json`: `leases`) |
 | `note "TEXT" [--scene S]`, `notes [--all]` | Shared notes in `.kb/notes.md` (`notes --json`: `notes`, `total`) |
 | `events [--follow] [--since 10m\|CURSOR\|all] [--kinds ...] [--all-agents] [--exit-after S]` | The coordination feed (`--json` without `--follow`: `events`, `cursor`) |
 | `video ...` | Video editing (below): edit documents, renders, re-points, cleanup, fit, review (`list --json`: `edits`) |
 | `plan COMMAND ...` | A structural command's dry run: `writes`, `refusals`, `notes`; writes nothing (below) |
 | `export [--aspect A] [--preset ID] [--fps 30\|60] [--short-edge N] [--poster-frame on\|off\|app] [--verify] [--headless] [--allow-flashes] [--timeout S] [--progress-every S]` | The finished film, exactly as the app's Export button makes it ("kb export") |
+| `flashes [list]`, `flashes accept TIME --why TEXT`, `flashes forget TIME\|ID` | The last flash check at a glance, and accepted warnings ("Accepted flash warnings"; `--json`: `accepted`, `last`) |
+| `preview --range SPAN \| --scene S [--aspect A] [--fps N] [--width N] [--gif]` | A low-resolution MP4 or GIF of a span, rendered by the render window, plus a contact sheet to Read ("Ranged checks") |
 | `verify-export FILE [--no-sheet] [--no-flashes] [--allow-flashes] [--loudness-target LUFS] [--standard wcag\|itu\|both]` | Check an exported film against what the project asked for ("Film checks and verify-export") |
 | `sync-check FILE [--bpm N [--offset MS]] [--poster-frame auto\|on\|off] [--threshold PCT] [--window MS]` | Each cut and big picture change against its nearest beat, in ms ("kb sync-check") |
 | `hook session-start \| pre-edit \| post-edit \| bash-pre \| bash-post` | Hook entry points (stdin JSON from Claude Code); any other event exits 0, so an older kit is safe with newer settings |
 | `beats [--scene S]`, `beats set-grid (--from-analysis [--force] \| --bpm B --offset MS) [--beats-per-bar N]`, `beats set-downbeat AT [--bar N]`, `beats clear-grid`, `beats cue set ID POS \| rm ID`, `beats section set ID --from POS --to POS [--label L] \| rm ID`, `beats resolve POS [--scene S]` | The authored beat grid (`audio.grid`, `cues`, `sections`) and musical positions (`kblib/beats/`, mirroring `src/engine/musicTime.ts` through `kblib/music.py`, pinned by `music-vectors.json` from `pnpm agent:vectors`). Without a grid it shows the analysis's detected beats (`beatSource: "detected"`). Every write validates as `sanitiseAudioMusic` does and rewrites each sidecar's `at` caches in the same transaction (a sidecar leased to someone else is left, with a note) |
-| `song analyse [--force] [--tracker nn\|dsp] [--lyrics] [--accept] [--dry-run]` | The app's song analyser through `<exe> song analyse` (works with the app closed): tempo fit, downbeat, sections, breaths, stabs, lyrics on request; cached by the audio's SHA-256 and copied to `.kb/song/<sha12>.json`; `project.json` changes only with `--accept` (`set-grid --from-analysis`, refused for a drifting tempo). Code: `kblib/song.py` |
+| `song analyse [--file PATH] [--force] [--tracker nn\|dsp] [--lyrics] [--accept] [--dry-run]` | The app's song analyser through `<exe> song analyse` (works with the app closed): tempo fit, downbeat, sections, form, breaths, audible end, stabs, lyrics on request; cached by the audio's SHA-256 and copied to `.kb/song/<sha12>.json`; `project.json` changes only with `--accept`: the fitted grid (refused past a 33 ms drift) plus the form's parts and moments as `audio.sections` and `audio.cues`, never over an id already there. `--file` reads any audio or video file through kb's reach and `kblib/untrusted.py`, and refuses `--accept`. Code: `kblib/song.py` |
+| `song hits [--bars A-B] [--band low\|mid\|high] [--min-strength N] [--file PATH]` | Strong onsets as `bar:B.beat.16th` with a strength, read from the saved analysis (one fresh pass when it has none), on the project's grid or else the fit (`--json`: `hits`, each with `position`, `bar`, `beat`, `sixteenth`, `offMs`, `trackMs`, `projectMs`, `strength`) |
+| `project fit --to song-end [--hold MS] [--dry-run]` | Sets the last scene's length (unpinning it) so the film ends at the audible end plus the hold, in one transaction with the sidecar caches; warns when the last hit would play inside the soundtrack's fade |
+| `reference analyse FILE [--compare] [--force] [--tracker nn\|dsp] [--dry-run]` | Reads a reference film into `.kb/reference/<sha>/` ("Reference films") |
 | `chart ...` | Delegates to `scripts/chart.py`, arguments untouched |
 
 As built (`scripts/kblib/`):
@@ -226,6 +234,12 @@ As built (`scripts/kblib/`):
   workspace`), and refused outright for `~/.ssh`, `~/.aws`, `~/.config`, `~/.gnupg`,
   `~/Library/Keychains`, `.env*`, `.netrc`, `*.pem`, `*.p12`, `*.key` and shell history
   files.
+- **Real folders** (`kblib/realdir.py` `real_dir`, `src-tauri/src/real_dir.rs`). A folder shared by zip, copy or
+  clone keeps the links a pack refuses, so a link or file at `.kb/`, a `.kb/*` scratch folder or `assets/.kc-render` is
+  refused by name (kb: exit 1, kind `not-a-folder`; the CLI: `invalid`) before anything is written or deleted, and a linked `<film>.flashes` is left alone (the check still reports, with `stripsError`). kb opens
+  `.kb/lock`, `.kb/events.jsonl` and `.kb/notes.md` with `O_NOFOLLOW` (`open_own_file`). A new scratch folder goes
+  through the helper and into the hostile-folder fixtures (`tests/helpers.py`, `real_dir.rs` `hostile`). A linked
+  `assets/` or project folder stays the person's choice.
 - **Output escaping** (`kblib/util.py` `clean_text`). Every string kb prints (`emit`,
   `emit_err`, `emit_json` leaves and keys, the export stream, hook `additionalContext` and
   deny reasons, `KbError` messages and `Report` issues) has its control characters (newline
@@ -255,31 +269,54 @@ As built (`scripts/kblib/`):
   the backoff (`index-locked`, with `lockAgeMs`).
 
 `kb verify` (`kblib/verify.py`) runs, in order, each as `{ name, ok, ms, errors, warnings,
-skipped?, paths?, transient?, retryAfterMs?, code? }` under `steps`:
+skipped?, notRun?, accepted?, paths?, transient?, retryAfterMs?, code? }` under `steps`:
 
-1. `static`: the static check, scoped to `--scene` files when given.
-2. `app`: `check --app --render` (`--no-render`: load only); skipped with a note when no
-   instance serves this project, and then `captures` and `handoffs` skip too.
+1. `static`: the static check, scoped to `--scene` files when given (workspace-theme
+   warnings once a session, as `kb check` shows them).
+2. `app`: `check --app --render` (`--no-render`: load only). With no instance serving this
+   project, or one too old to answer `check`, the step is `notRun` (code `no-app` or `env`)
+   and `captures`, `safe-areas` and `handoffs` skip.
 3. `captures`: each scene's first and last solo frames (after its incoming transition,
    one frame before its outgoing one), at most 16 frames a request, one request at a time,
    at the 1280 px long edge (`width` sent explicitly) with a 64-point probe grid and a
    contact sheet per request (`sheet-N.png` when there are several), copied into one
-   `.kb/captures/` folder. Skipped after a transient app step.
-4. `handoffs`: the mean probed luminance step across each seam between neighbouring
-   captured scenes, through `film/handoffs.flag_seams`: a cut of ΔL 0.10 or more next to
-   a scene under 1 s warns, and four such cuts inside one second warn as a strobe. Warnings
-   only, like `check film handoffs`.
-5. `flashes`: the flash check of the newest `exports/` film only when its mtime is newer
-   than `project.json`, `scenes/**` and `assets/**`; else skipped, naming the newer file.
-   `--film` replaces it with `export` (`./kb export --fps 30 --short-edge 720
-   --allow-flashes --json` as a child process, progress on stderr) and `film` (`check film
-   --file` on that export, in process). The draft moves to `.kb/verify/<stamp>/` (the last 5
-   kept), and any Custom export already in `exports/` is held aside meanwhile and put back, so
-   the draft never replaces a film of the user's.
+   `.kb/captures/` folder. `--formats` repeats them for every aspect in `project.json`'s
+   `formats`, the chosen aspect first. Requests ask for `texts` when the app lists it.
+   Skipped after a transient app step.
+4. `safe-areas`: the text lines those frames show (`texts`, normalised boxes) against the
+   format's safe area (`safe`). A line more than 0.5% of the frame past an edge warns once per
+   key and aspect (`text.<key>`, `managedText.<key>`, else the quoted line); a line mostly
+   outside the frame is moving through, so it is left out. Warnings only.
+5. `handoffs`: the mean probed luminance step across each seam between neighbouring captured
+   scenes of the first aspect, through `film/handoffs.flag_seams`: a cut of ΔL 0.10 or more
+   next to a scene under 1 s warns (the last scene never counts as short: the end holds), and
+   four such cuts inside one second warn as a strobe. Warnings only.
+6. `flashes`: the newest `exports/` film when its mtime is newer than `project.json`,
+   `scenes/**`, `assets/**` and the workspace themes the project uses; else the ranged check of the whole film (or each `--scene`
+   scene and a second either side) in the render window ("Ranged checks"), reused while
+   `.kb/flashes/last.json` covers those spans at this aspect and is newer than every source.
+   Without an app for the ranged check the step is `notRun` (code `not-checked`). Failures
+   are errors, open warnings are warnings and accepted ones are `accepted` notes; `paths`
+   lists the strips to Read. `--film` replaces it with `export` (`./kb export --fps 30
+   --short-edge 720 --allow-flashes --json` as a child process, progress on stderr) and `film`
+   (`check film --file` on that export, in process). The draft, its flash report and its strips
+   move to `.kb/verify/<stamp>/` (the last 5 kept), and any Custom export already in
+   `exports/` is held aside meanwhile and put back, so the draft never replaces a film of the
+   user's. `--quick` runs no flash step.
 
-Exit 1 when any step has errors, else 3 when a step was transient (`retryAfterMs` at the
-top level), else 0; skipped steps pass, and the text summary says when only the static
-check ran.
+Exit 1 when a step found problems, else 2 when a step could not run (`notRun`: no app, an app
+too old), else 3 when a step was transient (`retryAfterMs` at the top level), else 0; skipped
+steps pass. No app is never a pass, and neither is a stale export without a ranged check. The
+summary is the last line: `verify: ok`, `verify: quick checks ok (...); flashes NOT checked`,
+`verify: NOT CHECKED (...)` or `verify: FAILED (...)`. The payload adds `tier` (`standard`,
+`quick` or `film`), `aspects`, `exit` and `summary`.
+
+Every run writes `.kb/verify/last.json` (`{ version, atMs, agent, project, tier, aspects,
+scenes, exit, ok, summary, steps }`, each step with its first 12 errors and warnings). `kb
+verify --last` prints it, adds `stale` when a source changed since, and exits with its `exit`,
+so a run piped through `tail` or left in the background is read from there, never from the
+pipe's status. `kb status` shows it as `Last verify: FAILED (standard) 12 min ago; stale,
+scenes/x.json changed since`.
 
 `kb plan COMMAND ...` (`kblib/plan.py`) parses the command with kb's own parser, refuses
 anything outside scene add, duplicate, move, remove and set, doc set, unset and merge,
@@ -340,7 +377,10 @@ Hooks:
   `.kb/notes*.md`, `.kb/agents/*/identity.json` and `seen.json`; scratch under
   `.kb/agents/<name>/` and `.kb/captures/` is allowed), and to the asset records
   (`assets/_meta.json`, `assets/**/*.timing.json`, anything under `assets/.originals/`),
-  each reason naming the kb command to use (`kblib/hookfast.py` `asset_record_reason`). An edit to a scene leased to
+  each reason naming the kb command to use (`kblib/hookfast.py` `asset_record_reason`), and to
+  `flashes.accepted.json` (only `kb flashes accept` and `forget` write it, each entry with a
+  reason). These names compare case-folded, since APFS opens any folded spelling as the same
+  file, and a respelled project folder still counts as the project. An edit to a scene leased to
   someone else is denied with `permissionDecision: "deny"`, naming the holder, the expiry
   and how to bind or leave a note; the holder's own edit renews the lease. Before the first
   write of a session into `project.json` or `scenes/` it makes a checkpoint when the tree
@@ -364,7 +404,7 @@ Hooks:
     kb runs. It denies a command that names `scenes/<stem>` of a scene leased to someone else
     (globs included) and visibly writes it: a redirection, `tee`, `mv`, `rm`, `touch`, a `cp`
     or `install` destination, `sed -i`, `perl -i`, a heredoc, `write_text` or `open(..., 'w')`.
-    It denies the same visible writes to an asset record (a glob expands as the shell would,
+    It denies the same visible writes to an asset record in any case-folded spelling (a glob expands as the shell would,
     relative paths resolve from the hook's `cwd`; `sed -i` and Python writes count when they
     name one; a read, a `cp` out of `assets/.originals/` and kb-only commands pass). It makes the session checkpoint before a command that visibly writes `scenes/` or
     `project.json` or runs a kb write, and records the errors the scene files and `project.json`
@@ -420,7 +460,8 @@ Every kb command, including new ones, follows these rules. Code: `scripts/kblib/
   as a command where one exists; `kind` is a stable kebab-case id printed as the
   envelope's `code`: `usage`, `env`, `no-app`, `needs-trust`, `invalid`, `leased`,
   `others-changed`, `conflict`, `locked`, `index-locked`, `app-busy`, `bridge-timeout`,
-  `gpu-stalled`, `gpu-wedged`, `throttled`, `too-large`, `flashes`, `no-grid` (a musical
+  `gpu-stalled`, `gpu-wedged`, `throttled`, `too-large`, `flashes`, `not-a-folder` (a link or
+  file where kb keeps its own folder or file; exit 1), `no-grid` (a musical
   position, `--duration-bars` or `--cut-at` with no `audio.grid`; exit 1). Each kind has a
   default hint (`DEFAULT_HINTS`). Never print a traceback.
 - **Writes.** Every write to `project.json`, `scenes/**` or `.kb/**` goes through
@@ -463,6 +504,7 @@ packs and duplicates.
 .kb/agents/<name>/              identity.json, seen.json, the agent's scratch
 .kb/captures/<stamp>[-<agent>]/ capture copies, newest 40 per agent, 1 GB (never under 1 h old)
 .kb/song/<sha12>.json           kb song analyse's copy of the app's analysis
+.kb/reference/<sha>/            kb reference analyse: sheets, bar map, beat sheet, analysis, compare report
 .kb/footage/<name>.json         kb video log (sheets in .kb/footage/<name>/, pairs in .kb/footage/pairs/)
 .kb/archive/<id>/<rel>          files kb assets replace and unused moved aside; index.jsonl beside them
 ```
@@ -605,6 +647,54 @@ skill is its playbook. Code: `scripts/kblib/video/`.
 - Hooks keep Edit and Write out of `edits/` and both managed skill folders; `kb video`
   is the only way an agent changes an edit.
 
+## Reference films
+
+`kb reference analyse FILE [--compare] [--force] [--tracker nn|dsp] [--dry-run]` reads a film someone else made,
+so a launch film can be planned bar by bar against it. Code: `scripts/kblib/reference/`
+(stdlib Python over the bundled ffmpeg), `kblib/untrusted.py`, the song analyser and
+`<exe> media ocr`. Agent-facing doc: kit `reference/beats.md`.
+
+- **Untrusted input.** `untrusted.locate` applies kb's reach to the path (symlinks followed,
+  credentials refused, outside the workspace announced). `untrusted.facts` then has ffprobe
+  read it under `-protocol_whitelist file,pipe` and a demuxer whitelist (never hls or concat,
+  which read other files), requires a declared duration and allow-listed codecs, and caps it
+  at 16 GB, 30 minutes and 8192 px a side. Anything odd is exit 1 `invalid`, before ffmpeg or
+  the app decode a byte. `kb song analyse --file` and `kb song hits --file` take the same path.
+  A file can lie about its length, so the decodes hold the limit too: the frame pass refuses a
+  film 10 s past what it declared, and the analyser's PCM stops at two hours. Every decode maps
+  the stream `facts` checked (`video.index`), never `0:v:0`, which can be an attached picture.
+  `audio.file` takes the same checks before the analyser opens it (`song.own_soundtrack`):
+  project.json is untrusted, so an absolute or `..` path is refused by `beats.soundtrack_path`.
+- **What leaves the Mac.** The reading is local: ffmpeg, the analyser and Vision make no
+  request. What the agent then Reads goes to Anthropic with the conversation, so kb's output
+  (`--json` too) carries no frames or recognised words, and it and the kit ask for a yes before
+  the first Read. A lyrics tag and the file's path are stored cleaned (`clean_text`).
+- **Output stays in real folders.** `.kb/reference` and `<sha>` go through `real_dir`, so a
+  link at either step is exit 1 `not-a-folder`; a film is built in `.work-*` beside it and
+  moved into place whole, so a failed run leaves nothing half written. `load_saved` won't read
+  through a linked `analysis.json` or take a sheet name that isn't `sheet-NN.png`. A whole saved `analysis.json` of the same version and SHA is
+  reused, with the beat sheet rewritten against the project's scenes as they are now.
+- **Cuts** (`frames.py`). One decode to 48x27 RGB on a 30 fps grid (every channel: red to blue
+  has no green in it). A hard cut is a lone spike over at least 35% of the picture and four
+  times the frames around it; a flash comes back within a frame and is no cut. Sustained
+  change up to 2 s long that leaves a different picture and doesn't touch a hard cut is a
+  continuous boundary; anything else is a move inside its stretch.
+- **Sheets** (`sheets.py`). A row per bar and a cell per beat, 8 bars a sheet, with a cell every
+  few beats past 960 cells; labels come from `video/labels.py`, because the bundled ffmpeg has
+  no `drawtext`.
+- **Words** (`words.py`). Stills every half second plus the middle of each stretch, skipping a
+  picture that hasn't changed, at most 1200, go to `<exe> media ocr`, which only ever opens
+  kb's own decoded JPEGs. Each line under 0.4 confidence goes; the rest are cleaned
+  (`clean_text`), put on one line and capped at 200 characters before anything else sees them.
+  An app without OCR costs the words, nothing else.
+- **Beat sheet** (`beatsheet.py`). `beat-sheet.json` is exactly `kb timeline apply`'s plan,
+  a row per stretch against the project's scenes in order, with `scene-NN` past the last so
+  applying refuses rather than guesses. Recognised text never reaches it; `beat-sheet.md`
+  escapes it as data.
+- **Compare** (`compare.py`). `compare.html` lays both timelines on bars (each on its own grid)
+  or seconds. No script, no remote asset, a `default-src 'none'` CSP, and `html.escape` on every
+  string, because the recognised text and the file name come from the film.
+
 ## Film checks and verify-export
 
 `kb verify-export FILE` and `kb check film` judge a finished export, never the editor.
@@ -625,10 +715,15 @@ Code: `scripts/kblib/film/` (stdlib Python over the bundled ffmpeg and ffprobe, 
 - **Frames.** Each scene's first, settled-in (after its incoming transition), named
   (`stills.marksMs`, `still: true` camera keys, else the midpoint) and last frame, extracted
   by index into contact sheets sized for Read, with a legend.
-- **Colour.** Four 24 px corner patches at a 3% inset on each scene's settled frame
-  (`crop,scale=1:1:flags=area` piped as rgb24). Flat backgrounds (a sidecar `color`
-  background, or a theme with none, no staged backdrop, no effects) are compared with
-  CIEDE2000, warning over 2; elsewhere the colours are only reported. Never fails.
+- **Colour.** Four 24 px corner patches at a 3% inset on each scene's settled moment
+  (`swatch.settled_ms`: the automatic still's rule without its registered timings, Present's
+  400 ms hold past the incoming transition or the last keyed move if later, inside the scene's
+  solo window; never a hard cut's first frame), read with `crop,scale=1:1:flags=area` as rgb24.
+  Flat backgrounds (a sidecar `color` background, or a theme with none, no staged backdrop, no
+  effects) are compared with CIEDE2000, warning over 2; elsewhere the colours are only
+  reported. In a scene that stages a device (sidecar `devices` or `deviceLayout`, TSX
+  `<Device`, `<DeviceMockup` or `useSceneDevices`), a corner far off (ΔE over 10) or patchy
+  while another matches is skipped with a note: the device covers it. Never fails.
 - **Exit.** 1 for any mismatch (kind `failed`), 1 with kind `flashes` on a flash failure
   unless `--allow-flashes`, 2 without the app's ffmpeg or a readable file.
 
@@ -651,7 +746,8 @@ export's own `buildSceneTimeline` (`transitionIn` as `{ type, durationMs, ... }`
 
 `kb check film [flashes colour handoffs pacing] [--file F] [--standard wcag|itu|both]
 [--allow-flashes] [--no-sheet] [--json]` (all four by default; `flashes` and `handoffs` need
-`--file`, and a named one without it is exit 2):
+`--file`, and a named one without it is exit 2; `--range SPAN` or `--scene S` is the ranged
+flash check below):
 
 - `flashes`: the flash report below, exit 1 kind `flashes` on a failure unless allowed.
 - `colour`: the tone-mapping warning (effects with tone mapping other than neutral or
@@ -659,11 +755,18 @@ export's own `buildSceneTimeline` (`transitionIn` as `{ type, durationMs, ... }`
 - `handoffs`: per seam, the outgoing scene's last solo frame and the incoming one's first
   (a cut's two sides, or either side of a transition, labelled with its type), the seam
   diff and the luminance step; a hard cut of ΔL 0.10 or more next to a scene under 1 s
-  warns, and four such cuts inside a second warn as a strobe.
-- `pacing` (static): words per scene from `text` and `managedText` against 3 a second, the
-  longest stretch with no camera, rig, device, chart or lighting key (warning over 6 s),
-  scenes under 334 ms.
-- `safe-areas` is not in this version (it needs the app's text measurement).
+  warns, and four such cuts inside a second warn as a strobe. The film's end holds, so its
+  last scene is never short (`handoffs.seam_short`).
+- `pacing`: words above label size per scene against 3 a second (label keys such as
+  `cardLabel` or an eyebrow, embedded `useSceneText` labels, TSX text at a literal `fontSize`
+  of 0.18 or less and `text` keys left beside a managed stack count as `labelWords`), with
+  `beats` and `wordsPerBeat` when `audio.grid` exists; the longest stretch with no motion
+  (warning over 6 s): statically keyed camera, rig, device, chart or lighting moves plus
+  scenes whose TSX drives motion (`useTimeline`, `useGroupAnimation`, `useRigTrack`,
+  `AnimatedGroup`, `AnimatedCounter`), with `--file` frame differences on the film
+  (`pacing.film_motion`: 32 x 32 grey at 5 fps; `still.source` says which); scenes under
+  334 ms, never the last one (the end holds).
+- `safe-areas` runs in `kb verify` (it needs the app's text boxes).
 
 Flash detection is one Rust core fed frame by frame: `FlashDetector::new(width, height,
 fps, standards)`, `push_rgba(&[u8], bottom_up)` (or `push_rgb`), `finish() -> FlashReport`.
@@ -731,6 +834,83 @@ never gates.
 - `fixtures/flash-spike` (dev-only: a title, a crossfade, one second of 100 ms full-frame
   cuts, a 2 Hz control) is the parity and flash fixture, copied into a throwaway root;
   it joins no gate.
+
+### Ranged checks
+
+`kb check film --range SPAN | --scene S [--aspect A]` (`kblib/film/ranged.py`) checks flashes
+over part of the film with no export: the render window renders the span through the export
+path's own frame block at 360p and 30 fps and feeds every frame to the export's flash
+detector, so a scene takes seconds and the person keeps editing. SPAN is `bar:A-B` (bars A to
+B, through to bar B+1's downbeat), `A-B` (film seconds or `MM:SS.s` timecodes) or `FROM..TO`
+(any two points, musical positions included); `--scene S` (repeatable) is that scene and a
+second either side, so the cuts into and out of it count. Spans merge where they touch, and
+one longer than 60 s goes as several requests overlapping by a second (a failure outranks a
+warning where two chunks saw the same moment). Exit 1 kind `flashes` on a failure unless
+`--allow-flashes`; 2 with no app or one without the `range` kind.
+
+The request is the render window's `range` kind: `{ project, aspect?, startMs, endMs, fps
+(30), width?, flashes (true), standard?, clip? }`. `rangePlan` puts its frames on the
+export's own grid (frame k at k x 1000 / fps, `[startMs, endMs)`, clamped to the film), so a
+ranged check sees exactly the frames a 30 fps export would. The stage worker does the
+rendering (`src/engine/rangeRun.ts`, the protocol's `rangeBegin`, `rangeFrame` and
+`rangeEnd`): the preamble once (clips extract only the span, the preamble's `spanMs`), then
+`renderFrameInto` per frame. The window (`renderRange`, `src/engine/rangeRender.ts`) hands
+each readback to `range_flash_push` (`src-tauri/src/bridge_range.rs`: a `FlashDetector` with
+`source: "range"`, `range_flash_begin` and `range_flash_finish` around it) and, with `clip`,
+a PNG per frame (`bridge_write_sheet` with `x-kookaburra-frame: N`, saved as `<id>-N.png`).
+A project the editor does not have open asks the person first, as a capture does. Like a
+capture it gives the person's selection, camera pose and playhead back. The answer: `{ ok,
+format, size, nativeSize, fps, startMs, endMs, firstFrame, frames, flashes?, clip?: { paths,
+fps }, strips, timing, surface }`, its issues moved to project time (`offsetMs`). Its first 8
+flagged moments come back as `strips: [{ issue, frames: [{ role: before|at|after, frame,
+tMs, path }] }]`: the frames either side of the flagged one, rendered after the run.
+
+kb composes each strip and writes the run to `.kb/flashes/<stamp>/` (`flashes.json` and the
+strips; the newest 10 runs kept). The report carries `source: "range"`, `spans`, `frames`,
+`size`, `aspect`, `renderMs` and `folder`, each issue its `scene`, `projectMs` and `strip`.
+
+`kb preview --range SPAN | --scene S [--aspect A] [--fps 12] [--width 480] [--gif]`
+(`kblib/preview.py`) sends the same kind with `clip: true, flashes: false` and encodes the
+frames with the app's ffmpeg into `.kb/previews/` (an H.264 MP4, or a palette GIF), plus a
+contact sheet of up to 12 frames to Read. At most 30 s and 30 fps. Never an export or a
+baseline.
+
+### Flash strips
+
+`kblib/film/strips.py`: for each of a report's first 8 issues, the frames before, at and after
+the flagged one side by side at a 360 px short edge, the issue's `region` boxed (at least 2%
+a side), a dark gap between them: `strip-NN-MMmSS.mmms.png`. A ranged check composes the
+render window's frames; a film's come from the file, one accurate seek per frame. Every flash check settles its
+report through `film/flashes.settle`: accepted warnings marked, strips written for a film
+beside it as `<film>.flashes/` (inside the project, else a `_bridge/film/` run folder), and
+the report kept as `.kb/flashes/last.json` (`{ version, atMs, source, file, spans?, aspect?,
+report }`) for `kb flashes accept`. That covers `kb export`, `kb verify-export`, `kb check
+film --file`, `kb verify` and `kb verify --film`. Each issue names its strip, and the text
+lines end `Read <strip>`. Any new export removes the stale `strip-*.png` files beside it
+(`finish_export`), so a strip always shows the bytes it describes.
+
+### Accepted flash warnings
+
+A person can accept a flash warning after looking at it, with a reason; failures never.
+`kb flashes accept TIME --why TEXT` (`kblib/flashes_cli.py`, `kblib/film/accepts.py`) takes
+the warnings in the last check whose span holds TIME (film seconds or a timecode, give or
+take 250 ms) and stores each in `flashes.accepted.json` at the project root, through the
+project lock:
+
+```json
+{ "version": 1, "accepted": [{ "id": "1a2b3c4d", "type": "general", "standard": "wcag",
+  "tc": "00:35.400", "atMs": 35400, "scene": "05-a", "localMs": 1250, "flashesPerSecond": 2.5,
+  "areaPct": 18.2, "why": "a slow logo glint, checked by eye", "by": "agent",
+  "acceptedAtMs": 1792020000000, "source": "ranged check of 05-a" }] }
+```
+
+A failure at TIME refuses (exit 1, kind `flashes`), and so does a time with no warning (exit
+1, `invalid`). Every later check marks a warning that matches an entry (same type and
+standard, in the same scene within 750 ms of the same local time, else the same film time)
+with `accepted: { id, why, by }`: summaries count it as accepted, verify lists it under
+`accepted` and never as a warning, and a failure is never marked. `kb flashes` shows the
+last check and the entries; `kb flashes forget TIME|ID` drops every entry at that moment. The file is tracked by
+checkpoints and blocked to Edit and Write (the pre-edit hook names the command).
 
 ### kb sync-check
 
@@ -1151,8 +1331,20 @@ is `kblib/queue.py` and `kblib/capture.py`. Bridge captures are never baselines.
   the exporter hands ffmpeg at the same time and size (sRGB, after tone mapping); not
   exact against a decoded MP4 or across sizes near edges.
 - **Cost.** A capture costs frames x ceil(width x height / 921 600) units (a 4K frame is
-  9, 1280x720 is 1); other kinds cost 1. A capture over 144 units is answered
-  `{ ok: false, tooLarge: true, units, maxUnits, hint }` (kb exit 1, `too-large`).
+  9, 1280x720 is 1); a `range` request costs its frames' pixels with four frames to a unit
+  (it skips the per-frame preamble and PNG save: a minute at 640x360 and 30 fps is 113);
+  other kinds cost 1. A capture or range over 144 units is answered `{ ok: false, tooLarge:
+  true, units, maxUnits, hint }` (kb exit 1, `too-large`; kb splits long ranged checks itself).
+- **Ranged renders.** The `range` kind ("Ranged checks") renders at a 360 px short edge (or
+  `width`) and 30 fps (1 to 60) unless sized; `range_size` and `range_frames` in
+  `capture_service.rs` mirror `rangeFormat` and `rangePlan` in `bridgeRequests.ts`. It is
+  throttled like a capture, checks `bridge_request_live` before every frame, and never feeds
+  the capture duration samples.
+- **Text boxes.** A capture with `texts: true` renders each frame through its own
+  `renderRange` (clips extract only that instant) and adds each frame's `texts: [{ text, x, y, w, h, scene }]` (every visible troika
+  line, normalised, top-left origin, from the stills text layer's `collectPageText`) and the
+  answer's `safe: { x, y, w, h }` (the format's safe area). A sheet cell mid-transition reads
+  `A → B (type, 40%)` (`frameLabel`).
 - **Fair queue.** Among this instance's claimable render requests the window serves the
   client with the fewest units in the last minute first, then its oldest (`retryOf` keeps
   the original's place), ties by the oldest id. A client's fifth waiting capture or check,
@@ -1231,7 +1423,7 @@ order and the estimate to each answer, from the last 32 capture durations):
 ```json
 {
   "version": 1,
-  "captureFeatures": ["scale", "width", "probe", "client", "deadline", "recycle", "debug"],
+  "captureFeatures": ["scale", "width", "probe", "client", "deadline", "recycle", "debug", "range", "texts"],
   "queue": { "depth": 2, "oldestAgeMs": 4200,
     "order": ["0001792020004000-311-c0ffee", "0001792020003000-207-beef01"],
     "etaMs": [3800, 6000],
@@ -1258,6 +1450,29 @@ beat yet" and "restarting after a GPU stall" when they apply) and the context co
 it; `--json` passes `health` through. `lastRecycle.reason` is `contextLost`, `eviction`,
 `blankReadback`, `canvasFailed`, `notMounted`, `hung`, `silent` or `debug`.
 
+### Captures for motion and joins
+
+`kblib/capture.py`, all in kb over the existing `capture` kind:
+
+- `--around SEC|POS --count N` (default 5, at most 48): N consecutive export frames at 60
+  fps centred on POS (seconds into `--scene`, or a musical position resolved like `--at`),
+  kept inside the scene or film (stderr says when it moved); not with `--frames` or `--at`.
+  Frames carry `around`, `frame` (the export frame index) and `projectMs`.
+- `--crop X,Y,W,H` (native pixels, or four fractions): the frame renders native and ffmpeg
+  crops kb's copy; the app's full frame stays as `bridgePath`, and the answer has `crop: { x,
+  y, width, height }`. Not with `--width`, `--scale`, `--sheet` or `--no-copy`.
+- `--probe` takes native pixels (integers) or fractions (a decimal point) at any capture size;
+  kb mirrors `captureFormat` and maps each point into the returned image (the wire format is
+  unchanged), and each probe adds `native: [x, y]`.
+- A frame whose `tMs` lands in a transition overlap gets `label: "A → B (type, 40%)"` (linear
+  progress) and `transition: { from, to, type, progress }`, and its copy is named
+  `A-to-B-type-40pct.png`.
+- `--diff A B` (each an `S@SEC`, `POS`, `S@POS`, `S@first` or `S@last` frame spec; first and
+  last are the solo frames verify captures) renders both in one request at the default 1280 px
+  size and writes `diff.png` (A, B and their difference x4) beside the copies, with `diff: {
+  meanPct, changedPct, maxPct, path, a, b }` (changed: any channel over 8/255). It needs
+  copies.
+
 ## Headless edit CLI
 
 The app binary doubles as a headless CLI: `<exe> edit <command>` returns before Tauri or
@@ -1280,7 +1495,7 @@ over the app-free cores in `edit.rs`, `media.rs`, `conform.rs`, `song/` and `too
 
 | Command | Does |
 | --- | --- |
-| `caps` | CLI version, app version, build, commands, `checks` (the `<exe> check` commands it serves), `autorun` (what a headless `kb export` may ask: actions, trust modes, poster, progress), `docVersion` (`read` 3, `write` [1, 2, 3]), `song` (`analysisVersion`, `trackers`), `media` (`version`, `commands`: probe, conform), `mask` (styles, `fades`), `crop`, `zoom`, ffmpeg/ffprobe paths and filters, hardware video, tap styles/colours/sizes, limits. kb gates every newer feature on these keys, never on the app version |
+| `caps` | CLI version, app version, build, commands, `checks` (the `<exe> check` commands it serves), `autorun` (what a headless `kb export` may ask: actions, trust modes, poster, progress), `docVersion` (`read` 3, `write` [1, 2, 3]), `song` (`analysisVersion`, `trackers`), `media` (`version`, `commands`: probe, conform, ocr), `mask` (styles, `fades`), `crop`, `zoom`, ffmpeg/ffprobe paths and filters, hardware video, tap styles/colours/sizes, limits. kb gates every newer feature on these keys, never on the app version |
 | `probe --project D --source R` (or `--file ABS`) | The app's probe (rotation-aware size, `vfr`, `editFps`, `nbFrames`) |
 | `create --project D --source R [--name N] [--reuse \| --force]` | The editor's default document for that source; an existing doc is `exists` unless `--reuse` or `--force` (backs up to `.json.bak`) |
 | `validate --project D (--name N \| --doc -)` | Parse, mask rules and a render dry run: `{ ok, hash, version, totalFrames, durationMs, fps, width, height, clips, taps, errors, warnings }` |
@@ -1290,8 +1505,9 @@ over the app-free cores in `edit.rs`, `media.rs`, `conform.rs`, `song/` and `too
 | `media caps` | `<exe> media`, same conventions (`src-tauri/src/cli_media.rs`): `{ cli, commands, timingVersion, fps: 60, keepOriginal: [move, copy], exitCodes }` |
 | `media probe --file ABS [--pts]` | `{ ok, file, kind, ffmpeg, avfoundation, verdict, reasons, conform: { recommended, why, refused } }`: each decoder's facts (frame rate, edit list, B-frames, colour, rotation) and the verdict (`ok`, `suspect`, `ffmpeg-misdecodes`); `refused` names why a file can't conform (HDR, 10-bit, an odd transform, unreadable). `--pts` decodes with both and adds their frame timestamps |
 | `media conform --project D --source REL [--name N] [--keep-original move\|copy] [--force]` | The ingest conform: JSON lines (`start`, `progress`, then `done` with `rel`, `original`, `timing`, `inPlace`, `frames`, `durationMs`, `verdict`, `reasons`); the mezzanine stages in `assets/.kc-render/`, the original goes to `assets/.originals/`, the frame map to `assets/<stem>.timing.json`. A move that would strand references is `in-use` (kb re-points first, or `--keep-original copy`) |
+| `media ocr --dir ABS` | Words in a folder of stills (png or jpg, plain files only, at most 4000) through Vision's on-device recogniser (`ocr.rs`): `{ engine: "vision", frames: [{ file, lines: [{ text, confidence }], error? }] }`, a still Vision can't open reporting its own `error` |
 | `song caps` | `<exe> song` (`cli_song.rs`): `{ commands, analysisVersion, trackers, model: { name, available }, ffmpeg, ffprobe }` |
-| `song analyse --file ABS [--force] [--tracker nn\|dsp]` | The beat lane's analyser, decoded with the bundled ffmpeg: `{ file, cached, cachePath, analysis }`, writing the same `<sha>-v2.json` cache the app reads |
+| `song analyse --file ABS [--force] [--tracker nn\|dsp]` | The beat lane's analyser, decoded with the bundled ffmpeg: `{ file, cached, cachePath, analysis }`, writing the same `<sha>-v3.json` cache the app reads. Beside the v2 fields, the document carries `hits` (`full`, `low`, `mid`, `high`: `[trackMs, strength]`), `ending` (`audibleEndMs`, `trailingSilenceMs`, `lastHitMs`, `lastHitStrength`) and `form` (`phrase`, `bars`, `parts`, `moments`; null without a fit), so nothing is recomputed |
 
 Renders (editor and CLI alike) stage in the hidden folder `<dir>/.kc-render/` and rename
 on success, so a failed render keeps the previous good file. A canonical render writes
