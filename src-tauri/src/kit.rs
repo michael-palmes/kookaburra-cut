@@ -314,7 +314,7 @@ fn stamp_claude_md(dir: &Path) -> Result<(), String> {
 
 // ── .claude/settings.json ──────────────────────────────────────────────────
 
-/// A `Read` deny for each credential path, in the project and across the home folder. The agent's own tools only: this slows a misled agent, it is not a sandbox.
+/// A `Read` deny for each credential path: folders under the home folder, names anywhere on disk (`//**` is the filesystem root; `~/**` would miss a mounted share). The agent's own tools only: this slows a misled agent, it is not a sandbox.
 fn credential_deny_rules() -> Vec<String> {
     let mut patterns: Vec<String> = CREDENTIAL_NAMES.iter().map(|n| n.to_string()).collect();
     for prefix in CREDENTIAL_PREFIXES {
@@ -332,7 +332,7 @@ fn credential_deny_rules() -> Vec<String> {
         .collect();
     for pattern in patterns {
         rules.push(format!("Read(**/{pattern})"));
-        rules.push(format!("Read(~/**/{pattern})"));
+        rules.push(format!("Read(//**/{pattern})"));
     }
     rules
 }
@@ -2271,8 +2271,69 @@ mod tests {
             .chain(["credentials*.json".to_owned()])
         {
             assert!(has(format!("Read(**/{pattern})")), "{pattern}");
-            assert!(has(format!("Read(~/**/{pattern})")), "{pattern}");
+            assert!(has(format!("Read(//**/{pattern})")), "{pattern}");
         }
+    }
+
+    #[test]
+    fn a_fresh_stamp_denies_the_credential_paths_and_leaves_the_agents_own_files() {
+        let dir = scratch("deny-rules");
+        let src = skill_source(&dir);
+        let project = dir.join("project");
+        write(&project.join("project.json"), r#"{"name":"Demo"}"#);
+        stamp_project(&[(SKILL_NAME, &src)], &project, &opts("0.19.0", false, 1)).unwrap();
+        let settings = read_json(&project.join(".claude/settings.json"));
+        assert_eq!(settings["permissions"]["deny"], managed_settings()["permissions"]["deny"]);
+        let deny = settings["permissions"]["deny"].as_array().unwrap();
+        for rule in [
+            "Read(~/.ssh/**)",
+            "Read(~/.aws/**)",
+            "Read(~/.gnupg/**)",
+            "Read(~/.config/**)",
+            "Read(~/Library/Keychains/**)",
+            "Read(//**/.netrc)",
+            "Read(**/.env)",
+            "Read(**/.env.*)",
+            "Read(//**/.env)",
+            "Read(//**/.env.*)",
+        ] {
+            assert!(deny.contains(&json!(rule)), "{rule}");
+        }
+        for rule in deny.iter().map(|rule| rule.as_str().unwrap()) {
+            assert!(!rule.starts_with("Read(~/**"), "{rule} misses a mounted share");
+            assert!(!rule.starts_with("Read(~/.claude/**"), "{rule} blocks Claude Code's own files");
+            assert!(!rule.contains("Kookaburra Cut"), "{rule} blocks the workspace");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_restamp_restores_the_deny_rules_and_strips_a_folders_own() {
+        let dir = scratch("deny-restamp");
+        let src = skill_source(&dir);
+        let project = dir.join("project");
+        let path = project.join(".claude/settings.json");
+        write(&project.join("project.json"), r#"{"name":"Demo"}"#);
+        stamp_project(&[(SKILL_NAME, &src)], &project, &opts("0.19.0", false, 1)).unwrap();
+        let first = std::fs::read_to_string(&path).unwrap();
+
+        // A leading `!` carves a path back out of the deny rules before it.
+        let mut tampered: Value = serde_json::from_str(&first).unwrap();
+        tampered["permissions"]["deny"].as_array_mut().unwrap().push(json!("Read(!.env)"));
+        write(&path, &serde_json::to_string_pretty(&tampered).unwrap());
+        assert_eq!(
+            plan_settings(Some(&std::fs::read_to_string(&path).unwrap())).1,
+            vec!["permissions.deny: Read(!.env)"]
+        );
+        stamp_project(&[(SKILL_NAME, &src)], &project, &opts("0.19.0", false, 2)).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), first);
+
+        let mut emptied: Value = serde_json::from_str(&first).unwrap();
+        emptied["permissions"].as_object_mut().unwrap().remove("deny");
+        write(&path, &serde_json::to_string_pretty(&emptied).unwrap());
+        stamp_project(&[(SKILL_NAME, &src)], &project, &opts("0.19.0", false, 3)).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), first);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

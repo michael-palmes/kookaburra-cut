@@ -143,7 +143,7 @@ Managed settings:
       "Read(//Applications/Kookaburra Cut.app/Contents/Resources/**)"
     ],
     "ask": ["WebFetch", "WebSearch"],
-    "deny": ["Read(~/.ssh/**)", "Read(**/.netrc)", "Read(~/**/.netrc)", "..."]
+    "deny": ["Read(~/.ssh/**)", "Read(**/.env)", "Read(//**/.env)", "..."]
   },
   "hooks": {
     "SessionStart": [{ "matcher": "startup|resume|clear|compact", "hooks": [
@@ -259,8 +259,12 @@ As built (`scripts/kblib/`):
   history files. `kit.rs` `CREDENTIAL_*` is the same list for the managed `Read` deny rules
   and the folders `bridge.rs` never takes as a write root, and a test holds them together. The
   deny rules name only the secrets in `~/.claude`, since Claude Code tells the agent to read
-  its saved results and memory there.
-  None of this is a sandbox: a misled agent's own Bash can still read a file.
+  its saved results and memory there. Folders are `Read(~/<dir>/**)`; a file name gets
+  `Read(**/<name>)` and `Read(//**/<name>)`, since `//` is the filesystem root and `~/**` misses
+  a mounted share. Every stamp rewrites `deny` like `allow`: a folder's own rule goes, logged,
+  including a `Read(!…)` that would carve a path back out.
+  None of this is a sandbox: Claude Code also applies these rules to `cat`, `head` and the like
+  in Bash, but a misled agent's own script can still read a file.
 - **Real folders** (`kblib/realdir.py` `real_dir`, `src-tauri/src/real_dir.rs`). A folder shared by zip, copy or
   clone keeps the links a pack refuses, so a link or file at `.kb/`, a `.kb/*` scratch folder or `assets/.kc-render` is
   refused by name (kb: exit 1, kind `not-a-folder`; the CLI: `invalid`) before anything is written or deleted, and a linked `<film>.flashes` is left alone (the check still reports, with `stripsError`). kb opens
