@@ -459,6 +459,8 @@ def cmd_scene_renumber(ctx: Ctx) -> int:
 def cmd_scene_import(ctx: Ctx) -> int:
     from . import scene_ops
 
+    from .util import clean_name
+
     a = ctx.args
     project = ctx.project
     if a.scene is None:
@@ -469,7 +471,7 @@ def cmd_scene_import(ctx: Ctx) -> int:
             ctx.out({"source": str(root), "scenes": rows})
             return EXIT_OK
         for row in rows:
-            emit(f"{row['index']:>3}  {row['stem']}  {fmt_secs(row['durationMs'])}  \"{row['name']}\"")
+            emit(f"{row['index']:>3}  {clean_name(row['stem'])}  {fmt_secs(row['durationMs'])}  \"{clean_name(row['name'])}\"")
         emit(f"bring one in: ./kb scene import {a.source} <stem>")
         return EXIT_OK
     if a.duration is not None and a.duration <= 0:

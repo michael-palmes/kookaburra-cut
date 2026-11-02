@@ -571,7 +571,7 @@ def recent_history(project: Project, count: int = 4) -> List[str]:
             when = ago(int(row["time"]) * 1000)
         except (KeyError, ValueError):
             when = "?"
-        out.append(f"- {row.get('rev')} {when}: {row.get('subject')}")
+        out.append(f"- {row.get('rev')} {when}: {clean_name(row.get('subject'))}")
     return out
 
 
@@ -586,10 +586,10 @@ def context_md(project: Project, check_summary: Optional[List[str]] = None, cwd:
     try:
         manifest = project.manifest()
         fmts = manifest.get("formats") if isinstance(manifest.get("formats"), list) else []
-        out.append(f"# {manifest.get('name', '?')} ({project.project_id})")
-        out.append(f"Where the project stands, for picking the work back up. Theme {manifest.get('themeId', '?')}, {' '.join(str(f) for f in fmts)}, {len(project.scene_entries())} scenes, {fmt_secs(project.total_ms())}.")
+        out.append(f"# {clean_name(manifest.get('name', '?'))} ({clean_name(project.project_id)})")
+        out.append(f"Where the project stands, for picking the work back up. Theme {clean_name(manifest.get('themeId', '?'))}, {' '.join(clean_name(str(f)) for f in fmts)}, {len(project.scene_entries())} scenes, {fmt_secs(project.total_ms())}.")
     except KbError as e:
-        out.append(f"# {project.project_id}")
+        out.append(f"# {clean_name(project.project_id)}")
         out.append(f"project.json problem: {e.message}")
     brand = brand_line(project)
     now = ([brand] if brand else []) + [app_line(project, hb, None if hb else bridge.instance_rows(project))] + load_lines(last_load_for(project, hb), limit=4) + (check_summary or [])
@@ -627,9 +627,9 @@ def context_md(project: Project, check_summary: Optional[List[str]] = None, cwd:
         table += ["", "## Scenes", "| # | Stem | Length | Name | Out |", "| --- | --- | --- | --- | --- |"]
         used = sum(len(line) + 1 for line in table)
         for n, row in enumerate(rows):
-            name = str(row.get("name", "")).replace("|", "/")
+            name = clean_name(str(row.get("name", ""))).replace("|", "/")
             missing = " MISSING FILE" if row.get("missing") else ""
-            line = f"| {row['index']} | {row['stem']} | {fmt_secs(row.get('durationMs'))} | {name}{missing} | {transition_label(row.get('transition'))} |"
+            line = f"| {row['index']} | {clean_name(row['stem'])} | {fmt_secs(row.get('durationMs'))} | {name}{missing} | {transition_label(row.get('transition'))} |"
             if used + len(line.encode("utf-8")) + 1 > budget:
                 table.append(f"... {len(rows) - n} more (./kb scenes)")
                 break

@@ -1699,7 +1699,8 @@ mod tests {
         let settings = read_json(&project.join(".claude/settings.json"));
         assert_eq!(settings["model"], "opus");
         assert!(settings.get("env").is_none());
-        assert_eq!(settings["permissions"], json!({ "allow": managed_allow_rules() }));
+        assert_eq!(settings["permissions"]["allow"], json!(managed_allow_rules()));
+        assert_eq!(settings["permissions"]["deny"], managed_settings()["permissions"]["deny"]);
         assert_eq!(settings["hooks"], managed_settings()["hooks"]);
         assert!(!project.join(".claude/commands").exists());
         assert!(!project.join(".claude/skills/evil-skill").exists());
