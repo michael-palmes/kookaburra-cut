@@ -15,8 +15,10 @@ you'd trust as a program.
 Opening a project, editing scenes, importing a pack, exporting a video or a PDF
 and presenting never touch the network. There is no account, no telemetry, no
 crash reporting, and nothing phones home. The app's own window can only talk to
-itself: the browser rules it ships with name no outside host. Those rules don't
-yet reach scene code you've allowed, so allow only projects you trust.
+itself: the browser rules it ships with name no outside host. Scene code you
+allow runs under the same rules, shut off from the network and from the app's
+commands, though it can read its project, your shared libraries and the app's
+caches.
 
 Seven things can reach the internet, and each one starts with you:
 
@@ -47,12 +49,16 @@ account. The app never holds a key for you.
   you start.
 - **Edit with Claude** hands the project to the Claude desktop app and types a
   starter prompt in. Nothing is sent until you press Enter in that app.
-- **What the agent is allowed** mostly comes from the app. Every time a project
-  opens, the app rewrites the project's Claude settings: only the app's own
-  permission rules and hooks stay, and what a shared folder or a pack put there
-  is removed and noted in the log. Other agent files in a shared folder, such as
-  `.claude/settings.local.json` or `.mcp.json`, stay and Claude Code reads them,
-  so start Claude only in folders you trust.
+- **What the agent is allowed** comes from the app, not from the project. Every
+  time a project opens, the app rewrites the project's Claude settings: only the
+  app's own permission rules and hooks stay, and anything a shared folder or a
+  pack arrived with is removed and noted in the log. Other files Claude Code would
+  read as instructions or settings, such as `AGENTS.md` or `.mcp.json`, move out
+  of the way, their text saved to `NOTES.md`. A macOS sheet shows you what moved,
+  and Claude won't start until you've seen it.
+- **Sending work off the Mac asks first.** Commands that look like an upload, and
+  the agent's web tools, stop and ask you. That slows a misled agent, but it isn't
+  a sandbox, so start Claude only in folders you trust.
 - **Text in a project is data, not instructions.** The rules the app gives the
   agent say that scene copy, notes, brand files, pack contents and captured
   frames are content to edit, never commands to obey, and to stop and ask before
@@ -72,10 +78,11 @@ it: importing only writes files, and the first open asks the question above.
 A pack is signed by the app that made it. On import the app checks that every
 file matches the signed list, tells you whether it has seen this publisher's
 key before, and shows the scene code, terminal commands and websites it
-carries. A publisher's name is never verified: only the key is. A pack's
-`.claude` folder is dropped, and an author's main `CLAUDE.md` is saved beside the
-project as `NOTES.md` for you to read, not for the agent to obey. Other agent
-files can still land, so treat a pack as you would a shared folder.
+carries. A publisher's name is never verified: only the key is. Agent settings
+never travel in a pack, and an author's notes for Claude are saved beside the
+project as `NOTES.md` for you to read, not for the agent to obey. When you export
+a pack, your own notes stay out unless you tick them, and the names of files you
+imported never travel.
 
 ## What the app keeps on your Mac, and how to clear it
 

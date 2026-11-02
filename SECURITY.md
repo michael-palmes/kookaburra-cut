@@ -65,10 +65,10 @@ It is built for these risks:
   project's scenes are TypeScript that the app compiles and runs; a pack or a
   shared folder can also carry `CLAUDE.md`, `.claude/settings.json`, terminal
   commands and website origins. Scene code runs only after a person presses
-  Allow on a native sheet bound to the content's hash; `.claude/` is dropped on
-  import and `.claude/settings.json` rewritten at every open, though other agent
-  files survive (see "What the kit auto-allows"); nothing in a pack runs when it
-  is imported.
+  Allow on a native sheet bound to the content's hash, and then on a stage shut
+  off from the network and the app's commands; agent configuration is dropped on
+  import and moved out of the folder at every open, and Claude won't start until
+  a person has seen what moved; nothing in a pack runs when it is imported.
 - **An agent that follows the wrong instructions.** Everything in a project
   (scene copy, `project.json` fields, brand files, notes, pack contents,
   captured frames, fetched pages) is written by whoever shared it. The stamped
@@ -78,7 +78,8 @@ It is built for these risks:
   from a fixed launch shape with an allow-listed environment; kb writes only
   inside the project, the workspace or a folder a person picked in the app this
   session, and refuses credential folders; other projects need an in-app
-  confirmation.
+  confirmation; commands that look like sending work off the Mac ask a person
+  first. None of this is a sandbox (see "Not yet").
 - **Confidential work on disk.** Projects, caches and exports stay in the
   user's home folder; nothing is uploaded or synchronised by the app. The
   app's own folders are owner-only (0700/0600), re-sealed at every launch and
@@ -101,16 +102,18 @@ account; the app bounds what it is given, not what it does.
 
 Nothing leaves the Mac unless a person starts it. The app window's content
 security policy (`src-tauri/tauri.conf.json`, `security.csp`), which the stage
-worker inherits, allows `connect-src` only to itself, `blob:`, `data:`, `ipc:`
-and `asset:`; no Rust code links
+worker inherits (Tauri sets the header on HTML only, so the worker starts from a
+`blob:` URL: `src/stage/stageClient.ts`), allows `connect-src` only to itself,
+`blob:`, `data:`, `ipc:` and `asset:`; no Rust code links
 an HTTP client of its own (`src-tauri/Cargo.toml`: reqwest arrives only through
 Tauri and the updater plugin); the bridge is a file queue, not a socket
 (`src-tauri/src/bridge.rs`); the release ffmpeg is built `--disable-network`
-(`scripts/build-ffmpeg-sidecar.sh`). The app makes no request of its own when
-opening a project, importing a pack, exporting or presenting. That policy binds
-the window: the stage worker that runs scene code is served without it, because
-Tauri attaches the header to HTML only, so don't count on it to hold an allowed
-project's scene code.
+(`scripts/build-ffmpeg-sidecar.sh`). Opening a project, importing a pack,
+exporting and presenting make no request, and allowed scene code can't make one:
+a release build's worker refuses to start unless the policy is live
+(`provePolicy`), and before any scene loads `src/stage/realmGuard.ts` limits
+`fetch`, `WebSocket`, `XMLHttpRequest`, `EventSource`, `importScripts` and nested
+workers to `asset:`, `blob:`, `data:` and the app's own files.
 
 | Path | Trigger | Destination | Data | Consent and off switch | Control |
 | --- | --- | --- | --- | --- | --- |
@@ -139,8 +142,7 @@ line when it had to correct anything, and `cache/`, `_bridge/` and
 `_autorun/` carry `.metadata_never_index` (`src-tauri/src/privacy.rs`;
 `scripts/kookaburra-run.sh` seals the queue it creates). Projects and the
 workspace folders are the user's documents and take the umask default; pack
-extraction forces 0644/0755 on each file and its immediate folder, and any
-folder above that takes the umask. `cache/clips` and
+extraction forces 0644/0755 on what it lands. `cache/clips` and
 `cache/media` carry Time Machine's per-item exclusion attribute
 (`com.apple.metadata:com_apple_backup_excludeItem`, set at every launch by
 `privacy::exclude_from_backup`), so what those two caches hold never reaches a
@@ -164,11 +166,12 @@ backup. Everything else is backed up like any document: projects with their own
   `[history]` log line, only when the app made the repository: one with a
   remote, a root commit by someone else or a `.git` file is left as it is and
   logged: `src-tauri/src/history.rs`), `CLAUDE.md`,
-  `NOTES.md`, `BRAND.md`, the stamped `.claude/` and `./kb`, `.kb/` and, beside
+  `NOTES.md`, `BRAND.md`, the stamped `.claude/` and `./kb`, anything a stamp
+  moved out of the way (`kb.moved-aside`, `.claude.moved-aside*`), `.kb/` and, beside
   a film, `<film>.flashes/` (the frames of its flash warnings). `.kb/` ignores
   itself in git, never travels in a pack, and holds the agent's lock, leases,
   events and notes, plus work that can show confidential content: `captures/`,
-  `previews/`, `flashes/`, `footage/`, `song/` (a track's analysis) and
+  `previews/`, `flashes/`, `footage/`, `thumbs/`, `song/` (a track's analysis) and
   `reference/` (frames of a reference film and the words read from them).
   Workspace-level: `brands/`, `themes/`,
   `fonts/`, `gradients/`, `export-presets/`, `presets/`, `templates/`,
@@ -201,11 +204,12 @@ backup. Everything else is backed up like any document: projects with their own
 - **`$APPDATA/settings.json`**: preferences, `updateCheckConsent` and the
   update bookkeeping, `trustedProjects` (slug, path, content hash, time),
   `knownPublishers` (the TOFU store), `websiteOriginGrants` per project path,
+  `agentFiles` (per folder, what a stamp moved and whether a person has seen it),
   the publisher profile, the Claude preferences and the last Claude version
   seen; per-project entries other than the trust grant outlive a project
-  delete. Written through a temporary file and rename under one lock; the
-  temporary file takes the umask, so the file is not 0600 for a moment after a
-  write. Control: `workspace.rs` (`AppSettings`, `settings_path`).
+  delete. Written through a temporary file that is 0600 from its first byte, then
+  a rename, under one lock. Control: `workspace.rs` (`AppSettings`,
+  `settings_path`), `privacy::atomic_write_private`.
 - **The pack signing key**: 32 raw bytes created on the first pack export, a
   generic password in the login Keychain (service "Kookaburra Cut pack signing
   key", account the bundle identifier, `kSecAttrSynchronizable` unset so it
@@ -252,15 +256,14 @@ backup. Everything else is backed up like any document: projects with their own
 - **Temporary files**: hidden siblings beside their target (`*.tmp`,
   `.staging-*`, `.part`, `.kit-tmp`, `.kc-render/`); the app has no
   `std::env::temp_dir` outside tests. The updater plugin unpacks an update in
-  the system temporary folder while installing, and kb uses it for short-lived
-  work: hook baselines (`kb-hooks/`), `kb-preview-*` links
-  to frames, and a footage profile's decode when it has no cache folder.
+  the system temporary folder while installing. kb and the brand skill use it for
+  short-lived work that can hold copies of stills and frames (`kb-*` and `brand-*`
+  folders, removed when the step ends), and for hook baselines (`kb-hooks/`).
 
 Deletions go to the Trash through `workspace::trash_path` (NSFileManager):
 projects, scene files, media and their originals, themes, gradients, export
-presets and screenshots. User templates and scene presets delete in place
-(`src-tauri/src/library.rs`, `delete_user_item`), as do import backups after
-24 h and cache clears; recorded as a follow-up. A project delete removes its
+presets, screenshots, user templates and scene presets. Import backups after
+24 h and cache clears delete in place. A project delete removes its
 trust grant and its clip and media cache entries (the media is hashed before
 the folder moves, from the library's stamps where it has them), and nothing
 from the snapshots or thumbs.
@@ -269,21 +272,34 @@ Processes the app starts: the ffmpeg and ffprobe sidecars are spawned from
 Rust by basename with argv built from typed structs, never a shell
 (`src-tauri/src/lib.rs`, `encode.rs`, `media.rs`), with `env_clear()` plus
 `HOME`, `PATH`, `TMPDIR`, `LANG`, `USER` and `LC_*` (`tools::sidecar`,
-`tools::sidecar_command`). The export, edit, probe, loudness and clip lanes
-pass `-nostdin` where stdin is not the frame pipe and
-`-protocol_whitelist file,pipe` before each input, while `probe_audio` and
-`website_import_image` do not yet; the export soundtrack must
+`tools::sidecar_command`). Every ffmpeg lane whose stdin is not the frame pipe
+passes `-nostdin`. Each lane that opens project, library or pack bytes takes its
+input arguments from `src-tauri/src/media_input.rs`: `-protocol_whitelist
+file,pipe` and format and codec whitelists, so a playlist or concat file can't
+pull in another file on the disk and ffmpeg reaches only the demuxers and decoders
+the app supports (kb's lanes use `kblib/media_input.py`, and a test fails on one
+that skips it). The export soundtrack must
 be an absolute file with an audio extension inside the readable roots
 (`media::confine_soundtrack`), and preset `profile`, `level` and `entropy`
 are allow-listed in both languages (`encode.rs` `EncodeSpec::validate`,
 `src/export/presetSchema.ts`).
 
-Also: `git` from `PATH` (`history.rs`), at project creation and in the project
-folder each time a project is provisioned, to find footage in older history and
-rewrite it, with the folder's own git configuration in force; `/usr/bin/curl`
-(the version probe above); `open` for Finder and the `claude://` handoff; the
-person's login shell, once to find `claude` (`pty.rs`, `detect_claude`) and in
-each terminal session.
+Also:
+
+- `git` from `PATH` (`history.rs`), at project creation and after a project has
+  loaded through the Allow gate, never on a failed load, to find footage in older
+  history and rewrite it. A folder's `.git` arrives with it, so each run sets
+  `GIT_CONFIG_NOSYSTEM`, `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CEILING_DIRECTORIES`
+  and overrides every key that names a program (`GUARDS`), and the app refuses a
+  `.git` that is a link or file, or a `.git/config` holding a key the app and
+  git's own setup don't write. kb's git does the same (`kblib/git.py`).
+- `/usr/bin/sips` to check and convert a dropped still (`src-tauri/src/imagefile.rs`,
+  `kblib/imagefile.py`): one file, a 60 s limit in the app, no shell, and the
+  app's own environment, not the sidecars' allow-list. kb and the brand skill also
+  run `osascript` to rasterise an SVG they have rewritten first (`kblib/svgsafe.py`).
+- `/usr/bin/curl` (the version probe above); `open` for Finder and the `claude://`
+  handoff; the person's login shell, once to find `claude` (`pty.rs`,
+  `detect_claude`) and in each terminal session.
 
 ## What reaches your agent
 
@@ -298,10 +314,10 @@ and install. The app holds no API key and sends nothing to Anthropic itself.
   grounding as one argv element (`CLAUDE_FIXED_ARGS`); the cwd is confined to
   the workspace (`confine_terminal_cwd`); the child environment is
   `env_clear()` plus `HOME`, `USER`, `LOGNAME`, `SHELL`, `PATH`, `LANG`,
-  `TMPDIR`, `TERM`, `COLORTERM`, `SSH_AUTH_SOCK` (a scene's shell included, so it
-  can use the person's ssh agent) and the prefixes `LC_` and
+  `TMPDIR`, `TERM`, `COLORTERM` and the prefixes `LC_` and
   `TERM_` (`ENV_ALLOW`, `ENV_ALLOW_PREFIX`); `Launch::ClaudeSession` alone also
-  keeps `CLAUDE_` and `ANTHROPIC_` (`ENV_CLAUDE_PREFIX`), so
+  keeps `SSH_AUTH_SOCK` and the prefixes `CLAUDE_` and `ANTHROPIC_`
+  (`ENV_CLAUDE_ALLOW`, `ENV_CLAUDE_PREFIX`), so the ssh agent,
   `CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_API_KEY` reach Claude Code but never
   a scene's interactive shell. Only the main window holds the
   `terminal` permission set, and `Launch::ClaudeSession` is refused from any
@@ -326,18 +342,36 @@ and install. The app holds no API key and sends nothing to Anthropic itself.
   and `Read` of `~/Kookaburra Cut/_bridge/**`, `themes/**`, `brands/**` and
   the app bundle's `Resources/**`. Every stamp (first load per session, before
   each Claude launch, before each handoff) rewrites `.claude/settings.json`:
-  `env` and `apiKeyHelper` removed, every `permissions` key except the managed
-  `allow` rules removed, every hook without the kb marker removed, and
-  `.claude/commands/`, `.claude/agents/` and unshipped `.claude/skills/*`
-  deleted, each logged `[kit]`. A folder can still configure the agent through
-  what the stamp leaves as it arrived, all of which Claude Code honours:
-  `.claude/settings.local.json`, `.mcp.json`, `CLAUDE.local.md`, `AGENTS.md`, a
-  nested `CLAUDE.md` and a root `CLAUDE.md` that is not a shipped default. Hooks
+  only `$schema`, `model`, the managed `allow`, `ask` and `deny` rules and the
+  hooks with the kb marker stay, `.claude/settings.local.json` is cut to `$schema`
+  and `model`, and `.claude/commands/`, `.claude/agents/` and unshipped
+  `.claude/skills/*` are deleted, each logged `[kit]`. `WebFetch` and `WebSearch`
+  ask, and `Read` of credential paths is denied, for the agent's own tools. Hooks
   run `kb.py hook …` only (`SessionStart`,
   `PreToolUse`, `PostToolUse`, `PostToolUseFailure`), and only once the person
   accepts Claude Code's own folder trust. Release and dev builds restamp when
   any stamped file's SHA-256 differs from the shipped file or from the `files`
   record in `kit.json`.
+- **What a folder may hold** (`kit.rs`, `sweep_agent_files`, before everything else
+  on every stamp): `CLAUDE.local.md`, `AGENTS.md`, `.claude.json`,
+  `.claude/CLAUDE.md` and any `CLAUDE.md` below the root move to fenced sections of
+  `NOTES.md`; `.mcp.json` goes there with its `env` and `headers` values removed,
+  and the original moves aside. Anything else in `.claude/` outside the kit, and
+  a link, folder, oversized or non-UTF-8 file under one of those names, moves aside
+  unread. A root `CLAUDE.md` that isn't a shipped default moves on the first open
+  of a folder; after that it is the person's. The record sits in `settings.json`,
+  outside the folder, so a folder can't mark itself reviewed.
+- **The review before Claude** (`workspace.rs`, `review_agent_files`): a native
+  sheet shows what moved, and Return is Not now. `pty_spawn` refuses a Claude
+  session, by the folder alone and whatever the webview says, until the sweep has
+  finished, the person has seen it and no such file is present
+  (`require_agent_files_reviewed`). Edit with Claude asks the same. Typing `claude`
+  in a plain shell is outside this gate.
+- **Send-off asks** (`kblib/hookfast.py`, `send_off_reason`): the `bash-pre` hook
+  asks a person before `curl`, `wget`, `nc` and `socat` to anything but loopback,
+  `scp`, `sftp`, `ftp`, `ssh`, `rsync` to a host, `git push`, `gh`, cloud CLIs, mail,
+  `open` with a URL, and inline Python or Node naming a network module. It slows
+  a misled agent and asks a person; it doesn't stop a determined one.
 - **A folder's own `kb` and links** (`kit.rs`, `real_dir.rs`, `kblib/realdir.py`):
   a `./kb` that is not the app's, or a `.claude` that is a link, is moved aside
   as `<name>.moved-aside` and logged before anything runs it, and the folders
@@ -357,8 +391,11 @@ and install. The app holds no API key and sends nothing to Anthropic itself.
   (`note_picked_folder` in `bridge.rs`, which refuses the home folder, shallow
   paths and credential folders); reads outside the workspace print the resolved
   path and size to stderr and refuse `~/.ssh`, `~/.aws`, `~/.config`,
-  `~/.gnupg`, `~/Library/Keychains`, `.env*`, `.netrc`, `*.pem`, `*.p12`,
-  `*.key` and shell histories. Bridge captures, frame ranges, checks, preset
+  `~/.gnupg`, `~/Library/Keychains`, `~/.docker`, `~/.kube`, `~/.azure`,
+  `~/.claude`, `.env*`, `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`, private
+  keys by name, `credentials*.json`, `*.pem`, `*.p12`, `*.key`, `*.jks`,
+  `*.keystore`, `*.tfstate` and shell histories (`kit.rs` `CREDENTIAL_*` is the
+  same list, and a test holds them together). Bridge captures, frame ranges, checks, preset
   inserts and `openEdit` for a workspace project other than the one open ask
   once per project per session through a native dialog (`bridge_confirm_project`,
   decline held 60 s); `openEdit` is enforced in Rust, the other four in the
@@ -374,7 +411,8 @@ and install. The app holds no API key and sends nothing to Anthropic itself.
   500 characters with ` …[+N chars]`, so an OSC 52 clipboard write in a scene
   name reaches the agent inert as `\u001b]52…`. The terminal banner and the
   grounding strip control and whitespace from the project name and cap it at
-  80 characters.
+  80 characters, and a project-sourced name stays on one line (`clean_name`), so
+  it can't pass as a line of instructions.
 
 The agent's reach is also bounded by the bridge: request ids are
 `[A-Za-z0-9-]` up to 64 characters, requests expire after 120 s, a deadline
@@ -425,9 +463,15 @@ drop a request, which is the out-of-scope case above.
   windows gets no command at all.
 - **Worker isolation** (`src/stage/`): every scene tree runs in a Web Worker on
   an OffscreenCanvas with no `window`, `document` or `__TAURI_INTERNALS__`, so
-  scene code can't reach IPC even from the main window; its native port refuses
-  any project the window did not hand it (`stageClient.ts`). The worker isolates
-  scenes from the app's commands, not from the network ("What leaves the Mac").
+  scene code can't reach IPC even from the main window, and the network is shut
+  ("What leaves the Mac"); its native port refuses any project the window did not
+  hand it (`stageClient.ts`). A scene can still read its project, the shared
+  libraries and the app's caches over `asset://`, and the Allow sheet says so.
+- **Stills on the way in** (`src-tauri/src/imagefile.rs`, `kblib/imagefile.py`,
+  `kblib/svgsafe.py`): an imported still is untrusted. Its header is read with no
+  decoder and capped first (256 MB, 16384 px a side, 100 MP), and its first bytes,
+  not its name, decide the format. An SVG is rewritten from an allow-list of drawing
+  elements before it is rasterised.
 - **Scene terminals and websites**: a scene's terminal block pre-types its
   command and never submits it (`sanitizeStartCommand`); Present shows the
   captured snapshot and has no PTY command. A scene's website block loads
@@ -483,22 +527,25 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
   grant and its place in this session's allow set
   (`workspace::forget_project_trust`), so the next open asks again; the allow
   goes first, so a failed settings write still asks.
-- **What is stripped on import.** Any entry with a `.claude` segment is dropped
-  at staging and listed on the summary (`pack/paths.rs`, `pack/read.rs`); an
-  imported root `CLAUDE.md` that reads as UTF-8 is replaced by the app's default
-  and the author's text saved as `NOTES.md`, shown on the summary
-  (`pack/apply.rs`). Other agent files land as written, then meet the stamp:
-  a non-UTF-8 or nested `CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md`, and a hidden
-  file whose extension is on its kind's list, such as `.mcp.json`. `__MACOSX`,
+- **What is stripped on import.** Any entry with a `.claude` segment is dropped at
+  staging, and so is a hidden file inside an item (`.mcp.json`), each listed on the summary
+  (`pack/paths.rs`, `is_dropped_entry`). Every `CLAUDE.md`, `CLAUDE.local.md` and
+  `AGENTS.md` at any depth in a landing project, template, preset or brand is
+  removed and the author's text saved to `NOTES.md`, shown on the summary, with
+  bytes that aren't UTF-8 counted as the author's; a project-shaped item's root
+  gets the app's default (`pack/apply.rs`). `__MACOSX`,
   `.DS_Store` and `._*` are ignored. Export never packs `exports/`, `.git/`,
-  `.claude/`, `.kb/`, the kb shim, the emoji cache, originals or tap
-  preferences (`pack/scan.rs`, `is_excluded`). Import writes files and never
+  `.claude/`, `.kb/`, the kb shim, the emoji cache, originals, tap preferences or
+  `assets/_meta.json`, which names what a person imported (`pack/scan.rs`,
+  `is_excluded`). An edited `CLAUDE.md` and any `CLAUDE.local.md`, `AGENTS.md` or
+  `NOTES.md` stay out unless ticked on the export screen, since a person's notes
+  may hold anything. Import writes files and never
   compiles: the first open hits the Allow gate.
 - **Caps and paths** (`pack/limits.rs`, `pack/paths.rs`): 50,000 entries, 8 GiB
   total, 4 GiB per entry, a 200:1 ratio per entry, path depth 16, path length
   512 bytes, manifest 8 MiB; a structural path validator refuses control, bidi
-  and zero-width characters, absolute paths, `..`, dotted folders (not dotted
-  files), drive letters and extensions outside each kind's allow-list; symlinks and any
+  and zero-width characters, absolute paths, `..`, dotted folders and files,
+  drive letters and extensions outside each kind's allow-list; symlinks and any
   non-regular file are refused; staging is a fresh folder under
   `<workspace>/.kookaburra/import-staging/` removed on drop, and refused before
   it exists when the signed file total would take the volume under 2 GB
@@ -644,6 +691,9 @@ Deliberately deferred, recorded so nobody mistakes them for done:
   scene thumbs, plus `screenshots/` and `brands/`.
 - A token on the autorun launch variables: `KOOKABURRA_ACTION` and its set are
   honoured in release builds, which is the same-user case above.
+- A sandbox for the agent. Its allow and deny rules, hooks and reach checks bound
+  its own tools and ask a person; a misled agent's own Bash can still read a file.
+- The still checks on app icons: `import_app_icon` takes only the extension list.
 - A managed key for Claude Code's permission mode: sessions always start in auto.
   Claude Code's own managed settings outrank that flag today.
 - A second reviewer on the `release` environment, a required review on `main` and
