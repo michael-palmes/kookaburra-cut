@@ -39,6 +39,7 @@ mod live_edits;
 mod loudness;
 mod managed;
 mod media;
+mod media_input;
 mod mp4box;
 mod native_alert;
 mod objects;

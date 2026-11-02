@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from . import mp4box
+from .media_input import input_args
 from .util import EXIT_ENV, EXIT_PROBLEMS, KbError
 
 MEDIA_MIN = 1
@@ -131,7 +132,7 @@ def ff_facts(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 def ffprobe_facts(ffprobe: str, path: Path) -> Optional[Dict[str, Any]]:
     """The ffprobe facts plus the leading packets' discard (D) flags; no decode. None when ffprobe can't read it."""
-    proc = _run([ffprobe, "-v", "error", "-print_format", "json", "-show_streams", "-show_format", str(path)], PROBE_TIMEOUT_S)
+    proc = _run([ffprobe, "-v", "error", *input_args(path), "-print_format", "json", "-show_streams", "-show_format", str(path)], PROBE_TIMEOUT_S)
     if proc.returncode != 0:
         return None
     try:
@@ -140,7 +141,7 @@ def ffprobe_facts(ffprobe: str, path: Path) -> Optional[Dict[str, Any]]:
         return None
     if facts is None:
         return None
-    flags = _run([ffprobe, "-v", "error", "-select_streams", "v:0", "-read_intervals", f"%+#{PACKET_SCAN}",
+    flags = _run([ffprobe, "-v", "error", *input_args(path), "-select_streams", "v:0", "-read_intervals", f"%+#{PACKET_SCAN}",
                   "-show_entries", "packet=flags", "-of", "csv=p=0", str(path)], PROBE_TIMEOUT_S)
     if flags.returncode == 0:
         facts["discardedPackets"] = sum(1 for line in flags.stdout.splitlines() if line.strip()[1:2] == "D")
@@ -161,7 +162,7 @@ def showinfo_pts_ms(text: str) -> List[float]:
 
 def ffmpeg_decode(ffmpeg: str, path: Path, timeout: float = DEEP_TIMEOUT_S) -> Dict[str, Any]:
     """conform.rs ffmpeg_decode_timing: every frame ffmpeg's own pipeline passes (-fps_mode passthrough), summarised."""
-    proc = _run([ffmpeg, "-hide_banner", "-nostdin", "-nostats", "-loglevel", "info", "-i", str(path),
+    proc = _run([ffmpeg, "-hide_banner", "-nostdin", "-nostats", "-loglevel", "info", *input_args(path), "-i", str(path),
                  "-map", "0:v:0", "-vf", "showinfo", "-fps_mode", "passthrough", "-f", "null", "-"], timeout)
     if proc.returncode != 0:
         raise KbError(f"ffmpeg could not decode {path.name}: {proc.stderr.strip()[-300:]}", EXIT_PROBLEMS, kind="invalid")

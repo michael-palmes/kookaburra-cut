@@ -5,7 +5,7 @@
 //! - Flow control: the frontend applies the xterm.js watermark scheme and calls `pty_pause`/`pty_resume`; a paused reader stops draining, the kernel PTY buffer fills, and the child blocks, real backpressure.
 //! - The shell is spawned as a LOGIN shell so `/etc/zprofile` + `~/.zprofile` rebuild the user's PATH inside the terminal (GUI apps inherit launchd's bare PATH); that is NOT sufficient for `claude` itself, since the default install adds its dir in `~/.zshrc`, which a login non-interactive shell never sources, so a Claude session execs the DETECTED binary by full path (the path `detect_claude` stored natively, never one the webview supplies) and prepends its dir to the child PATH.
 //! - The webview never supplies a command string. `Launch` is a closed enum: Claude Code with the app's fixed flags (the grounding rides as one argv element behind a fixed `exec "$0" "$@"` script, so no shell parsing touches it) or an interactive shell; only the main window may launch Claude.
-//! - The child environment is built from an allow-list (`child_environment`), not by scrubbing a few names: `launchctl setenv` variables outside `CLAUDE_*`/`ANTHROPIC_*` do not reach the terminal, and only a Claude session keeps those two prefixes, so a scene's shell carries no agent credential.
+//! - The child environment is built from an allow-list (`child_environment`), not by scrubbing a few names: `launchctl setenv` variables outside `CLAUDE_*`/`ANTHROPIC_*` do not reach the terminal, and only a Claude session keeps those two prefixes and `SSH_AUTH_SOCK`, so a scene's shell carries no agent credential.
 
 use std::collections::{BTreeMap, HashMap};
 use std::io::{Read, Write};
@@ -156,7 +156,7 @@ fn exec_script(shell: &str) -> &'static str {
 }
 
 /// Inherited names the child keeps as they are.
-const ENV_ALLOW: [&str; 10] = [
+const ENV_ALLOW: [&str; 9] = [
     "HOME",
     "USER",
     "LOGNAME",
@@ -166,8 +166,9 @@ const ENV_ALLOW: [&str; 10] = [
     "TMPDIR",
     "TERM",
     "COLORTERM",
-    "SSH_AUTH_SOCK",
 ];
+/// The user's ssh agent, for a Claude session's git; a scene shell never gets it.
+const ENV_CLAUDE_ALLOW: [&str; 1] = ["SSH_AUTH_SOCK"];
 /// Inherited prefixes every child keeps (locale, terminal).
 const ENV_ALLOW_PREFIX: [&str; 2] = ["LC_", "TERM_"];
 /// Extra prefixes a Claude session keeps (settings such as `CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_API_KEY`); a scene shell never gets them.
@@ -195,7 +196,9 @@ where
             !ENV_DENY.contains(&key.as_str())
                 && (ENV_ALLOW.contains(&key.as_str())
                     || ENV_ALLOW_PREFIX.iter().any(|p| key.starts_with(p))
-                    || (claude && ENV_CLAUDE_PREFIX.iter().any(|p| key.starts_with(p))))
+                    || (claude
+                        && (ENV_CLAUDE_ALLOW.contains(&key.as_str())
+                            || ENV_CLAUDE_PREFIX.iter().any(|p| key.starts_with(p)))))
         })
         .collect();
     env.insert("TERM".into(), "xterm-256color".into());
@@ -751,6 +754,7 @@ mod tests {
             ("LC_ALL", "en_AU.UTF-8"),
             ("CLAUDE_CODE_OAUTH_TOKEN", "tok"),
             ("ANTHROPIC_API_KEY", "key"),
+            ("SSH_AUTH_SOCK", "/tmp/agent"),
         ];
         let shell = child_environment(inherited(&vars), None, false);
         assert!(shell.contains_key("HOME") && shell.contains_key("LC_ALL"));
@@ -759,6 +763,10 @@ mod tests {
                 .keys()
                 .any(|k| k.starts_with("CLAUDE_") || k.starts_with("ANTHROPIC_")),
             "a scene shell must not see agent variables"
+        );
+        assert!(
+            !shell.contains_key("SSH_AUTH_SOCK"),
+            "a scene shell must not reach the ssh agent"
         );
         let claude = child_environment(inherited(&vars), None, true);
         assert_eq!(claude["CLAUDE_CODE_OAUTH_TOKEN"], "tok");

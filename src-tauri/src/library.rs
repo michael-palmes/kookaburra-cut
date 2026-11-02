@@ -673,7 +673,7 @@ fn delete_user_item(
             kind.label()
         ));
     }
-    std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())
+    workspace::trash_path(&dir).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

@@ -21,6 +21,7 @@ from . import tsx as tsxmod
 from .asset_refs import AssetRefs, asset_files, glob_matches
 from .project import Project
 from .scenes import free_sibling_name, rewrite_json_asset_refs
+from .media_input import input_args
 from .util import EXIT_ENV, EXIT_PROBLEMS, EXIT_TRANSIENT, KbError
 
 Warn = Callable[[str], None]
@@ -111,7 +112,7 @@ def _basic(path: Path) -> Dict[str, Any]:
     exe = assetmod.ffprobe_path()
     if exe:
         try:
-            proc = subprocess.run([exe, "-v", "error", "-print_format", "json", "-show_format", "-show_streams", str(path)], capture_output=True, text=True, timeout=30)
+            proc = subprocess.run([exe, "-v", "error", *input_args(path), "-print_format", "json", "-show_format", "-show_streams", str(path)], capture_output=True, text=True, timeout=30)
             data = json.loads(proc.stdout or "{}") if proc.returncode == 0 else {}
         except (OSError, subprocess.TimeoutExpired, ValueError):
             data = {}

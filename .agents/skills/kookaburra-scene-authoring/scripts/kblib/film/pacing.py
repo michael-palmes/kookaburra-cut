@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from ..media_input import input_args
 from ..project import Project
 from ..tsx import strip_comments
 from ..util import EXIT_ENV, KbError, is_number
@@ -137,7 +138,7 @@ def beat_ms_of(project: Project) -> Optional[float]:
 
 def motion_args(ffmpeg: str, path: Path) -> List[str]:
     vf = f"fps={MOTION_FPS},scale={MOTION_SIDE}:{MOTION_SIDE}:flags=area,format=gray"
-    return [ffmpeg, "-hide_banner", "-nostdin", "-v", "error", "-i", str(path), "-an", "-sn", "-dn", "-vf", vf,
+    return [ffmpeg, "-hide_banner", "-nostdin", "-v", "error", *input_args(path), "-i", str(path), "-an", "-sn", "-dn", "-vf", vf,
             "-f", "rawvideo", "-pix_fmt", "gray", "-"]
 
 

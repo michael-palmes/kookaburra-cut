@@ -382,6 +382,12 @@ pub(crate) async fn run_sidecar(
     while let Some(event) = rx.recv().await {
         match event {
             CommandEvent::Stdout(bytes) => stdout.push_str(&String::from_utf8_lossy(&bytes)),
+            CommandEvent::Stderr(bytes) => {
+                if let Some(refused) = crate::media_input::refusal(&String::from_utf8_lossy(&bytes))
+                {
+                    last_error = Some(refused.into());
+                }
+            }
             CommandEvent::Error(e) => last_error = Some(e),
             CommandEvent::Terminated(p) => {
                 code = p.code;
@@ -521,10 +527,9 @@ async fn write_soundtrack_temp(app: &AppHandle, src: &Path, tmp: &Path) -> Resul
 /// Audio only, and none of the video's metadata (a phone clip can carry its location). Codecs an mp4 file and WebKit both take copy untouched; anything else becomes AAC so the preview can play it.
 fn soundtrack_extract_args(src: &Path, tmp: &Path, codec: &str) -> Vec<String> {
     let mut args = media_lane_head();
+    args.extend(crate::media_input::untrusted_input(src));
     args.extend(
         [
-            "-i",
-            &src.to_string_lossy(),
             "-map",
             "0:a:0",
             "-vn",
@@ -579,19 +584,18 @@ pub async fn import_app_icon(
     if ext == "png" {
         std::fs::copy(&src, &tmp).map_err(|e| format!("copying icon: {e}"))?;
     } else {
-        let args: Vec<String> = vec![
+        let mut args: Vec<String> = vec![
             "-y".into(),
             "-nostdin".into(),
             "-loglevel".into(),
             "error".into(),
-            "-protocol_whitelist".into(),
-            "file,pipe".into(),
-            "-i".into(),
-            src.to_string_lossy().into_owned(),
+        ];
+        args.extend(crate::media_input::untrusted_input(Path::new(&src)));
+        args.extend([
             "-frames:v".into(),
             "1".into(),
             tmp.to_string_lossy().into_owned(),
-        ];
+        ]);
         run_sidecar(&app, "ffmpeg", args, SidecarPriority::Foreground).await?;
     }
     // The old icon rides to the Trash (best-effort), so a replacement is recoverable.
@@ -627,15 +631,7 @@ pub async fn probe_audio(
     let probe = run_sidecar(
         &app,
         "ffprobe",
-        vec![
-            "-v".into(),
-            "error".into(),
-            "-print_format".into(),
-            "json".into(),
-            "-show_streams".into(),
-            "-show_format".into(),
-            abs.to_string_lossy().into_owned(),
-        ],
+        probe_args(&abs),
         SidecarPriority::Foreground,
     )
     .await?;
@@ -656,31 +652,28 @@ pub async fn probe_audio(
     })
 }
 
-/// The head of every poster and scrub lane: no terminal, no protocol but a local file.
+/// The head of every poster and scrub lane: no terminal.
 fn media_lane_head() -> Vec<String> {
     vec![
         "-y".into(),
         "-nostdin".into(),
         "-loglevel".into(),
         "error".into(),
-        "-protocol_whitelist".into(),
-        "file,pipe".into(),
     ]
 }
 
 /// The ffprobe arguments every media probe runs.
 pub(crate) fn probe_args(abs: &Path) -> Vec<String> {
-    vec![
-        "-v".into(),
-        "error".into(),
-        "-protocol_whitelist".into(),
-        "file,pipe".into(),
+    let mut args: Vec<String> = vec!["-v".into(), "error".into()];
+    args.extend(crate::media_input::untrusted_input_args(abs));
+    args.extend([
         "-print_format".into(),
         "json".into(),
         "-show_streams".into(),
         "-show_format".into(),
         abs.to_string_lossy().into_owned(),
-    ]
+    ]);
+    args
 }
 
 /// Read a probe's JSON; images flow through it too (one code path, image2 reports a single video stream), and `kind` is decided by extension so a still is never given a bogus fps/duration.
@@ -750,6 +743,9 @@ pub(crate) fn probe_media_at(ffprobe: &Path, abs: &Path) -> Result<ProbeInfo, St
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr);
         let tail = stderr.trim();
+        if let Some(refused) = crate::media_input::refusal(tail) {
+            return Err(format!("{}: {refused}", abs.display()));
+        }
         return Err(if tail.is_empty() {
             format!("ffprobe exited with {:?}", out.status.code())
         } else {
@@ -2318,9 +2314,8 @@ pub(crate) async fn ensure_media_cache(
     if video && duration_s > 0.0 {
         poster_args.extend(["-ss".into(), format!("{:.3}", duration_s * 0.25)]);
     }
+    poster_args.extend(crate::media_input::untrusted_input(Path::new(&abs_str)));
     poster_args.extend([
-        "-i".into(),
-        abs_str.clone(),
         "-frames:v".into(),
         "1".into(),
         "-vf".into(),
@@ -2341,9 +2336,8 @@ pub(crate) async fn ensure_media_cache(
         if hardware {
             scrub_args.extend(["-hwaccel".into(), "videotoolbox".into()]);
         }
+        scrub_args.extend(crate::media_input::untrusted_input(Path::new(&abs_str)));
         scrub_args.extend([
-            "-i".into(),
-            abs_str,
             "-vf".into(),
             format!("fps={rate:.6},scale={SCRUB_WIDTH}:-2"),
             "-frames:v".into(),
