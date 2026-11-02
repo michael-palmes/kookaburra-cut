@@ -87,6 +87,9 @@ export default defineConfig({
     },
   },
 
+  // The stage worker loads through a blob bootstrap (stageClient), so its chunks resolve assets from `import.meta.url`, not `self.location`.
+  worker: { format: "es" },
+
   build: {
     // WKWebView floor on macOS 26 is Safari 26. (Vite 8 passes this to the Oxc transformer.)
     target: "safari26",
