@@ -332,7 +332,7 @@ class BeatsWriteTests(MusicProjectCase):
     def test_from_analysis_records_the_source_and_refuses_a_drifting_tempo(self) -> None:
         missing = self.j("beats", "set-grid", "--from-analysis", code=1)
         self.assertEqual(missing["hint"], "./kb song analyse --accept")
-        self.write_analysis(analysis(constantTempo=False, residualMs=24.5))
+        self.write_analysis(analysis(constantTempo=False, residualMs=24.5, maxDriftMs=40))
         drift = self.j("beats", "set-grid", "--from-analysis", code=1)
         self.assertIn("drifts", drift["error"])
         self.assertIn("--force", drift["hint"])

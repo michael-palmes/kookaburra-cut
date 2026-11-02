@@ -81,7 +81,9 @@ literal pair, add spaces or use `∗` (U+2217).
 | --- | --- | --- |
 | `text` | | `\n` breaks lines |
 | `from`, `to` | 0, 600 | In window, scene-local ms |
-| `outAt` | | Out start; plays over the in's length. Exits need this prop |
+| `outAt`, `outDurationMs` | | Out start; plays over the in's length unless `outDurationMs` sets its own. Exits need `outAt` |
+| `hitAt` | | Scene ms the first unit LANDS, on a beat or a cut: the in keeps its length and starts the motion's lead earlier (below). Wins over `from`; the out never moves |
+| `opacity` | 1 | 0..1, multiplied into every fade |
 | `preset`, `outPreset` | theme `textAnimation` | Prefer the sidecar spec (below) |
 | `stagger`, `staggerMs`, `delivery`, `delayMs`, `startScale`, `shine`, `direction`, `ease` | theme | As the spec fields |
 | `durationMs` | `"authored"` | A number pins the whole reveal, first unit's start to last unit's settle, whatever the copy's word or letter count (stagger and unit duration scale together); `"authored"` keeps the per-unit timing. `AnimatedGroup` takes it too |
@@ -91,6 +93,8 @@ literal pair, add spaces or use `∗` (U+2217).
 | `color` | | Pins the fill (token or hex); the inspector can no longer change it. Avoid |
 | `position`, `fontSize` | [0,0,0], 0.6 | World units |
 | `anchorX`, `anchorY`, `textAlign`, `maxWidth`, `lineHeight` | centre, middle | Layout; `maxWidth` wraps |
+| `fit` | | `"width"` shrinks the font (never grows it) so the widest line fits `maxWidth` (or the safe width), and nothing wraps |
+| `depth` | | A layered depth look in any font: `depth`, or `depth={{ em, angleDeg, layers, dark, light }}` (below) |
 | `look`, `lookParams` | | Text look (below); prefer the sidecar |
 | `fontRef` | | Explicit `{ family, weight }`; prefer `textStyle.<key>Font` |
 
@@ -102,12 +106,21 @@ literal pair, add spaces or use `∗` (U+2217).
 - `BrandLockup title subtitle icon from to position iconWidth titleSize subtitleSize titleColor subtitleColor`:
   app icon (default `assets/app-icon.png`) beside a small title over a large subtitle,
   revealed as one unit; scales down for square and portrait.
-- `AnimatedCounter from to durationMs format position fontSize anchorX anchorY textKey startMs ease steps`:
+- `AnimatedCounter from to durationMs format position fontSize anchorX anchorY textKey startMs hitAt ease steps ticks stepsAt pop`:
   counts over `durationMs` from `startMs` (default 0, scene start), linear unless `ease`
-  names an ease, in `steps` equal jumps when set (landing on `to`); `format` returns the
-  string, for example `(n) => "$" + n.toFixed(1) + "M"`; default size 0.5, anchored
-  centre/middle.
-- `ExtrudedText`: lit 3D text, bundled families only, no emoji.
+  names an ease; `hitAt` lands on `to` at that ms, starting `durationMs` earlier; `format`
+  returns the string, for example `(n) => "$" + n.toFixed(1) + "M"`; default size 0.5,
+  anchored centre/middle. Three ways to jump, all landing on `to`:
+  - `steps={n}`: equal jumps where the EASED progress crosses each k/n, so the first falls
+    after 1/n (never at `startMs`), the last exactly at the end, and `ease` shifts the
+    ones between. `steps` and an `ease` together mean uneven jump times, on purpose.
+  - `ticks="beats"`: one jump on every grid beat inside the count, each with a pop. No grid
+    counts continuously with one log line.
+  - `stepsAt={[ms, ...]}`: one jump (with a pop) at each scene ms; it replaces the window.
+    With `ticks` or `stepsAt`, `ease` bends how far each jump goes, not when. `pop` is the
+    scale each pops by (default 0.08 over 180 ms; 0 turns it off).
+- `ExtrudedText`: lit 3D text, bundled families only, no emoji. For 3D-looking type in
+  any font, use `depth` on `AnimatedHeadline`.
 - `ManagedTextStack`: the generic managed renderer the host mounts; rarely mounted by hand.
 - `PromptBar text textKey from to position width height fontSize face send caret`: a
   chat prompt bar (theme tokens only). The text types in one keystroke at a time from
@@ -201,6 +214,42 @@ breaks, so on multi-line copy prefer `by-paragraph`.
   (`from` to `to`, or the primitive's `durationMs`), whatever the length; stagger and
   ease are ignored. Nothing shows before it starts. Inside a chat bar, use `PromptBar`.
 
+### Single line or two lines
+
+`kb catalog textMotion` marks each motion `lines`: `two-line` holds its block together
+across a `\n` or a wrap; `single` comes apart (`rise-mask`, `word-cycle`,
+`underline-draw`, `build`). `fade-up` is two-line as a block and `wordStaggerLines:
+"single"` with `stagger="word"`: a rise by word catches a wrapped line's words at
+different heights. `kb check` warns when a single-line motion meets copy with a `\n`, or
+a `maxWidth` that can wrap it (`fit="width"` removes the wrap).
+
+### Landing on a moment
+
+`hitAt` is when a motion's first unit lands: first at rest size and full opacity (an
+overshoot's crossing counts, a fade only once it's opaque). A stamp on a beat is
+`hitAt={grid?.at(13) ?? 4000}`, not `from` minus a guess: the primitive subtracts its own
+lead for the current motion, duration, ease and `delayMs`. `Stamp`, `AnimatedGroup` and
+`AnimatedCounter` take it too. `kb catalog textMotion` publishes each motion's `impactMs`,
+measured from rendered frames at a 600 ms window with `outCubic`, as a guide to how early
+a motion starts: `stamp` 150, `spring-pop` 150, `slam` 500, `fade` 450. `kb catalog stamps`
+has the `Stamp` primitive's: 95.
+
+### Depth
+
+`depth` stacks the same text behind the face, shading dark to light as it nears:
+
+```tsx
+<AnimatedHeadline text={title} textKey="title" depth />
+<AnimatedHeadline text={title} textKey="title" depth={{ em: 0.16, angleDeg: -60, layers: 16, dark: "#0b0b10", light: "accent" }} />
+```
+
+`em` is the reach behind the face (default 0.12), `angleDeg` the way it recedes,
+counter-clockwise from +x (default -45, down and right), `layers` 1 to 32 (default 12;
+each costs a typeset and a draw). `dark` and `light` default to the face colour darkened.
+Every motion stays in step across the stack, and a moving camera sees it recede. A fade
+lands on the face first; the stack fills in as it nears opaque. Prefer a stack over
+stacked headlines by hand.
+
 ## Measuring text
 
 Size a pill, underline or panel to a headline from its font, not from a captured frame.
@@ -209,8 +258,10 @@ Size a pill, underline or panel to a headline from its font, not from a captured
 `<key>Font`, `<key>Size` and `<key>LineHeight` overrides, so the box follows inspector
 edits. It returns world units, `{ width, height, ascent, descent, lines }`: `ascent`
 runs from the block top to the first baseline, `descent` from the last baseline to the
-bottom. Null means the font is still loading (one preview frame); exports and captures
-wait for it.
+bottom. Null means the font is still loading (one preview frame), never a 0-wide
+measure of real copy, so check it before you divide by `width`; exports and captures wait
+for it. `box.fitFontSize(maxWidth)` is the `fontSize` to pass so the block fits (never
+larger than the one measured); `fit="width"` on the headline does this for you.
 
 ```tsx
 const title = useSceneText("title", "Ship faster");

@@ -3,7 +3,7 @@ import type { BeatAnalysis } from "./beatAnalysis";
 import { effectiveKeyMoments, projectBeatGrid } from "./beatState";
 
 const analysis: BeatAnalysis = {
-  version: 2,
+  version: 3,
   sha256: "",
   tracker: "dsp",
   fallbackReason: null,
@@ -22,6 +22,7 @@ const analysis: BeatAnalysis = {
   sections: [],
   breaths: [],
   stabs: [],
+  hits: [],
   lyrics: null,
 };
 

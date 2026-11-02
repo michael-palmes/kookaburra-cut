@@ -1,4 +1,4 @@
-import { useContext, useMemo, useRef } from "react";
+import { useContext, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Box3, type Group, type Object3D, Vector3 } from "three";
 import { useGizmoSectionOpen } from "../../engine/gizmoSections";
 import { useObjectEditStore } from "../../engine/objectEditStore";
@@ -7,9 +7,10 @@ import { SceneGizmo } from "../../engine/SceneGizmo";
 import { SceneOutline } from "../../engine/SceneOutline";
 import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import type { SceneDocObjectSpec } from "../../engine/sceneDocSchema";
+import { reportTextDerivedPending } from "../../engine/textDerivedState";
 import { useStageFloorY } from "../stage/context";
 import type { V3 } from "../types";
-import { readObjectGltf } from "./preload";
+import { loadUsedObject, peekUsedObject, readObjectGltf } from "./preload";
 import { readObjectAsset } from "./registry";
 
 /** World height an object auto-fits to when its manifest carries no `fitHeight` (a phone fits 2.6). */
@@ -24,26 +25,78 @@ const round = (v: number, dp: number) => {
   return Math.round(v * f) / f;
 };
 
-/** One staged library object: `readObjectAsset` suspends until the manifest + URLs land (unknown ids degrade to nothing), then `LoadedObject` suspends on the glb through the objects' own gltf cache (both pre-warmed by the export preamble and the option-preview capture). */
-export function StagedObject({ spec }: { spec: SceneDocObjectSpec }) {
+/** A library object placed directly in TSX: an id and where it sits. */
+export interface PlacedObjectProps {
+  /** A bundled id or `ws:<slug>`, as in `kb catalog objects`; an unknown id renders nothing. */
+  objectId: string;
+  /** World position (default the origin). */
+  position?: V3;
+  /** Euler rotation, degrees (default none). */
+  rotationDeg?: V3;
+  /** Multiplies the object's fitted size (default 1). */
+  scale?: number;
+  /** Sit the object on the stage floor; its y is then ignored (default false). */
+  ground?: boolean;
+}
+
+export type StagedObjectProps = { spec: SceneDocObjectSpec } | PlacedObjectProps;
+
+/** One staged library object, from a sidecar `spec` or an `objectId` placed in TSX. `readObjectAsset` suspends until the manifest + URLs land (unknown ids degrade to nothing), then `LoadedObject` suspends on the glb through the objects' own gltf cache (both pre-warmed by the export preamble and the option-preview capture). */
+export function StagedObject(props: StagedObjectProps) {
+  if ("spec" in props) return <SidecarObject spec={props.spec} />;
+  return <PlacedObject {...props} />;
+}
+
+function SidecarObject({ spec }: { spec: SceneDocObjectSpec }) {
   const asset = readObjectAsset(spec.objectId);
   if (!asset) return null;
   return <LoadedObject spec={spec} asset={asset} />;
+}
+
+/** Preloaded by usage, whenever in the film it first mounts: it loads without suspending and every capture waits for it, so no frame ever shows it missing, and a preview just pops it in. It has no sidecar entry, so no gizmo. */
+function PlacedObject({ objectId, position, rotationDeg, scale, ground }: PlacedObjectProps) {
+  const [, landed] = useState(0);
+  const asset = peekUsedObject(objectId);
+  const pending = asset === undefined;
+  useLayoutEffect(() => {
+    if (!pending) return;
+    let live = true;
+    const clear = reportTextDerivedPending();
+    void loadUsedObject(objectId).then(() => {
+      if (live) landed((n) => n + 1);
+    });
+    return () => {
+      live = false;
+      clear();
+    };
+  }, [objectId, pending]);
+  if (!asset) return null;
+  return (
+    <LoadedObject
+      spec={{ id: objectId, objectId, placement: { position, rotationDeg, scale, ground } }}
+      asset={asset}
+      placed
+    />
+  );
 }
 
 /** The HeroObject treatment: clone, recentre, auto-fit to the manifest's height, apply the sidecar placement on ONE group so the gizmo can attach to it. The gizmo is a TransformControls ATTACHED to that group (never wrapping it): it stays centred on the object and follows every drag, mounts only for the inspector-selected object, and `exportPreamble` clears that selection, so exports render the bare transform. Scale mode keeps every handle but snaps all three axes to the furthest-moved one live, so resizing is always even (no stretching); rotate mode's screen-space ring and free sphere stay usable when the camera is front on and the per-axis rings go edge on. */
 function LoadedObject({
   spec,
   asset,
+  placed = false,
 }: {
   spec: SceneDocObjectSpec;
   asset: NonNullable<ReturnType<typeof readObjectAsset>>;
+  placed?: boolean;
 }) {
   const ctx = useSceneContext();
   const sceneIndex = ctx?.index;
   // What a click selects, or null on a comparison's B side: it mounts the same object at the same index, so a write from here would land on the A doc.
   const editTarget =
-    sceneIndex !== undefined && ctx?.side === undefined ? { sceneIndex, objectId: spec.id } : null;
+    !placed && sceneIndex !== undefined && ctx?.side === undefined
+      ? { sceneIndex, objectId: spec.id }
+      : null;
   const stageFloorY = useStageFloorY();
   const selected = useObjectEditStore((s) => s.selected);
   const gizmoMode = useObjectEditStore((s) => s.gizmoMode);

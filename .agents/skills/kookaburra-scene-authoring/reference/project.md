@@ -284,7 +284,8 @@ face for all chart text. Use bundled families unless `./kb fonts check` passes
 ```
 
 - One soundtrack per project; remove the block to remove music. Copy the file in with
-  `./kb assets add` (mp3, wav, m4a, aac, flac, ogg).
+  `./kb assets add` (mp3, wav, m4a, aac, flac, ogg). For a song inside an mp4, ask the
+  user to pick it under Music > Choose track, which keeps only the audio.
 - It fades out over the last 1000 ms of its audible end unless `fadeOutMs` says
   otherwise (`0` disables). `fadeOutCurve`: `smooth` (default), `linear`, `scurve`,
   `exponential`, `logarithmic`.

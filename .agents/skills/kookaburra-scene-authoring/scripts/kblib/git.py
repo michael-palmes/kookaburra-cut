@@ -12,9 +12,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from .project import MANIFEST, Project
+from .realdir import no_follow
 from .util import EXIT_ENV, EXIT_PROBLEMS, EXIT_TRANSIENT, KbError, ago, now_ms, trash_dir
 
-TRACKED = ["project.json", "scenes", "edits"]
+TRACKED = ["project.json", "scenes", "edits", "flashes.accepted.json"]
 EXCLUDES = ["/assets/", "/exports/", "edits/*.json.tmp", "edits/.*.tmp", "edits/.renders/", ".kb/", "/kb"]
 FALLBACK_IDENTITY = ["-c", "user.name=Kookaburra Cut", "-c", "user.email=kookaburra@localhost"]
 INDEX_LOCK_BACKOFF_MS = (50, 100, 200, 400, 800, 1600)
@@ -132,7 +133,7 @@ def ensure_excludes(project: Project) -> None:
         return
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "a", encoding="utf-8") as f:
+        with open(path, "a", encoding="utf-8", opener=no_follow) as f:
             if current and not current.endswith("\n"):
                 f.write("\n")
             f.write("".join(f"{line}\n" for line in missing))

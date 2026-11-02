@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { BeatAnalysis } from "../engine/beatAnalysis";
+import type { BeatAnalysis, SongHit } from "../engine/beatAnalysis";
 import {
   type EffectiveBeatGrid,
   effectiveBeatGrid,
@@ -30,6 +30,36 @@ import { msFromTrackX, playheadFraction, type SceneCellSpan, sceneCellSpans } fr
 /** Marker drags snap to the beat grid within this many screen px (the TrackLane radius). */
 const SNAP_PX = 8;
 const DRAG_THRESHOLD_PX = 3;
+/** Weaker hits stay off the lane, and of two ticks closer than this the stronger stays. */
+const HIT_TICK_MIN_STRENGTH = 0.4;
+const HIT_TICK_GAP_PX = 3;
+const HIT_TICK_MIN_HEIGHT = 0.15;
+
+/** The lane's hit ticks at `width` px in time order: `x` in px, `height` a share of the lane that grows with strength. */
+export function hitTicks(
+  hits: readonly SongHit[],
+  startOffsetMs: number,
+  durationMs: number,
+  width: number,
+  fractionOf: (projectMs: number) => number,
+): { x: number; height: number }[] {
+  const candidates = hits
+    .filter((h) => h.strength >= HIT_TICK_MIN_STRENGTH)
+    .map((h) => ({ ms: h.ms - startOffsetMs, strength: h.strength }))
+    .filter((h) => h.ms >= 0 && h.ms <= durationMs)
+    .map((h) => ({ x: Math.round(fractionOf(h.ms) * width), strength: h.strength }))
+    .sort((a, b) => b.strength - a.strength);
+  const kept: { x: number; strength: number }[] = [];
+  for (const tick of candidates) {
+    if (kept.every((k) => Math.abs(k.x - tick.x) >= HIT_TICK_GAP_PX)) kept.push(tick);
+  }
+  return kept
+    .sort((a, b) => a.x - b.x)
+    .map((t) => ({
+      x: t.x,
+      height: HIT_TICK_MIN_HEIGHT + (1 - HIT_TICK_MIN_HEIGHT) * t.strength,
+    }));
+}
 
 /** The lane menu's authored-grid actions at a clicked track time: "Set downbeat here" moves the phase and keeps bar numbers, "Make this bar 1" renumbers from the nearest downbeat; both start a grid from the detected tempo when there is none. */
 export function beatGridMenuItems({
@@ -67,7 +97,7 @@ export function beatGridMenuItems({
   ];
 }
 
-/** Beat lane: soundtrack waveform, beat grid and key-moment diamonds directly above the scene strip. It lives in the playback bar's centre column and maps every time through the same span maths as the playhead, so markers sit exactly on the scene cuts below. Click a diamond to jump there; drag to nudge (first edit copies the detected set into `audio.markers`); double-click adds; right-click deletes or resets, or sets the authored grid's downbeat. The authored `audio.grid` is the grid drawn and snapped to whenever there is one. Editor chrome only; the export path reads none of it. */
+/** Beat lane: soundtrack waveform, beat grid, hit ticks and key-moment diamonds directly above the scene strip. It lives in the playback bar's centre column and maps every time through the same span maths as the playhead, so markers sit exactly on the scene cuts below. Click a diamond to jump there; drag to nudge (first edit copies the detected set into `audio.markers`); double-click adds; right-click deletes or resets, or sets the authored grid's downbeat. The authored `audio.grid` is the grid drawn and snapped to whenever there is one. Editor chrome only; the export path reads none of it. */
 export function BeatLane({
   project,
   durationMs,
@@ -328,7 +358,7 @@ export function BeatLane({
   );
 }
 
-/** Repaint the waveform and beat grid (bar lines stronger); per-column sampling through `msFromTrackX` keeps the drawing aligned with the non-linear scene cells. */
+/** Repaint the waveform, beat grid (bar lines stronger) and hit ticks; per-column sampling through `msFromTrackX` keeps the drawing aligned with the non-linear scene cells. */
 function drawWave(
   canvas: HTMLCanvasElement,
   analysis: BeatAnalysis | null,
@@ -350,6 +380,7 @@ function drawWave(
   const styles = getComputedStyle(canvas);
   const waveColour = styles.getPropertyValue("--text-tertiary").trim() || "#8a8a8a";
   const gridColour = styles.getPropertyValue("--border-default").trim() || "#555555";
+  const tickColour = styles.getPropertyValue("--lane-accent").trim() || "#d4a017";
 
   const strokeLines = (times: readonly number[], alpha: number, minGapPx: number) => {
     ctx.globalAlpha = alpha;
@@ -380,4 +411,14 @@ function drawWave(
     const h = Math.max(0.5, v * (mid - 1));
     ctx.fillRect(x, mid - h, 1, h * 2);
   }
+
+  ctx.fillStyle = tickColour;
+  ctx.globalAlpha = 0.85;
+  for (const tick of hitTicks(analysis.hits, startOffsetMs, durationMs, rect.width, (ms) =>
+    playheadFraction(ms, durationMs, spans),
+  )) {
+    const h = tick.height * rect.height * 0.5;
+    ctx.fillRect(tick.x, rect.height - h, 1, h);
+  }
+  ctx.globalAlpha = 1;
 }

@@ -12,6 +12,8 @@ import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
+from .realdir import real_dir
+
 VERSION = 1
 DEFAULT_TTL_MS = 2 * 3600 * 1000
 MAX_TTL_MS = 12 * 3600 * 1000
@@ -265,6 +267,7 @@ def _write(project: Any, stem: str, lease: Optional[Dict[str, Any]], base: str) 
     from . import lock
 
     path = lease_path(root_of(project), stem)
+    real_dir(root_of(project), *LEASES)
     if lease is None:
         if lock.current_hash(path) != base:
             return False
@@ -273,7 +276,6 @@ def _write(project: Any, stem: str, lease: Optional[Dict[str, Any]], base: str) 
         except FileNotFoundError:
             pass
         return True
-    os.makedirs(os.path.dirname(path), exist_ok=True)
     return lock.write_if_unchanged(path, base, _encode(lease))
 
 

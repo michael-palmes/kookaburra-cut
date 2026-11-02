@@ -23,12 +23,24 @@ export interface TextMetricsOptions {
   styleKey?: string;
 }
 
-/** The world-size block an `AnimatedHeadline` with this `textKey`, text and options typesets (sidecar Font, Size and LineHeight overrides included), or null while its face is still parsing. Captures wait for it, so exported frames always see the measured layout. */
+/** The size that fits a block measured at `fontSize` inside `maxWidth`: never above `fontSize` itself, and `fontSize` untouched when there is nothing to fit. */
+export function fitFontSize(metrics: TextMetrics, fontSize: number, maxWidth: number): number {
+  if (!(metrics.width > 0) || !(maxWidth > 0) || metrics.width <= maxWidth) return fontSize;
+  return (fontSize * maxWidth) / metrics.width;
+}
+
+/** A measured block, plus the size that makes it fit a width. */
+export interface MeasuredText extends TextMetrics {
+  /** The `fontSize` to pass (at most the one you measured with) so the block fits `maxWidth`, sidecar Size override included. */
+  fitFontSize(maxWidth: number): number;
+}
+
+/** The world-size block an `AnimatedHeadline` with this `textKey`, text and options typesets (sidecar Font, Size and LineHeight overrides included), or null until its face has loaded and it has measured real ink: never a 0-wide first measure, so a scene can divide by `width` once it has one. Captures wait for it, so exported frames always see the measured layout. */
 export function useTextMetrics(
   key: string | undefined,
   text: string,
   opts: TextMetricsOptions = {},
-): TextMetrics | null {
+): MeasuredText | null {
   const theme = useTheme();
   const doc = useContext(SceneDocContext);
   useSyncExternalStore(subscribeFontMetrics, fontMetricsVersion, fontMetricsVersion);
@@ -44,5 +56,18 @@ export function useTextMetrics(
     if (pending) void preloadFontMetrics([type.font]);
   }, [pending, type.font]);
   useLayoutEffect(() => (pending ? reportTextDerivedPending() : undefined), [pending]);
-  return metrics;
+  return measuredText(metrics, text, opts.fontSize ?? 0.6);
+}
+
+/** A measure a scene can use: null for none, or for a 0-wide block of copy that has ink coming (what a divide-by-width blows up on); blank copy is honestly 0 wide. */
+export function measuredText(
+  metrics: TextMetrics | null,
+  text: string,
+  fontSize: number,
+): MeasuredText | null {
+  if (metrics === null || (!(metrics.width > 0) && text.trim() !== "")) return null;
+  return {
+    ...metrics,
+    fitFontSize: (maxWidth) => fitFontSize(metrics, fontSize, maxWidth),
+  };
 }

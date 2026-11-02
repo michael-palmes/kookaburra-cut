@@ -1,8 +1,15 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { type ProjectMusic, resolveSceneLocalMs } from "../../engine/musicTime";
 import { ProjectMusicContext, projectMusicValue, SceneContext } from "../../engine/sceneContext";
-import { type BeatGrid, beatGridFor, cuesFor, useBeatGrid, useCues } from "./useBeatGrid";
+import {
+  type BeatGrid,
+  beatAtFor,
+  beatGridFor,
+  cuesFor,
+  useBeatGrid,
+  useCues,
+} from "./useBeatGrid";
 
 const music: ProjectMusic = {
   grid: { bpm: 135.11, offsetMs: 101.7, beatsPerBar: 4 },
@@ -117,5 +124,46 @@ describe("useBeatGrid and useCues", () => {
   it("leaves unresolvable cues out", () => {
     expect(cuesFor(music, 0)).not.toHaveProperty("broken");
     expect(cuesFor(null, 0)).toEqual({});
+  });
+});
+
+describe("grid.at(bar, beat, sixteenth)", () => {
+  const music: ProjectMusic = {
+    startOffsetMs: 0,
+    grid: { bpm: 120, offsetMs: 0, beatsPerBar: 4 },
+    cues: {},
+    sections: {},
+  };
+
+  it("lands on the same ms as bar() and a bar: position", () => {
+    const grid = beatGridFor(music, 1000) as BeatGrid;
+    expect(grid.at(3)).toBe(grid.bar(3));
+    expect(grid.at(3, 2)).toBe(grid.bar(3, 2));
+    expect(grid.at(3, 2, 3)).toBe(grid.at("bar:3.2.3"));
+  });
+});
+
+describe("useBeatAt's function", () => {
+  const music: ProjectMusic = {
+    startOffsetMs: 0,
+    grid: { bpm: 120, offsetMs: 0, beatsPerBar: 4 },
+    cues: {},
+    sections: {},
+  };
+
+  it("is scene ms with a grid", () => {
+    const grid = beatGridFor(music, 0) as BeatGrid;
+    expect(beatAtFor(grid)(2)).toBe(2000);
+    expect(beatAtFor(grid)(2, 3)).toBe(3000);
+  });
+
+  it("is null with one log line, however often it's called, without a grid", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const at = beatAtFor(null);
+    expect(at(13, 1)).toBeNull();
+    expect(at(14)).toBeNull();
+    expect(beatAtFor(null)(15)).toBeNull();
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
   });
 });

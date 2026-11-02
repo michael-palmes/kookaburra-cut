@@ -6,6 +6,10 @@ export interface FramePanelHandle {
   group: Group;
   /** Comparison panels opt in only when first-class Overlay images need the one-after-composite draw. */
   hasSceneImages: boolean;
+  /** A `<ScreenLayer order="front">`: drawn after the scene's own panel, in mount order. */
+  screenLayer?: boolean;
+  /** Runs right before the compositor draws this panel. */
+  beforeDraw?: () => void;
 }
 
 // Keyed by a per-instance id (React useId) so a project swap's unmount/mount churn can't clobber entries by index.
@@ -24,9 +28,13 @@ export function getFramePanels(): FramePanelHandle[] {
   return [...panels.values()];
 }
 
-export function comparisonFramePanel(
+/** What the compositor draws over a scene, panel first then its screen layers; null when there is nothing. */
+export function framePanelsFor(
   handles: readonly FramePanelHandle[],
   index: number,
-): Group | null {
-  return handles.find((panel) => panel.index === index && panel.hasSceneImages)?.group ?? null;
+  comparing = false,
+): FramePanelHandle[] | null {
+  const found = handles.filter((p) => p.index === index && (!comparing || p.hasSceneImages));
+  if (found.length === 0) return null;
+  return [...found.filter((p) => !p.screenLayer), ...found.filter((p) => p.screenLayer)];
 }

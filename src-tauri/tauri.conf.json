@@ -62,6 +62,8 @@
       "../src/assets/preset-previews": "preset-previews",
       "../.agents/skills/kookaburra-scene-authoring/*.md": "claude-skills/kookaburra-scene-authoring/",
       "../.agents/skills/kookaburra-scene-authoring/catalog.json": "claude-skills/kookaburra-scene-authoring/catalog.json",
+      "../.agents/skills/kookaburra-scene-authoring/toolkit.d.ts": "claude-skills/kookaburra-scene-authoring/toolkit.d.ts",
+      "../.agents/skills/kookaburra-scene-authoring/toolkit.json": "claude-skills/kookaburra-scene-authoring/toolkit.json",
       "../.agents/skills/kookaburra-scene-authoring/reference": "claude-skills/kookaburra-scene-authoring/reference",
       "../.agents/skills/kookaburra-scene-authoring/scripts/*.py": "claude-skills/kookaburra-scene-authoring/scripts/",
       "../.agents/skills/kookaburra-scene-authoring/scripts/kblib": "claude-skills/kookaburra-scene-authoring/scripts/kblib",
@@ -79,7 +81,8 @@
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
-      "icons/icon.ico"
+      "icons/icon.ico",
+      "icons/AppIcon.icon"
     ],
     "fileAssociations": [
       {

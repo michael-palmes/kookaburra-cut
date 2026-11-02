@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { BEAT_ANALYSIS_VERSION, parseBeatAnalysis } from "./beatAnalysis";
 
-/** A v2 document shaped like the native analyser's output. */
+/** A v3 document shaped like the native analyser's output. */
 function songAnalysis(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    version: 2,
+    version: 3,
     sha256: "ab".repeat(32),
     decoder: { name: "ffmpeg", version: "8.1.2", sampleRate: 48000, channels: 1 },
     tracker: "nn",
@@ -37,6 +37,15 @@ function songAnalysis(overrides: Record<string, unknown> = {}): Record<string, u
     sections: [{ fromBar: 1, toBar: 9, novelty: 0 }],
     breaths: [{ fromMs: 3000, toMs: 3300, kind: "silence" }],
     stabs: { per16th: [1, 0, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+    hits: {
+      full: [
+        [1000.2, 0.9],
+        [1500.1, 0.4],
+      ],
+      low: [[1000.2, 1]],
+      mid: [],
+      high: [],
+    },
     lyrics: null,
     keyMoments: [{ tMs: 1000, strength: 0.9 }],
     envelope: { hopMs: 21.333, values: [0, 0.5, 1] },
@@ -45,13 +54,25 @@ function songAnalysis(overrides: Record<string, unknown> = {}): Record<string, u
 }
 
 describe("parseBeatAnalysis", () => {
-  it("reads a v2 document into the lane's shapes", () => {
+  it("reads a v3 document into the lane's shapes", () => {
     const parsed = parseBeatAnalysis(songAnalysis());
-    expect(BEAT_ANALYSIS_VERSION).toBe(2);
+    expect(BEAT_ANALYSIS_VERSION).toBe(3);
+    expect(parsed?.hits).toEqual([
+      { ms: 1000.2, strength: 0.9 },
+      { ms: 1500.1, strength: 0.4 },
+    ]);
     expect(parsed).not.toBeNull();
     expect(parsed?.bpm).toBe(120.002);
     expect(parsed?.fit?.periodMs).toBe(499.99);
     expect(parsed?.fit?.constantTempo).toBe(true);
+    expect(parsed?.fit?.beatStrayMs).toBeUndefined();
+    const strayed = parseBeatAnalysis(
+      songAnalysis({
+        fit: { ...(songAnalysis().fit as object), beatStrayMs: 105.2, beatStrayAtMs: 43500 },
+      }),
+    );
+    expect(strayed?.fit?.beatStrayMs).toBe(105.2);
+    expect(strayed?.fit?.beatStrayAtMs).toBe(43500);
     expect(parsed?.beats).toEqual([0.27, 500.26, 1000.25, 1500.24]);
     expect(parsed?.downbeats).toEqual([1000.25]);
     expect(parsed?.beatInfo[2]).toEqual({ ms: 1000.25, bar: 1, beat: 1, conf: 0.99 });
@@ -80,7 +101,7 @@ describe("parseBeatAnalysis", () => {
       envelope: { hopMs: 21.333, values: [] },
     };
     expect(parseBeatAnalysis(v1)).toBeNull();
-    expect(parseBeatAnalysis(songAnalysis({ version: 3 }))).toBeNull();
+    expect(parseBeatAnalysis(songAnalysis({ version: 4 }))).toBeNull();
     expect(parseBeatAnalysis(null)).toBeNull();
     expect(parseBeatAnalysis([songAnalysis()])).toBeNull();
   });

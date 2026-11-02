@@ -18,6 +18,9 @@ export interface SceneTime {
 }
 
 /** Output format + the world-space frame & safe-area insets a scene lays out against. */
+/** How a frame reads for layout, from `FormatInfo.aspect`: "wide" at 1.2 and up (16:9, 3:2, 5:4), "tall" at 0.85 and below (9:16, 2:3, 4:5, phone), "square" between (1:1). */
+export type FormatShape = "wide" | "square" | "tall";
+
 export interface FormatInfo {
   /** Output pixel width. */
   width: number;
@@ -25,6 +28,8 @@ export interface FormatInfo {
   height: number;
   /** width / height. */
   aspect: number;
+  /** "wide", "square" or "tall", from `aspect`; branch layouts on this so 1:1 gets its own answer. */
+  shape: FormatShape;
   /** Visible world rectangle at the content plane; lay out against `frame.width/height`. */
   frame: { width: number; height: number };
   /** Safe-area insets in WORLD units from each edge (position content inside these). */

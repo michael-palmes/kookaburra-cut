@@ -258,6 +258,15 @@ describe("pageTextRoots", () => {
     height: 1080,
   };
 
+  it("reads every panel a scene draws, a screen layer's beside its overlay chrome", () => {
+    const layerGroup = new Group();
+    const roots = pageTextRoots({
+      ...input,
+      framePanels: [...input.framePanels, { index: 2, group: layerGroup, hasSceneImages: true }],
+    });
+    expect(roots.map((r) => r.root)).toEqual([host, panel, layerGroup, layer]);
+  });
+
   it("reads side A full frame, the panel at the base pose and the persistent layers", () => {
     const roots = pageTextRoots(input);
     expect(roots.map((r) => r.root)).toEqual([host, panel, layer]);

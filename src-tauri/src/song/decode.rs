@@ -9,6 +9,8 @@ use serde_json::Value;
 use super::SAMPLE_RATE;
 
 const READ_CHUNK: usize = 1 << 16;
+/// Two hours of decoded audio. A file can declare any length it likes, so the decode itself stops here rather than fill the Mac's memory.
+const MAX_PCM_BYTES: usize = 2 * 3600 * SAMPLE_RATE as usize * 4;
 
 fn tail(text: &str, max: usize) -> String {
     let text = text.trim();
@@ -55,6 +57,15 @@ pub fn decode_pcm(
     file: &Path,
     cancelled: &dyn Fn() -> bool,
 ) -> Result<Vec<f32>, String> {
+    decode_pcm_within(ffmpeg, file, cancelled, MAX_PCM_BYTES)
+}
+
+fn decode_pcm_within(
+    ffmpeg: &Path,
+    file: &Path,
+    cancelled: &dyn Fn() -> bool,
+    max_bytes: usize,
+) -> Result<Vec<f32>, String> {
     let mut child = crate::tools::sidecar_command(ffmpeg)
         .args(decode_args(file))
         .stdin(Stdio::null())
@@ -72,6 +83,7 @@ pub fn decode_pcm(
     });
     let mut bytes = Vec::new();
     let mut interrupted = false;
+    let mut too_long = false;
     if let Some(mut out) = child.stdout.take() {
         let mut buf = vec![0u8; READ_CHUNK];
         loop {
@@ -82,7 +94,14 @@ pub fn decode_pcm(
             }
             match out.read(&mut buf) {
                 Ok(0) | Err(_) => break,
-                Ok(n) => bytes.extend_from_slice(&buf[..n]),
+                Ok(n) => {
+                    if bytes.len() + n > max_bytes {
+                        too_long = true;
+                        let _ = child.kill();
+                        break;
+                    }
+                    bytes.extend_from_slice(&buf[..n]);
+                }
             }
         }
     }
@@ -90,6 +109,12 @@ pub fn decode_pcm(
     let errors = errors.join().unwrap_or_default();
     if interrupted {
         return Err("interrupted".to_owned());
+    }
+    if too_long {
+        return Err(format!(
+            "{} decodes to more audio than the analyser reads",
+            file.display()
+        ));
     }
     if !status.map(|s| s.success()).unwrap_or(false) {
         let detail = tail(&errors, 400);
@@ -271,6 +296,25 @@ pub fn ffmpeg_version(ffmpeg: &Path) -> Option<String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    #[ignore = "needs the ffmpeg sidecar; run with --ignored"]
+    fn a_decode_that_runs_past_the_limit_stops_with_an_error() {
+        let tools = crate::tools::Tools::beside_exe().expect("tools");
+        let dir = std::env::temp_dir().join(format!("kb-pcm-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("tone.wav");
+        let status = crate::tools::sidecar_command(&tools.ffmpeg)
+            .args(["-v", "error", "-y", "-f", "lavfi", "-i", "sine=duration=2"])
+            .arg(&file)
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let err = decode_pcm_within(&tools.ffmpeg, &file, &|| false, 1024).unwrap_err();
+        assert!(err.contains("more audio"), "{err}");
+        assert!(decode_pcm(&tools.ffmpeg, &file, &|| false).unwrap().len() > 90_000);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn the_decode_keeps_the_path_out_of_any_filter() {

@@ -81,7 +81,13 @@ import {
   SHADER_BACKGROUND_PRESETS,
   SHADER_BACKGROUNDS,
 } from "../toolkit/stage/shaders";
-import { resolveTextAnimation, type TextPresetName } from "../toolkit/text/presets";
+import {
+  resolveTextAnimation,
+  TEXT_PRESET_LINES,
+  type TextPresetName,
+  WORD_STAGGER_SINGLE_LINE,
+} from "../toolkit/text/presets";
+import textImpact from "../toolkit/text/textImpact.json";
 import { KOOKABURRA_STANDARD_ID, presetAspects, railPresets } from "../ui/exportOptions";
 import { CHART_TYPE_LABELS } from "../ui/inspectorOptions";
 import {
@@ -679,11 +685,12 @@ export const TOOLKIT_SUMMARIES: Record<
   AVAILABLE_DEVICE_IDS: { summary: "Device ids this build can render with their own model." },
   AnimatedCounter: {
     summary:
-      "Number counting from `from` to `to` over durationMs; startMs, ease and steps shape it.",
+      "Number counting from `from` to `to` over durationMs; startMs, hitAt, ease, steps, ticks and stepsAt shape it.",
   },
   AnimatedGroup: { summary: "Animates icon + text lockups as one unit with the text presets." },
   AnimatedHeadline: {
-    summary: "The core SDF text primitive: presets, stagger, looks, textKey styling.",
+    summary:
+      "The core SDF text primitive: presets, stagger, looks, depth, fit, hitAt, opacity, textKey styling.",
   },
   BrandLockup: {
     summary: "App icon beside a small title over a hero subtitle, revealed as one unit.",
@@ -794,11 +801,30 @@ export const TOOLKIT_SUMMARIES: Record<
   },
   useBeatGrid: {
     summary:
-      'The authored audio.grid in scene ms, or null: bar(13, 3), at("cue:drop"), position(localMs), beatMs.',
+      'The authored audio.grid in scene ms, or null: at(13, 3), at("cue:drop"), bar(13, 3), position(localMs), beatMs.',
   },
+  useBeatAt: {
+    summary:
+      "useBeatAt()(bar, beat?, sixteenth?): scene ms, or null with one log line when the project has no grid.",
+  },
+  fitFontSize: {
+    summary: "fitFontSize(metrics, fontSize, maxWidth): the size that fits a measured block.",
+  },
+  ScreenLayer: {
+    summary:
+      'Camera-locked layer in frame units with no depth test: order="front" over the finished frame, "back" behind everything 3D.',
+  },
+  Vignette: { summary: "Darkened edges, clear centre; inside a ScreenLayer. opacity, keys." },
+  Scrim: {
+    summary: "Clear to a colour, linear or radial, for text to sit on; inside a ScreenLayer.",
+  },
+  Gradient: { summary: "A frame-filling blend, linear or radial; inside a ScreenLayer." },
   useCues: { summary: "audio.cues as { id: scene-local ms }; {} when there are none." },
   useDepthBand: { summary: "Inside DepthStage: the slot's { name, z, width, height }." },
-  useFormat: { summary: "{ width, height, aspect, frame, safe } in world units at z=0." },
+  useFormat: {
+    summary:
+      '{ width, height, aspect, shape, frame, safe }: frame and safe in world units at z=0, shape "wide", "square" or "tall".',
+  },
   useGroupAnimation: { summary: "Lets a custom child join an AnimatedGroup's alpha and shine." },
   useRigTrack: { summary: "The scene's normalised camera rig track, or null." },
   useSceneChart: { summary: "The resolved sidecar chart block, or null." },
@@ -844,7 +870,7 @@ export const TOOLKIT_SUMMARIES: Record<
   },
   useTextMetrics: {
     summary:
-      "useTextMetrics(textKey, text, opts?): the block an AnimatedHeadline with those props typesets, sidecar overrides included.",
+      "useTextMetrics(textKey, text, opts?): the block an AnimatedHeadline with those props typesets, sidecar overrides included, plus fitFontSize(maxWidth); null until its face has loaded.",
   },
   useSceneCamera: { summary: "The scene camera's pose this frame: { position, lookAt, fov }." },
   frameAtDepth: {
@@ -874,7 +900,7 @@ export const TOOLKIT_SUMMARIES: Record<
   },
   Stamp: {
     summary:
-      "<Stamp at rotateDeg? position rotation scale>: stamps children in at `at` ms with the stampScale pop and an optional rotation settle.",
+      "<Stamp at|hitAt rotateDeg? position rotation scale>: stamps children in at `at` ms (or landing on `hitAt`) with the stampScale pop and an optional rotation settle.",
   },
   DashedRule: {
     summary:
@@ -1100,6 +1126,9 @@ function textMotion(): Entry[] {
       ...(DISTANCE.has(p.preset) ? ["distance"] : []),
       ...(p.hasBuildShift ? ["buildShiftEm"] : []),
     ],
+    lines: TEXT_PRESET_LINES[p.preset],
+    ...(WORD_STAGGER_SINGLE_LINE.has(p.preset) ? { wordStaggerLines: "single" } : {}),
+    impactMs: textImpact.motions[p.preset as keyof typeof textImpact.motions],
   }));
   presets.push({
     id: "static",
@@ -1107,8 +1136,22 @@ function textMotion(): Entry[] {
     summary: "Fully still text, no reveal (the inspector's None).",
     granularity: null,
     params: [],
+    lines: TEXT_PRESET_LINES.static,
+    impactMs: 0,
   });
   return presets;
+}
+
+/** The `Stamp` primitive's pop; the text `stamp` motion lives in `textMotion`. */
+function stamps(): Entry[] {
+  return [
+    {
+      id: "Stamp",
+      label: "Stamp",
+      summary: "The primitive's default pop: 0 to 1.12 over 180 ms, back to 1 over 260 ms.",
+      impactMs: textImpact.stamps.Stamp,
+    },
+  ];
 }
 
 function textDeliveries(): Entry[] {
@@ -1536,6 +1579,7 @@ export function buildAgentCatalog(): Record<string, Json> {
     })),
     eases: eases(),
     textMotion: textMotion(),
+    stamps: stamps(),
     textDeliveries: textDeliveries(),
     textLooks: textLooks(),
     themes: themes(),

@@ -437,9 +437,9 @@ fn is_vfr(r_rate: f64, avg_rate: f64) -> bool {
     r_rate > 0.0 && avg_rate > 0.0 && (r_rate - avg_rate).abs() > 0.5
 }
 
-/// Copy an audio file into the project's `assets/` for use as the project soundtrack; deliberately NOT the media-import pipeline, audio has no poster/scrub cache to build. Returns the assets-relative path for `project.json.audio.file`.
+/// Copy an audio file into the project's `assets/` for use as the project soundtrack; deliberately NOT the media-import pipeline, audio has no poster/scrub cache to build. An mp4 lands as an audio-only `.m4a`. Returns the assets-relative path for `project.json.audio.file`.
 #[tauri::command]
-pub fn import_audio(
+pub async fn import_audio(
     app: AppHandle,
     state: State<'_, workspace::SettingsState>,
     slug: String,
@@ -448,7 +448,8 @@ pub fn import_audio(
     let project = workspace::project_dir_mut(&app, &state, &slug)?;
     let src = std::path::PathBuf::from(&source_path);
     let ext = extension_of(&src);
-    if !workspace::AUDIO_EXTENSIONS.contains(&ext.as_str()) {
+    let from_video = workspace::SOUNDTRACK_VIDEO_EXTENSIONS.contains(&ext.as_str());
+    if !from_video && !workspace::AUDIO_EXTENSIONS.contains(&ext.as_str()) {
         return Err(format!("unsupported audio type .{ext}"));
     }
     if !src.is_absolute() || !src.is_file() {
@@ -461,14 +462,96 @@ pub fn import_audio(
         .and_then(|s| s.to_str())
         .unwrap_or("track")
         .to_string();
+    let ext = if from_video { "m4a" } else { ext.as_str() };
     let mut name = format!("{stem}.{ext}");
     let mut n = 2;
-    while assets.join(&name).exists() {
+    while assets.join(&name).exists() || (from_video && !reserve_extract_temp(&assets.join(&name))?)
+    {
         name = format!("{stem}-{n}.{ext}");
         n += 1;
     }
-    std::fs::copy(&src, assets.join(&name)).map_err(|e| format!("copying audio: {e}"))?;
+    let dest = assets.join(&name);
+    if from_video {
+        extract_soundtrack(&app, &src, &dest).await?;
+    } else {
+        std::fs::copy(&src, &dest).map_err(|e| format!("copying audio: {e}"))?;
+    }
     Ok(format!("assets/{name}"))
+}
+
+fn extract_temp(dest: &Path) -> PathBuf {
+    dest.with_extension("tmp.m4a")
+}
+
+/// Claim `dest`'s temp file; false when another import holds the name, so overlapping imports never share one.
+fn reserve_extract_temp(dest: &Path) -> Result<bool, String> {
+    let claimed = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(extract_temp(dest));
+    match claimed {
+        Ok(_) => Ok(true),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+        Err(e) => Err(format!("saving the audio track: {e}")),
+    }
+}
+
+/// Write a video's first audio track to `dest` through its reserved temp file, so a failed run leaves nothing behind.
+async fn extract_soundtrack(app: &AppHandle, src: &Path, dest: &Path) -> Result<(), String> {
+    let tmp = extract_temp(dest);
+    let result = write_soundtrack_temp(app, src, &tmp).await.and_then(|_| {
+        std::fs::rename(&tmp, dest).map_err(|e| format!("saving the audio track: {e}"))
+    });
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
+}
+
+async fn write_soundtrack_temp(app: &AppHandle, src: &Path, tmp: &Path) -> Result<(), String> {
+    let probe = run_sidecar(app, "ffprobe", probe_args(src), SidecarPriority::Foreground).await?;
+    let probe: serde_json::Value =
+        serde_json::from_str(&probe).map_err(|e| format!("ffprobe json: {e}"))?;
+    let stream = first_audio_stream(&probe).ok_or("this video has no audio track")?;
+    let args = soundtrack_extract_args(src, tmp, stream["codec_name"].as_str().unwrap_or(""));
+    run_sidecar(app, "ffmpeg", args, SidecarPriority::Foreground).await?;
+    Ok(())
+}
+
+/// Audio only, and none of the video's metadata (a phone clip can carry its location). Codecs an mp4 file and WebKit both take copy untouched; anything else becomes AAC so the preview can play it.
+fn soundtrack_extract_args(src: &Path, tmp: &Path, codec: &str) -> Vec<String> {
+    let mut args = media_lane_head();
+    args.extend(
+        [
+            "-i",
+            &src.to_string_lossy(),
+            "-map",
+            "0:a:0",
+            "-vn",
+            "-sn",
+            "-dn",
+            "-map_metadata",
+            "-1",
+            "-map_chapters",
+            "-1",
+        ]
+        .map(String::from),
+    );
+    let encode: &[&str] = match codec {
+        "aac" | "alac" | "mp3" | "opus" => &["-c:a", "copy"],
+        _ => &["-c:a", "aac", "-b:a", "320k"],
+    };
+    args.extend(encode.iter().map(|a| a.to_string()));
+    args.extend(["-movflags", "+faststart", "-f", "mp4"].map(String::from));
+    args.push(tmp.to_string_lossy().into_owned());
+    args
+}
+
+fn first_audio_stream(probe: &serde_json::Value) -> Option<&serde_json::Value> {
+    probe["streams"]
+        .as_array()?
+        .iter()
+        .find(|s| s["codec_type"].as_str() == Some("audio"))
 }
 
 /// Set the project's app icon: the picked image lands as `assets/app-icon.png`, the canonical path every icon reference uses (BrandLockup's default, hand-authored ImageCards). PNG sources byte-copy; other image types convert via the ffmpeg sidecar. Both write a temp file then rename, so a failed convert never truncates the icon.
@@ -558,14 +641,7 @@ pub async fn probe_audio(
     .await?;
     let probe: serde_json::Value =
         serde_json::from_str(&probe).map_err(|e| format!("ffprobe json: {e}"))?;
-    let stream = probe["streams"]
-        .as_array()
-        .and_then(|streams| {
-            streams
-                .iter()
-                .find(|s| s["codec_type"].as_str() == Some("audio"))
-        })
-        .ok_or("no audio stream found")?;
+    let stream = first_audio_stream(&probe).ok_or("no audio stream found")?;
     let duration_s: f64 = probe["format"]["duration"]
         .as_str()
         .and_then(|d| d.parse().ok())
@@ -2653,6 +2729,107 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    fn real_sidecar(name: &str) -> Option<PathBuf> {
+        let bin = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
+            "bin/{name}-{}-apple-darwin",
+            std::env::consts::ARCH
+        ));
+        let out = std::process::Command::new(&bin)
+            .args(["-hide_banner", "-version"])
+            .output()
+            .ok()?;
+        String::from_utf8_lossy(&out.stdout)
+            .contains("version")
+            .then_some(bin)
+    }
+
+    fn decoded_audio(ffmpeg: &Path, file: &Path) -> Vec<u8> {
+        let out = std::process::Command::new(ffmpeg)
+            .args(["-v", "error", "-nostdin", "-i"])
+            .arg(file)
+            .args(["-map", "0:a:0", "-f", "f32le", "-"])
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "decoding {}", file.display());
+        out.stdout
+    }
+
+    /// A planted soundtrack stays refused: only the import takes an mp4.
+    #[test]
+    fn an_mp4_is_a_source_but_never_a_soundtrack() {
+        let dir = scratch("mp4-soundtrack");
+        let clip = dir.join("clip.mp4");
+        std::fs::write(&clip, b"x").unwrap();
+        assert!(check_soundtrack_file(&clip).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn overlapping_extracts_never_share_a_temp_file() {
+        let dir = scratch("mp4-reserve");
+        let dest = dir.join("my.song.m4a");
+        assert!(reserve_extract_temp(&dest).unwrap());
+        assert!(dir.join("my.song.tmp.m4a").is_file());
+        assert!(!reserve_extract_temp(&dest).unwrap());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn only_codecs_the_preview_plays_copy_untouched() {
+        let args = |codec| {
+            soundtrack_extract_args(Path::new("/in.mp4"), Path::new("/out.tmp"), codec).join(" ")
+        };
+        assert!(args("aac").contains("-c:a copy"));
+        assert!(args("ac3").contains("-c:a aac"));
+        assert!(args("").contains("-c:a aac"));
+    }
+
+    /// Against the real sidecar: the track comes out with the same samples, no picture and no metadata; skips on CI's stub.
+    #[test]
+    fn extracting_a_video_keeps_its_samples_and_drops_the_rest() {
+        let (Some(ffmpeg), Some(ffprobe)) = (real_sidecar("ffmpeg"), real_sidecar("ffprobe"))
+        else {
+            eprintln!("skipping: no real sidecar");
+            return;
+        };
+        let dir = scratch("mp4-extract");
+        let clip = dir.join("clip.mp4");
+        let made = std::process::Command::new(&ffmpeg)
+            .args(["-v", "error", "-nostdin", "-y"])
+            .args(["-f", "lavfi", "-i", "color=black:s=64x64:r=30:d=1"])
+            .args(["-f", "lavfi", "-i", "sine=f=440:r=48000:d=1"])
+            .args(["-c:v", "libx264", "-c:a", "aac"])
+            .args(["-metadata", "location=+00.0000+000.0000/"])
+            .arg(&clip)
+            .status()
+            .unwrap();
+        assert!(made.success());
+
+        let tags = |file: &Path| {
+            let probe = std::process::Command::new(&ffprobe)
+                .args(probe_args(file))
+                .output()
+                .unwrap();
+            serde_json::from_slice::<serde_json::Value>(&probe.stdout).unwrap()
+        };
+        assert!(tags(&clip)["format"]["tags"].get("location").is_some());
+
+        let out = dir.join("track.tmp.m4a");
+        let done = std::process::Command::new(&ffmpeg)
+            .args(soundtrack_extract_args(&clip, &out, "aac"))
+            .status()
+            .unwrap();
+        assert!(done.success());
+
+        let probe = tags(&out);
+        let streams = probe["streams"].as_array().unwrap();
+        assert_eq!(streams.len(), 1);
+        assert_eq!(streams[0]["codec_type"], "audio");
+        assert!(probe["format"]["tags"].get("location").is_none());
+        assert!(decoded_audio(&ffmpeg, &clip) == decoded_audio(&ffmpeg, &out));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// A link out of the project is refused by name, a link within it is allowed, and a missing file still resolves so callers can say it is missing.

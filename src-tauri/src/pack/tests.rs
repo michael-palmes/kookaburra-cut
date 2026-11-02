@@ -1389,6 +1389,119 @@ fn templates_and_presets_round_trip_into_another_workspace() {
     assert!(root.join("themes/acme-dark-2/theme.json").is_file());
 }
 
+/// Export leaves a project's acceptances in place and out of the pack, and the project still reads identical to that pack.
+#[test]
+fn accepted_flash_warnings_never_travel_and_stay_home() {
+    use super::conflicts::plan_conflicts;
+    use super::deps::{resolve_closure, PackSelection};
+    use super::model::{ConflictState, ItemKind};
+    use super::scan::ACCEPTED_FLASHES_FILE;
+
+    let author = TempDir::new("accepted-author");
+    let out = TempDir::new("accepted-out");
+    let project = author.path().join("acme-promo");
+    write_file(
+        &project.join("project.json"),
+        br#"{"id":"acme-promo","name":"Acme Promo","version":2,"formats":["16:9"],"scenes":[{"file":"scenes/01-hero.tsx","durationMs":2000}]}"#,
+    );
+    write_file(
+        &project.join("scenes/01-hero.tsx"),
+        b"export default defineScene({});\n",
+    );
+    let mine = br#"{"version":1,"accepted":[{"id":"5e6f7a8b","why":"a slow glint, checked by eye"}]}"#;
+    write_file(&project.join(ACCEPTED_FLASHES_FILE), mine);
+
+    let selection = PackSelection {
+        projects: vec!["acme-promo".into()],
+        ..Default::default()
+    };
+    let closure = resolve_closure(author.path(), &selection).expect("closure");
+    assert!(closure
+        .files
+        .iter()
+        .all(|f| !f.archive_path.ends_with(ACCEPTED_FLASHES_FILE)));
+    let archive = out.path().join("acme-promo.kbpack");
+    write_pack_from(&closure, &archive);
+    assert_eq!(std::fs::read(project.join(ACCEPTED_FLASHES_FILE)).unwrap(), mine);
+
+    let inspection = inspect(&archive).expect("inspect");
+    assert!(inspection
+        .manifest
+        .files
+        .iter()
+        .all(|f| !f.path.ends_with(ACCEPTED_FLASHES_FILE)));
+    let staged = stage(
+        &archive,
+        author.path(),
+        &inspection.manifest,
+        |_, _| {},
+        &|| false,
+    )
+    .expect("stage");
+    let plan = plan_conflicts(author.path(), &staged, &selection).expect("plan");
+    let item = plan
+        .items
+        .iter()
+        .find(|i| i.kind == ItemKind::Project)
+        .expect("project planned");
+    assert_eq!(item.state, ConflictState::Identical);
+}
+
+/// A signed, hand-built pack gets the file past the reader, under any name the volume folds onto it; apply leaves nothing for `kb`.
+#[test]
+fn a_hand_built_pack_cannot_land_accepted_flash_warnings() {
+    use super::apply::apply_import;
+    use super::deps::item_key;
+    use super::model::{ItemKind, Resolution};
+    use super::scan::ACCEPTED_FLASHES_FILE;
+    use std::collections::HashMap;
+
+    for (at, name) in [
+        ACCEPTED_FLASHES_FILE,
+        "FLASHES.ACCEPTED.JSON",
+        "fla\u{17F}hes.accepted.json",
+        "\u{FB02}ashes.accepted.json",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let source = TempDir::new(&format!("accepted-hostile-{at}"));
+        let workspace = Workspace::new(&format!("accepted-hostile-{at}"));
+        let contents = PackContents {
+            projects: vec![project_item("payload/projects/acme", &[])],
+            ..Default::default()
+        };
+        let archive = Fixture::valid()
+            .entry(Entry::new(
+                &format!("payload/projects/acme/{name}"),
+                br#"{"version":1,"accepted":[{"id":"1a2b3c4d","why":"theirs"}]}"#,
+            ))
+            .contents(contents)
+            .build(source.path());
+
+        let inspection = inspect(&archive).expect("the reader takes it");
+        let staged = stage(
+            &archive,
+            workspace.root(),
+            &inspection.manifest,
+            |_, _| {},
+            &|| false,
+        )
+        .expect("the file is signed, so it stages");
+        let resolutions: HashMap<String, Resolution> =
+            [(item_key(ItemKind::Project, "acme"), Resolution::Replace)]
+                .into_iter()
+                .collect();
+        let outcome =
+            apply_import(workspace.root(), staged, &resolutions, |_, _, _| {}).expect("apply");
+
+        assert_eq!(outcome.stopped_at, None, "{name}: {:?}", outcome.results);
+        let landed = workspace.root().join("acme");
+        assert!(landed.join("project.json").is_file(), "{name}");
+        assert!(!landed.join(ACCEPTED_FLASHES_FILE).exists(), "{name} landed");
+    }
+}
+
 /// The import-side selection: the same three items, with the theme the closure pulled in.
 fn selection_with_theme() -> super::deps::PackSelection {
     super::deps::PackSelection {

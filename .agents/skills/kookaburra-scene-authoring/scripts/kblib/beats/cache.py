@@ -1,4 +1,4 @@
-"""The soundtrack's song analysis as the app caches it (`<sha>-v2.json`) and kb copies it (`.kb/song/<sha12>.json`).
+"""The soundtrack's song analysis as the app caches it (`<sha>-v3.json`) and kb copies it (`.kb/song/<sha12>.json`).
 
 The readers scripts/beats.py always had (kb video align uses them through that shim): the analysis, its beats and
 tempo, the timeline slots and the effective key moments, in project and scene-local time.
@@ -14,8 +14,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 APP_CACHE = Path.home() / "Library/Application Support/com.mpalmes.kookaburracut/cache/beats"
 CACHE_DIR = APP_CACHE
-ANALYSIS_VERSION = 2
-SUPPORTED_VERSIONS = (1, 2)
+ANALYSIS_VERSION = 3
+SUPPORTED_VERSIONS = (1, 2, 3)
+FITTED_VERSIONS = (2, 3)
 V1_WARNING = ("beats: this analysis is v1 (unrefined, beats up to ~30 ms off); run ./kb song analyse, or open the project "
               "in an updated Kookaburra Cut, to refresh it")
 MARKER_MATCH_MS = 30
@@ -34,9 +35,10 @@ def read_json(path: Any) -> Any:
 
 
 def load_analysis(digest: str, load_json: Callable[[Any], Any] = read_json, cache_dir: Optional[Any] = None) -> Tuple[Any, Optional[Path]]:
-    """The app's cached analysis for a soundtrack's SHA-256, v2 first (then the forced-DSP v2, then v1): (analysis, path), or (None, None)."""
+    """The app's cached analysis for a soundtrack's SHA-256, newest version first (each before its forced-DSP copy), then v1: (analysis, path), or (None, None)."""
     base = Path(cache_dir) if cache_dir else default_cache_dir()
-    for path in (base / f"{digest}-v{ANALYSIS_VERSION}.json", base / f"{digest}-v{ANALYSIS_VERSION}-dsp.json", base / f"{digest}.json"):
+    named = [base / f"{digest}-v{v}{tail}.json" for v in reversed(FITTED_VERSIONS) for tail in ("", "-dsp")]
+    for path in named + [base / f"{digest}.json"]:
         if path.is_file():
             return load_json(path), path
     return None, None
@@ -57,6 +59,11 @@ def file_digest(path: Path) -> Optional[str]:
 def copy_rel(digest: str) -> str:
     """Where kb song analyse keeps its copy of an analysis: .kb/song/<first 12 hex of the SHA-256>.json."""
     return f".kb/{SONG_DIR}/{digest[:12]}.json"
+
+
+def has_song_map(analysis: Any) -> bool:
+    """Whether an analysis carries the hits, audible end and form (v3 on)."""
+    return isinstance(analysis, dict) and isinstance(analysis.get("hits"), dict) and isinstance(analysis.get("ending"), dict)
 
 
 def project_analysis(root: Path, digest: str) -> Tuple[Optional[Dict[str, Any]], Optional[Path]]:
