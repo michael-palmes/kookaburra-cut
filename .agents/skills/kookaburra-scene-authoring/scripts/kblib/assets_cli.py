@@ -1,4 +1,4 @@
-"""kb assets: list, add (conforming flagged videos through the app), probe, conform, replace, unused, restore, meta."""
+"""kb assets: list, add and add-folder (conforming flagged videos through the app, checking stills), probe, conform, replace, unused, restore, meta."""
 
 from __future__ import annotations
 
@@ -12,6 +12,11 @@ EPILOG = """\
   ./kb assets list                                every file in assets/ and who uses it
   ./kb assets add ~/Desktop/rec.mov               copy in; a VFR, edit-listed or P3 video is conformed
   ./kb assets add ~/Desktop/rec.mov --no-conform  copy it as it is
+  ./kb assets add ~/Desktop/hero.png --name cover --max-size 3840
+                                                  assets/cover.png, its long edge capped at 3840 px
+  ./kb assets add ~/Desktop/logo.svg              rasterised to assets/logo.png (2048 px, or --max-size)
+  ./kb assets add-folder ~/Desktop/launch --dedupe --thumbs 240x160 --dir launch
+                                                  the whole folder, duplicates once, and a sheet to Read
   ./kb assets probe assets/rec.mov [--deep]       size, rate and the conform verdict
   ./kb assets conform assets/rec.mov              conform in place (same name, the original kept)
   ./kb assets conform assets/rec.mov --repoint    into assets/rec.mp4, every scene re-pointed
@@ -22,7 +27,12 @@ EPILOG = """\
 
 Videos conform through the app's media CLI: the original goes to assets/.originals/, the
 constant-rate mezzanine keeps the name scenes reference, and assets/<stem>.timing.json
-records which source frame every frame shows. Provenance lives in assets/_meta.json."""
+records which source frame every frame shows. Provenance lives in assets/_meta.json.
+
+Stills are decoded on the way in, by add and replace alike. A file that isn't what its name says
+lands under its real extension; a colour profile, CMYK pixels or an EXIF turn, which the stage
+ignores, are baked into plain sRGB pixels; a fully transparent or one-colour result is refused
+(--allow-blank)."""
 
 
 def _warn(ctx: Any) -> Any:
@@ -73,7 +83,8 @@ def cmd_add(ctx: Any) -> int:
 
     a = ctx.args
     warn = _warn(ctx)
-    res = assetmod.add(ctx.project, a.file, a.name, a.dir, dry_run=ctx.dry_run, conform=not a.no_conform, opts=ctx.opts, progress=lambda t: emit_err(f"kb: {t}"))
+    res = assetmod.add(ctx.project, a.file, a.name, a.dir, dry_run=ctx.dry_run, conform=not a.no_conform, opts=ctx.opts, progress=lambda t: emit_err(f"kb: {t}"),
+                       max_size=a.max_size, allow_blank=a.allow_blank)
     for text in res.get("warnings") or []:
         warn(text)
     if ctx.json:
@@ -88,13 +99,53 @@ def cmd_add(ctx: Any) -> int:
             emit(f"{res['path']} ({res.get('note') or 'already in assets/'})")
     else:
         emit(res["path"])
-        if res.get("conformed") and res.get("copied"):
+        if res.get("conformed") and res.get("copied") and res.get("original"):
             why = ", ".join((res.get("probe") or {}).get("why") or []) or "flagged"
             emit_err(f"kb: conformed ({why}); the original is kept at {res['original']}")
     if res.get("note"):
         emit_err(f"kb: {res['note']}")
     if not ctx.dry_run and res.get("kind") in ("video", "audio"):
         emit_err(f"kb: ./kb assets probe {res['path']} gives its duration for durationMs")
+    return EXIT_OK
+
+
+def cmd_add_folder(ctx: Any) -> int:
+    from . import asset_folder
+    from . import assets as assetmod
+
+    a = ctx.args
+    res = asset_folder.add_folder(ctx.project, a.folder, dedupe=a.dedupe, thumbs=asset_folder.parse_thumbs(a.thumbs), limit=a.limit, subdir=a.dir, max_size=a.max_size,
+                                  conform=not a.no_conform, allow_blank=a.allow_blank, dry_run=ctx.dry_run, opts=ctx.opts, progress=lambda t: emit_err(f"kb: {t}"), agent=ctx.caller.name)
+    for text in res["warnings"]:
+        emit_err(f"kb: {text}")
+    if not ctx.json:
+        verb = "would add" if ctx.dry_run else "added"
+        for item in res["items"]:
+            state = "" if item["copied"] or ctx.dry_run else "  (already here)"
+            emit(f"{item['path']}  <- {item['file']}{state}")
+        for d in res["duplicates"]:
+            emit(f"duplicate {d['file']}: same bytes as {d['of']}")
+        for s in res["skipped"]:
+            emit(f"skipped {s['file']}: {s['why']}")
+        for r in res["refused"]:
+            emit(f"refused {r['file']}: {r['error']}")
+        landing = sum(1 for w in res["writes"] if w["path"] != assetmod.META_REL) if ctx.dry_run else res["copied"]
+        emit(f"{verb} {landing} of {len(res['items']) + len(res['duplicates']) + len(res['refused'])} media files from {res['folder']}"
+             + (f"; left alone: {res['otherFiles']} other file(s)" if res["otherFiles"] else ""))
+        if res["remaining"]:
+            emit(f"{res['remaining']} more past --limit {a.limit}")
+        thumbs = res.get("thumbs") or {}
+        for sheet in thumbs.get("sheets") or []:
+            emit(f"sheet to Read: {sheet}")
+        if thumbs.get("more"):
+            emit(f"{thumbs['more']} more imported than the sheets show")
+    if res["refused"]:
+        from .util import EXIT_PROBLEMS, KbError
+
+        raise KbError(f"{len(res['refused'])} of the folder's files were refused and the rest landed; fix those and rerun, nothing lands twice", EXIT_PROBLEMS, kind="invalid",
+                      hint="./kb assets add-folder prints each one with its reason", data=res)
+    if ctx.json:
+        ctx.out(res)
     return EXIT_OK
 
 
@@ -108,6 +159,11 @@ def cmd_probe(ctx: Any) -> int:
     if ctx.json:
         ctx.out(info)
         return EXIT_OK
+    image = info.get("image") or {}
+    if image.get("blank"):
+        emit_err(f"kb: warning: {info['path']} draws nothing useful ({image['blank']})")
+    if image.get("conform"):
+        emit_err(f"kb: warning: {info['path']} will draw wrong in a frame ({', '.join(image['conform'])}); add its source again so kb converts it")
     for key, value in info.items():
         if key == "decode":
             continue
@@ -160,7 +216,7 @@ def cmd_replace(ctx: Any) -> int:
     if a.as_new and a.keep_old is not None:
         raise KbError("--keep-old has no effect with --as-new (the old file stays where it is)", EXIT_ENV, kind="usage")
     warn = _warn(ctx)
-    res = asset_ops.replace_asset(ctx.project, a.name, a.file, keep_old=a.keep_old or "archive", as_new=a.as_new, opts=ctx.opts, warn=warn)
+    res = asset_ops.replace_asset(ctx.project, a.name, a.file, keep_old=a.keep_old or "archive", as_new=a.as_new, opts=ctx.opts, warn=warn, allow_blank=a.allow_blank)
     res["warnings"] = list(warn.sink)
     if ctx.json:
         ctx.out(res)
@@ -173,6 +229,8 @@ def cmd_replace(ctx: Any) -> int:
         _writes(res)
         return EXIT_OK
     emit(res["path"])
+    if res.get("note"):
+        emit_err(f"kb: {res['note']}")
     if res.get("replaced"):
         for r in res.get("rewrites") or []:
             emit_err(f"kb: re-pointed {r['count']} reference(s) in {r['file']}")
@@ -270,8 +328,8 @@ def register(sub: Any, common: argparse.ArgumentParser, Formatter: Any) -> None:
     structural.add_argument("--wait", type=float, nargs="?", const=600.0, default=None, metavar="SECONDS",
                             help="wait for another kb write (default 10 s) and, where it matters, for the app's export")
     writes = [common, structural]
-    s = sub.add_parser("assets", help="media in assets/: list, add (conforming videos), probe, conform, replace, unused, restore, meta",
-                       description="media in assets/: list, add, probe, conform, replace, unused, restore and provenance",
+    s = sub.add_parser("assets", help="media in assets/: list, add, add-folder, probe, conform, replace, unused, restore, meta",
+                       description="media in assets/: list, add, add-folder, probe, conform, replace, unused, restore and provenance",
                        epilog=EPILOG, formatter_class=Formatter, parents=[common])
     asub = s.add_subparsers(dest="op", metavar="OP")
     asub.required = True
@@ -284,12 +342,31 @@ def register(sub: Any, common: argparse.ArgumentParser, Formatter: Any) -> None:
     y = op("add", "copy a file into assets/ (never overwrites; a flagged video is conformed; prints the path to use)", writes,
            epilog="A video the app's probe flags (VFR, an edit list, P3 colour, a decoder disagreement) lands as\n"
            "assets/<stem>.mp4 with its original in assets/.originals/ and a timing record. HDR and 10-bit\n"
-           "videos are copied as they are. Without the app the file is copied and kb says it wasn't checked.")
+           "videos are copied as they are. Without the app the file is copied and kb says it wasn't checked.\n"
+           "A clip the static probe passes is decoded by both decoders before kb skips its conform.\n"
+           "A still lands under its real extension, in plain sRGB and upright, and never blank; an SVG is\n"
+           "stripped of anything that reaches outside the file and rasterised to a PNG.")
     y.add_argument("file", metavar="FILE")
-    y.add_argument("--name", help="file name inside assets/")
+    y.add_argument("--name", help="file name inside assets/; the source's extension is kept")
     y.add_argument("--dir", help="subfolder of assets/")
-    y.add_argument("--no-conform", action="store_true", help="copy a video as it is, even when the probe flags it")
+    y.add_argument("--no-conform", action="store_true", help="copy a video or still as it is, even when the probe flags it")
+    y.add_argument("--max-size", type=int, metavar="N", help="cap an image's long edge at N px (an SVG rasterises to exactly N; default 2048)")
+    y.add_argument("--allow-blank", action="store_true", help="take a fully transparent or one-colour image, which is otherwise refused")
     y.set_defaults(fn=cmd_add)
+    y = op("add-folder", "copy a whole folder of media into assets/, keeping its shape under kebab-case names", writes,
+           epilog="Every file gets what kb assets add gives it, and one file's trouble never stops the rest; rerun\n"
+           "after fixing it, since nothing lands twice. Links, hidden files and other file types are passed\n"
+           "over. Reads outside the workspace are announced, and credentials are refused. Past 500 files kb\n"
+           "stops and asks for --limit (2000 at most).")
+    y.add_argument("folder", metavar="DIR")
+    y.add_argument("--dedupe", action="store_true", help="the same bytes land once: in the folder, in assets/, or imported before")
+    y.add_argument("--thumbs", metavar="WxH", help="write contact sheets of what landed to .kb/thumbs/, each picture fitted in WxH, and print their paths")
+    y.add_argument("--limit", type=int, metavar="N", help="take the first N files in name order")
+    y.add_argument("--dir", help="subfolder of assets/ to mirror the folder under")
+    y.add_argument("--no-conform", action="store_true", help="copy videos and stills as they are")
+    y.add_argument("--max-size", type=int, metavar="N", help="cap each image's long edge at N px (SVGs rasterise to exactly N; default 2048)")
+    y.add_argument("--allow-blank", action="store_true", help="take fully transparent or one-colour images")
+    y.set_defaults(fn=cmd_add_folder)
     y = op("probe", "duration, size, fps and codecs; for a video the conform verdict (ok, suspect, ffmpeg-misdecodes)", [common],
            epilog="The container's edit list and sample tables are read without the app; with the app (or --deep)\n"
            "AVFoundation's view is added. --deep also decodes the video and compares the two decoders.")
@@ -305,11 +382,15 @@ def register(sub: Any, common: argparse.ArgumentParser, Formatter: Any) -> None:
     y.set_defaults(fn=cmd_conform)
     y = op("replace", "new bytes under the same name (the old file to .kb/archive/), or --as-new beside it", writes,
            epilog="Refuses another extension, an editor render (*-edited.mp4) and a running export of a project\n"
-           "using it (unless --wait). Follow-media scene lengths re-sync and the running app refreshes.")
+           "using it (unless --wait). Follow-media scene lengths re-sync and the running app refreshes.\n"
+           "A still is held to what kb assets add takes: never unreadable or blank, baked into plain sRGB,\n"
+           "upright pixels. One that has to change format (a WebP with a colour profile, a JPEG named .png)\n"
+           "keeps its type only with --as-new, which lands it under the right extension.")
     y.add_argument("name", metavar="NAME", help="the asset to replace (assets/... or a name in assets/)")
     y.add_argument("file", metavar="FILE", help="the new file")
     y.add_argument("--keep-old", choices=["archive", "trash", "none"], default=None, help="where the old file goes (default archive: .kb/archive/)")
     y.add_argument("--as-new", action="store_true", help="keep both: copy FILE in under a new name and re-point the literals")
+    y.add_argument("--allow-blank", action="store_true", help="take a fully transparent or one-colour image, which is otherwise refused")
     y.set_defaults(fn=cmd_replace)
     y = op("unused", "files nothing uses, by the app's in-use rule (samples, timing records, patterns and themes kept)", writes,
            epilog="--archive moves them to .kb/archive/<id>/ (or DIR/<id>/, outside assets/); restore brings them back.")

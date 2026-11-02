@@ -692,13 +692,17 @@ export function EditorApp() {
       if (!files || files.length === 0) return;
       e.preventDefault();
       void (async () => {
-        try {
-          for (const file of Array.from(files)) {
-            await importMediaBytes(slug, file.name, new Uint8Array(await file.arrayBuffer()));
+        const said: string[] = [];
+        for (const file of Array.from(files)) {
+          try {
+            const bytes = new Uint8Array(await file.arrayBuffer());
+            const report = await importMediaBytes(slug, file.name, bytes);
+            said.push(...report.notes, ...report.refused);
+          } catch (err) {
+            said.push(`${file.name}: ${String(err)}`);
           }
-        } catch (err) {
-          setDropError(`Import failed: ${String(err)}`);
         }
+        if (said.length > 0) setDropError(said.join(". "));
       })();
     };
     window.addEventListener("dragover", onDragOver);
