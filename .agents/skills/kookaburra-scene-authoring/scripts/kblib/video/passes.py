@@ -13,6 +13,7 @@ import threading
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from ..media_input import input_args
 from ..util import EXIT_ENV, EXIT_PROBLEMS, KbError, atomic_write_text
 
 ANALYSIS_VERSION = 1
@@ -148,7 +149,7 @@ def parse_probe(data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def probe(tools: Tools, path: Path) -> Dict[str, Any]:
-    proc = _run([tools.ffprobe, "-v", "error", "-print_format", "json", "-show_streams", "-show_format", str(path)], 60)
+    proc = _run([tools.ffprobe, "-v", "error", *input_args(path), "-print_format", "json", "-show_streams", "-show_format", str(path)], 60)
     try:
         data = json.loads(proc.stdout or "{}")
     except ValueError:
@@ -183,7 +184,7 @@ def packet_gaps(pts_ms: List[float], duration_ms: float, min_gap_ms: float = STA
 
 
 def packets(tools: Tools, path: Path) -> List[float]:
-    proc = _run([tools.ffprobe, "-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts_time,flags",
+    proc = _run([tools.ffprobe, "-v", "error", *input_args(path), "-select_streams", "v:0", "-show_entries", "packet=pts_time,flags",
                  "-of", "csv=p=0", str(path)], 300)
     return parse_packets(proc.stdout)
 
@@ -308,7 +309,7 @@ def collect(info: Dict[str, Any], pts_ms: List[float], logs: Dict[str, List[Dict
 
 
 def decode(tools: Tools, path: Path, scaled: Tuple[int, int], timeout_s: float = DECODE_TIMEOUT_S) -> Dict[str, List[Dict[str, Any]]]:
-    args = [tools.ffmpeg, "-hide_banner", "-nostdin", "-nostats", "-v", "repeat+info", "-i", str(path),
+    args = [tools.ffmpeg, "-hide_banner", "-nostdin", "-nostats", "-v", "repeat+info", *input_args(path), "-i", str(path),
             "-filter_complex", decode_graph(*scaled), "-map", "[ao]", "-f", "null", "-"]
     try:
         proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, errors="replace")
@@ -487,7 +488,7 @@ def decode_profile(tools: Tools, path: Path, small: Tuple[int, int], work: Path,
                    timeout_s: float = DECODE_TIMEOUT_S) -> Tuple[List[Tuple[Optional[float], Optional[float]]], bytes, bytes]:
     """One full-rate decode to gray small frames and row profiles (two raw files in work), timed by showinfo."""
     small_raw, rows_raw = work / "small.raw", work / "rows.raw"
-    args = [tools.ffmpeg, "-hide_banner", "-nostdin", "-nostats", "-v", "info", "-i", str(path), "-filter_complex", profile_graph(*small),
+    args = [tools.ffmpeg, "-hide_banner", "-nostdin", "-nostats", "-v", "info", *input_args(path), "-i", str(path), "-filter_complex", profile_graph(*small),
             "-map", "[s]", "-fps_mode", "passthrough", "-f", "rawvideo", "-y", str(small_raw),
             "-map", "[p]", "-fps_mode", "passthrough", "-f", "rawvideo", "-y", str(rows_raw)]
     try:

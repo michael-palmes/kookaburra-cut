@@ -660,6 +660,7 @@ so a launch film can be planned bar by bar against it. Code: `scripts/kblib/refe
   which read other files), requires a declared duration and allow-listed codecs, and caps it
   at 16 GB, 30 minutes and 8192 px a side. Anything odd is exit 1 `invalid`, before ffmpeg or
   the app decode a byte. `kb song analyse --file` and `kb song hits --file` take the same path.
+  Every other lane that opens a file takes `media_input.input_args`, and `test_media_input.py` fails on one that skips it.
   A file can lie about its length, so the decodes hold the limit too: the frame pass refuses a
   film 10 s past what it declared, and the analyser's PCM stops at two hours. Every decode maps
   the stream `facts` checked (`video.index`), never `0:v:0`, which can be an attached picture.

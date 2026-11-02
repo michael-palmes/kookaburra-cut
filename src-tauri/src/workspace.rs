@@ -254,8 +254,7 @@ fn update_settings_at<T>(
     if let Some(dir) = path.parent() {
         crate::privacy::private_dir(dir).map_err(|e| e.to_string())?;
     }
-    crate::scene_doc::atomic_write_text(path, &text)?;
-    crate::privacy::private_file(path).map_err(|e| e.to_string())?;
+    crate::privacy::atomic_write_private(path, &text).map_err(|e| e.to_string())?;
     *guard = Some(settings);
     Ok(out)
 }
