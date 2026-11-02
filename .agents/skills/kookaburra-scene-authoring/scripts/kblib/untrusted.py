@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from . import reach
+from .media_input import DEMUXERS, INPUT_ARGS
 from .util import EXIT_ENV, EXIT_PROBLEMS, KbError, clean_text
 from .video.passes import Tools, find_tools
 
@@ -17,14 +18,9 @@ MAX_DURATION_MS = 30 * 60 * 1000
 MAX_EDGE = 8192
 PROBE_TIMEOUT_S = 60
 
-# ffmpeg's demuxer names. Never a playlist or concat demuxer, which read other files on the disk.
-DEMUXERS = ("mov", "matroska", "avi", "mpegts", "mp3", "wav", "aiff", "flac", "ogg", "aac", "caf")
 VIDEO_CODECS = ("h264", "hevc", "prores", "av1", "vp8", "vp9", "mpeg4", "mpeg2video", "mjpeg", "dnxhd")
 AUDIO_CODECS = ("aac", "alac", "mp3", "flac", "opus", "vorbis", "ac3", "eac3", "pcm_s16le", "pcm_s16be", "pcm_s24le",
                 "pcm_s24be", "pcm_s32le", "pcm_s32be", "pcm_f32le", "pcm_f32be", "pcm_f64le")
-
-# Every ffmpeg or ffprobe that opens an untrusted file goes through these, before its -i.
-INPUT_ARGS = ["-protocol_whitelist", "file,pipe", "-format_whitelist", ",".join(DEMUXERS)]
 
 
 def invalid(message: str, hint: Optional[str] = None) -> KbError:

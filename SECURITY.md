@@ -78,8 +78,9 @@ account; the app bounds what it is given, not what it does.
 ## What leaves the Mac
 
 Nothing leaves the Mac unless a person starts it. The app window's content
-security policy (`src-tauri/tauri.conf.json`, `security.csp`) allows
-`connect-src` only to itself, `blob:`, `ipc:` and `asset:`; no Rust code links
+security policy (`src-tauri/tauri.conf.json`, `security.csp`), which the stage
+worker inherits, allows `connect-src` only to itself, `blob:`, `data:`, `ipc:`
+and `asset:`; no Rust code links
 an HTTP client of its own (`src-tauri/Cargo.toml`: reqwest arrives only through
 Tauri and the updater plugin); the bridge is a file queue, not a socket
 (`src-tauri/src/bridge.rs`); the release ffmpeg is built `--disable-network`

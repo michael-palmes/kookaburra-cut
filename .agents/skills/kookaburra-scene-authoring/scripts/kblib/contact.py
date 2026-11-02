@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from . import imagefile
-from .conform import UNTRUSTED_INPUT
+from .media_input import input_args
 from .realdir import real_dir
 from .video import labels
 
@@ -61,7 +61,7 @@ def video_frame(ffmpeg: Optional[str], src: Path, out: Path, box: Tuple[int, int
     if not ffmpeg:
         return False
     vf = f"thumbnail=30,scale=w={box[0]}:h={box[1]}:force_original_aspect_ratio=decrease"
-    argv = [ffmpeg, "-hide_banner", "-nostdin", "-loglevel", "error", *UNTRUSTED_INPUT, "-i", str(src), "-map", "0:v:0", "-vf", vf, "-frames:v", "1", "-y", str(out)]
+    argv = [ffmpeg, "-hide_banner", "-nostdin", "-loglevel", "error", *input_args(src), "-i", str(src), "-map", "0:v:0", "-vf", vf, "-frames:v", "1", "-y", str(out)]
     try:
         return subprocess.run(argv, capture_output=True, timeout=VIDEO_TIMEOUT_S, stdin=subprocess.DEVNULL).returncode == 0 and out.is_file()
     except (OSError, subprocess.TimeoutExpired):

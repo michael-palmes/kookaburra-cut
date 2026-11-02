@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from ..media_input import input_args
 from ..project import Project
 from ..util import EXIT_ENV, KbError
 
@@ -128,7 +129,7 @@ def raw_frames(ffmpeg: str, path: Path, frames: Sequence[int], graph_tail: str, 
     if not order:
         return {}
     graph = f"[0:v]select='{select_expr(order)}',format=rgb24[sel];{graph_tail}"
-    args = [ffmpeg, "-hide_banner", "-nostdin", "-v", "error", "-i", str(path), "-filter_complex", graph, "-map", "[out]",
+    args = [ffmpeg, "-hide_banner", "-nostdin", "-v", "error", *input_args(path), "-i", str(path), "-filter_complex", graph, "-map", "[out]",
             "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
     try:
         proc = subprocess.run(args, capture_output=True, timeout=DECODE_TIMEOUT_S)
