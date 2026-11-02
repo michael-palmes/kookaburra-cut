@@ -184,15 +184,21 @@ hash, so a person never reads code the author described but did not pack, or
 packed under a different hash than they signed.
 
 Agent configuration never lands. `.claude/**` entries (older packs shipped
-`settings.json`, which carries hooks and permission rules) are dropped at
-staging, listed as a note on the summary, and the app stamps its own settings
-when the project opens (`docs/agent-kit.md`, "Stamping"). A project, template
-or preset's `CLAUDE.md` travels, since authors write real notes there, but
-Claude Code would read it as instructions, so apply swaps it for the app's
-default (named after the project) and saves the author's text as `NOTES.md`
-(appended under a heading when the pack also carries one); a file that still
-matches one of the app's own defaults is replaced quietly. The summary shows
-each saved text under "The pack's author left notes for Claude"
+`settings.json`, which carries hooks and permission rules) and hidden files
+inside an item (`.mcp.json`) are dropped at staging, listed as a note on the
+summary, and the app stamps its own settings when the project opens
+(`docs/agent-kit.md`, "Stamping"). A `CLAUDE.md` travels, since authors write
+real notes there, but Claude Code would read it as instructions. So in every
+landing project, template, preset and brand, apply removes each `CLAUDE.md`,
+`CLAUDE.local.md` and `AGENTS.md` at any depth, found by path so the volume
+decides what reads as one (APFS folds `claude.md` onto it). The author's text
+goes to the item's `NOTES.md` (under a heading naming the file, when it is not
+the only text there), and bytes that are not UTF-8 or will not read count as the
+author's. A folder under one of those names goes with a line saying so. A
+project-shaped item's root `CLAUDE.md` becomes the app's default (named after
+the project, flattened to one line); a file that still matches one of the app's
+own defaults goes quietly, and one that will not delete stops the import. The
+summary shows each saved text under "The pack's author left notes for Claude"
 (`ImportOutcome.agentNotes`, the first 4 000 characters), so the person sees
 what the author wanted the agent told and moves what they agree with into
 `CLAUDE.md` themselves. The stamped RULES.md tells the agent `NOTES.md` is
@@ -252,9 +258,11 @@ test per item in `pack::tests`. Limits live in `pack::limits`.
    create a symlink. This is the CVE-2025-29787 shape: entry A a symlink, entry
    B underneath it.
 7. Reject an entry not in `files`, and a `files` entry with no zip entry.
-8. Per-subtree extension allowlist. No dotted directory is accepted: `.claude/`
-   entries are dropped before validation and reported (`paths::is_agent_config`,
-   `StagedPack::dropped`), `.git/` and the rest are refused.
+8. Per-subtree extension allowlist. No dotted directory or hidden file is
+   accepted: `.claude/` entries and hidden files inside an item are dropped before
+   validation and reported (`paths::is_dropped_entry`, `StagedPack::dropped`),
+   `.git/` and the rest are refused, as is a hidden file a scene list or `contents`
+   names and any malformed path.
 9. Skip `__MACOSX/`, `.DS_Store`, `._*` rather than refusing.
 10. Anything read from the pack before staging (a scene source for the code
     viewer, a scene sidecar for the terminal and Website review) goes through
@@ -278,8 +286,9 @@ test per item in `pack::tests`. Limits live in `pack::limits`.
     matching the name: the volume decides what reads as that file (APFS folds
     `FLASHES.ACCEPTED.JSON` and `ﬂashes.accepted.json` onto it). One that will
     not delete stops the import.
-17. Force `0644` on files and `0755` on directories, whatever the archive said:
-    imported items are the user's documents, unlike the app's own caches.
+17. Force `0644` on files and `0755` on every directory below the staging root,
+    whatever the archive said or the umask: imported items are the user's
+    documents, unlike the app's own caches.
 
 An `object.json` `glb` or `thumbnail` is validated like an asset rel on both
 sides (`objects::validate_object_rel`, `isObjectRel`): relative, at most one
@@ -320,6 +329,34 @@ the `brand` key the same way, and a brand in the import follows a kept-both them
 or gradient in its `themes`, `defaultTheme` and `gradients`. A kept-both project,
 template or preset also re-stamps its own `project.json` `id`. Anything not in the
 import is never touched.
+
+A keep-both suffix also passes over every slug the pack names for that kind
+(`conflicts::pack_slugs`), on the conflicts screen and at apply alike: the pack's
+`foo` taking the `foo-2` the same pack fills would back one out of the way and point
+references at the wrong item.
+
+Scene code follows too (`rewrite_scene_sources`), because a scene places an object
+with `<StagedObject objectId="ws:foo" />` and would otherwise render the
+recipient's `foo`. Every `scenes/**/*.tsx` of each landing project, template and
+preset is read as bytes, in staging, after the checklist has verified it, and only
+when a kept-both object, theme or brand moved. The token grammar is `scan_source`'s
+(`deps::ws_tokens`), and code is never parsed or run:
+
+- **Rewritten:** a token that exactly fills its matching `"`, `'` or `` ` `` quotes,
+  whose opening quote is not escaped. One pass, so a new slug is never renamed again.
+  Every other byte stays, so a scene that is not UTF-8 is safe.
+- **Left alone:** a longer id (`ws:foo-gold`), a word ending in `ws` (`aws:foo`),
+  and a slug in another case.
+- **Left alone and named on the summary:** a moved slug anywhere that is not a whole
+  literal (in a longer string, in a comment); a slug that landed in two places, such
+  as a moved object beside a theme that stayed, since scene code gives no kind; and
+  an id built in code (`` `ws:${name}` ``, `"ws:" + name`).
+
+A scene that hides the prefix (`"w" + "s:foo"`) is out of reach, like any other
+untrusted code, and the F-001 gate still applies. The code viewer shows what was
+packed, so it can differ from what lands by these literals. As with a rewritten
+sidecar, the copy no longer hashes equal to its pack and re-import reads as a
+difference. An import that renames nothing leaves scene bytes untouched.
 
 ## Apply order
 
@@ -362,10 +399,19 @@ for either, because a template or preset carries only what it was saved with.
 Excluded, because it is a person's decision and not the film's:
 `flashes.accepted.json` ("Pack trust is not code trust").
 
-Included despite looking generated: `CLAUDE.md`, because authors write notes
-there; import swaps it for the app's default and keeps the text as `NOTES.md`
-("Pack trust is not code trust"). `.claude/settings.json` is app-owned and
-never travels.
+Excluded, because it names what a person imported: `assets/_meta.json`
+(provenance: `origin.sourceName`, and `origin.from` under `.originals`). A
+recipient has no record for those assets, the same as an older project.
+
+Left out unless ticked, because a person's notes may hold anything: an edited
+`CLAUDE.md`, and any `CLAUDE.local.md`, `AGENTS.md` or `NOTES.md`, at any depth
+(`scan::is_agent_note`). The export screen lists them per item with a tick, off by
+default (`PackSelection::include_agent_notes`). An unedited default `CLAUDE.md`
+stays out silently, and a brand's notes stay home with a review warning. None of
+them count towards `contentHash`, so a project reads `identical` to its own pack
+either way. A pack from an older app hashed them, so re-importing one may read as a
+difference. Import still swaps any that arrive ("Pack trust is not code trust").
+`.claude/settings.json` is app-owned and never travels.
 
 Reviewed rather than dropped: unreferenced assets and `*-edited.mp4` flattened
 renders appear in the picker with their size and a one-click drop. Nothing is

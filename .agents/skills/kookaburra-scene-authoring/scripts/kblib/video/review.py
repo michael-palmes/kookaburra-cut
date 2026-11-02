@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from . import cleanup as cl
 from . import sheetlayout as sl
+from ..media_input import input_args
 from ..util import EXIT_ENV, KbError
 
 FAST_AFTER_MS = 8000.0
@@ -262,7 +263,7 @@ def extract_slots(ffmpeg: str, src: Path, fps: float, slots: Sequence[int], out_
             head += ["-noaccurate_seek", "-ss", f"{max(0.0, t0 - SEEK_MARGIN_S):.3f}", "-copyts", "-start_at_zero"]
         vf = ",".join([f"fps={fps_arg(fps)}:start_time=0", f"select='{select_expr(group)}'"] + list(vf_tail))
         pattern = out_dir / f"{stem}-{group[0]}-%03d.png"
-        _run(head + ["-i", str(src), "-vf", vf, "-fps_mode", "passthrough", "-frames:v", str(len(group)), str(pattern)])
+        _run(head + [*input_args(src), "-i", str(src), "-vf", vf, "-fps_mode", "passthrough", "-frames:v", str(len(group)), str(pattern)])
         for i, n in enumerate(group, 1):
             path = out_dir / f"{stem}-{group[0]}-{i:03d}.png"
             if path.is_file():
@@ -279,7 +280,7 @@ def extract_frames(ffmpeg: str, src: Path, frames: Sequence[int], out_dir: Path,
     order = sorted(set(frames))
     vf = ",".join([f"select='{select_expr(order)}'"] + list(vf_tail))
     pattern = out_dir / f"{stem}-%03d.png"
-    _run([ffmpeg, "-v", "error", "-nostdin", "-y", "-i", str(src), "-vf", vf, "-fps_mode", "passthrough",
+    _run([ffmpeg, "-v", "error", "-nostdin", "-y", *input_args(src), "-i", str(src), "-vf", vf, "-fps_mode", "passthrough",
           "-frames:v", str(len(order)), str(pattern)])
     out = {}
     for i, k in enumerate(order, 1):
@@ -306,7 +307,7 @@ def finish(ffmpeg: str, png: Path, out: Path, *, crop: Optional[Tuple[int, int, 
     f.append(f"scale={W}:{H}:flags=lanczos,setsar=1")
     f += decorate_filters(W, H, grid=grid, boxes=shown)
     out.parent.mkdir(parents=True, exist_ok=True)
-    _run([ffmpeg, "-v", "error", "-nostdin", "-y", "-i", str(png), "-vf", ",".join(f), "-frames:v", "1", str(out)])
+    _run([ffmpeg, "-v", "error", "-nostdin", "-y", *input_args(png), "-i", str(png), "-vf", ",".join(f), "-frames:v", "1", str(out)])
     return out
 
 
@@ -316,7 +317,7 @@ def compose_sheet(ffmpeg: str, cells: Sequence[Dict[str, Any]], out: Path, layou
     args = [ffmpeg, "-v", "error", "-nostdin", "-y"]
     legs = []
     for i, cell in enumerate(cells):
-        args += ["-i", str(cell["png"])]
+        args += [*input_args(cell["png"]), "-i", str(cell["png"])]
         f = []
         if cell.get("crop"):
             x, y, w, h = cell["crop"]
@@ -340,7 +341,7 @@ def compose_sheet(ffmpeg: str, cells: Sequence[Dict[str, Any]], out: Path, layou
 def seam_diff(ffmpeg: str, a: Path, b: Path) -> float:
     """Mean absolute luma difference between two frames, percent of full scale."""
     graph = "[0:v]format=gray,scale=320:-2[a];[1:v]format=gray,scale=320:-2[b];[a][b]blend=all_mode=difference,signalstats,metadata=mode=print"
-    proc = _run([ffmpeg, "-hide_banner", "-nostdin", "-v", "repeat+info", "-i", str(a), "-i", str(b), "-filter_complex", graph, "-f", "null", "-"])
+    proc = _run([ffmpeg, "-hide_banner", "-nostdin", "-v", "repeat+info", *input_args(a), "-i", str(a), *input_args(b), "-i", str(b), "-filter_complex", graph, "-f", "null", "-"])
     m = re.search(r"lavfi\.signalstats\.YAVG=([0-9.]+)", proc.stderr)
     return round(float(m.group(1)) / 255.0 * 100.0, 4) if m else float("nan")
 

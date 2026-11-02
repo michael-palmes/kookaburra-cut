@@ -8,7 +8,7 @@ import shutil
 import types
 from typing import List
 
-from .helpers import HOSTILE_KB_FILES, HOSTILE_KB_FOLDERS, KbTestCase, git_init, make_project, plant_link, tree_bytes
+from .helpers import HOSTILE_KB_FILES, HOSTILE_KB_FOLDERS, KbTestCase, git_init, make_project, plant_link, png_bytes, tree_bytes
 
 
 class HostileFolder(KbTestCase):
@@ -90,7 +90,7 @@ class HostileFolder(KbTestCase):
         self.assertFalse((self.victim / "made-by-kb").exists())
 
     def test_every_scratch_root_refuses_before_a_prune_can_delete(self) -> None:
-        from kblib import capture, verify
+        from kblib import capture, contact, verify
         from kblib.project import Project
         from kblib.util import KbError
 
@@ -104,6 +104,22 @@ class HostileFolder(KbTestCase):
         self.link_folder(".kb/verify")
         with self.assertRaises(KbError):
             verify.keep_draft(project, str(self.project / "project.json"), verify.drafts_root(project) / "held-1")
+        self.untouched()
+
+        self.link_folder(".kb/thumbs")
+        with self.assertRaises(KbError) as caught:
+            contact.new_folder(project, "sheet")
+        self.assertEqual(caught.exception.kind, "not-a-folder")
+        self.untouched()
+
+    def test_thumbs_refuse_before_a_folder_import_copies_anything(self) -> None:
+        self.link_folder(".kb/thumbs")
+        source = self.tmp / "kit"
+        source.mkdir()
+        (source / "mark.png").write_bytes(png_bytes(4, 4))
+        before = sorted(p.name for p in (self.project / "assets").iterdir())
+        self.refused(["assets", "add-folder", str(source), "--thumbs", "64x48"], ".kb/thumbs")
+        self.assertEqual(sorted(p.name for p in (self.project / "assets").iterdir()), before)
         self.untouched()
 
     def test_every_listed_folder_refuses_through_the_write_path(self) -> None:

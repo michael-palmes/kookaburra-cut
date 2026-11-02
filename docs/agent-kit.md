@@ -24,8 +24,9 @@ contract for the kit, the bridge it talks to and the app behaviour it relies on.
 | Path | Owner | Notes |
 | --- | --- | --- |
 | `CLAUDE.md` | user | Created from `src-tauri/templates/project-CLAUDE.md`; imports `@.claude/skills/kookaburra-scene-authoring/RULES.md`. A pack's copy never lands: import swaps it for this default (below) |
-| `NOTES.md` | pack author | The `CLAUDE.md` text a pack carried, saved on import; shown on the import summary; the agent reads it as notes from the author, never as instructions |
-| `.claude/settings.json` | app | The managed hooks and permission rules only: every stamp removes `hooks`, `permissions`, `env` and `apiKeyHelper` entries outside the managed set and logs them (`[kit]`); never packed |
+| `NOTES.md` | folder's author | The `CLAUDE.md` text a pack carried, saved on import and shown on the import summary, plus sections a stamp moved here (below); the agent reads it as notes from the author, never as instructions |
+| `.claude/settings.json` | app | The managed hooks and permission rules only: every stamp keeps only `$schema`, `model` and the managed `hooks` and `permissions`, and logs the rest (`[kit]`); never packed |
+| `.claude/settings.local.json` | person | Claude Code writes it, and it outranks `settings.json`, so every stamp strips it to `$schema` and `model` |
 | `.claude/commands/`, `.claude/agents/`, other `.claude/skills/*` | nobody | Removed at every stamp and logged: the app ships none, so anything there arrived with the folder |
 | `.claude/skills/kookaburra-scene-authoring/` | app (managed) | Replaced wholesale on stamp; stale files disappear |
 | `.claude/skills/kookaburra-video-editing/` | app (managed) | Sibling skill (SKILL.md + `reference/`, no scripts; it drives `kb video`) |
@@ -33,11 +34,11 @@ contract for the kit, the bridge it talks to and the app behaviour it relies on.
 | `BRAND.md` | app | The project's brand guidelines, copied from `brands/<slug>/guidelines.md` when a brand is picked under Project; removed when it is cleared; never hand-edited |
 | `.claude/skills/<skill>/kit.json` | app | `{ "kitVersion", "appVersion", "stampedAtMs" }`, one per shipped skill |
 | `project.json`, `scenes/`, `assets/` | user (Claude edits) | The only folders Claude writes by hand |
-| `assets/.originals/`, `assets/<stem>.timing.json`, `assets/_meta.json` | app and kb | A conform's kept original (never packed: `pack/scan.rs` `is_excluded`), its frame map, and provenance records; written by the app's conform and `kb assets`, never by hand (the hooks block it) |
+| `assets/.originals/`, `assets/<stem>.timing.json`, `assets/_meta.json` | app and kb | A conform's kept original and the provenance records (neither packed: `pack/scan.rs` `is_excluded`), and its frame map; written by the app's conform and `kb assets`, never by hand (the hooks block it) |
 | `edits/` | app, and `kb video` | Video edit documents; Rust is the only writer (the editor window and `kb video` through the app's CLI); never hand-edited |
 | `exports/`, `.kookaburra*` | app | Never edited by Claude |
 | `./kb` | app (managed) | The zsh-safe shim from `src-tauri/templates/project-kb.sh` (mode 0755): `exec python3 -I .claude/skills/kookaburra-scene-authoring/scripts/kb.py "$@"`, exit 2 "the kit is missing" without the kit; rewritten while one of its first three lines starts `# kookaburra-cut kb shim`; anything else named `kb` (a file, folder or link) is moved aside and logged, since it would run under the `Bash(./kb *)` allow rule; `/kb` is in `.git/info/exclude`; never packed |
-| `kb.moved-aside`, `.claude.moved-aside` (then `-2` and so on) | the person | What a stamp moved out of the way, named in the `[kit]` log; never run, packed or duplicated |
+| `kb.moved-aside`, `.claude.moved-aside`, `.claude.moved-aside-<path>` (then `-2` and so on) | the person | What a stamp moved out of the way, named in the `[kit]` log and the review sheet; never run, packed or duplicated |
 | `.kb/` | kb | Multi-agent state (lock, leases, notes, events, per-agent scratch, capture copies), song analyses, footage logs and the asset archive; ignores itself; never packed (`pack/scan.rs` `is_excluded`) or duplicated (`duplicate_project`) |
 
 Skill tree (the source lives at `.agents/skills/kookaburra-scene-authoring/`):
@@ -91,6 +92,23 @@ scripts/
   Otherwise, when it lacks the RULES import, the import line is inserted after its
   first heading. Nothing else in a user-edited `CLAUDE.md` is touched. Changing the
   template means archiving the old one first (a test pins its digest).
+- **The allow-list** (`sweep_agent_files`, before everything else on every stamp).
+  `CLAUDE.local.md`, `AGENTS.md`, `.claude.json`, `.claude/CLAUDE.md` and any `CLAUDE.md`
+  below the root (case variants too, `.git` skipped, links never followed) move to `## From
+  <path>` sections of `NOTES.md`, fenced, then go. `.mcp.json` lands there with `env` and
+  `headers` values removed, and the original moves aside. Anything else in `.claude/` beyond
+  `settings.json`, `settings.local.json`, `skills` and `worktrees`, a nested `.claude`, a link,
+  a folder, a file over 256 KB or not UTF-8, and a settings file that doesn't parse move aside
+  unread. A root `CLAUDE.md` that isn't a shipped default moves only on the first open of a
+  folder; after that it is the person's.
+- **The review** (`src-tauri/src/workspace.rs`). `AppSettings.agentFiles`, by absolute folder
+  and outside it so a folder can't mark itself reviewed, records the first sweep, the app
+  version and what moved. `review_agent_files` shows that on a native sheet (Return is Not
+  now), run when the terminal starts Claude and by Edit with Claude. `pty_spawn` then refuses
+  a Claude session while the sweep hasn't finished, anything is unreviewed, or a file is
+  still present (`foreign_agent_files`, read-only, also catches what landed after the stamp),
+  naming the files and what to do. Stripping a person's own "don't ask again" rule from
+  `settings.local.json` shows here once too: the app can't tell it from a planted one.
 - `./kb`: the shim (`stamp_shim`), written from `src-tauri/templates/project-kb.sh` with mode
   0755 when missing, and rewritten (content or mode) while it carries the marker. Any other
   `kb` at the project root (a file, folder or link) arrived with the folder and would run with
@@ -99,15 +117,16 @@ scripts/
 - `.claude/settings.json`: created when missing, and app-owned. Every stamp replaces
   `hooks` with the managed set (identified by a command containing
   `kookaburra-scene-authoring/scripts/kb.py hook`), keeps only the managed
-  `permissions.allow` rules (the template's git rules and the set below) and drops every
-  other `permissions` key, `env` and `apiKeyHelper`; each removal is logged as `[kit]`
-  with the path and value. Other keys (`model`, say) are left. An unparseable file is left
-  alone. The file is only rewritten when its content changes, and then with sorted keys.
+  `permissions` lists (the template's git rules and the set below) and every top-level key
+  outside `$schema`, `model`, `hooks` and `permissions` goes, each removal logged as `[kit]`
+  with the path and value. The file is only rewritten when its content changes, and then
+  with sorted keys.
   Before the settings, a `.claude` that isn't a real folder is moved aside to
   `.claude.moved-aside`, so the stamp never reaches through a link, and the stamp removes
   `.claude/commands/`, `.claude/agents/` and any `.claude/skills/*` the app does not ship, logging them. Nothing a folder arrives with can
-  configure the agent; what the person wants the agent told goes in `CLAUDE.md`, which
-  Claude Code reads as instructions and the stamp leaves alone past the RULES import.
+  configure the agent; what the person wants the agent told goes in `CLAUDE.md` once the
+  folder is open, which Claude Code reads as instructions and the stamp leaves alone past
+  the RULES import.
 
 Managed settings:
 
@@ -122,7 +141,9 @@ Managed settings:
       "Read(~/Kookaburra Cut/themes/**)",
       "Read(~/Kookaburra Cut/brands/**)",
       "Read(//Applications/Kookaburra Cut.app/Contents/Resources/**)"
-    ]
+    ],
+    "ask": ["WebFetch", "WebSearch"],
+    "deny": ["Read(~/.ssh/**)", "Read(**/.netrc)", "Read(~/**/.netrc)", "..."]
   },
   "hooks": {
     "SessionStart": [{ "matcher": "startup|resume|clear|compact", "hooks": [
@@ -172,11 +193,11 @@ under the project lock (`kblib.lock`) and re-validated after writing.
 | `doc S get [path]`, `doc S set path value`, `doc S unset path`, `doc S merge JSON` | Sidecar edits by dotted path; values parsed as JSON else string (`--string` forces a string, reading `\n`, `\t` and `\\`); enums validated against the catalogue; `get` prints the raw value (`--json`: `{ file, path, value }`). The detach rule (`beats.model.settle_written` over `timed_slots`): a key `tMs` or a screen or media video `startMs` the write moved off its `at` loses the `at`, and every remaining `at` refreshes its time; `merge` never detaches, so an `at` stays unless the patch nulls it (arrays replace whole, so a rewritten field without `at` gets its `at` back). A string `at` this write adds where the app takes no position (chart or layered screenshot keys, taps, anything but the timed slots, `cameraKicks` and `room` keys) is exit 2 `usage` (`stray_positions`) |
 | `project get [path]`, `project set path value`, `project unset path` | `project.json` fields other than `scenes` (`get --json`: `{ path, value }`) |
 | `theme list`, `theme show [id]`, `theme set path value` | Bundled tokens from the catalogue; workspace themes editable (`show --json`: `{ id, bundled, path, theme }`) |
-| `brand list`, `brand show [NAME]`, `brand use NAME`, `brand clear` | Workspace brands (docs/brands.md); `use` matches a name, slug or `ws:` id and applies it as the Project picker does (`brand`, default theme, headline and body fonts, `BRAND.md`); `clear` drops `brand` and `BRAND.md` |
+| `brand list`, `brand show [NAME]`, `brand use NAME`, `brand clear`, `brand icons [--search TERM] [--sheet] [--brand NAME] [--category C] [--all] [--limit N] [--cell PX]` | Workspace brands (docs/brands.md); `use` matches a name, slug or `ws:` id and applies it as the Project picker does (`brand`, default theme, headline and body fonts, `BRAND.md`); `clear` drops `brand` and `BRAND.md`; `icons` searches the brand's library by name, tag and path, and `--sheet` writes contact sheets to `.kb/thumbs/` (`--json`: `items`, `total`, `sheets`, `shownOnSheets`) |
 | `fonts safe`, `fonts check REF...`, `fonts list` | Bundled faces are always safe; `check` and `list` use the app's real parser when it runs, else a static verdict (`--json`: `faces`, `results`, `families` or the static `bundled` and `pinned`) |
 | `presets [list \| show SLUG]` | Scene presets with what they show and a preview image path to Read (`--json`: `presets`) |
 | `catalog [FAMILY] [--search Q]` | Query `catalog.json` (`--json`: `families`; a family's raw entries as `{ family, items }`, or `{ family, value }` when it is not a list; a search's `items`) |
-| `assets list`, `assets add PATH [--name N] [--dir D] [--no-conform]`, `assets probe ASSET [--deep]`, `assets conform ASSET [--repoint]`, `assets replace NAME FILE [--keep-old archive\|trash\|none] [--as-new]`, `assets unused [--kind K] [--archive [DIR]]`, `assets restore [ID \| --list]`, `assets meta NAME [--set K=V]` | Media in (never overwrites, renames on collision; a video the app's probe flags is conformed through `<exe> media conform`, gated on `edit caps.media`), the decode verdict (`ok`, `suspect`, `ffmpeg-misdecodes`; the container's own `elst`/`stts`/`ctts` parse without the app, AVFoundation's view with it; an edit opening inside a sample is `ffmpeg-misdecodes` on both sides, `mp4box.rs` and `mp4box.py` replaying one `edit-start-vectors.json`), an in-place conform (`--repoint` turns a `.mov` into `<stem>.mp4` and rewrites literals), an in-place replace with the old bytes in `.kb/archive/`, the app's shared in-use rule (`unused`, archived and restorable; `media.rs` and `asset_refs.py` replay one `asset-ref-vectors.json`), and `assets/_meta.json` provenance (`list --json`: `assets`, each with a conformed clip's timing and provenance folded in). Code: `kblib/assets_cli.py`, `asset_ops.py`, `conform.py`, `mp4box.py`, `asset_refs.py`, `archive.py`, `asset_meta.py` |
+| `assets list`, `assets add PATH [--name N] [--dir D] [--no-conform] [--max-size N] [--allow-blank]`, `assets add-folder DIR [--dedupe] [--thumbs WxH] [--limit N] [--dir D] [--no-conform] [--max-size N] [--allow-blank]`, `assets probe ASSET [--deep]`, `assets conform ASSET [--repoint]`, `assets replace NAME FILE [--keep-old archive\|trash\|none] [--as-new] [--allow-blank]`, `assets unused [--kind K] [--archive [DIR]]`, `assets restore [ID \| --list]`, `assets meta NAME [--set K=V]` | Media in (never overwrites, renames on collision; `--name` keeps the source's extension; a video the app's probe flags, or that both decoders disagree on once decoded, is conformed through `<exe> media conform`, gated on `edit caps.media`; stills and SVGs as in "Stills on the way in" below), a whole folder (`assets add-folder`, below), the decode verdict (`ok`, `suspect`, `ffmpeg-misdecodes`; the container's own `elst`/`stts`/`ctts` parse without the app, AVFoundation's view with it; an edit opening inside a sample is `ffmpeg-misdecodes` on both sides, `mp4box.rs` and `mp4box.py` replaying one `edit-start-vectors.json`), an in-place conform (`--repoint` turns a `.mov` into `<stem>.mp4` and rewrites literals), an in-place replace with the old bytes in `.kb/archive/`, the app's shared in-use rule (`unused`, archived and restorable; `media.rs` and `asset_refs.py` replay one `asset-ref-vectors.json`), and `assets/_meta.json` provenance (`list --json`: `assets`, each with a conformed clip's timing and provenance folded in). Code: `kblib/assets_cli.py`, `assets.py`, `asset_folder.py`, `asset_ops.py`, `imagefile.py`, `svgsafe.py`, `contact.py`, `conform.py`, `mp4box.py`, `asset_refs.py`, `archive.py`, `asset_meta.py` |
 | `checkpoint [MESSAGE] [--scene S]... [--files P]...`, `history [--scene S]`, `undo [REV] [--scene S \| --all]`, `diff [REV] [--scene S]` | Git checkpoints of `project.json`, `scenes/`, `edits/` and `flashes.accepted.json`, or only some scenes' files; `undo` checkpoints first, so it is itself undoable, never trashes `edits/`, and names any render it leaves stale (`history --json`: `checkpoints`, each with `atMs`). See Coordination |
 | `lease S [--ttl 2h] [--note T] [--for NAME]`, `lease S --release [--force]`, `leases [--all]` | Opt-in scene leases (`lease --json`: `scene`, `action`, `lease`; `leases --json`: `leases`) |
 | `note "TEXT" [--scene S]`, `notes [--all]` | Shared notes in `.kb/notes.md` (`notes --json`: `notes`, `total`) |
@@ -228,18 +249,75 @@ As built (`scripts/kblib/`):
   app keeps those folders in memory (`PickedFolders`, fed by every folder dialog and the
   Save dialog's parent, forgotten on quit) and publishes them in the heartbeat as
   `pickedDirs`, which kb and the headless CLI read. Reads of a path the agent names
-  (`assets add`, `assets replace`, `chart set-data`, `doc merge @file`, `verify-export FILE`)
+  (`assets add`, `assets add-folder`, `assets replace`, `chart set-data`, `doc merge @file`, `verify-export FILE`)
   are silent inside the workspace, announced on stderr with the resolved path and size
   outside it (`kb: reading /Users/x/Desktop/deck.csv (812 bytes) from outside the
   workspace`), and refused outright for `~/.ssh`, `~/.aws`, `~/.config`, `~/.gnupg`,
-  `~/Library/Keychains`, `.env*`, `.netrc`, `*.pem`, `*.p12`, `*.key` and shell history
-  files.
+  `~/Library/Keychains`, `~/.docker`, `~/.kube`, `~/.azure`, `~/.claude`, `.env*`, `.netrc`,
+  `.git-credentials`, `.npmrc`, `.pypirc`, `id_rsa*`, `id_ed25519*`, `id_ecdsa*`, `id_dsa*`,
+  `credentials*.json`, `*.pem`, `*.p12`, `*.key`, `*.jks`, `*.keystore`, `*.tfstate` and shell
+  history files. `kit.rs` `CREDENTIAL_*` is the same list for the managed `Read` deny rules
+  and the folders `bridge.rs` never takes as a write root, and a test holds them together. The
+  deny rules name only the secrets in `~/.claude`, since Claude Code tells the agent to read
+  its saved results and memory there.
+  None of this is a sandbox: a misled agent's own Bash can still read a file.
 - **Real folders** (`kblib/realdir.py` `real_dir`, `src-tauri/src/real_dir.rs`). A folder shared by zip, copy or
   clone keeps the links a pack refuses, so a link or file at `.kb/`, a `.kb/*` scratch folder or `assets/.kc-render` is
   refused by name (kb: exit 1, kind `not-a-folder`; the CLI: `invalid`) before anything is written or deleted, and a linked `<film>.flashes` is left alone (the check still reports, with `stripsError`). kb opens
   `.kb/lock`, `.kb/events.jsonl` and `.kb/notes.md` with `O_NOFOLLOW` (`open_own_file`). A new scratch folder goes
   through the helper and into the hostile-folder fixtures (`tests/helpers.py`, `real_dir.rs` `hostile`). A linked
   `assets/` or project folder stays the person's choice.
+- **Stills on the way in** (`kblib/imagefile.py`). An imported still is untrusted. Its header
+  is read with no decoder and capped first (256 MB, 16384 px a side, 100 MP), so a
+  decompression bomb never reaches one; what the first bytes say decides the format, whatever
+  the name says. The stage reads raw pixel values (`decode_png`, and `createImageBitmap` with
+  `colorSpaceConversion: "none"`), so a non-sRGB ICC profile, CMYK pixels and an EXIF
+  orientation would each draw wrong and only show up in a frame: `prepare` bakes them into
+  plain sRGB, upright pixels through `sips`, which is ImageIO, the decoder WebKit itself uses
+  (kb never decodes WebP or JPEG itself; off macOS it can only read PNG, and refuses others,
+  exit 2). `sips` can't write WebP or GIF, so one that has to change becomes a PNG. A fully
+  transparent or one-colour result is refused (`refuse_blank`, `--allow-blank`), measured on
+  a 64 px reduction with a tolerance of 3 levels. Provenance is recorded only when kb changed
+  the bytes, with `origin.sourceSha256`, so adding the same file the same way lands nothing
+  new.
+
+  `assets replace` holds a still to the same checks and bakes it too: a replacement is new bytes
+  from outside that the stage would draw just as wrong, and the old bytes stay in the archive. A
+  replace keeps its type, so a file that is really another format, or a WebP or GIF that has to
+  change, is refused before any decode; `--as-new` lands it under the right extension.
+
+  The app's drop (`import_media`, `import_media_bytes`, and so the Library's copy-on-use) follows
+  the same rules through `src-tauri/src/imagefile.rs`; `still-facts-vectors.json` keeps the two
+  header readers agreeing. A copy is parked in `assets/.kc-render/` and only that copy is checked,
+  so the source can't change underneath and no asset moves. A PNG is decoded in the app by the
+  stage's own decoder, so one that passes decodes in a frame (15 to 80 ms at 4K); anything else
+  goes through a `sips` child with a 60 s limit (70 ms for a 4K JPEG, 0.5 s for a bake). A batch
+  checks four at a time, since macOS tags nearly every screenshot with its display's profile, then
+  lands in turn under a name a link can't overwrite. One refused file never stops the rest
+  (`ImportReport`). Baked on drop, not flagged in the library: the stage can only draw the unbaked
+  file wrong, and the source is untouched. A blank still lands with a note rather than a refusal,
+  since a person is looking at it and has no `--allow-blank`.
+- **SVGs** (`kblib/svgsafe.py`). AppKit's parser reads a `file://` image straight off the disk
+  into the raster, so the rasteriser (the brand skill's `svg2png.js`) never sees the source. The
+  source is parsed with expat and rewritten to a temp copy from an allowlist of drawing
+  elements: no script, `foreignObject`, event handler, DOCTYPE or processing instruction, and no
+  `href`, `url()` or `@import` that leaves the document (`#fragment` and a raster `data:` URI
+  stay). Whatever a person would notice missing is named in a warning. Malformed XML, a root
+  that isn't `<svg>`, an external or nested entity, and files past the size, depth or expansion
+  caps are refused. `kb assets add` and `brand.py images` share it.
+- **`assets add-folder`** (`kblib/asset_folder.py`). `reach.guard_read` guards the folder, which
+  is announced once, and refuses one that holds the project or sits inside `assets/`. The walk
+  never follows a link, in or out, and skips hidden names, credentials (`denied_reason`, per
+  file) and other file types. It stops before copying anything past 500 media files without
+  `--limit` (2000 at most), 20000 entries, 12 levels, 32 GB in total or the free disk; one file
+  over 16 GB is refused alone. Files land through `assets.add_file`, keeping the folder's shape
+  under `--dir` in slugged names, and refused ones are collected (exit 1, `invalid`, with the
+  whole report in the envelope). SVGs rasterise in one `osascript` per 80, split down when one
+  hangs or crashes so the file at fault fails alone, and provenance is one write at the end. `--dedupe` hashes a file against the batch, `origin.sourceSha256` and, only
+  where the size matches, `assets/` and `assets/.originals/`. `--thumbs WxH` and `kb brand icons
+  --sheet` draw sheets in plain Python (`kblib/contact.py`), on the surface each picture suits,
+  into `.kb/thumbs/<time>-<tag>/` (the newest 20 kept), so they are never in `assets/`, a pack or
+  project history.
 - **Output escaping** (`kblib/util.py` `clean_text`). Every string kb prints (`emit`,
   `emit_err`, `emit_json` leaves and keys, the export stream, hook `additionalContext` and
   deny reasons, `KbError` messages and `Report` issues) has its control characters (newline
@@ -398,6 +476,13 @@ Hooks:
   changed something). On `/usr/bin/python3` 3.9 with the bytecode cache warm a Bash hook
   costs about 58 ms when nothing changed (the bare interpreter is about 48 ms) and about
   80 ms when a sidecar changed; the first run after a stamp compiles (about 105 ms).
+  - `bash-pre` returns `permissionDecision: "ask"`, naming why, for a send-off shape
+    (`send_off_reason`): `curl`, `wget`, `nc`, `ncat` and `socat` to anything but loopback,
+    `scp`, `sftp`, `ftp`, `ssh`, `rsync` to a host, `git push`, `gh`, `aws`, `gcloud`, `az`,
+    `mail`, `sendmail`, `open` with a URL, and Python or Node inline code naming a network
+    module. It looks through wrappers, full paths, `sh -c` and command substitution, and skips
+    `kb_only` commands. A deny stands. It slows a misled agent and asks a person; it doesn't
+    stop a determined one. `WebFetch` and `WebSearch` ask through the managed rules.
   - `bash-pre` stamps `project.json`, `scenes/**` and `edits/*.json` (`<st_mtime_ns>:<size>`;
     dotfiles, `*.tmp` and `*.kbtmp` skipped) into `$TMPDIR/kb-hooks/bash-<sha1(root, tool_use_id)>.json`.
     It binds every `--agent NAME` a kb call passes to the hook's session and agent id, before
@@ -431,7 +516,7 @@ Every kb command, including new ones, follows these rules. Code: `scripts/kblib/
   it while `CLAUDECODE` is set, so an inherited value never names every agent alike).
   `--dry-run` and `--wait [SECONDS]` on every structural command (scene add, duplicate, move,
   remove and set; doc set, unset and merge; project set and unset; theme set; assets add,
-  conform, replace, unused, restore and meta; beats set-grid, set-downbeat, clear-grid, cue and
+  add-folder, conform, replace, unused, restore and meta; beats set-grid, set-downbeat, clear-grid, cue and
   section; song analyse; checkpoint; undo); `./kb plan <command ...>` is the same dry run for
   the ones it covers.
 - **Output.** Plain text for people. `--json` prints exactly one object on stdout:
@@ -461,7 +546,9 @@ Every kb command, including new ones, follows these rules. Code: `scripts/kblib/
   envelope's `code`: `usage`, `env`, `no-app`, `needs-trust`, `invalid`, `leased`,
   `others-changed`, `conflict`, `locked`, `index-locked`, `app-busy`, `bridge-timeout`,
   `gpu-stalled`, `gpu-wedged`, `throttled`, `too-large`, `flashes`, `not-a-folder` (a link or
-  file where kb keeps its own folder or file; exit 1), `no-grid` (a musical
+  file where kb keeps its own folder or file; exit 1), `git-config` (a `.git` that reaches
+  elsewhere, or a `.git/config` key outside what `git init` and `git remote add` write; exit 1),
+  `no-grid` (a musical
   position, `--duration-bars` or `--cut-at` with no `audio.grid`; exit 1). Each kind has a
   default hint (`DEFAULT_HINTS`). Never print a traceback.
 - **Writes.** Every write to `project.json`, `scenes/**` or `.kb/**` goes through
@@ -507,6 +594,7 @@ packs and duplicates.
 .kb/reference/<sha>/            kb reference analyse: sheets, bar map, beat sheet, analysis, compare report
 .kb/footage/<name>.json         kb video log (sheets in .kb/footage/<name>/, pairs in .kb/footage/pairs/)
 .kb/archive/<id>/<rel>          files kb assets replace and unused moved aside; index.jsonl beside them
+.kb/thumbs/<time>-<tag>/        contact sheets from kb assets add-folder --thumbs and kb brand icons --sheet; the newest 20 kept
 ```
 
 - **Identity.** A caller is `{ name, session, agentId }` (`kblib/identity.py`). kb run from
@@ -660,6 +748,7 @@ so a launch film can be planned bar by bar against it. Code: `scripts/kblib/refe
   which read other files), requires a declared duration and allow-listed codecs, and caps it
   at 16 GB, 30 minutes and 8192 px a side. Anything odd is exit 1 `invalid`, before ffmpeg or
   the app decode a byte. `kb song analyse --file` and `kb song hits --file` take the same path.
+  Every other lane that opens a file takes `media_input.input_args`, and `test_media_input.py` fails on one that skips it.
   A file can lie about its length, so the decodes hold the limit too: the frame pass refuses a
   film 10 s past what it declared, and the analyser's PCM stops at two hours. Every decode maps
   the stream `facts` checked (`video.index`), never `0:v:0`, which can be an attached picture.

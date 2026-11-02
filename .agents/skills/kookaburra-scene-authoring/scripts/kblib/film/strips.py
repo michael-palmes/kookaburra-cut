@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
+from ..media_input import input_args
 from ..realdir import real_dir
 from ..util import EXIT_ENV, KbError
 
@@ -54,7 +55,7 @@ def compose_args(ffmpeg: str, pngs: Sequence[Path], region: Any, out: Path) -> L
     graph = ";".join(legs) + ";" + "".join(f"[c{i}]" for i in range(len(pngs))) + f"hstack=inputs={len(pngs)}[out]"
     argv = [ffmpeg, "-hide_banner", "-nostdin", "-v", "error", "-y"]
     for p in pngs:
-        argv += ["-i", str(p)]
+        argv += [*input_args(p), "-i", str(p)]
     return argv + ["-filter_complex", graph, "-map", "[out]", "-frames:v", "1", str(out)]
 
 
@@ -86,7 +87,7 @@ def seek_frames(ffmpeg: str, film: Path, frames: Sequence[int], fps: float, out_
     found: Dict[int, Path] = {}
     for k in sorted(set(frames)):
         dest = out_dir / f"f{k:06d}.png"
-        argv = [ffmpeg, "-hide_banner", "-nostdin", "-v", "error", "-y", "-ss", f"{max(0.0, (k - 0.25) / fps):.6f}", "-i", str(film),
+        argv = [ffmpeg, "-hide_banner", "-nostdin", "-v", "error", "-y", "-ss", f"{max(0.0, (k - 0.25) / fps):.6f}", *input_args(film), "-i", str(film),
                 "-frames:v", "1", str(dest)]
         try:
             subprocess.run(argv, capture_output=True, timeout=TIMEOUT_S)

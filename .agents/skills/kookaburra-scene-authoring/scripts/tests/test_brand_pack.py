@@ -77,7 +77,7 @@ class BrandPackTests(KbTestCase):
             (src / name).write_bytes(PNG_1x1 + name.encode())
         self.assertEqual(self.brand("images", "acme", f"{src}=backgrounds").returncode, 0)
         names = sorted(p.name for p in (self.dir / "images" / "backgrounds").iterdir())
-        self.assertEqual(names, ["hero-wide-2.jpg", "hero-wide-2.png", "hero-wide.jpg", "hero-wide.png"])
+        self.assertEqual(names, ["hero-wide-2.png", "hero-wide-3.png", "hero-wide-4.png", "hero-wide.png"], "real format decides the extension")
 
     def test_apply_and_clear_match_the_project_picker(self) -> None:
         self.finish()

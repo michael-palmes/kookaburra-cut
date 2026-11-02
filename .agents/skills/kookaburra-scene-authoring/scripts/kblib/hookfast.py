@@ -41,6 +41,19 @@ KB_WRITE = re.compile(
     r"video\s+(?!list|show|map|usages|validate|caps|frames|sheet|analyse|durations|open)\w+)"
 )
 FILTERS = {"head", "tail", "grep", "egrep", "rg", "jq", "wc", "sort", "uniq", "cat", "less", "true", "column", "cut", "tr"}
+SEND_TOOLS = {"scp", "sftp", "ftp", "ssh", "gh", "aws", "gcloud", "az", "mail", "mailx", "sendmail"}
+SEND_WORD = re.compile(r"\b(?:curl|wget|scp|sftp|ftp|nc|ncat|socat|ssh|rsync|git|gh|aws|gcloud|az|mailx?|sendmail|open|python[\d.]*|node(?:js)?|sh|bash|zsh|dash|ksh|fish|eval)\b")
+WRAPPERS = {"sudo", "env", "command", "exec", "nohup", "time", "nice", "timeout", "xargs", "caffeinate", "if", "then", "else", "elif", "do", "while", "until", "!", "{"}
+SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "fish"}
+ASSIGNMENT = re.compile(r"^[A-Za-z_]\w*=")
+LOOPBACK = r"(?:localhost|127(?:\.\d+){3}|\[::1\]|::1|0\.0\.0\.0)"
+LOOPBACK_HOST = re.compile(rf"^{LOOPBACK}(?::\d*)?$", re.IGNORECASE)
+NET_ADDRESS = re.compile(r"^(?:tcp|udp|ssl|openssl|socks|proxy|ip|sctp|unix-connect)[\w-]*:", re.IGNORECASE)
+FETCH_VALUE_FLAGS = {"-o", "--output", "-O", "--output-document", "-H", "--header", "-X", "--request", "-A", "--user-agent", "-w", "--write-out",
+                     "-D", "--dump-header", "-m", "--max-time", "--connect-timeout", "-d", "--data", "--data-binary", "--data-raw", "-F", "--form",
+                     "-T", "--upload-file", "-b", "--cookie", "-c", "--cookie-jar", "-e", "--referer", "--retry", "-P", "--directory-prefix"}
+SUBSTITUTION = re.compile(r"\$\(([^()]*)\)|`([^`]*)`")
+NETWORK_CODE = re.compile(r"\b(?:urllib\d?|http\.client|requests|httpx|aiohttp|socket|ftplib|smtplib|paramiko|fetch|https?|net|dgram|tls|XMLHttpRequest|WebSocket)\b")
 
 
 def now_ms() -> int:
@@ -365,6 +378,150 @@ def bind(root: str, command: str, caller: Dict[str, Any]) -> List[str]:
     return names
 
 
+# ── send-off shapes ───────────────────────────────────────────────────────────
+
+
+def _command_words(command: str) -> List[List[str]]:
+    """Each simple command as its words, quotes resolved so `/usr/bin/curl` and `c""url` read the same."""
+    import shlex
+
+    try:
+        lex = shlex.shlex(command, posix=True, punctuation_chars=";&|()<>\n")
+        lex.whitespace = " \t\r"
+        lex.whitespace_split = True
+        lex.commenters = ""
+        out: List[List[str]] = [[]]
+        redirect = False
+        for token in lex:
+            if token and set(token) <= set(";&|()<>\n"):
+                if "(" in token or ")" in token or not set(token) & set("<>"):
+                    out.append([])
+                    continue
+                if out[-1] and out[-1][-1].isdigit():
+                    out[-1].pop()
+                redirect = True
+            elif redirect:
+                redirect = False
+            else:
+                out[-1].append(token)
+        return out
+    except ValueError:
+        return [part.split() for part in re.split(r"&&|\|\||[;|&\n()]", unquote(command))]
+
+
+def _is_loopback(target: str) -> bool:
+    """The authority alone, and none with userinfo: `http://localhost:80@host/` goes to `host`."""
+    authority = re.split(r"[/?#]", target.split("://", 1)[-1], maxsplit=1)[0]
+    return "@" not in authority and bool(LOOPBACK_HOST.match(authority))
+
+
+def _socket_tool_reason(head: str, args: List[str]) -> Optional[str]:
+    reason = f"{head} can send work off this Mac"
+    if head == "socat":
+        hosts = [a.split(",")[0].split(":") for a in args if NET_ADDRESS.match(a)]
+        return reason if any(len(h) > 2 and not _is_loopback(h[1]) for h in hosts) or not hosts else None
+    words = [a for i, a in enumerate(args) if not a.startswith("-") and (i == 0 or args[i - 1] not in ("-s", "-p"))]
+    targets = [w for w in words if not w.isdigit()]
+    return None if targets and all(_is_loopback(t) for t in targets) else reason
+
+
+def _fetch_targets(args: List[str]) -> List[str]:
+    targets: List[str] = []
+    skip = False
+    for arg in args:
+        if skip:
+            skip = False
+        elif arg in FETCH_VALUE_FLAGS:
+            skip = True
+        elif not arg.startswith("-"):
+            targets.append(arg)
+    return targets
+
+
+def _words_reason(words: List[str], command: str, depth: int) -> Optional[str]:
+    words = list(words)
+    while words:
+        if ASSIGNMENT.match(words[0]):
+            words.pop(0)
+        elif os.path.basename(words[0]) in WRAPPERS:
+            words.pop(0)
+            while words and (words[0].startswith("-") or words[0].isdigit() or ASSIGNMENT.match(words[0])):
+                words.pop(0)
+        else:
+            break
+    if not words:
+        return None
+    head, args = os.path.basename(words[0]), words[1:]
+    if head in SHELLS:
+        for i, arg in enumerate(args[:-1]):
+            if arg.startswith("-") and "c" in arg[1:]:
+                return send_off_reason(args[i + 1], depth + 1)
+        return None
+    if head == "eval":
+        return send_off_reason(" ".join(args), depth + 1)
+    if head in SEND_TOOLS:
+        return f"{head} can send work off this Mac"
+    if head in ("curl", "wget"):
+        targets = _fetch_targets(args)
+        if targets and all(_is_loopback(t) for t in targets):
+            return None
+        return f"{head} can send work off this Mac"
+    if head in ("nc", "ncat", "socat"):
+        return _socket_tool_reason(head, args)
+    if head == "rsync":
+        hosted = [a for a in args if not a.startswith("-") and ":" in a and not _is_loopback(a.split(":", 1)[0].rsplit("@", 1)[-1])]
+        return "rsync to a host can send work off this Mac" if hosted else None
+    if head == "git":
+        rest = list(args)
+        while rest and rest[0].startswith("-"):
+            flag = rest.pop(0)
+            if flag in ("-C", "-c") and rest:
+                rest.pop(0)
+        return f"git {rest[0]} sends work to a remote" if rest and rest[0] in ("push", "send-email") else None
+    if head == "open":
+        return "open with a URL can send work off this Mac" if any("://" in a or a.startswith("mailto:") for a in args) else None
+    if re.match(r"^(?:python[\d.]*|node(?:js)?)$", head):
+        inline = not args or all(a.startswith("-") for a in args) or any(a in ("-c", "-e", "--eval", "-p", "--print", "-") for a in args)
+        if inline and NETWORK_CODE.search(command):
+            return f"this {head} code uses a network module, so it can send work off this Mac"
+    return None
+
+
+def send_off_reason(command: str, depth: int = 0) -> Optional[str]:
+    """Why this command needs a person's yes before it runs, or None. It slows a misled agent, it doesn't stop a determined one."""
+    if depth > 4 or not SEND_WORD.search(re.sub(r"[\"'\\]", "", command)):
+        return None
+    for match in SUBSTITUTION.finditer(command):
+        reason = send_off_reason(match.group(1) or match.group(2) or "", depth + 1)
+        if reason:
+            return reason
+    for words in _command_words(command):
+        reason = _words_reason(words, command, depth)
+        if reason:
+            return reason
+    return None
+
+
+def ask_before_send_off(payload: Dict[str, Any], result: Tuple[int, str, str]) -> Tuple[int, str, str]:
+    """The bash-pre answer, with `ask` added when the command is a send-off shape. A deny stands."""
+    from .util import clean_lines
+
+    code, out, err = result
+    command = tool_input(payload).get("command")
+    if not isinstance(command, str) or project_root(payload) is None:
+        return result
+    reason = send_off_reason(command)
+    if not reason:
+        return result
+    body = json.loads(out) if out else {"hookSpecificOutput": {"hookEventName": "PreToolUse"}}
+    specific = body["hookSpecificOutput"]
+    if specific.get("permissionDecision") == "deny":
+        return result
+    specific["permissionDecision"] = "ask"
+    specific["permissionDecisionReason"] = clean_lines(f"{reason}. Check with the person before it runs.")
+    return code, json.dumps(body, ensure_ascii=False), err
+
+
 # ── bash-pre ──────────────────────────────────────────────────────────────────
 
 
@@ -586,7 +743,7 @@ def run(event: str, payload: Any) -> Tuple[int, str, str]:
     if not isinstance(payload, dict):
         return 0, "", ""
     if event == "bash-pre":
-        return bash_pre(payload)
+        return ask_before_send_off(payload, bash_pre(payload))
     if event == "bash-post":
         return bash_post(payload)
     return 0, "", ""

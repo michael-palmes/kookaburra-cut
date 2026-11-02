@@ -72,20 +72,17 @@ pub async fn measure_loudness(
     }
 
     // ebur128 prints its summary to STDERR; `-f null -` runs the graph without a file.
-    let args: Vec<String> = vec![
-        "-hide_banner".into(),
-        "-nostdin".into(),
-        "-nostats".into(),
-        "-protocol_whitelist".into(),
-        "file,pipe".into(),
-        "-i".into(),
-        file,
+    let mut args: Vec<String> = vec!["-hide_banner".into(), "-nostdin".into(), "-nostats".into()];
+    args.extend(crate::media_input::untrusted_input(std::path::Path::new(
+        &file,
+    )));
+    args.extend([
         "-af".into(),
         format!("{graph},ebur128=peak=true:framelog=quiet"),
         "-f".into(),
         "null".into(),
         "-".into(),
-    ];
+    ]);
     let stderr = run_ffmpeg_stderr(&app, args).await?;
     let info = parse_ebur128_summary(&stderr)
         .ok_or_else(|| "could not parse the ebur128 summary".to_string())?;

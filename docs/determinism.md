@@ -1420,7 +1420,9 @@ stays deterministic):
   typesetting runs the identical code path (pixels unchanged, re-gated) and
   needs `'wasm-unsafe-eval'` in the CSP `script-src` (troika's font parser is
   WASM).
-- **The CSP is render contract.** `connect-src` must include `blob:`.
+- **The CSP is render contract.** `connect-src` must include `blob:`, and
+  `data:` since the stage worker inherits it (three's WebP probe and any
+  embedded `data:` buffer fetch in that realm; blocked, they fail silently too).
   GLTFLoader's ImageBitmapLoader fetches blob object URLs for embedded glb
   textures, and a blocked fetch fails SILENTLY: models render untextured,
   deterministically, wrong. Any CSP/protocol change gates like a render change,

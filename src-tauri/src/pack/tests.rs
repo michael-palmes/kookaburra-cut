@@ -1201,6 +1201,102 @@ fn field(path: &Path, key: &str) -> String {
 
 /// The whole carriage: a template and a preset are packed with the theme they name, imported into a workspace that
 /// already owns both slugs, and land renamed, re-pointed at the renamed theme, and stamped as coming from a pack.
+/// The whole path on a real signed pack: staging verifies the bytes, the plan names the slug, and the scene lands following it.
+#[test]
+fn a_kept_both_object_follows_into_scene_code_through_a_real_pack() {
+    use super::apply::{apply_import, ItemOutcome};
+    use super::conflicts::plan_conflicts;
+    use super::deps::{item_key, resolve_closure, PackSelection};
+    use super::model::{ItemKind, Resolution};
+    use std::collections::HashMap;
+
+    let author = TempDir::new("tsx-author");
+    let out = TempDir::new("tsx-out");
+    let recipient = TempDir::new("tsx-recipient");
+    let scene = |id: &str| format!("<StagedObject objectId=\"ws:{id}\" />;\nuse(\"ws:coin-2\");\n");
+    let object = |name: &str| format!("{{\"name\":\"{name}\",\"glb\":\"model.glb\"}}");
+    for slug in ["coin", "coin-2"] {
+        write_file(
+            &author.path().join(format!("objects/{slug}/object.json")),
+            object(slug).as_bytes(),
+        );
+        write_file(
+            &author.path().join(format!("objects/{slug}/model.glb")),
+            slug.as_bytes(),
+        );
+    }
+    write_file(
+        &author.path().join("acme/project.json"),
+        br#"{"id":"acme","name":"Acme","themeId":"kookaburra-dark"}"#,
+    );
+    write_file(
+        &author.path().join("acme/scenes/01-hero.tsx"),
+        scene("coin").as_bytes(),
+    );
+    let selection = PackSelection {
+        projects: vec!["acme".into()],
+        ..Default::default()
+    };
+    let closure = resolve_closure(author.path(), &selection).expect("closure");
+    assert_eq!(closure.contents.objects.len(), 2);
+    let archive = out.path().join("acme.kbpack");
+    write_pack_from(&closure, &archive);
+
+    let mine = object("mine");
+    write_file(
+        &recipient.path().join("objects/coin/object.json"),
+        mine.as_bytes(),
+    );
+    let inspection = inspect(&archive).expect("inspect");
+    let staged = stage(
+        &archive,
+        recipient.path(),
+        &inspection.manifest,
+        |_, _| {},
+        &|| false,
+    )
+    .expect("stage");
+    let picked = PackSelection {
+        projects: vec!["acme".into()],
+        objects: vec!["coin".into(), "coin-2".into()],
+        ..Default::default()
+    };
+    let plan = plan_conflicts(recipient.path(), &staged, &picked).expect("plan");
+    let coin = plan
+        .items
+        .iter()
+        .find(|i| i.kind == ItemKind::Object && i.slug == "coin")
+        .expect("planned");
+    assert_eq!(coin.keep_both_slug.as_deref(), Some("coin-3"));
+
+    let resolutions: HashMap<String, Resolution> = [
+        (item_key(ItemKind::Object, "coin"), Resolution::KeepBoth),
+        (item_key(ItemKind::Object, "coin-2"), Resolution::Replace),
+        (item_key(ItemKind::Project, "acme"), Resolution::Replace),
+    ]
+    .into_iter()
+    .collect();
+    let outcome =
+        apply_import(recipient.path(), staged, &resolutions, |_, _, _| {}).expect("apply");
+
+    assert_eq!(outcome.stopped_at, None, "{:?}", outcome.results);
+    let landed = |rel: &str| std::fs::read_to_string(recipient.path().join(rel)).unwrap();
+    assert_eq!(landed("objects/coin/object.json"), mine);
+    assert_eq!(landed("objects/coin-3/object.json"), object("coin"));
+    assert_eq!(landed("objects/coin-2/object.json"), object("coin-2"));
+    assert_eq!(
+        landed("acme/scenes/01-hero.tsx"),
+        scene("coin-3"),
+        "the moved object follows, its neighbour does not"
+    );
+    let kept = outcome
+        .results
+        .iter()
+        .find(|r| r.kind == ItemKind::Object && r.slug == "coin-3")
+        .expect("kept both");
+    assert_eq!(kept.outcome, ItemOutcome::KeptBoth);
+}
+
 #[test]
 fn templates_and_presets_round_trip_into_another_workspace() {
     use super::apply::{apply_import, ItemOutcome};
@@ -2142,6 +2238,57 @@ fn strips_the_executable_bit() {
         0o755,
         "extracted directories are always 0755"
     );
+}
+
+/// A hidden file inside an item is dropped and named, never written, even though its extension is on the list.
+#[test]
+fn drops_hidden_files_inside_an_item() {
+    let tag = "dot-leaf";
+    let source = TempDir::new(tag);
+    let workspace = Workspace::new(tag);
+    let archive = Fixture::valid()
+        .entry(Entry::new("payload/projects/acme/.mcp.json", b"{\"mcpServers\":{}}"))
+        .entry(Entry::new("payload/projects/acme/assets/.claude.json", b"{}"))
+        .build(source.path());
+
+    let inspection = inspect(&archive).expect("inspect");
+    let staged = stage(
+        &archive,
+        workspace.root(),
+        &inspection.manifest,
+        |_, _| {},
+        &|| false,
+    )
+    .expect("stage");
+
+    assert_eq!(
+        staged.dropped,
+        vec![
+            "payload/projects/acme/.mcp.json".to_owned(),
+            "payload/projects/acme/assets/.claude.json".to_owned(),
+        ]
+    );
+    assert!(!staged.root.join("payload/projects/acme/.mcp.json").exists());
+    assert!(!staged.root.join("payload/projects/acme/assets/.claude.json").exists());
+}
+
+/// Hidden scene code is refused whole, listed in `sceneFiles` or not: dropping it would change the film unseen.
+#[test]
+fn refuses_a_hidden_scene_source() {
+    for (tag, listed, expected) in [
+        ("dot-scene-unlisted", vec![], "sceneFilesMismatch"),
+        ("dot-scene-listed", vec!["scenes/.hidden.tsx"], "extensionNotAllowed"),
+    ] {
+        let mut contents = PackContents::default();
+        contents.projects.push(project_item("payload/projects/acme", &listed));
+        assert_refused(
+            tag,
+            Fixture::valid()
+                .entry(Entry::new("payload/projects/acme/scenes/.hidden.tsx", b"code"))
+                .contents(contents),
+            expected,
+        );
+    }
 }
 
 /// A dotted directory other than `.claude` never lands, whatever the file inside it is called.

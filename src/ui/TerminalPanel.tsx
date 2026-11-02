@@ -207,6 +207,14 @@ export function TerminalPanel({
         }
         // Heal provisioning (managed skill copy, missing CLAUDE.md/settings) before launch. `false` = the packaged skill resource is missing (a packaging defect): warn visibly where the user is about to type, rather than starting Claude silently unskilled; an invoke throw stays soft (the session is still useful).
         const provisioned = await invoke<boolean>("provision_project", { slug }).catch(() => true);
+        // A native sheet shows what the stamp moved out of the folder; "Not now" leaves the session off with Start still there.
+        if (!(await invoke<boolean>("review_agent_files", { slug }))) {
+          term.writeln(
+            "\r\nClaude stays off until you've looked at what moved. The text is in NOTES.md.\r\n",
+          );
+          setStatus("idle");
+          return;
+        }
         term.clear();
         if (provisioned === false) {
           term.writeln(

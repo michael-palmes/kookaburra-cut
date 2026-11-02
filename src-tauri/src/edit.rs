@@ -1477,8 +1477,6 @@ pub(crate) fn build_render_args_for(
     let mut args: Vec<String> = vec![
         "-y".into(),
         "-nostdin".into(),
-        "-protocol_whitelist".into(),
-        "file,pipe".into(),
         "-loglevel".into(),
         "error".into(),
         "-progress".into(),
@@ -1500,8 +1498,7 @@ pub(crate) fn build_render_args_for(
             args.push("-hwaccel".into());
             args.push("videotoolbox".into());
         }
-        args.push("-i".into());
-        args.push(source.abs.clone());
+        args.extend(crate::media_input::untrusted_input(Path::new(&source.abs)));
     }
     if let Some(dir) = tap_dot_dir {
         let seq = dir
@@ -1705,13 +1702,13 @@ const STALE_STAGING: Duration = Duration::from_secs(60 * 60);
 const STAGING_DIR: &str = ".kc-render";
 
 /// A render's output while ffmpeg writes it: `<output dir>/.kc-render/<pid>-<seq>-<file>`, a hidden FOLDER because hidden files would still list in the media library. Dropping it removes the file (and the folder once empty), so a failed or interrupted render never touches the previous good output.
-struct Staging {
+pub(crate) struct Staging {
     dir: PathBuf,
-    file: PathBuf,
+    pub(crate) file: PathBuf,
 }
 
 impl Staging {
-    fn create(out_dir: &Path, file_name: &str) -> Result<Self, String> {
+    pub(crate) fn create(out_dir: &Path, file_name: &str) -> Result<Self, String> {
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let dir = out_dir.join(STAGING_DIR);
         sweep_stale_stagings(&dir);
@@ -1835,7 +1832,8 @@ fn run_lane(
 /// The first video stream's packet count (one per frame), demuxed without decoding.
 pub(crate) fn count_video_packets(ffprobe: &Path, file: &Path) -> Result<u64, String> {
     let out = crate::tools::sidecar_command(ffprobe)
-        .args(["-v", "error", "-protocol_whitelist", "file,pipe"])
+        .args(["-v", "error"])
+        .args(crate::media_input::untrusted_input_args(file))
         .args(["-select_streams", "v:0", "-count_packets"])
         .args(["-show_entries", "stream=nb_read_packets", "-of", "csv=p=0"])
         .arg(file)
@@ -2533,8 +2531,8 @@ mod tests {
         let (args, _) = build_render_args(&doc(), "/out/x.mp4", true, None).unwrap();
         for (i, a) in args.iter().enumerate() {
             if a == "-i" {
-                assert_eq!(args[i - 2], "-hwaccel");
-                assert_eq!(args[i - 1], "videotoolbox");
+                assert_eq!(args[i - 8], "-hwaccel");
+                assert_eq!(args[i - 7], "videotoolbox");
             }
         }
         assert!(args.windows(2).any(|w| w == ["-c:v", "h264_videotoolbox"]));
@@ -2550,12 +2548,16 @@ mod tests {
         let expected: Vec<String> = [
             "-y",
             "-nostdin",
-            "-protocol_whitelist",
-            "file,pipe",
             "-loglevel",
             "error",
             "-progress",
             "pipe:1",
+            "-protocol_whitelist",
+            "file,pipe",
+            "-format_whitelist",
+            crate::media_input::AV_DEMUXERS,
+            "-codec_whitelist",
+            crate::media_input::AV_DECODERS,
             "-i",
             "/abs/a.mp4",
             "-filter_complex",
@@ -2686,20 +2688,13 @@ mod tests {
             build_render_args(&with_image(2000), "/out/x.mp4", false, None).unwrap();
         assert_eq!(total, 60 + 120); // 1s of source + a 2s still at 60fps
         let i = args.iter().position(|a| a == "-loop").unwrap();
-        assert_eq!(
-            args[i..i + 8],
-            [
-                "-loop",
-                "1",
-                "-framerate",
-                "60",
-                "-t",
-                "2.000000",
-                "-i",
-                "/abs/shot.png"
-            ]
+        let mut expected: Vec<String> = ["-loop", "1", "-framerate", "60", "-t", "2.000000"]
             .map(String::from)
-        );
+            .to_vec();
+        expected.extend(crate::media_input::untrusted_input(Path::new(
+            "/abs/shot.png",
+        )));
+        assert_eq!(args[i..i + expected.len()], expected[..]);
         let filter = &args[args.iter().position(|a| a == "-filter_complex").unwrap() + 1];
         assert!(filter.contains(
             "[1:v]tpad=stop_mode=clone:stop=120,fps=60,trim=end_frame=120,setpts=PTS-STARTPTS,"

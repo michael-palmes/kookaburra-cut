@@ -118,29 +118,27 @@ fn decode_args(file: &Path, width: u32, height: u32, resample: Option<f64>) -> V
     }
     vf.push(format!("scale={width}:{height}:flags=area"));
     vf.push("format=rgb24".to_owned());
-    [
-        "-hide_banner",
-        "-v",
-        "error",
-        "-nostdin",
-        "-protocol_whitelist",
-        "file,pipe",
-        "-i",
-        &file.to_string_lossy(),
-        "-an",
-        "-sn",
-        "-dn",
-        "-vf",
-        &vf.join(","),
-        "-f",
-        "rawvideo",
-        "-pix_fmt",
-        "rgb24",
-        "-",
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect()
+    let mut args: Vec<String> = ["-hide_banner", "-v", "error", "-nostdin"]
+        .map(String::from)
+        .to_vec();
+    args.extend(crate::media_input::untrusted_input(file));
+    args.extend(
+        [
+            "-an",
+            "-sn",
+            "-dn",
+            "-vf",
+            &vf.join(","),
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "-",
+        ]
+        .iter()
+        .map(|s| s.to_string()),
+    );
+    args
 }
 
 fn decode_into(

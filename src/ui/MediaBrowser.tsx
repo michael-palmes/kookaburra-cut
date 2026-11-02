@@ -13,6 +13,7 @@ import {
   useProjectBrand,
 } from "../engine/brands";
 import { listEdits } from "../engine/edit";
+import { plainError } from "../engine/managed";
 import {
   applyConformProgress,
   CONFORM_PROGRESS_EVENT,
@@ -47,6 +48,7 @@ import {
   removeOriginal,
   removeOriginals,
   revealPath,
+  soleImport,
 } from "../engine/media";
 import { projectIdForNativeSlug } from "../engine/project";
 import { BrandCategoryIcon } from "./brandIcons";
@@ -584,8 +586,10 @@ export function AddMediaButton({
     setImporting(true);
     setError(null);
     try {
-      await importMedia(slug, paths);
+      const report = await importMedia(slug, paths);
       onImported?.();
+      const said = [...report.notes, ...report.refused];
+      if (said.length > 0) setError(said.join(". "));
     } catch (e) {
       // The drag-drop import path toasts its failures; the picker path must not fail silently either.
       console.warn("[media] import failed:", e);
@@ -1295,11 +1299,11 @@ export function MediaBrowser({
         setPickBusy(true);
         setPickError(null);
         try {
-          const [rel] = await importMedia(slug, [image.path]);
+          const rel = soleImport(await importMedia(slug, [image.path]));
           if (rel) await onPick(rel, brandMetas[image.rel] ?? null);
         } catch (e) {
           console.warn(`[media] copy-on-use failed for ${image.rel}:`, e);
-          setPickError(`Couldn't copy into the project: ${String(e)}`);
+          setPickError(`Couldn't copy into the project: ${plainError(e)}`);
         } finally {
           setPickBusy(false);
         }
@@ -1316,11 +1320,11 @@ export function MediaBrowser({
         setPickError(null);
         setPickNotice(null);
         try {
-          const [rel] = await importMedia(slug, [image.path]);
+          const rel = soleImport(await importMedia(slug, [image.path]));
           refresh();
           if (rel) setPickNotice(`Added ${rel} to this project.`);
         } catch (e) {
-          setPickError(`Couldn't copy into the project: ${String(e)}`);
+          setPickError(`Couldn't copy into the project: ${plainError(e)}`);
         } finally {
           setPickBusy(false);
         }
@@ -1337,11 +1341,11 @@ export function MediaBrowser({
         setPickBusy(true);
         setPickError(null);
         try {
-          const [rel] = await importMedia(slug, [shot.absPath]);
+          const rel = soleImport(await importMedia(slug, [shot.absPath]));
           if (rel) await onPick(rel, globalMetas[shot.name] ?? null);
         } catch (e) {
           console.warn(`[media] copy-on-use failed for ${shot.name}:`, e);
-          setPickError(`Couldn't copy into the project: ${String(e)}`);
+          setPickError(`Couldn't copy into the project: ${plainError(e)}`);
         } finally {
           setPickBusy(false);
         }
