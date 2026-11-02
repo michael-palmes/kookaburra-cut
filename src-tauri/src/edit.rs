@@ -1705,13 +1705,13 @@ const STALE_STAGING: Duration = Duration::from_secs(60 * 60);
 const STAGING_DIR: &str = ".kc-render";
 
 /// A render's output while ffmpeg writes it: `<output dir>/.kc-render/<pid>-<seq>-<file>`, a hidden FOLDER because hidden files would still list in the media library. Dropping it removes the file (and the folder once empty), so a failed or interrupted render never touches the previous good output.
-struct Staging {
+pub(crate) struct Staging {
     dir: PathBuf,
-    file: PathBuf,
+    pub(crate) file: PathBuf,
 }
 
 impl Staging {
-    fn create(out_dir: &Path, file_name: &str) -> Result<Self, String> {
+    pub(crate) fn create(out_dir: &Path, file_name: &str) -> Result<Self, String> {
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let dir = out_dir.join(STAGING_DIR);
         sweep_stale_stagings(&dir);
