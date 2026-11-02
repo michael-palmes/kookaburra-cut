@@ -24,6 +24,13 @@ class KitStateTests(KbTestCase):
         self.assertIsNone(kitstate.write_reason(root, "kb"))
         self.assertTrue(any("not the app's shim" in l for l in kitstate.problem_lines(root)))
 
+    def test_any_spelling_apfs_opens_as_the_kit_is_blocked(self) -> None:
+        from kblib import kitstate
+
+        root = str(self.root)
+        self.assertIsNotNone(kitstate.write_reason(root, "KB"))
+        self.assertIsNotNone(kitstate.write_reason(root, ".CLAUDE/skills/Kookaburra-Scene-Authoring/kb.py"))
+
     def test_the_edit_hook_blocks_rebuilding_the_shim(self) -> None:
         payload = {"session_id": "s", "tool_input": {"file_path": str(self.root / "kb")}, "cwd": str(self.root)}
         proc = self.kb(["hook", "pre-edit"], cwd=self.root, stdin=json.dumps(payload))

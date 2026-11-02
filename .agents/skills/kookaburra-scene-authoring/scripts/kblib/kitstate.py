@@ -56,7 +56,7 @@ def problem_lines(root: str) -> List[str]:
     """For kb status and the session briefing."""
     lines = missing_shim_lines(root)
     if shim_state(root) == "own":
-        lines.append("./kb is not the app's shim, so the app leaves it alone and it won't heal. If it was not the person's own, delete it and ask them to reopen the project in Kookaburra Cut.")
+        lines.append("./kb is not the app's shim, so don't run it. The app moves it to kb.moved-aside and writes its own when the project next opens: ask the person to reopen it in Kookaburra Cut.")
     note = replaced_note(root)
     if note:
         lines.append(note)
@@ -64,10 +64,12 @@ def problem_lines(root: str) -> List[str]:
 
 
 def write_reason(root: str, rel: str) -> Optional[str]:
-    """Why a hand write to the shim or a managed skill is refused. A person's own kb stays theirs to change."""
-    if rel == SHIM and shim_state(root) != "own":
+    """Why a hand write to the shim or a managed skill is refused. A kb that isn't the app's is the app's to move aside, not kb's to guard."""
+    # APFS opens any case-folded spelling as the same file.
+    folded = rel.casefold()
+    if folded == SHIM and shim_state(root) != "own":
         return f"./kb is the app's shim. {RESTORE}"
     for skill in MANAGED:
-        if rel == skill or rel.startswith(skill + "/"):
+        if folded == skill or folded.startswith(skill + "/"):
             return f"{rel} is the managed kit; the app replaces it, so edits are lost. {RESTORE} Project notes belong in CLAUDE.md."
     return None

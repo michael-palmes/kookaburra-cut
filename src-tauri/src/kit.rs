@@ -1310,7 +1310,8 @@ mod tests {
         assert_eq!(settings["hooks"], managed_settings()["hooks"]);
         assert!(!project.join(".claude/commands").exists());
         assert!(!project.join(".claude/skills/evil-skill").exists());
-        assert_eq!(std::fs::read_to_string(project.join(SHIM_NAME)).unwrap(), my_kb);
+        assert_eq!(std::fs::read_to_string(project.join(SHIM_NAME)).unwrap(), SHIM_TEMPLATE);
+        assert_eq!(std::fs::read_to_string(project.join("kb.moved-aside")).unwrap(), my_kb);
         let claude = std::fs::read_to_string(project.join("CLAUDE.md")).unwrap();
         assert!(claude.contains("Keep the logo top left.") && claude.contains(RULES_IMPORT));
         let kit = read_json(&project.join(".claude/skills").join(SKILL_NAME).join(KIT_FILE));
