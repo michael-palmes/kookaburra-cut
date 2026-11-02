@@ -22,6 +22,7 @@ import type { AspectName, FormatSpec } from "../engine/format";
 import { type LoadedProject, nativeProjectSlug } from "../engine/project";
 import { settleSceneDocWrites } from "../engine/sceneDoc";
 import { sceneErrorRefusal } from "../engine/sceneErrors";
+import { settleTerminalBakes } from "../engine/sceneTerminalBaker";
 import { projectFileStamps, sourceBaselineStamps } from "../engine/sourceBaseline";
 import { getSettings, listExportPresets } from "../engine/workspace";
 import { findBundledPreset } from "../export/presetRegistry";
@@ -82,13 +83,11 @@ interface FocusLike {
   tagName?: string;
   type?: string;
   isContentEditable?: boolean;
-  closest?: (selector: string) => unknown;
 }
 
-/** A text field, select or editable region, where a focus can mean the person is mid-edit; the embedded Claude terminal's input never counts (Claude itself types there). */
+/** A text field, select or editable region, where a focus can mean the person is mid-edit. */
 export function isEditingFocus(el: FocusLike | null | undefined): boolean {
   if (!el?.tagName) return false;
-  if (el.closest?.(".terminal-panel, .xterm")) return false;
   const tag = el.tagName.toUpperCase();
   if (tag === "TEXTAREA" || tag === "SELECT") return true;
   if (tag === "INPUT") return TEXT_INPUT_TYPES.has((el.type ?? "").toLowerCase());
@@ -158,7 +157,10 @@ async function runRequest(
   hostRef.current.stopPlayback();
   const slug = nativeProjectSlug(req.project);
   const stale = await syncSources(req.sources, {
-    settleWrites: settleSceneDocWrites,
+    settleWrites: async () => {
+      await settleTerminalBakes();
+      await settleSceneDocWrites();
+    },
     stamps: () => projectFileStamps(slug),
     baseline: () => sourceBaselineStamps(slug),
     loadInFlight: () => hostRef.current.loadInFlight(),

@@ -45,7 +45,7 @@ import {
   shortenPath,
   userHomeDir,
 } from "../engine/workspace";
-import { ClaudeSpark, TerminalGlyph } from "../ui/ClaudeLauncher";
+import { ClaudeSpark } from "../ui/ClaudeLauncher";
 import { ManagedLock } from "../ui/ManagedLock";
 import { UpdateAvailableDialog } from "../ui/updateDialogs";
 import { useNativeTextUndo } from "../ui/useNativeTextUndo";
@@ -162,7 +162,6 @@ export function SettingsApp() {
   const [lagWarning, setLagWarning] = useState<LagWarningMode | null>(null);
   const [downloadsExport, setDownloadsExport] = useState<boolean | null>(null);
   const [conformNew, setConformNew] = useState<boolean | null>(null);
-  const [claudeBuiltin, setClaudeBuiltin] = useState<boolean | null>(null);
   const [claudeFirstOpen, setClaudeFirstOpen] = useState<boolean | null>(null);
   const [claudeInstalled, setClaudeInstalled] = useState<boolean | null>(null);
   const [websiteData, setWebsiteData] = useState<WebsiteDataRecord[] | null>(null);
@@ -197,7 +196,6 @@ export function SettingsApp() {
         setLagWarning((s.lagWarning as LagWarningMode) ?? "off");
         setDownloadsExport(!s.keepExportsInProject);
         setConformNew(!s.disableConformNewVideos);
-        setClaudeBuiltin(s.claudeBuiltinTerminal ?? false);
         setClaudeFirstOpen(!s.disableClaudeFirstOpen);
       })
       .catch(() => setWorkspace(null));
@@ -235,22 +233,16 @@ export function SettingsApp() {
     setConformNewVideosSetting(enabled).catch((e) => setError(String(e)));
   }, []);
 
-  const changeClaudeMode = useCallback((builtinTerminal: boolean) => {
-    setClaudeBuiltin(builtinTerminal);
-    setClaudePreferences({ builtinTerminal }).catch((e) => setError(String(e)));
-  }, []);
-
   const toggleClaudeFirstOpen = useCallback((firstOpen: boolean) => {
     setClaudeFirstOpen(firstOpen);
     setClaudePreferences({ firstOpen }).catch((e) => setError(String(e)));
   }, []);
 
-  // The main window changes these too (the launcher's ⋯ menu, the legacy rail's Use Claude app).
+  // Other windows can change this too.
   useEffect(() => {
     const unlisten = listen("kookaburra://claude-preferences-changed", () => {
       getSettings()
         .then((s) => {
-          setClaudeBuiltin(s.claudeBuiltinTerminal ?? false);
           setClaudeFirstOpen(!s.disableClaudeFirstOpen);
         })
         .catch(() => {});
@@ -441,43 +433,6 @@ export function SettingsApp() {
         <h2>Claude</h2>
         <div className="settings-row">
           <div className="settings-row-text">
-            <span className="settings-row-title">Edit with</span>
-            <span className="muted settings-row-detail">
-              What the titlebar's Edit with Claude opens. The built-in terminal is the legacy
-              option.
-            </span>
-          </div>
-          {claudeLocked ? (
-            <ManagedLock detail="A configuration profile turns Claude off (DisableClaude)." />
-          ) : (
-            <fieldset className="settings-segmented" aria-label="Edit with">
-              <button
-                type="button"
-                aria-pressed={claudeBuiltin === false}
-                className={claudeBuiltin === false ? "active" : undefined}
-                disabled={claudeBuiltin === null}
-                onClick={() => changeClaudeMode(false)}
-              >
-                <span className="titlebar-claude-mark">
-                  <ClaudeSpark size={13} />
-                </span>
-                Claude app
-              </button>
-              <button
-                type="button"
-                aria-pressed={claudeBuiltin === true}
-                className={claudeBuiltin === true ? "active" : undefined}
-                disabled={claudeBuiltin === null}
-                onClick={() => changeClaudeMode(true)}
-              >
-                <TerminalGlyph size={13} />
-                Built-in terminal
-              </button>
-            </fieldset>
-          )}
-        </div>
-        <div className="settings-row">
-          <div className="settings-row-text">
             <span className="settings-row-title">Claude app</span>
             <span className="muted settings-row-detail">
               {claudeLocked
@@ -527,7 +482,7 @@ export function SettingsApp() {
               type="checkbox"
               aria-label="Show on a new project's first open"
               checked={claudeFirstOpen ?? true}
-              disabled={claudeFirstOpen === null || claudeBuiltin === true}
+              disabled={claudeFirstOpen === null}
               onChange={(e) => toggleClaudeFirstOpen(e.target.checked)}
             />
           )}

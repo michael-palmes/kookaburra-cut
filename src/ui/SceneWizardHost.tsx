@@ -2,11 +2,10 @@ import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseProjectId } from "../engine/project";
 import { type SceneWizardRequest, useUiStore } from "../store/uiStore";
-import { HelperWizard } from "./HelperWizards";
 import { PresetGalleryModal } from "./PresetGalleryModal";
 import { EditSceneWizard, sceneIndexAtPlayhead, type WizardSceneInfo } from "./SceneWizards";
 
-/** The scene wizards (Add a scene, Edit scene and the prompt helpers), hosted at the app level so they work whether Claude runs in its own app or the legacy terminal rail; any surface opens one through `useUiStore.requestSceneWizard`. */
+/** The scene wizards (Add a scene, Edit scene), hosted at the app level; any surface opens one through `useUiStore.requestSceneWizard`. */
 export function SceneWizardHost({
   slug,
   cwd,
@@ -14,7 +13,6 @@ export function SceneWizardHost({
   readThumbs,
   captureThumbs,
   onProjectChanged,
-  onHelperPrompt,
 }: {
   /** Workspace project slug. */
   slug: string;
@@ -28,8 +26,6 @@ export function SceneWizardHost({
   captureThumbs: (signal?: AbortSignal) => Promise<Record<string, string>>;
   /** A native write changed project.json/scenes; reload the preview immediately. `focusSceneFile` lands the playhead on that scene after the reload. */
   onProjectChanged: (focusSceneFile?: string) => void;
-  /** A helper wizard composed a prompt for Claude. */
-  onHelperPrompt: (prompt: string) => void;
 }) {
   const scope = parseProjectId(slug).scope;
   const canAddScenes = scope !== "preset" && scope !== "ws-preset";
@@ -69,7 +65,6 @@ export function SceneWizardHost({
         setNewScenePosition(sceneIndexAtPlayhead(scenesRef.current) + 1);
       }
       setWizard(which);
-      if (which !== "new-scene" && which !== "edit-scene") return;
       readThumbs()
         .then(addThumbs)
         .catch(() => {});
@@ -136,20 +131,6 @@ export function SceneWizardHost({
         onSaved={() => {
           setWizard(null);
           onProjectChanged();
-        }}
-        onCancel={() => setWizard(null)}
-      />
-    );
-  }
-  if (wizard && wizard !== "new-scene") {
-    return (
-      <HelperWizard
-        kind={wizard}
-        scenes={scenes}
-        slug={slug}
-        onInsert={(prompt) => {
-          setWizard(null);
-          onHelperPrompt(prompt);
         }}
         onCancel={() => setWizard(null)}
       />

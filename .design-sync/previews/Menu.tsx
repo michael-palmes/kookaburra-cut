@@ -1,7 +1,7 @@
 import { Button, Menu, MenuItem } from "@kookaburra/chrome";
 
 export const RailMenu = () => (
-  <div className="rail-more" style={{ margin: "16px 0 0 16px" }}>
+  <div className="dropdown-host" style={{ margin: "16px 0 0 16px" }}>
     <Button small>⋯</Button>
     <Menu>
       <MenuItem>Duplicate scene</MenuItem>

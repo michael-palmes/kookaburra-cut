@@ -45,7 +45,6 @@ import {
   openInClaude,
   queueClaudeLauncherGreeting,
   rearmClaudeLauncherGreeting,
-  setClaudePreferences,
 } from "./engine/claudeApp";
 import {
   clipExtractionCount,
@@ -175,6 +174,7 @@ import { commitSceneDocPatch, docPatchMatchesProject } from "./engine/sceneDocPa
 import type { SceneDoc } from "./engine/sceneDocSchema";
 import { sceneErrorRefusal } from "./engine/sceneErrors";
 import { planDeletes, planDuplicates, planMoves } from "./engine/sceneOrder";
+import { reconcileTerminalBakes } from "./engine/sceneTerminalBaker";
 import { ensureSceneThumbs, listCachedSceneThumbs } from "./engine/sceneThumbs";
 import { activeSceneIndex } from "./engine/sceneTimeline";
 import { SHUTTER_SAMPLES_DEFAULT } from "./engine/shutter";
@@ -200,7 +200,6 @@ import {
   updateBundledTemplateManifest,
   updateBundledTemplatePreview,
 } from "./engine/templates";
-import { getLiveSession } from "./engine/terminal";
 import { ensureUserThemePreviews, themeVariantsOf } from "./engine/themePreviews";
 import { useUpdateCheck } from "./engine/updates";
 import {
@@ -235,7 +234,7 @@ import { CameraToolOverlay } from "./ui/CameraToolOverlay";
 import { ChartAnimationLane } from "./ui/ChartAnimationLane";
 import { ChartDataModal } from "./ui/ChartDataModal";
 import { ChartHeroGizmo } from "./ui/ChartHeroGizmo";
-import { ClaudeLauncher, ClaudeSpark, CloseGlyph, EditWithClaudeButton } from "./ui/ClaudeLauncher";
+import { ClaudeLauncher, EditWithClaudeButton } from "./ui/ClaudeLauncher";
 import { CommandPalette } from "./ui/CommandPalette";
 import { CompareAnimationLane } from "./ui/CompareAnimationLane";
 import { openChartDataModal } from "./ui/chartDataModalStore";
@@ -268,13 +267,11 @@ import { PlaybackBar } from "./ui/PlaybackBar";
 import { PresentModal } from "./ui/PresentModal";
 import { writeCutCaches, writeCutsForMusic } from "./ui/pinnedCuts";
 import { ALL_PROJECTS } from "./ui/projectLibrary";
-import { SceneTerminalOverlay } from "./ui/SceneTerminalOverlay";
 import { SceneWebsiteOverlay } from "./ui/SceneWebsiteOverlay";
 import { SceneWizardHost } from "./ui/SceneWizardHost";
 import { ShortcutsSheet } from "./ui/ShortcutsSheet";
 import { playheadStillMs, stillAtFrame } from "./ui/stillsModel";
 import { TerminalGizmo } from "./ui/TerminalGizmo";
-import { TerminalPanel } from "./ui/TerminalPanel";
 import { TextGizmo } from "./ui/TextGizmo";
 import { ThemeMode } from "./ui/ThemeMode";
 import { TimelineDock } from "./ui/TimelineDock";
@@ -466,13 +463,10 @@ export default function App() {
   // Coarse export-preamble phase (0..3) while an export is preparing, else null (drives the preparing-export overlay so a cold start isn't a silent 0%).
   const [exportPrepStep, setExportPrepStep] = useState<number | null>(null);
 
-  // The legacy built-in terminal rail: what Edit with Claude opens once Settings (or the launcher's ⋯ menu) picks the built-in terminal; it still opens by itself on every editable load.
-  const [railOpen, setRailOpen] = useState(false);
   // The Claude launcher under the titlebar button; `firstRun` is the larger greeting a new project's first open (or a re-arm) shows.
   const [claudeLauncher, setClaudeLauncher] = useState<null | { firstRun: boolean }>(null);
   const claudeButtonRef = useRef<HTMLButtonElement>(null);
   const closeClaudeLauncher = useCallback(() => setClaudeLauncher(null), []);
-  const claudeBuiltinTerminal = settings?.claudeBuiltinTerminal ?? false;
   // What a configuration profile forces; null until read, and every Claude entry point waits for it so nothing managed flashes open.
   const managed = useManagedPolicy();
   const claudeAllowed = managed !== null && !managed.disableClaude;
@@ -480,22 +474,13 @@ export default function App() {
   const claudeOffered = managed?.disableClaude !== true;
   const claudeAllowedRef = useRef(false);
   claudeAllowedRef.current = claudeAllowed;
-  // Read by the load-time greeting and the stable callbacks below without re-running them.
-  const claudePrefsRef = useRef({ builtinTerminal: false, firstOpen: true });
-  claudePrefsRef.current = {
-    builtinTerminal: claudeBuiltinTerminal,
-    firstOpen: !settings?.disableClaudeFirstOpen,
-  };
+  // Read by the load-time greeting without re-running it.
+  const claudeFirstOpenRef = useRef(true);
+  claudeFirstOpenRef.current = !settings?.disableClaudeFirstOpen;
   const toggleClaude = useCallback(() => {
     if (!claudeAllowedRef.current) return;
-    if (claudeBuiltinTerminal) setRailOpen((v) => !v);
-    else setClaudeLauncher((v) => (v ? null : { firstRun: false }));
-  }, [claudeBuiltinTerminal]);
-  // A mode change from anywhere (Settings included) closes whichever surface no longer applies.
-  useEffect(() => {
-    if (claudeBuiltinTerminal) setClaudeLauncher(null);
-    else setRailOpen(false);
-  }, [claudeBuiltinTerminal]);
+    setClaudeLauncher((v) => (v ? null : { firstRun: false }));
+  }, []);
 
   // Titlebar-opened modal; refresh bumps re-scan it (e.g. after a drag-drop import while open).
   const [showMedia, setShowMedia] = useState(false);
@@ -515,33 +500,6 @@ export default function App() {
     });
   }, []);
 
-  // A helper wizard's prompt: pasted into a live terminal session when there is one, else typed into a new Claude app session.
-  const handleHelperPrompt = useCallback(
-    (prompt: string) => {
-      const currentId = useEditorStore.getState().projectId;
-      if (!isEditableProjectId(currentId)) return;
-      const slug = nativeProjectSlug(currentId);
-      const live = getLiveSession(slug);
-      if (live) {
-        live.session.paste(prompt);
-        live.term.focus();
-      } else {
-        promptInClaudeApp(slug, prompt);
-      }
-    },
-    [promptInClaudeApp],
-  );
-
-  // Switch what Edit with Claude opens and show the surface just picked (the mode effect closes the other); persisted for the next launch and the Settings window.
-  const switchClaudeMode = useCallback((builtinTerminal: boolean) => {
-    setSettings((prev) => (prev ? { ...prev, claudeBuiltinTerminal: builtinTerminal } : prev));
-    if (builtinTerminal) setRailOpen(true);
-    else setClaudeLauncher({ firstRun: false });
-    setClaudePreferences({ builtinTerminal }).catch((e) =>
-      setToast({ kind: "error", message: String(e) }),
-    );
-  }, []);
-
   // Settings' Claude section updates the main window live.
   useEffect(() => {
     if (isAutoRun) return;
@@ -549,14 +507,13 @@ export default function App() {
       getSettings()
         .then((s) => {
           // Turning the greeting back on shows it once more, on the next project open.
-          if (!s.disableClaudeFirstOpen && !claudePrefsRef.current.firstOpen) {
+          if (!s.disableClaudeFirstOpen && !claudeFirstOpenRef.current) {
             rearmClaudeLauncherGreeting();
           }
           setSettings((prev) =>
             prev
               ? {
                   ...prev,
-                  claudeBuiltinTerminal: s.claudeBuiltinTerminal,
                   disableClaudeFirstOpen: s.disableClaudeFirstOpen,
                 }
               : prev,
@@ -569,38 +526,29 @@ export default function App() {
     };
   }, [isAutoRun]);
 
-  // Insert a media path: paste into a live Claude session if one exists, else copy it for Claude (opening the legacy rail when that is the chosen surface).
+  // Insert a media path: copy it for Claude; on failure the path in the toast is the fallback the user can retype.
   const handleInsertMedia = useCallback((rel: string) => {
     const currentId = useEditorStore.getState().projectId;
     if (!isEditableProjectId(currentId)) return;
     setShowMedia(false);
-    const live = getLiveSession(nativeProjectSlug(currentId));
-    // A session left running after switching to the Claude app sits in a hidden rail, so only the terminal mode pastes into it.
-    if (live && claudePrefsRef.current.builtinTerminal) {
-      live.session.paste(rel);
-      live.term.focus();
+    const write = navigator.clipboard?.writeText(rel);
+    if (write) {
+      write
+        .then(() =>
+          setToast({
+            kind: "success",
+            message: claudeAllowedRef.current
+              ? `Path copied, paste it into Claude: ${rel}`
+              : `Path copied: ${rel}`,
+          }),
+        )
+        .catch(() => setToast({ kind: "error", message: `Couldn't copy. The path is: ${rel}` }));
     } else {
-      // Only claim success once the clipboard write lands; on failure the path in the toast is the fallback the user can retype.
-      const write = navigator.clipboard?.writeText(rel);
-      if (write) {
-        write
-          .then(() =>
-            setToast({
-              kind: "success",
-              message: claudeAllowedRef.current
-                ? `Path copied — paste it into Claude: ${rel}`
-                : `Path copied: ${rel}`,
-            }),
-          )
-          .catch(() => setToast({ kind: "error", message: `Couldn't copy — the path is: ${rel}` }));
-      } else {
-        setToast({ kind: "error", message: `Couldn't copy — the path is: ${rel}` });
-      }
-      if (claudePrefsRef.current.builtinTerminal) setRailOpen(true);
+      setToast({ kind: "error", message: `Couldn't copy. The path is: ${rel}` });
     }
   }, []);
 
-  // "Edit with Claude" on a theme card: a starter prompt, never auto-submitted, typed into the Claude app or pasted into the live terminal session (the media Insert pattern).
+  // "Edit with Claude" on a theme card: a starter prompt, never auto-submitted, typed into the Claude app.
   const handleEditThemeInClaude = useCallback(
     (choice: { id: string; name: string }) => {
       const currentId = useEditorStore.getState().projectId;
@@ -609,30 +557,10 @@ export default function App() {
         ? choice.id.slice(WORKSPACE_THEME_PREFIX.length)
         : null;
       if (!slug) return;
-      const prompt = `Edit my Kookaburra Cut theme "${choice.name}" — its JSON lives at "~/Kookaburra Cut/themes/${slug}/theme.json". I'd like to: `;
-      const live = getLiveSession(nativeProjectSlug(currentId));
-      if (!claudePrefsRef.current.builtinTerminal) {
-        promptInClaudeApp(nativeProjectSlug(currentId), prompt);
-      } else if (live) {
-        live.session.paste(prompt);
-        live.term.focus();
-        setRailOpen(true);
-      } else {
-        const write = navigator.clipboard?.writeText(prompt);
-        if (write) {
-          write
-            .then(() =>
-              setToast({
-                kind: "success",
-                message: "Starter prompt copied — start a Claude session and paste it.",
-              }),
-            )
-            .catch(() => setToast({ kind: "error", message: `Couldn't copy — prompt: ${prompt}` }));
-        } else {
-          setToast({ kind: "error", message: `Couldn't copy — prompt: ${prompt}` });
-        }
-        setRailOpen(true);
-      }
+      promptInClaudeApp(
+        nativeProjectSlug(currentId),
+        `Edit my Kookaburra Cut theme "${choice.name}": its JSON lives at "~/Kookaburra Cut/themes/${slug}/theme.json". I'd like to: `,
+      );
     },
     [promptInClaudeApp],
   );
@@ -2101,19 +2029,18 @@ export default function App() {
       rememberProjectAspect(loadedProjectId, format.name);
     }
   }, [loadedProjectId, projectId, format.name, isAutoRun, exporting]);
-  // Greet editable projects: the legacy rail opens on every load as it always has, the Claude launcher only on a new project's first open; both close where they can't work. Keyed on the id: in-memory doc patches swap the project object per edit and must not reopen what the user closed.
+  // Greet a new project's first open with the Claude launcher, and close it where it can't work. Keyed on the id: in-memory doc patches swap the project object per edit and must not reopen what the user closed.
   useEffect(() => {
     if (!loadedProjectId || isAutoRun || !managed) return;
     const editable = isEditableProjectId(loadedProjectId) && !managed.disableClaude;
     const greet = editable && claimClaudeLauncherGreeting(loadedProjectId);
-    const prefs = claudePrefsRef.current;
-    if (prefs.builtinTerminal) {
-      setRailOpen(editable);
-      return;
-    }
-    setRailOpen(false);
-    setClaudeLauncher(greet && prefs.firstOpen ? { firstRun: true } : null);
+    setClaudeLauncher(greet && claudeFirstOpenRef.current ? { firstRun: true } : null);
   }, [loadedProjectId, isAutoRun, managed]);
+
+  // Terminal scenes bake here, at author time; never during an export or an autorun.
+  useEffect(() => {
+    if (project && !exporting && !isAutoRun) reconcileTerminalBakes(project, handleDocChanged);
+  }, [project, exporting, isAutoRun, handleDocChanged]);
 
   // Camera-edit hygiene: a committed drag draft holds the new pose through the async reload, released once the reloaded project lands; the editor's whole state is per-project, so a project switch resets it.
   useEffect(() => {
@@ -2929,8 +2856,7 @@ export default function App() {
             {project && isEditableProjectId(project.id) && claudeAllowed && (
               <EditWithClaudeButton
                 buttonRef={claudeButtonRef}
-                legacy={claudeBuiltinTerminal}
-                open={claudeBuiltinTerminal ? railOpen : claudeLauncher !== null}
+                open={claudeLauncher !== null}
                 onToggle={toggleClaude}
               >
                 {claudeLauncher && (
@@ -2941,7 +2867,6 @@ export default function App() {
                     sceneName={project.sceneDocs[camSceneIndex]?.name ?? null}
                     firstRun={claudeLauncher.firstRun}
                     onClose={closeClaudeLauncher}
-                    onUseTerminal={() => switchClaudeMode(true)}
                   />
                 )}
               </EditWithClaudeButton>
@@ -3059,49 +2984,8 @@ export default function App() {
                 bumpWorkspaceReloadToken();
                 setLoadNonce((n) => n + 1);
               }}
-              onHelperPrompt={handleHelperPrompt}
             />
           )}
-          {/* The rail hides during export (task 24): the live-session registry keeps the PTY and buffer alive through the unmount, so it restores intact when the export ends. */}
-          {railOpen &&
-            claudeAllowed &&
-            !exporting &&
-            project &&
-            isEditableProjectId(project.id) && (
-              <aside className="terminal-rail">
-                <div className="rail-header">
-                  <span className="rail-title">Claude Code</span>
-                  <span className="rail-legacy-tag">Legacy</span>
-                  <button
-                    type="button"
-                    className="btn btn-small rail-use-app"
-                    title="Edit in the Claude app instead"
-                    onClick={() => switchClaudeMode(false)}
-                  >
-                    <span className="titlebar-claude-mark">
-                      <ClaudeSpark size={12} strokeWidth={2.6} />
-                    </span>
-                    Use Claude app
-                  </button>
-                  <button
-                    type="button"
-                    className="rail-close"
-                    aria-label="Hide the Claude panel"
-                    title="Close (⌥⌘E)"
-                    onClick={() => setRailOpen(false)}
-                  >
-                    <CloseGlyph />
-                  </button>
-                </div>
-                <TerminalPanel
-                  key={project.id}
-                  slug={nativeProjectSlug(project.id)}
-                  cwd={projectFolder ?? ""}
-                  projectName={project.name}
-                  sceneCount={project.slots.length}
-                />
-              </aside>
-            )}
           <div className="editor-main">
             <div className="stage">
               {/* Letterbox frame: contain-fit at the export aspect (design.md §7.2); the preview frames exactly like the export and can never overflow the window. */}
@@ -3123,15 +3007,6 @@ export default function App() {
                   }
                   cutout={sceneCutout}
                 />
-                {/* The live scene terminal: below the tool and gizmo layers so their handles stay reachable, self-gated on the doc's terminal block and paused playback. */}
-                {project && isEditableProjectId(project.id) && !exporting && !isAutoRun && (
-                  <SceneTerminalOverlay
-                    project={project}
-                    sceneIndex={camSceneIndex}
-                    aspect={format.width / format.height}
-                    onDocChanged={handleDocChanged}
-                  />
-                )}
                 {project && isEditableProjectId(project.id) && !isAutoRun && (
                   <SceneWebsiteOverlay
                     project={project}
@@ -3485,7 +3360,7 @@ export default function App() {
         </div>
       )}
 
-      {/* The timeline dock: a full-width row of the app grid (the rail and inspector end above it); Animate scene controls the lane stack and its lane-to-cell connector. */}
+      {/* The timeline dock: a full-width row of the app grid (the inspector ends above it); Animate scene controls the lane stack and its lane-to-cell connector. */}
       {editorView && (
         <TimelineDock
           connectorActive={animationLaneOpen || lightingLaneOpen || deviceLaneOpen}
@@ -3684,7 +3559,7 @@ export default function App() {
             playing,
             audioMuted,
             claudeAllowed,
-            claudeOpen: claudeBuiltinTerminal ? railOpen : claudeLauncher !== null,
+            claudeOpen: claudeLauncher !== null,
             canAddScenes:
               !!project && !["preset", "ws-preset"].includes(parseProjectId(project.id).scope),
             aspect: format.name,

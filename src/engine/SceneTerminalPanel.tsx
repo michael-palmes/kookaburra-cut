@@ -28,7 +28,7 @@ import {
 import { resolveTerminalColours, type SceneTerminalColours } from "./sceneTerminalTheme";
 import { useProjectAssetUrl } from "./useProjectAssetUrl";
 
-/** The terminal block's screen-locked window: chrome (shadow, rounded body, bezel, traffic lights, title) rendered live from the theme, with the captured snapshot raster as the screen pixels and a resting block cursor before any capture exists. Mounted inside the frame-panel group, so the compositor draws it over the composited slide from the base pose; everything here is a pure function of the doc + theme (no clock reads). The interactive DOM overlay shares `sceneTerminalLayout`, so the live xterm and these pixels cannot drift. */
+/** The terminal block's screen-locked window: chrome (shadow, rounded body, bezel, traffic lights, title) rendered live from the theme, with the baked snapshot raster as the screen pixels and a resting block cursor before any bake exists. Mounted inside the frame-panel group, so the compositor draws it over the composited slide from the base pose; everything here is a pure function of the doc + theme (no clock reads). */
 
 const WINDOW_STROKE_ALPHA = 0.16;
 /** Window edge stroke, as a fraction of the cell height. */
@@ -201,7 +201,7 @@ function TerminalWindow({
   const mac = terminal.chrome.style === "mac";
   const { window, screen, grid, cell, radius, titleBarHeight } = layout;
   const snapshotSrc = terminal.snapshot?.src ?? null;
-  // Recaptures overwrite the snapshot in place; its revision is what makes a re-bake a new URL.
+  // Re-bakes overwrite the snapshot in place; its revision is what makes a re-bake a new URL.
   const snapshotUrl = useProjectAssetUrl(snapshotSrc, "[terminal] snapshot");
 
   const lightY = window.y + window.height / 2 - titleBarHeight / 2;

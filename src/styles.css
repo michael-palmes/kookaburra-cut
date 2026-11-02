@@ -699,12 +699,6 @@ body {
   color: var(--claude-text-secondary);
 }
 
-.claude-launcher-menu-hint {
-  margin-left: auto;
-  font-size: var(--text-xs);
-  color: var(--claude-text-tertiary);
-}
-
 /* ── Controls ──────────────────────────────────────────────────────────────── */
 
 /* Neutral raised button — the default control (§8). */
@@ -827,10 +821,9 @@ body {
   font-size: var(--text-sm);
 }
 
-/* ── Editor body: optional Claude rail + the stage column ─────────────────── */
+/* ── Editor body: the stage column ─────────────────────────────────────────── */
 
-/* Row 2 only: the timeline dock owns row 3 full width, so the rail and the
-   inspector end above it. */
+/* Row 2 only: the timeline dock owns row 3 full width, so the inspector ends above it. */
 .editor-body {
   grid-row: 2;
   display: flex;
@@ -843,72 +836,6 @@ body {
   min-height: 0;
   display: grid;
   grid-template-rows: 1fr;
-}
-
-/* ── Claude Code rail (v6 · M3) ────────────────────────────────────────────── */
-
-.terminal-rail {
-  display: flex;
-  flex-direction: column;
-  width: clamp(320px, 30vw, 460px);
-  min-height: 0;
-  background: var(--surface-panel);
-  border-right: 1px solid var(--border-default);
-}
-
-.rail-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-5);
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.rail-title {
-  font-size: var(--text-sm);
-  font-weight: 590;
-  color: var(--text-primary);
-}
-
-.rail-legacy-tag {
-  padding: 1px var(--space-3);
-  font-size: var(--text-2xs);
-  font-weight: 590;
-  color: var(--text-tertiary);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-full);
-}
-
-.rail-use-app {
-  margin-left: auto;
-}
-
-/* The legacy rail's close: a raised round button, easy to find since the rail is now often dismissed. */
-.rail-close {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  color: var(--text-primary);
-  background: var(--surface-raised);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-full);
-  cursor: pointer;
-  transition: background var(--dur-fast) var(--ease-standard);
-}
-
-.rail-close:hover {
-  background: var(--surface-elevated);
-}
-
-.terminal-panel {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
 }
 
 .chip-row {
@@ -1775,87 +1702,6 @@ body {
 .media-preview-step:disabled {
   opacity: 0.35;
   cursor: default;
-}
-
-.terminal-host {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  background: var(--surface-recessed);
-}
-
-.terminal-screen {
-  position: absolute;
-  inset: var(--space-3) 0 var(--space-3) var(--space-4);
-}
-
-/* xterm sizes itself to this container; keep its own scrollbar styling minimal. */
-.terminal-screen .xterm {
-  height: 100%;
-}
-
-.terminal-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: var(--space-5);
-  padding: var(--space-7);
-  background: var(--surface-panel);
-}
-
-.terminal-overlay h3 {
-  margin: 0;
-  font-size: var(--text-md);
-  font-weight: 590;
-}
-
-.terminal-overlay p {
-  margin: 0;
-}
-
-/* The shell's parting words when a session dies instantly (v9 · packaged fix) —
-   the overlay covers the scrollback, so this is the only place they're readable. */
-.terminal-exit-note {
-  margin: 0;
-  white-space: pre-wrap;
-  font-family: Menlo, ui-monospace, "SF Mono", monospace;
-  font-size: var(--text-xs);
-  color: var(--text-secondary, #9aa4ab);
-  overflow-wrap: anywhere;
-}
-
-.overlay-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-4);
-}
-
-.rail-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding: var(--space-3) var(--space-5);
-  border-top: 1px solid var(--border-subtle);
-}
-
-/* The Claude Code update banner: advisory, never blocks starting a session. */
-.terminal-update-banner {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-5);
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--surface-raised);
-}
-
-.terminal-update-banner .muted {
-  flex: 1;
-  font-size: 11px;
 }
 
 /* ── Stage (§7.2) — recessed matte around a letterboxed, aspect-locked frame ─ */
@@ -5437,17 +5283,7 @@ button.beat-status {
   text-align: center;
 }
 
-/* ── Scene wizards + rail actions (v7 · M3) ────────────────────────────────── */
-
-/* The rail's primary action row: New scene (the accent CTA), Edit scene, the ⋯ assist
-   menu, and New session pinned right — replaces the old all-chips row. */
-.rail-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--border-subtle);
-}
+/* ── Scene wizards (v7 · M3) ───────────────────────────────────────────────── */
 
 .btn-small {
   height: var(--control-h-sm);
@@ -5455,11 +5291,11 @@ button.beat-status {
   font-size: var(--text-xs);
 }
 
-.rail-more {
+.dropdown-host {
   position: relative;
 }
 
-.rail-menu {
+.dropdown-menu {
   position: absolute;
   top: calc(100% + var(--space-2));
   left: 0;
@@ -5474,7 +5310,7 @@ button.beat-status {
   box-shadow: var(--elev-dialog);
 }
 
-.rail-menu-item {
+.dropdown-item {
   padding: var(--space-3) var(--space-4);
   font: inherit;
   font-size: var(--text-sm);
@@ -5486,11 +5322,11 @@ button.beat-status {
   cursor: pointer;
 }
 
-.rail-menu-item:hover:not(:disabled) {
+.dropdown-item:hover:not(:disabled) {
   background: var(--surface-raised);
 }
 
-.rail-menu-item:disabled {
+.dropdown-item:disabled {
   color: var(--text-disabled);
   cursor: default;
 }
@@ -6584,7 +6420,7 @@ button.beat-status {
   color: var(--danger);
   border-color: var(--danger);
 }
-.rail-menu-item.danger {
+.dropdown-item.danger {
   color: var(--danger);
 }
 
@@ -14342,65 +14178,6 @@ textarea.text-inspector-copy-input {
 }
 
 /* ── Scene terminal overlay ─────────────────────────────────────── */
-/* The live xterm over the active scene's terminal block (SceneTerminalOverlay): positioned as frame fractions inside the stage frame, empty regions click-through. */
-.scene-terminal-overlay {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.scene-terminal-host {
-  position: absolute;
-  overflow: hidden;
-  pointer-events: auto;
-  cursor: text;
-}
-
-.scene-terminal-host.focused {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
-  border-radius: 2px;
-}
-
-.scene-terminal-scale {
-  position: absolute;
-  left: 0;
-  top: 0;
-  transform-origin: 0 0;
-}
-
-.scene-terminal-chip {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--border-default);
-  background: var(--surface-raised);
-  color: var(--text-primary);
-  font-size: 12px;
-  cursor: pointer;
-  pointer-events: auto;
-}
-
-.scene-terminal-chip:hover {
-  background: var(--surface-elevated);
-}
-
-.scene-terminal-chip.quiet {
-  opacity: 0;
-  transition: opacity 120ms ease;
-}
-
-.scene-terminal-host:hover .scene-terminal-chip.quiet,
-.scene-terminal-chip.quiet:focus-visible {
-  opacity: 1;
-}
-
 /* ── Scene Website overlay ──────────────────────────────────────── */
 .scene-website-overlay {
   position: absolute;
@@ -14739,4 +14516,32 @@ textarea.text-inspector-copy-input {
   margin: var(--space-3) 0 0;
   color: var(--text-secondary);
   font-size: var(--text-xs);
+}
+
+/* The Terminal drill's transcript field. */
+.terminal-transcript-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.terminal-transcript-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+textarea.terminal-transcript-input {
+  width: 100%;
+  height: auto;
+  min-height: 9rem;
+  padding: var(--space-3);
+  resize: vertical;
+  white-space: pre;
+  overflow-x: auto;
+  font-family: Menlo, ui-monospace, "SF Mono", monospace;
+  font-size: var(--text-xs);
+  line-height: 1.4;
 }

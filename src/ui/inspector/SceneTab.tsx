@@ -43,7 +43,6 @@ import { deriveManagedTextModel, resolveManagedTextGroups } from "../../engine/m
 import { formatMediaDuration, fsUrl, type MediaMeta, mediaMeta } from "../../engine/media";
 import { useObjectEditStore } from "../../engine/objectEditStore";
 import { optionPreviewClip, optionPreviewStill } from "../../engine/optionPreviews";
-import { notePickedFolder } from "../../engine/pickedFolders";
 import {
   assetFileUrl,
   type LoadedProject,
@@ -82,7 +81,6 @@ import { canRigConvertToOrbit, orbitToRig, rigToOrbit } from "../../engine/scene
 import {
   resolveSceneTerminal,
   type SceneDocTerminal,
-  sanitizeStartCommand,
   TERMINAL_COLS_MAX,
   TERMINAL_COLS_MIN,
   TERMINAL_FONT_PX_MAX,
@@ -90,16 +88,6 @@ import {
   TERMINAL_ROWS_MAX,
   TERMINAL_ROWS_MIN,
 } from "../../engine/sceneTerminal";
-import { bakeTerminalSnapshot } from "../../engine/sceneTerminalBake";
-import { type CaptureTerminal, captureTerminalSnapshot } from "../../engine/sceneTerminalCapture";
-import {
-  getSceneTerminalSession,
-  killSceneTerminalSession,
-  sceneTerminalKey,
-  sceneTerminalSessionsVersion,
-  startSceneTerminalSession,
-  subscribeSceneTerminalSessions,
-} from "../../engine/sceneTerminalSession";
 import { resolveTerminalColours, TERMINAL_THEME_PRESETS } from "../../engine/sceneTerminalTheme";
 import { useLargestSceneText, useSceneTextRegistry } from "../../engine/sceneTextRegistry";
 import { listCachedSceneThumbs } from "../../engine/sceneThumbs";
@@ -599,7 +587,7 @@ function TerminalChromeStyleIcon({ mac }: { mac?: boolean }) {
   );
 }
 
-function TerminalActionIcon({ kind }: { kind: "folder" | "play" | "capture" }) {
+function TerminalTranscriptIcon() {
   return (
     <svg
       width="17"
@@ -608,19 +596,12 @@ function TerminalActionIcon({ kind }: { kind: "folder" | "play" | "capture" }) {
       fill="none"
       stroke="currentColor"
       strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
       aria-hidden="true"
     >
-      {kind === "folder" && (
-        <path d="M2.5 6a1.5 1.5 0 0 1 1.5-1.5h4l2 2h6A1.5 1.5 0 0 1 17.5 8v7a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 15z" />
-      )}
-      {kind === "play" && <path d="M6.5 4.5v11l9-5.5z" strokeLinejoin="round" />}
-      {kind === "capture" && (
-        <>
-          <rect x="2.5" y="6" width="15" height="10.5" rx="2" />
-          <path d="M7 6l1.2-2h3.6L13 6" />
-          <circle cx="10" cy="11" r="2.6" />
-        </>
-      )}
+      <rect x="2.5" y="3.5" width="15" height="13" rx="2" />
+      <path d="M6 8l2.5 2L6 12M10.5 12.5H14" />
     </svg>
   );
 }
@@ -720,6 +701,53 @@ function WebsiteShadowIcon({ strength }: { strength: "none" | "soft" | "strong" 
       )}
       <rect x="3" y="3" width="12" height="10" rx="2" stroke="currentColor" strokeWidth="1.5" />
     </svg>
+  );
+}
+
+/** The transcript field: draft while typing (Return is a new line), commit on blur, Escape restores. */
+function TerminalTranscriptField({
+  value,
+  onCommit,
+}: {
+  value: string;
+  onCommit: (value: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const editing = useRef(false);
+  const cancelled = useRef(false);
+  useEffect(() => {
+    if (!editing.current) setDraft(value);
+  }, [value]);
+  return (
+    <label className="terminal-transcript-field">
+      <span className="terminal-transcript-label">
+        <TerminalTranscriptIcon />
+        Transcript
+      </span>
+      <textarea
+        className="modal-input terminal-transcript-input"
+        spellCheck={false}
+        rows={8}
+        value={draft}
+        placeholder={"$ pnpm test\n\u2713 42 passed"}
+        onChange={(event) => {
+          editing.current = true;
+          setDraft(event.target.value);
+        }}
+        onBlur={() => {
+          editing.current = false;
+          if (cancelled.current) cancelled.current = false;
+          else if (draft !== value) onCommit(draft);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            cancelled.current = true;
+            setDraft(value);
+            event.currentTarget.blur();
+          }
+        }}
+      />
+    </label>
   );
 }
 
@@ -3342,8 +3370,6 @@ export function SceneTab({
   // Unrenderable characters in this scene's mounted text: coverage misses against the theme faces + symbols fallback, plus emoji the system font could not raster. Editor-only; the export path never reads this.
   const sceneTexts = useSceneTextRegistry((s) => s.texts[sceneIndex]);
   useSyncExternalStore(subscribeEmojiRasters, emojiRasterVersion);
-  // Scene-terminal sessions live outside React; the tick keeps the drill's Start/Capture states honest.
-  useSyncExternalStore(subscribeSceneTerminalSessions, sceneTerminalSessionsVersion);
   const badgeTheme = sceneTheme ?? project.theme;
   const unrenderableChars = new Set<string>();
   for (const entry of Object.values(sceneTexts ?? {})) {
@@ -7502,9 +7528,6 @@ export function SceneTab({
   if (drillIn === "terminal.edit" && doc?.terminal) {
     const terminal = resolveSceneTerminal(doc);
     const terminalTheme = sceneTheme ?? project.theme;
-    const sessionKey = stem ? sceneTerminalKey(slug, stem) : null;
-    const session = sessionKey ? getSceneTerminalSession(sessionKey) : undefined;
-    const running = session?.status === "running";
     const patchTerminal = (mutate: (t: SceneDocTerminal) => void, history: string) =>
       void patchDoc(
         (next) => {
@@ -7512,54 +7535,12 @@ export function SceneTab({
         },
         { history },
       );
-    const startSession = async () => {
-      if (!terminal || !sessionKey) return;
-      const cwd = terminal.startPath ?? workspaceProjectPath(slug);
-      if (!cwd) return;
-      try {
-        await startSceneTerminalSession({
-          key: sessionKey,
-          cwd,
-          terminal,
-          colours: resolveTerminalColours(terminal.theme, terminalTheme),
-        });
-      } catch (e) {
-        console.warn("[terminal] session start failed:", e);
-      }
-    };
-    const captureSnapshot = async () => {
-      const entry = sessionKey ? getSceneTerminalSession(sessionKey) : undefined;
-      if (!entry || !terminal || !stem) return;
-      const snapshot = captureTerminalSnapshot(entry.term as unknown as CaptureTerminal);
-      try {
-        const src = await bakeTerminalSnapshot(
-          project.id,
-          stem,
-          { ...terminal, snapshot },
-          terminalTheme,
-        );
-        void patchDoc(
-          (next) => {
-            if (next.terminal) next.terminal.snapshot = { ...snapshot, src };
-          },
-          { history: "capture terminal snapshot" },
-        );
-      } catch (e) {
-        console.warn("[terminal] snapshot capture failed:", e);
-      }
-    };
-    const chooseStartFolder = async () => {
-      const picked = await openFolderPicker({
-        directory: true,
-        title: "Choose the session's start folder",
-      });
-      if (typeof picked === "string" && picked.length > 0) {
-        void notePickedFolder(picked);
-        patchTerminal((t) => {
-          t.startPath = picked;
-        }, "set terminal start path");
-      }
-    };
+    const patchTerminalGrid = (mutate: (t: SceneDocTerminal) => void, history: string) =>
+      patchTerminal((t) => {
+        mutate(t);
+        // The grid lays out again from the transcript at the new size.
+        if (t.snapshot) delete t.snapshot.transcript;
+      }, history);
     return (
       <div className="inspector-drill">
         <DrillBack
@@ -7571,7 +7552,6 @@ export function SceneTab({
               kind="remove"
               label="Remove terminal"
               onClick={() => {
-                if (sessionKey) killSceneTerminalSession(sessionKey);
                 useTerminalEditStore.getState().select(null);
                 void patchDoc((next) => {
                   next.terminal = undefined;
@@ -7584,6 +7564,28 @@ export function SceneTab({
         <div className="inspector-drill-body">
           {terminal && (
             <>
+              <DrillGroup
+                label="Content"
+                hint={
+                  terminal.snapshot && !terminal.transcript
+                    ? "Showing a captured snapshot. A transcript replaces it."
+                    : "Plain text, or ANSI colours such as \\e[32m. It saves into the project and travels with packs, so leave secrets out."
+                }
+              >
+                <TerminalTranscriptField
+                  key={`${project.id}:${stem}`}
+                  value={terminal.transcript ?? ""}
+                  onCommit={(value) =>
+                    patchTerminal((t) => {
+                      if (value) t.transcript = value;
+                      else {
+                        delete t.transcript;
+                        delete t.snapshot;
+                      }
+                    }, "edit terminal transcript")
+                  }
+                />
+              </DrillGroup>
               <DrillGroup label="Theme">
                 {TERMINAL_THEME_PRESETS.map((preset) => {
                   const colours = resolveTerminalColours(preset.id, terminalTheme);
@@ -7647,7 +7649,7 @@ export function SceneTab({
                     max={TERMINAL_COLS_MAX}
                     step={1}
                     onCommit={(n) =>
-                      patchTerminal((t) => {
+                      patchTerminalGrid((t) => {
                         t.cols = Math.round(n);
                       }, "set terminal columns")
                     }
@@ -7663,7 +7665,7 @@ export function SceneTab({
                     max={TERMINAL_ROWS_MAX}
                     step={1}
                     onCommit={(n) =>
-                      patchTerminal((t) => {
+                      patchTerminalGrid((t) => {
                         t.rows = Math.round(n);
                       }, "set terminal rows")
                     }
@@ -7701,61 +7703,6 @@ export function SceneTab({
                     }
                   />
                 </div>
-              </DrillGroup>
-              <DrillGroup
-                label="Session"
-                hint="The start command is typed into the prompt, never run."
-              >
-                <TerminalTextRow
-                  label="Start path"
-                  value={terminal.startPath ?? ""}
-                  placeholder="Project folder"
-                  onCommit={(value) =>
-                    patchTerminal((t) => {
-                      const trimmed = value.trim();
-                      if (trimmed) t.startPath = trimmed;
-                      else delete t.startPath;
-                    }, "set terminal start path")
-                  }
-                />
-                <ActionRow
-                  icon={<TerminalActionIcon kind="folder" />}
-                  label="Choose folder…"
-                  chevron={false}
-                  onClick={() => void chooseStartFolder()}
-                />
-                <TerminalTextRow
-                  label="Command"
-                  value={terminal.startCommand ?? ""}
-                  placeholder="pnpm dev"
-                  onCommit={(value) =>
-                    patchTerminal((t) => {
-                      // Stored canonical: the same single-line rule parse and paste enforce.
-                      const command = sanitizeStartCommand(value);
-                      if (command) t.startCommand = command;
-                      else delete t.startCommand;
-                    }, "set terminal start command")
-                  }
-                />
-                <ActionRow
-                  icon={<TerminalActionIcon kind="play" />}
-                  label={running ? "Restart session" : "Start session"}
-                  chevron={false}
-                  onClick={() => void startSession()}
-                />
-              </DrillGroup>
-              <DrillGroup
-                label="Snapshot"
-                hint="Video export renders the captured snapshot. It saves whatever is on screen into the project, and travels with packs, so avoid capturing secrets."
-              >
-                <ActionRow
-                  icon={<TerminalActionIcon kind="capture" />}
-                  label="Capture snapshot"
-                  value={terminal.snapshot?.src ? "Captured" : "None"}
-                  chevron={false}
-                  disabled={!running}
-                  onClick={() => void captureSnapshot()}
-                />
               </DrillGroup>
             </>
           )}

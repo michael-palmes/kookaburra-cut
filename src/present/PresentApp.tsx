@@ -13,7 +13,6 @@ import { revealApp } from "../engine/reveal";
 import { stageOrNull } from "../engine/stageHandle";
 import { StageView } from "../stage/StageView";
 import { useEditorStore } from "../store/editorStore";
-import { PresentTerminalOverlay } from "./PresentTerminalOverlay";
 import { PresentWebsiteOverlay } from "./PresentWebsiteOverlay";
 import { startPresentAmbience, stopPresentAmbience } from "./presentAmbience";
 import { usePresentStore } from "./presentStore";
@@ -60,7 +59,6 @@ export function PresentApp() {
   const endFade = usePresentStore((s) => s.endFade);
   const videoPaused = usePresentStore((s) => s.videoPaused);
   const committed = usePresentStore((s) => s.scenesCommitted);
-  const terminalFocused = usePresentStore((s) => s.terminalFocused);
   const websiteFocused = usePresentStore((s) => s.websiteFocused);
   const [stageReady, setStageReady] = useState(false);
   const mode = target?.mode ?? "slideshow";
@@ -212,9 +210,8 @@ export function PresentApp() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // A focused slide terminal owns the keyboard (Escape included: shells and TUIs use it); Shift+Esc in the terminal hands it back.
-      const present = usePresentStore.getState();
-      if (present.terminalFocused || present.websiteFocused) return;
+      // A focused slide website owns the keyboard.
+      if (usePresentStore.getState().websiteFocused) return;
       if (e.key === "Escape") {
         const win = getCurrentWindow();
         void win.isFullscreen().then((fs) => (fs ? win.setFullscreen(false) : win.close()));
@@ -230,10 +227,10 @@ export function PresentApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, [advance, back]);
 
-  // Cursor hides after a short idle so it never sits over shared content; a focused terminal keeps it, the pointer is in use.
+  // Cursor hides after a short idle so it never sits over shared content; a focused website keeps it, the pointer is in use.
   useEffect(() => {
     if (!project) return;
-    if (terminalFocused || websiteFocused) {
+    if (websiteFocused) {
       void getCurrentWindow()
         .setCursorVisible(true)
         .catch(() => {});
@@ -260,7 +257,7 @@ export function PresentApp() {
         .setCursorVisible(true)
         .catch(() => {});
     };
-  }, [project, terminalFocused, websiteFocused]);
+  }, [project, websiteFocused]);
 
   const spec = FORMATS[(target?.aspect as AspectName) ?? "16:9"] ?? FORMATS["16:9"];
   const aspect = spec.width / spec.height;
@@ -298,9 +295,6 @@ export function PresentApp() {
           }}
         >
           <StageView stageRole="present" dpr={target?.quality === "smooth" ? 1.5 : [1, 2]} />
-          {mode === "slideshow" && stageReady && (
-            <PresentTerminalOverlay project={project} aspect={aspect} />
-          )}
           {mode === "slideshow" && stageReady && (
             <PresentWebsiteOverlay project={project} aspect={aspect} />
           )}

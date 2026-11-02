@@ -11,27 +11,12 @@ import {
   TERMINAL_FLAG_UNDERLINE,
 } from "./sceneTerminal";
 import { type SceneTerminalColours, terminalRunColour } from "./sceneTerminalTheme";
+import { isWideCodePoint } from "./sceneTerminalWidth";
 
 /** Raster pixels per logical px, enough headroom for the 2x export frame. */
 export const TERMINAL_RASTER_SCALE = 2;
 
-/** The DOM overlay's exact stack, so the baked glyphs and the live xterm agree. */
 export const TERMINAL_FONT_STACK = 'Menlo, ui-monospace, "SF Mono", monospace';
-
-/** Enough East Asian Width to advance CJK and emoji by two cells, mirroring xterm's width-2 cells. */
-export function isWideCodePoint(cp: number): boolean {
-  return (
-    (cp >= 0x1100 && cp <= 0x115f) ||
-    (cp >= 0x2e80 && cp <= 0xa4cf) ||
-    (cp >= 0xac00 && cp <= 0xd7a3) ||
-    (cp >= 0xf900 && cp <= 0xfaff) ||
-    (cp >= 0xfe30 && cp <= 0xfe4f) ||
-    (cp >= 0xff00 && cp <= 0xff60) ||
-    (cp >= 0xffe0 && cp <= 0xffe6) ||
-    (cp >= 0x1f300 && cp <= 0x1faff) ||
-    (cp >= 0x20000 && cp <= 0x3fffd)
-  );
-}
 
 interface PaintedCell {
   ch: string;

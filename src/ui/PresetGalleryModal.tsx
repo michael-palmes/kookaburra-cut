@@ -33,7 +33,7 @@ import { sceneIndexAtPlayhead, type WizardSceneInfo } from "./SceneWizards";
 import { cardRoleProps } from "./TemplateCard";
 import { useEscapeClose } from "./useEscapeClose";
 
-/** Add a scene: every entry point (playback bar, Claude rail, scene menus, the Scenes drill-in) raises this picker over the library catalogue and the native insertion path. One flat grid of app and user presets, a category rail that hides what the search empties, a My presets only switch, and the placement strip in the footer, where the primary action names the gap. */
+/** Add a scene: every entry point (playback bar, scene menus, the Scenes drill-in) raises this picker over the library catalogue and the native insertion path. One flat grid of app and user presets, a category rail that hides what the search empties, a My presets only switch, and the placement strip in the footer, where the primary action names the gap. */
 
 export type ChipId = PresetCategoryId | "all";
 

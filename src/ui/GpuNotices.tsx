@@ -1,11 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { ask } from "@tauri-apps/plugin-dialog";
 import { type ReactNode, useEffect, useState } from "react";
 import { canvasContextLosses, onCanvasContextLost } from "../engine/exportBridge";
-import { runningSceneTerminalCount } from "../engine/sceneTerminalSession";
 import { stageOrNull } from "../engine/stageHandle";
-import { liveSessionCount } from "../engine/terminal";
 import { settleContentEdits } from "./settleContentEdits";
 
 /** Mirror of `capture_service::status` in src-tauri/src/capture_service.rs. */
@@ -64,16 +61,8 @@ const RetryCapturesIcon = () => (
   </LineIcon>
 );
 
-/** Reloading the main webview is the only way to a fresh realm: the module caches (PMREM, mirror bakes) outlive a canvas remount. Pending edits land first; live terminals keep running but detach. */
+/** Reloading the main webview is the only way to a fresh realm: the module caches (PMREM, mirror bakes) outlive a canvas remount. Pending edits land first. */
 async function reloadPreview(): Promise<void> {
-  const terminals = liveSessionCount() + runningSceneTerminalCount();
-  if (terminals > 0) {
-    const go = await ask(
-      `${terminals} terminal session${terminals === 1 ? "" : "s"} keep running but detach from the panel.`,
-      { title: "Reload the preview?", kind: "warning", okLabel: "Reload preview" },
-    );
-    if (!go) return;
-  }
   await settleContentEdits();
   window.location.reload();
 }

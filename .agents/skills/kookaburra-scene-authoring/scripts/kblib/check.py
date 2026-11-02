@@ -416,6 +416,24 @@ class Checker:
             return
         self.sidecar_doc(file, doc)
 
+    def terminal(self, file: str, doc: Dict[str, Any]) -> None:
+        """A transcript the app has not baked yet, and the retired session fields."""
+        block = doc.get("terminal")
+        if not isinstance(block, dict):
+            return
+        for key in ("startCommand", "startPath"):
+            if key in block:
+                self.report.warn(file, f"terminal.{key}", "ignored: nothing runs in a terminal scene, and the app drops it on its next save. Write terminal.transcript instead")
+        transcript = block.get("transcript")
+        if transcript is None:
+            return
+        if not isinstance(transcript, str) or not transcript:
+            self.report.warn(file, "terminal.transcript", "must be a non-empty string (the app ignores it)")
+            return
+        snapshot = block.get("snapshot")
+        if not isinstance(snapshot, dict) or snapshot.get("transcript") != transcript or not snapshot.get("src"):
+            self.report.warn(file, "terminal.snapshot", "older than terminal.transcript, so the film shows the old text. Open this project in the app, which bakes it")
+
     def sidecar_doc(self, file: str, doc: Any) -> None:
         rep = self.report
         if not isinstance(doc, dict):
@@ -431,6 +449,7 @@ class Checker:
         for key in doc:
             if key not in known:
                 rep.warn(file, key, f"unknown key (the app ignores it).{did_you_mean(key, known)}")
+        self.terminal(file, doc)
         if "name" in doc and not isinstance(doc["name"], str):
             rep.error(file, "name", "must be a string")
         text = doc.get("text")

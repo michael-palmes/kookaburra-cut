@@ -1,8 +1,8 @@
 import { parseWarn } from "./parseWarnings";
 
-/** Terminal scene content core: parses the sidecar `terminal` block (degrade-not-throw, the chart pattern) and resolves it into a fully defaulted `ResolvedSceneTerminal` so renderers never null-check fields. Pure (no clock reads, no three.js). The block is screen-locked overlay content drawn by the frame-panel pass; the interactive DOM overlay and the snapshot raster both derive their geometry from `sceneTerminalLayout` so they cannot drift. */
+/** Terminal scene content core: parses the sidecar `terminal` block (degrade-not-throw, the chart pattern) and resolves it into a fully defaulted `ResolvedSceneTerminal` so renderers never null-check fields. Pure (no clock reads, no three.js). The block is screen-locked overlay content drawn by the frame-panel pass; the gizmo and the snapshot raster both derive their geometry from `sceneTerminalLayout` so they cannot drift. */
 
-/** Logical cell metrics in em of `fontPx`, the contract shared by the panel layout, the raster baker and the DOM overlay's fit. */
+/** Logical cell metrics in em of `fontPx`, the contract shared by the panel layout and the raster baker. */
 export const TERMINAL_CELL_WIDTH_EM = 0.6;
 export const TERMINAL_CELL_HEIGHT_EM = 1.35;
 
@@ -46,6 +46,8 @@ export interface SceneDocTerminalSnapshot {
   cursor?: SceneTerminalCursor;
   /** Baked raster under `assets/` (grid pixels only, chrome renders live): the export truth. */
   src?: string;
+  /** The transcript this grid was laid out from; absent on a grid captured from a live session. */
+  transcript?: string;
 }
 
 /** The sidecar `terminal` block as authored. Defaults are NOT applied here: `resolveSceneTerminal` owns them, so absence stays legible. */
@@ -55,12 +57,10 @@ export interface SceneDocTerminal {
   chrome?: { style?: SceneTerminalChromeStyle; title?: string };
   cols?: number;
   rows?: number;
-  /** Logical cell font size in px: raster density and the live overlay's type size, never panel geometry. */
+  /** Logical cell font size in px: raster density, never panel geometry. */
   fontPx?: number;
-  /** Session working directory (absolute or `~` path); absent is the workspace project folder. */
-  startPath?: string;
-  /** Pre-typed into the prompt, never auto-run (docs/decisions.md). */
-  startCommand?: string;
+  /** What the terminal shows, as text with optional ANSI colours: the authoring source of `snapshot`. */
+  transcript?: string;
   /** Frame-relative centre, -1..1 on both axes (the decoration convention). */
   position?: [number, number];
   /** Window width as a fraction of the frame width. */
@@ -74,8 +74,7 @@ export interface ResolvedSceneTerminal {
   cols: number;
   rows: number;
   fontPx: number;
-  startPath: string | null;
-  startCommand: string | null;
+  transcript: string | null;
   position: [number, number];
   size: number;
   snapshot: SceneDocTerminalSnapshot | null;
@@ -109,18 +108,6 @@ function parseRun(raw: unknown): SceneTerminalRun | null {
   run[2] = validColour(raw[2]) ? raw[2] : null;
   run[3] = finiteNum(raw[3]) ? raw[3] : 0;
   return run;
-}
-
-/** The pre-typed line stays reviewable at a glance; nothing legitimate approaches this. */
-const COMMAND_MAX_CHARS = 512;
-
-/** A pre-typed start command is a single reviewable line the presenter runs by hand (docs/decisions.md, "never auto-runs"): xterm turns `\n` into `\r` (Enter) and only wraps a paste in bracketed-paste markers once the shell has enabled the mode, so a newline in an imported pack's command could auto-run before the prompt is ready. Keep the first line only (never join two commands), drop control/format chars (ESC included, so a `\x1b[201~` can't close the wrapper) and cap the length. */
-export function sanitizeStartCommand(raw: string): string {
-  return raw
-    .split(/[\r\n]/, 1)[0]
-    .replace(/[\p{Cc}\p{Cf}]/gu, "")
-    .trim()
-    .slice(0, COMMAND_MAX_CHARS);
 }
 
 function parseSnapshot(raw: unknown, source: string): SceneDocTerminalSnapshot | undefined {
@@ -157,6 +144,7 @@ function parseSnapshot(raw: unknown, source: string): SceneDocTerminalSnapshot |
   else if (raw.src !== undefined) {
     parseWarn(`[sceneDoc] ${source}: terminal.snapshot.src isn't a path, dropped`);
   }
+  if (typeof raw.transcript === "string") out.transcript = raw.transcript;
   return out;
 }
 
@@ -192,16 +180,15 @@ export function parseSceneTerminal(raw: unknown, source: string): SceneDocTermin
       parseWarn(`[sceneDoc] ${source}: terminal.${key} isn't a finite number, dropped`);
     }
   }
-  if (typeof raw.startPath === "string" && raw.startPath.length > 0) out.startPath = raw.startPath;
-  else if (raw.startPath !== undefined) {
-    parseWarn(`[sceneDoc] ${source}: terminal.startPath isn't a non-empty string, dropped`);
+  if (typeof raw.transcript === "string" && raw.transcript.length > 0) {
+    out.transcript = raw.transcript;
+  } else if (raw.transcript !== undefined) {
+    parseWarn(`[sceneDoc] ${source}: terminal.transcript isn't a non-empty string, dropped`);
   }
-  if (typeof raw.startCommand === "string" && raw.startCommand.length > 0) {
-    const command = sanitizeStartCommand(raw.startCommand);
-    if (command.length > 0) out.startCommand = command;
-    else parseWarn(`[sceneDoc] ${source}: terminal.startCommand had no runnable text, dropped`);
-  } else if (raw.startCommand !== undefined) {
-    parseWarn(`[sceneDoc] ${source}: terminal.startCommand isn't a non-empty string, dropped`);
+  for (const key of ["startCommand", "startPath"]) {
+    if (raw[key] !== undefined) {
+      parseWarn(`[sceneDoc] ${source}: terminal.${key} is ignored, and goes on the next save`);
+    }
   }
   if (Array.isArray(raw.position) && finiteNum(raw.position[0]) && finiteNum(raw.position[1])) {
     out.position = [raw.position[0], raw.position[1]];
@@ -239,12 +226,17 @@ export function resolveSceneTerminal(
       TERMINAL_FONT_PX_MIN,
       TERMINAL_FONT_PX_MAX,
     ),
-    startPath: raw.startPath ?? null,
-    startCommand: raw.startCommand ?? null,
+    transcript: raw.transcript ?? null,
     position: [clamp(position[0], -1.5, 1.5), clamp(position[1], -1.5, 1.5)],
     size: clamp(raw.size ?? TERMINAL_DEFAULTS.size, 0.05, 1.5),
     snapshot: raw.snapshot ?? null,
   };
+}
+
+/** True when the transcript changed since its snapshot was laid out and baked (or never was). A grid with no transcript is captured content, and never stale. */
+export function terminalSnapshotStale(terminal: SceneDocTerminal | undefined): boolean {
+  if (!terminal?.transcript) return false;
+  return terminal.snapshot?.transcript !== terminal.transcript || !terminal.snapshot.src;
 }
 
 /** Horizontal grid padding, in cells per side. */
