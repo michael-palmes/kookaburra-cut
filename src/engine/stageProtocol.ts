@@ -43,6 +43,8 @@ export interface StageProject extends Omit<LoadedProject, "scenes" | "persistent
     errorCard?: { file: string; message: string };
   }[];
   persistentKey?: string;
+  /** The folder its `asset:` URLs live under; null for bundled items, which load from the app's origin. */
+  root: string | null;
   /** Every project-relative asset the worker may load, resolved by the window, keyed by clean relative path. */
   assets: StageAssets;
   /** Workspace-pinned faces the window registered, with the URLs troika fetches. */

@@ -3,9 +3,61 @@
 type Scope = Record<string, unknown>;
 type Ctor = new (...args: unknown[]) => object;
 
-const LOCAL_SCHEMES = new Set(["asset:", "blob:", "data:"]);
+const LOCAL_SCHEMES = new Set(["blob:", "data:"]);
+
+/** How a refusal reads in the relayed log; the window fails an autorun on it. */
+export const REACH_REFUSED = "reach refused";
 
 const refuse = (url: string) => new TypeError(`the stage cannot reach ${url}`);
+
+/** The files and folders `asset:` may serve this realm, by owner; only what the window handed over. */
+const reach = new Map<string, string[]>();
+
+/** Grants `paths` (absolute, a folder admits what is below it), replacing the owner's last grant. */
+export function grantReach(key: string, paths: readonly (string | null)[]): void {
+  reach.set(
+    key,
+    paths.flatMap((path) => {
+      const clean = path?.replace(/\/+$/, "");
+      return clean?.startsWith("/") ? [clean] : [];
+    }),
+  );
+}
+
+export function revokeReach(key: string): void {
+  reach.delete(key);
+}
+
+/** The file an `asset:` URL names: `convertFileSrc` encodes the whole path into one segment and the query is only a cache-bust. Null when it is not one absolute path with no way up. */
+function namedPath(url: URL): string | null {
+  try {
+    const path = decodeURIComponent(url.pathname.slice(1));
+    return path.startsWith("/") && !path.split("/").includes("..") ? path : null;
+  } catch {
+    return null;
+  }
+}
+
+/** `namedPath` for a URL the window handed over, to grant it. */
+export function assetUrlPath(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "asset:" ? namedPath(parsed) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function assetAllowed(url: URL): boolean {
+  const path = namedPath(url);
+  const ok =
+    path !== null &&
+    [...reach.values()].some((paths) =>
+      paths.some((allowed) => path === allowed || path.startsWith(`${allowed}/`)),
+    );
+  if (!ok) console.warn(`${REACH_REFUSED} ${url.href}`);
+  return ok;
+}
 
 function replace(scope: object, name: string, value: unknown): void {
   for (let o: object | null = scope; o; o = Object.getPrototypeOf(o)) {
@@ -20,6 +72,7 @@ export function installRealmGuard(scope: object, appUrl: string, dev: boolean): 
   const app = new URL(appUrl);
   const allowed = (url: URL) =>
     LOCAL_SCHEMES.has(url.protocol) ||
+    (url.protocol === "asset:" && assetAllowed(url)) ||
     (url.host === app.host && (url.protocol === app.protocol || (dev && url.protocol === "ws:")));
   // One read, and the checked string is what goes on: an object's toString could answer differently twice.
   const checked = (input: unknown, ok: (url: URL) => boolean = allowed): string => {

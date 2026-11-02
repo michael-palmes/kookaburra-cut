@@ -144,11 +144,13 @@ are backed up like any document. `$APPDATA` is
   thumbs per project, pack import staging, and `import-backup/` holding what an
   import replaced, hard-deleted after 24 h). Files reach the webview as
   `asset://` URLs served by the app's own handler (`src-tauri/src/asset_reach.rs`,
-  registered in place of Tauri's): a window may read `$APPDATA/cache`, the
-  shared libraries (`templates/`, `presets/`, `fonts/`, `objects/`, `brands/`,
-  `screenshots/`, the snapshots and scene thumbs under `.kookaburra/`) and the
-  one project it loaded last (`read_project_manifest`), which it loses on
-  the welcome screen (`release_project`) or when the window closes. Paths are
+  registered in place of Tauri's): an app window may read `$APPDATA/cache`,
+  `fonts/`, `objects/` and the one project it loaded last
+  (`read_project_manifest`), which it loses on the welcome screen
+  (`release_project`) or when the window closes; only the main window also reads
+  `templates/`, `presets/`, `brands/`, `screenshots/` and the snapshots and scene
+  thumbs under `.kookaburra/`; a child webview (a live website) is served
+  nothing. The stage worker holds a narrower list still: see `realmGuard.ts`. Paths are
   canonicalised before the check, so a link inside a project that leads out of
   it is refused, and no hidden folder below a root is served (`.emoji-cache`
   reads through a command). Native reads of a project asset go through

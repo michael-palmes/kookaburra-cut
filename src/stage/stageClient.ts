@@ -15,6 +15,7 @@ import {
   isWorkspaceBackedProjectId,
   type LoadedProject,
   nativeProjectSlug,
+  projectFolderPath,
   resolveAssetUrl,
   resolveProjectHdrUrl,
   workspaceEnvironmentRels,
@@ -54,6 +55,7 @@ import { workspaceFontEntries } from "../theme/fonts";
 import type { FrameRect } from "../toolkit/frame/frameLayout";
 import { applyMirroredEmoji } from "../toolkit/text/emojiRaster";
 import { mirroredStores } from "./mirroredStores";
+import { REACH_REFUSED } from "./realmGuard";
 import stageWorkerScript from "./stageWorker.ts?worker&url";
 import { mirrorStores, type StoreMirror } from "./storeMirror";
 
@@ -344,6 +346,8 @@ export class StageClient implements StageHandle {
         // info rides warn: only warn and error reach the dev harness's log.
         if (msg.level === "error") console.error(`[stage] ${msg.text}`);
         else console.warn(`[stage] ${msg.text}`);
+        // A refused texture or font can degrade silently into wrong pixels, and a packaged run has no console to grep.
+        if (msg.text.startsWith(REACH_REFUSED)) reportAutoRunError(`stage ${msg.text}`);
         return;
       case "fatal":
         this.fail(new Error(`stage worker: ${msg.text}`));
@@ -673,6 +677,7 @@ export function toStageProject(project: LoadedProject): StageProject {
         ...(errorCard ? { errorCard } : {}),
       };
     }),
+    root: isWorkspaceBackedProjectId(project.id) ? projectFolderPath(project.id) : null,
     assets: buildStageAssets(project.id),
     fonts: workspaceFontEntries(),
   };
