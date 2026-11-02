@@ -8,7 +8,7 @@ import { STAMP_SCALE_DEFAULTS, type StampScaleOptions, stampScale } from "./stam
 const DEG2RAD = Math.PI / 180;
 
 export interface StampProps extends StampScaleOptions {
-  /** Scene-local ms the stamp starts; hidden (at `from` scale) before it. */
+  /** Scene-local ms the stamp starts (default 0); hidden (at `from` scale) before it. */
   at?: number;
   /** Scene-local ms the stamp LANDS (first reaches full size), on a beat or a cut; the stamp starts its measured lead earlier. Wins over `at`. */
   hitAt?: number;
@@ -34,7 +34,7 @@ export function Stamp({
   ...pop
 }: StampProps) {
   const { localMs } = useTimeline();
-  const ms = localMs - (hitAt === undefined ? (at as number) : hitAt - stampImpactMs(pop));
+  const ms = localMs - (hitAt === undefined ? (at ?? 0) : hitAt - stampImpactMs(pop));
   const s = stampScale(pop)(ms) * scale;
   const span =
     (pop.inMs ?? STAMP_SCALE_DEFAULTS.inMs) + (pop.settleMs ?? STAMP_SCALE_DEFAULTS.settleMs);

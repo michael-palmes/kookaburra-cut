@@ -2782,8 +2782,9 @@
         "name": "at",
         "type": "number",
         "required": false,
+        "default": "0",
         "units": "ms",
-        "doc": "Scene-local ms the stamp starts; hidden (at `from` scale) before it."
+        "doc": "Scene-local ms the stamp starts (default 0); hidden (at `from` scale) before it."
       },
       {
         "name": "hitAt",

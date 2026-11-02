@@ -1376,7 +1376,7 @@ declare module "@kookaburra/toolkit" {
   export function Stamp(props: StampProps): ReactElement;
 
   export interface StampProps extends StampScaleOptions {
-    /** Scene-local ms the stamp starts; hidden (at `from` scale) before it. */
+    /** Scene-local ms the stamp starts (default 0); hidden (at `from` scale) before it. */
     at?: number;
     /** Scene-local ms the stamp LANDS (first reaches full size), on a beat or a cut; the stamp starts its measured lead earlier. Wins over `at`. */
     hitAt?: number;
