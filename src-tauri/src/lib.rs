@@ -40,6 +40,7 @@ mod live_edits;
 mod loudness;
 mod managed;
 mod media;
+mod media_input;
 mod mp4box;
 mod native_alert;
 mod objects;
@@ -1428,6 +1429,7 @@ macro_rules! kookaburra_handler {
             workspace::is_project_trusted,
             workspace::check_project_trust,
             workspace::request_project_trust,
+            workspace::review_agent_files,
             workspace::trust_project,
             workspace::list_project_assets,
             workspace::list_project_environments,

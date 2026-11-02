@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from ..media_input import input_args
 from ..util import EXIT_ENV, EXIT_PROBLEMS, KbError
 from ..video.passes import Tools, find_tools, parse_rate, rust_round
 
@@ -91,7 +92,7 @@ def parse_streams(data: Dict[str, Any]) -> Dict[str, Any]:
 
 def probe(path: Path, t: Optional[Tools] = None) -> Dict[str, Any]:
     t = t or tools()
-    proc = _run([t.ffprobe, "-v", "error", "-print_format", "json", "-show_format", "-show_streams", str(path)], PROBE_TIMEOUT_S)
+    proc = _run([t.ffprobe, "-v", "error", *input_args(path), "-print_format", "json", "-show_format", "-show_streams", str(path)], PROBE_TIMEOUT_S)
     if proc.returncode != 0:
         raise KbError(f"ffprobe could not read {path.name}: {proc.stderr.strip()[-300:]}", EXIT_PROBLEMS)
     try:
@@ -108,7 +109,7 @@ def probe(path: Path, t: Optional[Tools] = None) -> Dict[str, Any]:
 
 def count_frames(path: Path, t: Tools) -> Optional[int]:
     """Packets of the first video stream (a demux, no decode) when the container declares no count."""
-    proc = _run([t.ffprobe, "-v", "error", "-select_streams", "v:0", "-count_packets", "-show_entries", "stream=nb_read_packets",
+    proc = _run([t.ffprobe, "-v", "error", *input_args(path), "-select_streams", "v:0", "-count_packets", "-show_entries", "stream=nb_read_packets",
                  "-of", "csv=p=0", str(path)], PROBE_TIMEOUT_S)
     return _int(proc.stdout.strip().split(",")[0]) if proc.returncode == 0 else None
 
@@ -129,7 +130,7 @@ def parse_loudness(stderr: str) -> Optional[Dict[str, Optional[float]]]:
 def loudness(path: Path, t: Optional[Tools] = None) -> Optional[Dict[str, Optional[float]]]:
     """Integrated loudness (LUFS), LRA (LU) and true peak (dBTP) with `ebur128=peak=true`; None without audio."""
     t = t or tools()
-    proc = _run([t.ffmpeg, "-hide_banner", "-nostdin", "-v", "info", "-i", str(path), "-vn", "-sn", "-dn",
+    proc = _run([t.ffmpeg, "-hide_banner", "-nostdin", "-v", "info", *input_args(path), "-i", str(path), "-vn", "-sn", "-dn",
                  "-af", "ebur128=peak=true", "-f", "null", "-"], LOUDNESS_TIMEOUT_S)
     if proc.returncode != 0:
         raise KbError(f"ffmpeg could not measure the loudness of {path.name}: {proc.stderr.strip()[-300:]}", EXIT_PROBLEMS)

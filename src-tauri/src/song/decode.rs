@@ -24,31 +24,29 @@ fn tail(text: &str, max: usize) -> String {
 
 /// The decode argv: the first audio stream, downmixed to mono f32 at 48 kHz on stdout (no path ever enters a filter graph).
 pub fn decode_args(file: &Path) -> Vec<String> {
-    [
-        "-hide_banner",
-        "-v",
-        "error",
-        "-nostdin",
-        "-protocol_whitelist",
-        "file,pipe",
-        "-i",
-        &file.to_string_lossy(),
-        "-map",
-        "0:a:0",
-        "-vn",
-        "-sn",
-        "-dn",
-        "-ac",
-        "1",
-        "-ar",
-        &SAMPLE_RATE.to_string(),
-        "-f",
-        "f32le",
-        "-",
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect()
+    let mut args: Vec<String> = ["-hide_banner", "-v", "error", "-nostdin"]
+        .map(String::from)
+        .to_vec();
+    args.extend(crate::media_input::untrusted_input(file));
+    args.extend(
+        [
+            "-map",
+            "0:a:0",
+            "-vn",
+            "-sn",
+            "-dn",
+            "-ac",
+            "1",
+            "-ar",
+            &SAMPLE_RATE.to_string(),
+            "-f",
+            "f32le",
+            "-",
+        ]
+        .iter()
+        .map(|s| s.to_string()),
+    );
+    args
 }
 
 /// Decode `file` to mono f32 at `SAMPLE_RATE`. `cancelled` is polled per chunk; a cancel kills ffmpeg and returns `Err("interrupted")`.
@@ -188,8 +186,7 @@ pub fn parse_ebur128(stderr: &str) -> Loudness {
 pub fn loudness(ffmpeg: &Path, file: &Path) -> Result<Loudness, String> {
     let out = crate::tools::sidecar_command(ffmpeg)
         .args(["-hide_banner", "-nostats", "-nostdin"])
-        .args(["-protocol_whitelist", "file,pipe", "-i"])
-        .arg(file)
+        .args(crate::media_input::untrusted_input(file))
         .args([
             "-map",
             "0:a:0",
@@ -255,11 +252,9 @@ pub fn pick_lyrics(probe: &Value) -> Option<Lyrics> {
 
 pub fn lyrics(ffprobe: &Path, file: &Path) -> Result<Option<Lyrics>, String> {
     let out = crate::tools::sidecar_command(ffprobe)
+        .args(["-v", "error"])
+        .args(crate::media_input::untrusted_input_args(file))
         .args([
-            "-v",
-            "error",
-            "-protocol_whitelist",
-            "file,pipe",
             "-show_entries",
             "format_tags:stream_tags",
             "-of",

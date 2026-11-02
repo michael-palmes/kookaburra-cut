@@ -55,9 +55,9 @@ export function SummaryView({
             </span>
             <div className="packs-verdict-body">
               <strong>The pack's author left notes for Claude</strong>
-              Each came as the project's CLAUDE.md, so Claude would have read it as instructions. It
-              was saved as NOTES.md instead and Claude treats it as notes, not rules. Read it here;
-              anything you want Claude to follow, add to CLAUDE.md yourself.
+              Each came as a file Claude would have read as instructions (CLAUDE.md or AGENTS.md).
+              It was saved as NOTES.md instead and Claude treats it as notes, not rules. Read it
+              here; anything you want Claude to follow, add to CLAUDE.md yourself.
               {(outcome.agentNotes ?? []).map((note) => (
                 <div className="packs-terminal-review-row" key={`${note.kind}:${note.slug}`}>
                   <span className="packs-verdict-note">

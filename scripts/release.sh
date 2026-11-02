@@ -8,7 +8,8 @@
 #        release.sh --adhoc    local rehearsal: build, sign ad hoc, plain DMG, verify; no tag
 #
 # Bump "version" in src-tauri/tauri.conf.json first and merge it; the tag step refuses unless
-# the checkout is main, equal to origin/main after a fetch, with that version still untagged.
+# SECURITY.md names that version and the checkout is main, equal to origin/main after a fetch,
+# with that version still untagged.
 #
 set -euo pipefail
 
@@ -19,7 +20,7 @@ ADHOC=0
 for arg in "$@"; do
   case "$arg" in
     --adhoc) ADHOC=1 ;;
-    --help | -h) sed -n '2,12p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    --help | -h) sed -n '2,13p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "ERROR: unknown argument '$arg'" >&2; exit 2 ;;
   esac
 done
@@ -46,6 +47,10 @@ if [[ "$ADHOC" == 1 ]]; then
   echo "Rehearsal complete. Nothing was tagged; artefacts are in release/."
   exit 0
 fi
+
+# People read SECURITY.md as a description of the app they installed; 0.21.1 lacked most of what it listed.
+AS_OF=$(sed -nE '1,5s/^\*\*As of version ([^ ]+)\.\*\*.*/\1/p' "$ROOT/SECURITY.md")
+[[ "$AS_OF" == "$VERSION" ]] || die "SECURITY.md describes version '${AS_OF:-none}', not $VERSION; re-read it against main and update its first lines."
 
 [[ -z "$(git status --porcelain)" ]] || die "working tree is dirty; commit first."
 [[ "$(git branch --show-current)" == "main" ]] || die "release from main, not '$(git branch --show-current)'."

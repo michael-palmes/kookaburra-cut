@@ -12,7 +12,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .. import lock as lockmod
-from .. import music, reach
+from .. import music, reach, untrusted
 from ..film import timeline as tl
 from ..project import MANIFEST, Project
 from ..util import EXIT_ENV, EXIT_OK, EXIT_PROBLEMS, KbError, emit, emit_err, fmt_secs, is_number, js_json
@@ -46,7 +46,8 @@ def soundtrack_path(project: Project, rel: str) -> Path:
     """audio.file as a path. Imported projects write project.json, so it stays inside the project and passes kb's reach like any file kb is named."""
     if not stays_inside(rel):
         raise KbError(f"audio.file {rel} points outside the project, so kb won't read it", EXIT_PROBLEMS, kind="invalid", hint=NO_SOUNDTRACK_HINT)
-    return reach.guard_read(project, str(project.root / rel), "audio.file")
+    path = project.root / rel
+    return untrusted.locate(project, str(path), "audio.file") if path.exists() else reach.guard_read(project, str(path), "audio.file")
 
 
 def soundtrack(project: Project, manifest: Dict[str, Any]) -> Tuple[Optional[str], Optional[Path], Optional[str]]:

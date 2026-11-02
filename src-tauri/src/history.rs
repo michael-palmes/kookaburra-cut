@@ -20,12 +20,102 @@ fn exclude_line(name: &str) -> String {
     format!("/{name}/")
 }
 const APP_EMAIL: &str = "kookaburra@localhost";
+/// A folder's `.git` arrives with it, so nothing in it may name a program. Keys the allow-list below can't see still lose to these.
+const GUARDS: [&str; 10] = [
+    "-c",
+    "core.hooksPath=/dev/null",
+    "-c",
+    "core.fsmonitor=false",
+    "-c",
+    "log.showSignature=false",
+    "-c",
+    "gpg.program=/usr/bin/false",
+    "-c",
+    "core.pager=cat",
+];
+/// What `git init` and `git remote add` write. None names a program or moves the repository, and the app never fetches.
+const INERT_KEYS: [&str; 11] = [
+    "core.repositoryformatversion",
+    "core.filemode",
+    "core.bare",
+    "core.logallrefupdates",
+    "core.ignorecase",
+    "core.precomposeunicode",
+    "core.symlinks",
+    "extensions.objectformat",
+    "extensions.refstorage",
+    "user.name",
+    "user.email",
+];
 const IDENTITY: [&str; 4] = [
     "-c",
     "user.name=Kookaburra Cut",
     "-c",
     "user.email=kookaburra@localhost",
 ];
+
+fn inert_key(key: &str) -> bool {
+    if INERT_KEYS.contains(&key) {
+        return true;
+    }
+    let Some((section, rest)) = key.split_once('.') else {
+        return false;
+    };
+    let var = rest.rsplit_once('.').map(|(_, var)| var);
+    match section {
+        "remote" => matches!(var, Some("url" | "fetch")),
+        "branch" => matches!(var, Some("remote" | "merge")),
+        _ => false,
+    }
+}
+
+fn isolated_git() -> Command {
+    let mut command = Command::new("git");
+    command
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null");
+    command
+}
+
+/// Refuses a `.git` that reaches elsewhere for its settings, or a `.git/config` holding a key the app and git's own setup don't write. Git's own parser reads the file, with includes off, so no reading of it can differ from git's.
+fn refuse_foreign(dir: &Path) -> Result<(), String> {
+    let git_dir = dir.join(".git");
+    match std::fs::symlink_metadata(&git_dir) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(format!("reading .git: {e}")),
+        Ok(meta) if !meta.is_dir() => return Err(".git is a link or a file".into()),
+        Ok(_) => {}
+    }
+    if std::fs::symlink_metadata(git_dir.join("commondir")).is_ok() {
+        return Err(".git/commondir takes its settings from another repository".into());
+    }
+    let config = git_dir.join("config");
+    match std::fs::symlink_metadata(&config) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(format!("reading .git/config: {e}")),
+        Ok(meta) if !meta.is_file() => return Err(".git/config is not a plain file".into()),
+        Ok(_) => {}
+    }
+    let out = isolated_git()
+        .args(["config", "--file"])
+        .arg(&config)
+        .args(["--no-includes", "--list", "--name-only", "-z"])
+        .current_dir("/")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .map_err(|e| format!("reading .git/config: {e}"))?;
+    if !out.status.success() {
+        return Err(".git/config can't be read".into());
+    }
+    let names = String::from_utf8_lossy(&out.stdout);
+    match names.split('\0').find(|k| !k.is_empty() && !inert_key(k)) {
+        Some(key) => Err(format!(
+            ".git/config sets {}, which the app didn't write",
+            key.escape_debug().take(80).collect::<String>()
+        )),
+        None => Ok(()),
+    }
+}
 
 fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
     git_env(dir, args, &[], None)
@@ -39,8 +129,12 @@ fn git_env(
 ) -> Result<String, String> {
     use std::io::Write;
     use std::process::Stdio;
-    let mut command = Command::new("git");
+    let mut command = isolated_git();
+    if let Some(parent) = dir.parent() {
+        command.env("GIT_CEILING_DIRECTORIES", parent);
+    }
     command
+        .args(GUARDS)
         .args(args)
         .current_dir(dir)
         .envs(env.iter().copied())
@@ -98,6 +192,7 @@ pub(crate) fn ensure_excludes(dir: &Path) -> std::io::Result<()> {
 
 /// `git init` plus one commit of everything but the excluded folders; an explicit identity so it succeeds without a global git config.
 pub(crate) fn init_repo(dir: &Path, message: &str) -> Result<(), String> {
+    refuse_foreign(dir)?;
     git(dir, &["init", "-q"])?;
     ensure_excludes(dir).map_err(|e| format!("writing .git/info/exclude: {e}"))?;
     git(dir, &["add", "-A"])?;
@@ -109,7 +204,11 @@ pub(crate) fn init_repo(dir: &Path, message: &str) -> Result<(), String> {
 
 /// Whether the repository's index or any commit still carries an excluded folder.
 pub(crate) fn holds_excluded(dir: &Path) -> bool {
-    if !dir.join(".git").is_dir() {
+    if let Err(e) = refuse_foreign(dir) {
+        log::warn!("[history] git left alone in {}: {e}", dir.display());
+        return false;
+    }
+    if !crate::real_dir::is_real_dir(&dir.join(".git")) {
         return false;
     }
     let tracked = git(dir, &["ls-files", "--", "assets", "exports"]).unwrap_or_default();
@@ -149,9 +248,10 @@ pub(crate) struct Purged {
 /// Only a repository the app made is rewritten: one with a remote, a root commit by someone else, or a `.git` file (a
 /// worktree or submodule) has history people may have pushed or shared, so its hashes stay as they are.
 fn owned_by_app(dir: &Path) -> Result<(), String> {
-    if !dir.join(".git").is_dir() {
+    if !crate::real_dir::is_real_dir(&dir.join(".git")) {
         return Err("the folder is a worktree or submodule".into());
     }
+    refuse_foreign(dir)?;
     let remotes = git(dir, &["remote"])?;
     if let Some(remote) = remotes.lines().next() {
         return Err(format!("the repository has a remote ({remote})"));
@@ -356,6 +456,189 @@ mod tests {
             .lines()
             .map(str::to_owned)
             .collect()
+    }
+
+    /// A program that only leaves a marker beside the project, so a test can tell it ran.
+    fn marker_program(dir: &Path) -> (String, PathBuf) {
+        use std::os::unix::fs::PermissionsExt;
+        let name = dir.file_name().unwrap().to_string_lossy().into_owned();
+        let marker = dir.with_file_name(format!("{name}.ran"));
+        let program = dir.with_file_name(format!("{name}.program"));
+        let _ = std::fs::remove_file(&marker);
+        std::fs::write(
+            &program,
+            format!("#!/bin/sh\ntouch '{}'\nexit 0\n", marker.display()),
+        )
+        .unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        (program.to_string_lossy().into_owned(), marker)
+    }
+
+    fn app_repo(tag: &str) -> PathBuf {
+        let dir = temp(tag);
+        init_repo(&dir, "chore: create project").unwrap();
+        dir
+    }
+
+    fn set_config(dir: &Path, key: &str, value: &str) {
+        let config = dir.join(".git/config");
+        let status = Command::new("git")
+            .args(["config", "--file"])
+            .arg(config)
+            .args([key, value])
+            .status()
+            .unwrap();
+        assert!(status.success());
+    }
+
+    #[test]
+    fn a_folders_own_config_never_runs_a_program() {
+        for key in [
+            "core.fsmonitor",
+            "core.hooksPath",
+            "core.sshCommand",
+            "diff.external",
+            "filter.mark.clean",
+            "filter.mark.smudge",
+            "diff.mark.textconv",
+            "gpg.program",
+            "include.path",
+        ] {
+            let dir = app_repo(&format!("planted-{key}"));
+            let (program, marker) = marker_program(&dir);
+            std::fs::write(dir.join(".gitattributes"), "* filter=mark diff=mark\n").unwrap();
+            std::fs::write(dir.join("scenes/intro.tsx"), b"export default 2;\n").unwrap();
+            set_config(&dir, key, &program);
+            assert!(!holds_excluded(&dir), "{key}");
+            let name = key.to_lowercase();
+            assert!(purge_excluded(&dir).unwrap_err().contains(&name), "{key}");
+            assert!(
+                init_repo(&dir, "again").unwrap_err().contains(&name),
+                "{key}"
+            );
+            assert!(!marker.exists(), "{key} ran its program");
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+
+    #[test]
+    fn the_guards_hold_where_the_refusal_is_not_consulted() {
+        let dir = app_repo("guards");
+        let (program, marker) = marker_program(&dir);
+        let hook = dir.join(".git/hooks/reference-transaction");
+        std::fs::create_dir_all(hook.parent().unwrap()).unwrap();
+        std::fs::copy(&program, &hook).unwrap();
+        let head = git(&dir, &["rev-parse", "HEAD"]).unwrap();
+        let head = head.trim();
+        let plain = Command::new("git")
+            .args(["update-ref", "refs/heads/control", head])
+            .current_dir(&dir)
+            .status()
+            .unwrap();
+        assert!(plain.success());
+        assert!(marker.exists(), "the control run fires the hook");
+        std::fs::remove_file(&marker).unwrap();
+        std::fs::remove_file(&hook).unwrap();
+
+        set_config(&dir, "core.fsmonitor", &program);
+        set_config(&dir, "log.showSignature", "true");
+        set_config(&dir, "gpg.program", &program);
+        std::fs::copy(&program, &hook).unwrap();
+        let tree = git(&dir, &["rev-parse", "HEAD^{tree}"]).unwrap();
+        let signed = format!(
+            "tree {}\nauthor T <t@example.com> 1 +0000\ncommitter T <t@example.com> 1 +0000\ngpgsig -----BEGIN PGP SIGNATURE-----\n iQ\n -----END PGP SIGNATURE-----\n\nsigned\n",
+            tree.trim()
+        );
+        let signed = git_env(
+            &dir,
+            &["hash-object", "-t", "commit", "-w", "--stdin"],
+            &[],
+            Some(signed.as_bytes()),
+        )
+        .unwrap();
+        let signed = signed.trim();
+        git(&dir, &["update-ref", "refs/heads/signed", signed]).unwrap();
+        git(&dir, &["ls-files", "--", "assets", "exports"]).unwrap();
+        git(&dir, &["status", "--porcelain"]).unwrap();
+        git(&dir, &["log", "--all", "--format=%H", "-1", "--", "assets"]).unwrap();
+        git(&dir, &["show", "-s", "--format=%ae", signed]).unwrap();
+        assert!(!marker.exists(), "a planted program ran");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_git_folder_that_reaches_elsewhere_is_refused() {
+        let elsewhere = app_repo("elsewhere");
+        let target = elsewhere.join(".git");
+
+        let dir = temp("git-file");
+        std::fs::write(dir.join(".git"), format!("gitdir: {}\n", target.display())).unwrap();
+        assert!(refuse_foreign(&dir).unwrap_err().contains(".git is a link"));
+        assert!(!holds_excluded(&dir));
+
+        let dir = temp("git-link");
+        std::os::unix::fs::symlink(&target, dir.join(".git")).unwrap();
+        assert!(refuse_foreign(&dir).unwrap_err().contains(".git is a link"));
+        assert!(purge_excluded(&dir).is_err());
+
+        let dir = app_repo("commondir");
+        std::fs::write(dir.join(".git/commondir"), target.display().to_string()).unwrap();
+        assert!(refuse_foreign(&dir).unwrap_err().contains("commondir"));
+
+        let dir = app_repo("config-link");
+        std::fs::remove_file(dir.join(".git/config")).unwrap();
+        std::os::unix::fs::symlink(target.join("config"), dir.join(".git/config")).unwrap();
+        assert!(refuse_foreign(&dir).unwrap_err().contains("plain file"));
+
+        let dir = app_repo("config-broken");
+        std::fs::write(dir.join(".git/config"), "[core\nfsmonitor = x\n").unwrap();
+        assert!(refuse_foreign(&dir).unwrap_err().contains("can't be read"));
+
+        for tag in [
+            "git-file",
+            "git-link",
+            "commondir",
+            "config-link",
+            "config-broken",
+            "elsewhere",
+        ] {
+            let _ = std::fs::remove_dir_all(temp(tag));
+        }
+    }
+
+    #[test]
+    fn an_invalid_git_folder_never_reaches_a_parent_repository() {
+        let outer = app_repo("outer");
+        let (program, marker) = marker_program(&outer);
+        set_config(&outer, "core.fsmonitor", &program);
+        let nested = outer.join("scenes/nested");
+        std::fs::create_dir_all(nested.join(".git")).unwrap();
+        assert_eq!(refuse_foreign(&nested), Ok(()));
+        assert!(!holds_excluded(&nested));
+        assert!(git(&nested, &["rev-parse", "--show-toplevel"]).is_err());
+        assert!(!marker.exists());
+        let _ = std::fs::remove_dir_all(&outer);
+    }
+
+    #[test]
+    fn what_git_itself_writes_is_not_refused() {
+        let dir = temp("inert");
+        assert_eq!(refuse_foreign(&dir), Ok(()), "no repository yet");
+        init_repo(&dir, "chore: create project").unwrap();
+        assert_eq!(refuse_foreign(&dir), Ok(()));
+        git(&dir, &["remote", "add", "origin", "/Users/x/shared.git"]).unwrap();
+        for (key, value) in [
+            ("branch.main.remote", "origin"),
+            ("branch.main.merge", "refs/heads/main"),
+            ("user.name", "Someone"),
+            ("user.email", "someone@example.com"),
+        ] {
+            set_config(&dir, key, value);
+        }
+        assert_eq!(refuse_foreign(&dir), Ok(()));
+        set_config(&dir, "remote.origin.uploadpack", "/bin/false");
+        assert!(refuse_foreign(&dir).unwrap_err().contains("uploadpack"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

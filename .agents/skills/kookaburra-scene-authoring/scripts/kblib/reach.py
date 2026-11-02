@@ -14,11 +14,12 @@ from typing import Any, Dict, List, Optional, Tuple
 from .util import EXIT_ENV, WORKSPACE_DIR_NAME, KbError, emit_err, home
 
 # Folders under the home directory that hold keys and credentials.
-DENIED_DIRS = (".ssh", ".aws", ".config", ".gnupg", "Library/Keychains")
+DENIED_DIRS = (".ssh", ".aws", ".config", ".gnupg", "Library/Keychains", ".docker", ".kube", ".azure", ".claude")
 DENIED_NAMES = (".netrc", ".bash_history", ".zsh_history", ".zhistory", ".sh_history", ".history",
-                ".python_history", ".node_repl_history", ".lesshst", "fish_history")
-DENIED_PREFIXES = (".env",)
-DENIED_SUFFIXES = (".pem", ".p12", ".key")
+                ".python_history", ".node_repl_history", ".lesshst", "fish_history",
+                ".git-credentials", ".npmrc", ".pypirc")
+DENIED_PREFIXES = (".env", "id_rsa", "id_ed25519", "id_ecdsa", "id_dsa")
+DENIED_SUFFIXES = (".pem", ".p12", ".key", ".jks", ".keystore", ".tfstate")
 
 
 def resolve(raw: str) -> Path:
@@ -55,9 +56,11 @@ def denied_reason(path: Path) -> Optional[str]:
     if name in DENIED_NAMES:
         return f"{name} is a credential or history file"
     if any(name == p or name.startswith(p + ".") for p in DENIED_PREFIXES):
-        return f"{name} is an environment file (secrets)"
+        return f"{name} is an environment or key file (secrets)"
     if any(name.endswith(s) for s in DENIED_SUFFIXES):
         return f"{name} is a key or certificate"
+    if name.startswith("credentials") and name.endswith(".json"):
+        return f"{name} is a credential file"
     return None
 
 

@@ -351,7 +351,9 @@ fn run_capture(tool: &Path, args: &[String]) -> Result<String, String> {
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
     } else {
-        Err(stderr_tail(&String::from_utf8_lossy(&out.stderr)))
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        Err(crate::media_input::refusal(&stderr)
+            .map_or_else(|| stderr_tail(&stderr), str::to_owned))
     }
 }
 
@@ -360,22 +362,20 @@ pub(crate) fn ffprobe_facts(ffprobe: &Path, abs: &Path) -> Result<FfFacts, Strin
     let stdout = run_capture(ffprobe, &crate::media::probe_args(abs))
         .map_err(|e| format!("ffprobe could not read {}: {e}", abs.display()))?;
     let mut facts = parse_ff_facts(&stdout, abs)?;
-    let packets = run_capture(
-        ffprobe,
-        &[
-            "-v".into(),
-            "error".into(),
-            "-select_streams".into(),
-            "v:0".into(),
-            "-read_intervals".into(),
-            format!("%+#{PACKET_SCAN}"),
-            "-show_entries".into(),
-            "packet=flags".into(),
-            "-of".into(),
-            "csv=p=0".into(),
-            abs.to_string_lossy().into_owned(),
-        ],
-    );
+    let mut packet_args: Vec<String> = vec!["-v".into(), "error".into()];
+    packet_args.extend(crate::media_input::untrusted_input_args(abs));
+    packet_args.extend([
+        "-select_streams".into(),
+        "v:0".into(),
+        "-read_intervals".into(),
+        format!("%+#{PACKET_SCAN}"),
+        "-show_entries".into(),
+        "packet=flags".into(),
+        "-of".into(),
+        "csv=p=0".into(),
+        abs.to_string_lossy().into_owned(),
+    ]);
+    let packets = run_capture(ffprobe, &packet_args);
     facts.discarded_packets = packets.ok().map(|csv| count_discarded(&csv));
     facts.edit_start = crate::mp4box::edit_start(abs);
     Ok(facts)
@@ -418,9 +418,7 @@ pub(crate) fn ffmpeg_decode_timing(
 ) -> Result<DecodeTiming, String> {
     let mut child = crate::tools::sidecar_command(ffmpeg)
         .args(["-hide_banner", "-nostdin", "-nostats", "-loglevel", "info"])
-        .args(["-protocol_whitelist", "file,pipe"])
-        .arg("-i")
-        .arg(abs)
+        .args(crate::media_input::untrusted_input(abs))
         .args([
             "-map",
             "0:v:0",

@@ -833,12 +833,7 @@ fn raw_input_args(options: &ExportOptions) -> Vec<String> {
 
 /// The soundtrack input: a local file and nothing a playlist could point at.
 fn audio_input_args(file: &str) -> Vec<String> {
-    vec![
-        "-protocol_whitelist".into(),
-        "file,pipe".into(),
-        "-i".into(),
-        file.to_owned(),
-    ]
+    crate::media_input::untrusted_input(std::path::Path::new(file))
 }
 
 #[cfg(test)]
@@ -1053,6 +1048,10 @@ mod legacy_argv_goldens {
             "pipe:0",
             "-protocol_whitelist",
             "file,pipe",
+            "-format_whitelist",
+            crate::media_input::AV_DEMUXERS,
+            "-codec_whitelist",
+            crate::media_input::AV_DECODERS,
             "-i",
             "/abs/track.mp3",
             "-vf",

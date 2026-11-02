@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { STAGE_PROTOCOL_VERSION, type WindowNotice } from "../engine/stageProtocol";
-import { StageClient } from "./stageClient";
+import { StageClient, stageWorkerUrl } from "./stageClient";
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => {}) }));
 vi.mock("../engine/autorun", async (importOriginal) => ({
@@ -55,6 +55,26 @@ const outcome = (p: Promise<unknown>) =>
     () => "resolved",
     (e: Error) => e.message,
   );
+
+describe("stageWorkerUrl", () => {
+  it("starts a built worker from a blob, which inherits the window's policy", async () => {
+    let script: Blob | undefined;
+    vi.stubGlobal(
+      "URL",
+      Object.assign(URL, {
+        createObjectURL: (blob: Blob) => {
+          script = blob;
+          return "blob:tauri://localhost/bootstrap";
+        },
+      }),
+    );
+    vi.stubGlobal("location", { href: "tauri://localhost/index.html" });
+    expect(stageWorkerUrl(false)).toBe("blob:tauri://localhost/bootstrap");
+    expect(await script?.text()).toMatch(/^import "tauri:\/\/localhost\/.*stageWorker.*";$/);
+    expect(stageWorkerUrl(true)).toContain("stageWorker");
+    vi.unstubAllGlobals();
+  });
+});
 
 describe("StageClient boot", () => {
   const clients: StageClient[] = [];

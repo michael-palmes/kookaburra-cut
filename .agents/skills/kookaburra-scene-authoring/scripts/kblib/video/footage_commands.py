@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .. import lock as lockmod
+from ..media_input import input_args
 from ..project import Project
 from ..util import EXIT_ENV, EXIT_OK, EXIT_PROBLEMS, KbError, atomic_write_json, emit, emit_ok, load_json
 from . import detect, labels, passes, review
@@ -259,7 +260,7 @@ def label_sheet(ffmpeg: str, sheet: Path, lay: Dict[str, Any], texts: Sequence[s
     over = sheet.with_name(sheet.stem + ".labels.png")
     over.write_bytes(labels.overlay_png(lay["width"], lay["height"], marks, scale))
     out = sheet.with_name(sheet.stem + ".labelled.png")
-    review._run([ffmpeg, "-v", "error", "-nostdin", "-y", "-i", str(sheet), "-i", str(over), "-filter_complex",
+    review._run([ffmpeg, "-v", "error", "-nostdin", "-y", *input_args(sheet), "-i", str(sheet), *input_args(over), "-i", str(over), "-filter_complex",
                  "[0:v][1:v]overlay=0:0:format=auto,format=rgb24", "-frames:v", "1", str(out)])
     over.unlink()
     return out
