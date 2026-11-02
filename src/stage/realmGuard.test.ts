@@ -36,6 +36,7 @@ function realm(dev = false) {
     WebSocket: class extends Sink {},
     EventSource: class extends Sink {},
     Worker: class extends Sink {},
+    SharedWorker: class extends Sink {},
     XMLHttpRequest: Xhr,
     importScripts: vi.fn(),
   };
@@ -85,10 +86,15 @@ describe("installRealmGuard", () => {
     expect(socket.args[0]).toBe("data:,a");
   });
 
-  it("starts nested workers from blobs only, which inherit the policy", () => {
+  it("refuses nested workers", () => {
     const { scope } = realm();
-    expect(() => new scope.Worker("blob:tauri://localhost/1")).not.toThrow();
-    expect(() => new scope.Worker("tauri://localhost/assets/x.js")).toThrow(TypeError);
+    for (const url of ["blob:tauri://localhost/1", "tauri://localhost/assets/x.js"]) {
+      expect(() => new scope.Worker(url)).toThrow(TypeError);
+      expect(() => new scope.SharedWorker(url)).toThrow(TypeError);
+      expect(() => new (scope.Worker.prototype.constructor as typeof scope.Worker)(url)).toThrow(
+        TypeError,
+      );
+    }
   });
 
   it("opens the dev socket in dev only", () => {

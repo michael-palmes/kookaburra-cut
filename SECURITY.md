@@ -112,9 +112,9 @@ Tauri and the updater plugin); the bridge is a file queue, not a socket
 exporting and presenting make no request, and allowed scene code can't make one:
 a release build's worker refuses to start unless the policy is live
 (`provePolicy`), and before any scene loads `src/stage/realmGuard.ts` limits
-`fetch`, `WebSocket`, `XMLHttpRequest`, `EventSource`, `importScripts` and nested
-workers to the `asset:` paths its window handed over, `blob:`, `data:` and the
-app's own files.
+`fetch`, `WebSocket`, `XMLHttpRequest`, `EventSource` and `importScripts` to the
+`asset:` paths its window handed over, `blob:`, `data:` and the app's own files,
+and refuses every nested worker.
 
 | Path | Trigger | Destination | Data | Consent and off switch | Control |
 | --- | --- | --- | --- | --- | --- |
@@ -471,10 +471,9 @@ drop a request, which is the out-of-scope case above.
   an OffscreenCanvas with no `window`, `document` or `__TAURI_INTERNALS__`, so
   scene code can't reach IPC even from the main window, and the network is shut
   ("What leaves the Mac"); its native port refuses any project the window did not
-  hand it (`stageClient.ts`). The guard admits its project, pinned fonts and the
-  objects it read, but a nested `blob:` worker has no guard, so a scene written to
-  probe can still read what its window can over `asset://`: in the main window its
-  project, the shared libraries and the app's caches. The Allow sheet says so.
+  hand it (`stageClient.ts`). Over `asset://` the guard admits its project, pinned
+  fonts and the objects it read, and it refuses nested workers, which would start
+  without it.
 - **Stills on the way in** (`src-tauri/src/imagefile.rs`, `kblib/imagefile.py`,
   `kblib/svgsafe.py`): an imported still is untrusted. Its header is read with no
   decoder and capped first (256 MB, 16384 px a side, 100 MP), and its first bytes,
@@ -695,9 +694,6 @@ Deliberately deferred, recorded so nobody mistakes them for done:
   native sheet.
 - Sealing the trust state: `trustedProjects`, `websiteOriginGrants` and
   `knownPublishers` are plain JSON under the 0600 file mode.
-- The guard in a scene's nested `blob:` worker: without it, an allowed scene in the
-  main window can read every project's welcome snapshot and scene thumbs, plus
-  `screenshots/` and `brands/`.
 - A token on the autorun launch variables: `KOOKABURRA_ACTION` and its set are
   honoured in release builds, which is the same-user case above.
 - A sandbox for the agent. Its allow and deny rules, hooks and reach checks bound

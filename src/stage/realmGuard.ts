@@ -122,8 +122,9 @@ export function installRealmGuard(scope: object, appUrl: string, dev: boolean): 
   guardCtor("WebSocketStream");
   guardCtor("WebTransport");
   guardCtor("EventSource");
-  // A worker from the app's own files would start with no policy; a blob worker inherits this one.
-  guardCtor("Worker", (url) => url.protocol === "blob:");
+  // The stage spawns no workers, and a nested one would start without this guard.
+  guardCtor("Worker", () => false);
+  guardCtor("SharedWorker", () => false);
 
   const Xhr = realm.XMLHttpRequest as typeof XMLHttpRequest | undefined;
   if (Xhr) {

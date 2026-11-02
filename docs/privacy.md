@@ -17,8 +17,8 @@ and presenting never touch the network. There is no account, no telemetry, no
 crash reporting, and nothing phones home. The app's own window can only talk to
 itself: the browser rules it ships with name no outside host. Scene code you
 allow runs under the same rules, shut off from the network and from the app's
-commands, though it can read its project, your shared libraries and the app's
-caches.
+commands, though it can read its project and the fonts and 3D objects in your
+libraries.
 
 Seven things can reach the internet, and each one starts with you:
 
