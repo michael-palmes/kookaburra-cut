@@ -130,6 +130,17 @@ describe("reconcileTerminalBakes", () => {
     expect(mocks.commit).toHaveBeenCalledTimes(1);
   });
 
+  it("never bakes a grid a shared project sized past a terminal", async () => {
+    await reconcile(project(id, { cols: 400, rows: 200, fontPx: 48, transcript: "$ ls" }));
+    expect(mocks.bake).not.toHaveBeenCalled();
+    expect(mocks.commit).not.toHaveBeenCalled();
+  });
+
+  it("still bakes the largest grid a person would ask for", async () => {
+    await reconcile(project(id, { cols: 200, rows: 60, fontPx: 24, transcript: "$ ls" }));
+    expect(mocks.bake).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps going past a failed bake and tries again on the next change", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     mocks.bake.mockRejectedValueOnce(new Error("disk full"));

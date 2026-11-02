@@ -3,6 +3,7 @@ import { commitSceneDocPatch, type DocChangedHandler } from "./sceneDocPatchQueu
 import type { SceneDocTerminalSnapshot } from "./sceneTerminal";
 import { resolveSceneTerminal, terminalSnapshotStale } from "./sceneTerminal";
 import { bakeTerminalSnapshot } from "./sceneTerminalBake";
+import { terminalTooLargeToBake } from "./sceneTerminalRaster";
 import { resolveTerminalColours } from "./sceneTerminalTheme";
 import { layoutTranscript } from "./sceneTerminalTranscript";
 
@@ -23,7 +24,7 @@ const running = new Map<string, Promise<void>>();
 function plan({ project, sceneIndex }: Pick<Job, "project" | "sceneIndex">) {
   const doc = project.sceneDocs[sceneIndex];
   const terminal = resolveSceneTerminal(doc);
-  if (!doc?.terminal || !terminal) return null;
+  if (!doc?.terminal || !terminal || terminalTooLargeToBake(terminal)) return null;
   const stale = terminalSnapshotStale(doc.terminal);
   const snapshot: SceneDocTerminalSnapshot | null =
     stale && terminal.transcript

@@ -2557,6 +2557,7 @@ export default function App() {
   async function handleStillsExport(sel: StillsExportSelection) {
     if (!project) return;
     setShowExport(false);
+    await settleTerminalBakes();
     setExporting(true);
     setExportKind(sel.format);
     setProgress(null);
@@ -2727,6 +2728,7 @@ export default function App() {
       setToast({ kind: "error", message: refusal });
       return;
     }
+    await settleTerminalBakes();
     setExporting(true);
     setProgress(null);
     setToast(null);

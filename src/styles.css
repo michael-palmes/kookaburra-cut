@@ -5178,41 +5178,6 @@ button.beat-status {
   border-radius: var(--radius-sm);
 }
 
-/* Two-option picker on a settings row (Claude ▸ Edit with): the selected option raises, §8.5. */
-.settings-segmented {
-  display: grid;
-  flex: none;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin: 0;
-  padding: 3px;
-  background: var(--surface-recessed);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-}
-
-.settings-segmented button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
-  height: 26px;
-  padding: 0 var(--space-5);
-  font: inherit;
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-xs);
-  cursor: pointer;
-}
-
-.settings-segmented button.active {
-  font-weight: 590;
-  color: var(--text-primary);
-  background: var(--surface-raised);
-  border-color: var(--border-default);
-}
-
 .settings-row + .settings-row {
   margin-top: var(--space-3);
 }

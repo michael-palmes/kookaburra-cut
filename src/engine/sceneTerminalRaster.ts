@@ -49,19 +49,34 @@ function pngBytes(canvas: OffscreenCanvas | HTMLCanvasElement): Promise<Uint8Arr
   });
 }
 
+/** A shared project can ask for any grid, and baking needs no click: past this the raster's memory and encode time stop being a terminal's. */
+const TERMINAL_RASTER_MAX_PIXELS = 64_000_000;
+
+function rasterSize(terminal: ResolvedSceneTerminal) {
+  const fontSize = terminal.fontPx * TERMINAL_RASTER_SCALE;
+  return {
+    fontSize,
+    width: Math.max(1, Math.round(terminal.cols * TERMINAL_CELL_WIDTH_EM * fontSize)),
+    height: Math.max(1, Math.round(terminal.rows * TERMINAL_CELL_HEIGHT_EM * fontSize)),
+  };
+}
+
+export function terminalTooLargeToBake(terminal: ResolvedSceneTerminal): boolean {
+  const { width, height } = rasterSize(terminal);
+  return width * height > TERMINAL_RASTER_MAX_PIXELS;
+}
+
 /** Draw the snapshot grid (backgrounds, cursor block, glyphs, underlines) and return PNG bytes sized `cols x rows` cells at `fontPx x TERMINAL_RASTER_SCALE`. */
 export async function rasterTerminalSnapshot(
   terminal: ResolvedSceneTerminal,
   colours: SceneTerminalColours,
 ): Promise<Uint8Array> {
-  const { cols, rows, fontPx } = terminal;
+  const { cols, rows } = terminal;
   const grid = terminal.snapshot?.grid ?? [];
   const cursor = terminal.snapshot?.cursor ?? null;
-  const fontSize = fontPx * TERMINAL_RASTER_SCALE;
+  const { fontSize, width, height } = rasterSize(terminal);
   const cellW = TERMINAL_CELL_WIDTH_EM * fontSize;
   const cellH = TERMINAL_CELL_HEIGHT_EM * fontSize;
-  const width = Math.max(1, Math.round(cols * cellW));
-  const height = Math.max(1, Math.round(rows * cellH));
 
   const canvas =
     typeof OffscreenCanvas !== "undefined"

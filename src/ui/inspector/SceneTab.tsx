@@ -89,6 +89,7 @@ import {
   TERMINAL_ROWS_MAX,
   TERMINAL_ROWS_MIN,
 } from "../../engine/sceneTerminal";
+import { terminalTooLargeToBake } from "../../engine/sceneTerminalRaster";
 import { resolveTerminalColours, TERMINAL_THEME_PRESETS } from "../../engine/sceneTerminalTheme";
 import { landTranscriptSnapshot } from "../../engine/sceneTerminalTranscript";
 import { useLargestSceneText, useSceneTextRegistry } from "../../engine/sceneTextRegistry";
@@ -7639,7 +7640,14 @@ export function SceneTab({
                   />
                 )}
               </DrillGroup>
-              <DrillGroup label="Grid">
+              <DrillGroup
+                label="Grid"
+                hint={
+                  terminalTooLargeToBake(terminal)
+                    ? "Too large to bake. Lower the columns, rows or font size."
+                    : undefined
+                }
+              >
                 <div className="popover-row">
                   <span className="popover-inline slider-row-label">Columns</span>
                   <NumberField
