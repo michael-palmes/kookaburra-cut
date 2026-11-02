@@ -96,6 +96,8 @@ def inert_key(key: str) -> bool:
 
 def _config_refusal(config: str) -> Optional[str]:
     """Git's own parser reads the file, with includes off, so no reading of it can differ from git's."""
+    if not git_available():
+        return ".git/config can't be read"
     try:
         proc = subprocess.run(["git", "config", "--file", config, "--no-includes", "--list", "--name-only", "-z"], capture_output=True, timeout=10, cwd="/",
                               stdin=subprocess.DEVNULL, env=isolated_env())

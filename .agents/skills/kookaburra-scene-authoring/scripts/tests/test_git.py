@@ -8,7 +8,7 @@ import time
 import types
 from unittest import mock
 
-from kblib import git
+from kblib import git, overview
 
 from .helpers import KbTestCase, make_project, read_json, run_git, write, write_json
 
@@ -112,6 +112,12 @@ class FolderGitSettings(KbTestCase):
         self.assertIn("Someone <someone@example.com>", run_git(self.root, ["log", "-1", "--format=%an <%ae>"]))
         run_git(self.root, ["config", "remote.origin.uploadpack", str(self.program)])
         self.refused(["checkpoint", "x"], "uploadpack")
+
+    def test_without_git_nothing_spawns_it(self) -> None:
+        project = types.SimpleNamespace(root=self.root)
+        with mock.patch.object(git, "_available", False), mock.patch.object(git, "_config_seen", (None, None)), mock.patch.object(git.subprocess, "run", side_effect=AssertionError("git ran")):
+            self.assertEqual(git.refusal(self.root), ".git/config can't be read")
+            self.assertIn("git is not installed", overview.checkpoint_line(project))
 
     def test_a_checkpoint_keeps_the_persons_global_identity(self) -> None:
         home = self.tmp / "home"

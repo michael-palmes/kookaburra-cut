@@ -58,10 +58,13 @@ fn inert_key(key: &str) -> bool {
     if INERT_KEYS.contains(&key) {
         return true;
     }
-    let var = |rest: &str| rest.rsplit_once('.').map(|(_, var)| var.to_owned());
-    match key.split_once('.') {
-        Some(("remote", rest)) => var(rest).is_some_and(|v| v == "url" || v == "fetch"),
-        Some(("branch", rest)) => var(rest).is_some_and(|v| v == "remote" || v == "merge"),
+    let Some((section, rest)) = key.split_once('.') else {
+        return false;
+    };
+    let var = rest.rsplit_once('.').map(|(_, var)| var);
+    match section {
+        "remote" => matches!(var, Some("url" | "fetch")),
+        "branch" => matches!(var, Some("remote" | "merge")),
         _ => false,
     }
 }
@@ -127,6 +130,9 @@ fn git_env(
     use std::io::Write;
     use std::process::Stdio;
     let mut command = isolated_git();
+    if let Some(parent) = dir.parent() {
+        command.env("GIT_CEILING_DIRECTORIES", parent);
+    }
     command
         .args(GUARDS)
         .args(args)
@@ -587,6 +593,31 @@ mod tests {
         let dir = app_repo("config-broken");
         std::fs::write(dir.join(".git/config"), "[core\nfsmonitor = x\n").unwrap();
         assert!(refuse_foreign(&dir).unwrap_err().contains("can't be read"));
+
+        for tag in [
+            "git-file",
+            "git-link",
+            "commondir",
+            "config-link",
+            "config-broken",
+            "elsewhere",
+        ] {
+            let _ = std::fs::remove_dir_all(temp(tag));
+        }
+    }
+
+    #[test]
+    fn an_invalid_git_folder_never_reaches_a_parent_repository() {
+        let outer = app_repo("outer");
+        let (program, marker) = marker_program(&outer);
+        set_config(&outer, "core.fsmonitor", &program);
+        let nested = outer.join("scenes/nested");
+        std::fs::create_dir_all(nested.join(".git")).unwrap();
+        assert_eq!(refuse_foreign(&nested), Ok(()));
+        assert!(!holds_excluded(&nested));
+        assert!(git(&nested, &["rev-parse", "--show-toplevel"]).is_err());
+        assert!(!marker.exists());
+        let _ = std::fs::remove_dir_all(&outer);
     }
 
     #[test]
