@@ -370,10 +370,19 @@ for either, because a template or preset carries only what it was saved with.
 Excluded, because it is a person's decision and not the film's:
 `flashes.accepted.json` ("Pack trust is not code trust").
 
-Included despite looking generated: `CLAUDE.md`, because authors write notes
-there; import swaps it, and any `CLAUDE.local.md` or `AGENTS.md`, for the app's
-default and keeps the text as `NOTES.md` ("Pack trust is not code trust"). `.claude/settings.json` is app-owned and
-never travels.
+Excluded, because it names what a person imported: `assets/_meta.json`
+(provenance: `origin.sourceName`, and `origin.from` under `.originals`). A
+recipient has no record for those assets, the same as an older project.
+
+Left out unless ticked, because a person's notes may hold anything: an edited
+`CLAUDE.md`, and any `CLAUDE.local.md`, `AGENTS.md` or `NOTES.md`, at any depth
+(`scan::is_agent_note`). The export screen lists them per item with a tick, off by
+default (`PackSelection::include_agent_notes`). An unedited default `CLAUDE.md`
+stays out silently, and a brand's notes stay home with a review warning. None of
+them count towards `contentHash`, so a project reads `identical` to its own pack
+either way. A pack from an older app hashed them, so re-importing one may read as a
+difference. Import still swaps any that arrive ("Pack trust is not code trust").
+`.claude/settings.json` is app-owned and never travels.
 
 Reviewed rather than dropped: unreferenced assets and `*-edited.mp4` flattened
 renders appear in the picker with their size and a one-click drop. Nothing is

@@ -18,6 +18,15 @@ pub struct ScannedItem {
 /// A person's accepted flash warnings, their decision about their own film: it never travels and never lands (docs/packs.md).
 pub const ACCEPTED_FLASHES_FILE: &str = "flashes.accepted.json";
 
+/// What an author keeps for themselves or for Claude. It travels only when ticked (`PackSelection::include_agent_notes`)
+/// and never counts towards an item's identity, so a project still reads `identical` to its own pack either way.
+pub fn is_agent_note(rel: &str) -> bool {
+    let name = rel.rsplit('/').next().unwrap_or(rel);
+    ["CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", "NOTES.md"]
+        .iter()
+        .any(|note| name.eq_ignore_ascii_case(note))
+}
+
 /// Generated files that never travel and never count towards an item's identity.
 ///
 /// Export and import MUST agree on this exactly. If they disagree, a project re-imported from its own pack hashes
@@ -46,7 +55,8 @@ pub fn is_excluded(rel: &str) -> bool {
     if rel.starts_with("assets/.emoji-cache/") || rel.starts_with("assets/.originals/") {
         return true;
     }
-    if rel == "edits/_tap_prefs.json" {
+    // Provenance names the files a person imported from: `origin.sourceName`, and `origin.from` under `.originals`.
+    if rel == "edits/_tap_prefs.json" || rel == crate::asset_meta::META_REL {
         return true;
     }
     // Bundled and legacy projects render to the project ROOT rather than `exports/` (`start_export` in lib.rs), and
@@ -75,7 +85,7 @@ fn walk(dir: &Path, prefix: &str, out: &mut Vec<(String, PathBuf)>) -> Result<()
         } else {
             format!("{prefix}/{name}")
         };
-        if is_excluded(&rel) {
+        if is_excluded(&rel) || is_agent_note(&rel) {
             continue;
         }
         let meta = entry.metadata()?;
@@ -204,6 +214,12 @@ mod tests {
         assert!(!is_excluded("assets/hero.mp4"));
         assert!(!is_excluded("CLAUDE.md"));
         assert!(!is_excluded("NOTES.md"));
+        assert!(is_excluded("assets/_meta.json"));
+        assert!(is_agent_note("CLAUDE.md"));
+        assert!(is_agent_note("scenes/claude.local.md"));
+        assert!(is_agent_note("assets/deep/AGENTS.md"));
+        assert!(is_agent_note("NOTES.md"));
+        assert!(!is_agent_note("guidelines.md"));
         assert!(is_excluded(".claude/settings.json"));
         assert!(is_excluded(".claude/commands/deploy.md"));
         assert!(!is_excluded("edits/clip.json"));
