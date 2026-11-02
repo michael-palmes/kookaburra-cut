@@ -499,7 +499,8 @@ builds it in separate jobs, each on a fresh runner.
   runner: `codesign --verify --deep --strict`, the Developer ID chain, the Team
   ID, no entitlements, `stapler validate` and `spctl` on the zip's app, the
   updater tar's app and the DMG; the DMG holds the same bytes as the zip;
-  `latest.json` names the same signature and version; the signed binary runs
+  the updater signature verifies against `plugins.updater.pubkey`; `latest.json`
+  names the same signature and version; the signed binary runs
   `edit caps` and `check flashes` on a film its bundled ffmpeg renders; and the
   sidecars' signature-stripped digests equal the ones the build job recorded.
 - **Publish.** `SHA256SUMS` over the DMG, the zip, the updater tar and
@@ -514,10 +515,11 @@ builds it in separate jobs, each on a fresh runner.
   `main` equal to `origin/main`, signs the tag and verifies it against
   `.github/allowed_tag_signers` before pushing. Every pull request's head commit
   must be signed by a key in `.github/allowed_signers`, or in the tag list when
-  it changes either list, `signers.yml` or `release.yml`
+  it changes `.github/`, a script the release pipeline runs, a lock file,
+  `package.json`, `patches/`, `tauri.conf.json` or a pin file
   (`.github/workflows/signers.yml`, run from the default branch's copy);
   `CODEOWNERS` names the maintainer; `audit.yml` runs
-  `pnpm audit --prod` and `cargo deny check advisories` on every pull request
+  `pnpm audit` and `cargo deny check advisories` on every pull request
   and weekly. Every workflow starts from `permissions: {}` or `contents: read`,
   pins actions to a commit SHA and sets `persist-credentials: false`.
 - **Verify an install.** On the release page's files:

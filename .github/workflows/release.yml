@@ -37,7 +37,7 @@ jobs:
   # Builds from pinned source with no signing secret in reach. Its output is an unsigned app and its digest.
   build:
     name: Build unsigned payload
-    runs-on: ${{ vars.MACOS_RUNNER || 'macos-26' }}
+    runs-on: macos-26
     timeout-minutes: 120
     permissions:
       contents: read
@@ -95,6 +95,44 @@ jobs:
           [ "$(git rev-parse HEAD)" = "$commit" ] || { echo "::error::checkout is not the tagged commit"; exit 1; }
           git merge-base --is-ancestor "$commit" origin/main || { echo "::error::${TAG} is not on main"; exit 1; }
 
+      # Licensed device models are compiled in at build time, so a tag build needs them. They come from a
+      # private repository as an age-encrypted archive and must match src/assets/models/licensed.sha256.
+      # The two secrets here are read-only to that repository and its decryption key, never a signing key.
+      # This runs before any dependency or repository script can run and watch them. A branch rehearsal
+      # skips it and ships the Android fallback for those devices.
+      - name: Fetch the licensed device models
+        if: steps.meta.outputs.tag != ''
+        env:
+          ASSETS_REPO: ${{ vars.LICENSED_ASSETS_REPO || 'michael-palmes/kookaburra-cut-assets' }}
+          ASSETS_TOKEN: ${{ secrets.LICENSED_ASSETS_TOKEN }}
+          AGE_KEY: ${{ secrets.LICENSED_ASSETS_AGE_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          [ -n "$ASSETS_TOKEN" ] || { echo "::error::LICENSED_ASSETS_TOKEN is not set"; exit 1; }
+          [ -n "$AGE_KEY" ] || { echo "::error::LICENSED_ASSETS_AGE_KEY is not set"; exit 1; }
+          tgz="$RUNNER_TEMP/age.tar.gz"
+          curl -fsSLo "$tgz" "https://github.com/FiloSottile/age/releases/download/v${AGE_VERSION}/age-v${AGE_VERSION}-darwin-arm64.tar.gz"
+          echo "${AGE_SHA256}  $tgz" | shasum -a 256 -c -
+          tar -xzf "$tgz" -C "$RUNNER_TEMP"
+          printf '%s\n' "$AGE_KEY" > "$RUNNER_TEMP/age-key.txt"
+          curl -fsSL -H "Authorization: Bearer $ASSETS_TOKEN" -H "Accept: application/vnd.github.raw+json" \
+            -o "$RUNNER_TEMP/licensed-models.tar.age" \
+            "https://api.github.com/repos/${ASSETS_REPO}/contents/licensed-models.tar.age"
+          "$RUNNER_TEMP/age/age" -d -i "$RUNNER_TEMP/age-key.txt" -o "$RUNNER_TEMP/licensed-models.tar" "$RUNNER_TEMP/licensed-models.tar.age"
+          rm -f "$RUNNER_TEMP/age-key.txt" "$RUNNER_TEMP/licensed-models.tar.age"
+          # Flat glb names only: nothing may write outside the licensed folder.
+          if /usr/bin/tar -tf "$RUNNER_TEMP/licensed-models.tar" | grep -Ev '^[0-9a-f-]+\.glb$'; then
+            echo "::error::the licensed archive holds entries other than flat glb files"; exit 1
+          fi
+          mkdir -p src/assets/models/licensed
+          /usr/bin/tar -xf "$RUNNER_TEMP/licensed-models.tar" -C src/assets/models/licensed
+          rm -f "$RUNNER_TEMP/licensed-models.tar"
+
+      - name: Check the licensed device models
+        if: steps.meta.outputs.tag != ''
+        run: bash scripts/check-licensed-models.sh
+
       - name: Check the README states the bundle's macOS floor
         run: |
           set -euo pipefail
@@ -130,40 +168,6 @@ jobs:
 
       - name: Fetch the beat-this model (SHA-256 pinned)
         run: pnpm setup:models
-
-      # Licensed device models are compiled in at build time, so a tag build needs them. They come from a
-      # private repository as an age-encrypted archive and must match src/assets/models/licensed.sha256.
-      # The two secrets here are read-only to that repository and its decryption key, never a signing key;
-      # a branch rehearsal skips this step and ships the Android fallback for those devices.
-      - name: Fetch the licensed device models
-        if: steps.meta.outputs.tag != ''
-        env:
-          ASSETS_REPO: ${{ vars.LICENSED_ASSETS_REPO || 'michael-palmes/kookaburra-cut-assets' }}
-          ASSETS_TOKEN: ${{ secrets.LICENSED_ASSETS_TOKEN }}
-          AGE_KEY: ${{ secrets.LICENSED_ASSETS_AGE_KEY }}
-        run: |
-          set -euo pipefail
-          umask 077
-          [ -n "$ASSETS_TOKEN" ] || { echo "::error::LICENSED_ASSETS_TOKEN is not set"; exit 1; }
-          [ -n "$AGE_KEY" ] || { echo "::error::LICENSED_ASSETS_AGE_KEY is not set"; exit 1; }
-          tgz="$RUNNER_TEMP/age.tar.gz"
-          curl -fsSLo "$tgz" "https://github.com/FiloSottile/age/releases/download/v${AGE_VERSION}/age-v${AGE_VERSION}-darwin-arm64.tar.gz"
-          echo "${AGE_SHA256}  $tgz" | shasum -a 256 -c -
-          tar -xzf "$tgz" -C "$RUNNER_TEMP"
-          printf '%s\n' "$AGE_KEY" > "$RUNNER_TEMP/age-key.txt"
-          curl -fsSL -H "Authorization: Bearer $ASSETS_TOKEN" -H "Accept: application/vnd.github.raw+json" \
-            -o "$RUNNER_TEMP/licensed-models.tar.age" \
-            "https://api.github.com/repos/${ASSETS_REPO}/contents/licensed-models.tar.age"
-          "$RUNNER_TEMP/age/age" -d -i "$RUNNER_TEMP/age-key.txt" -o "$RUNNER_TEMP/licensed-models.tar" "$RUNNER_TEMP/licensed-models.tar.age"
-          rm -f "$RUNNER_TEMP/age-key.txt" "$RUNNER_TEMP/licensed-models.tar.age"
-          # Flat glb names only: nothing may write outside the licensed folder.
-          if /usr/bin/tar -tf "$RUNNER_TEMP/licensed-models.tar" | grep -Ev '^[0-9a-f-]+\.glb$'; then
-            echo "::error::the licensed archive holds entries other than flat glb files"; exit 1
-          fi
-          mkdir -p src/assets/models/licensed
-          /usr/bin/tar -xf "$RUNNER_TEMP/licensed-models.tar" -C src/assets/models/licensed
-          rm -f "$RUNNER_TEMP/licensed-models.tar"
-          bash scripts/check-licensed-models.sh
 
       - name: Build the app (unsigned)
         run: pnpm tauri build --ci --no-sign
@@ -203,7 +207,7 @@ jobs:
     name: Sign and notarise
     needs: build
     if: needs.build.outputs.tag != ''
-    runs-on: ${{ vars.MACOS_RUNNER || 'macos-26' }}
+    runs-on: macos-26
     environment: release
     timeout-minutes: 90
     permissions:
@@ -320,7 +324,7 @@ jobs:
   verify:
     name: Verify
     needs: [build, sign]
-    runs-on: ${{ vars.MACOS_RUNNER || 'macos-26' }}
+    runs-on: macos-26
     timeout-minutes: 30
     permissions:
       contents: read
@@ -370,7 +374,7 @@ jobs:
     name: Ad-hoc rehearsal
     needs: build
     if: needs.build.outputs.tag == ''
-    runs-on: ${{ vars.MACOS_RUNNER || 'macos-26' }}
+    runs-on: macos-26
     timeout-minutes: 45
     permissions:
       contents: read

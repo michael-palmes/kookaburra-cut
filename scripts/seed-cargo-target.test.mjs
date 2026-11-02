@@ -20,7 +20,6 @@ const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "seed-cargo-target.
 const THIRD_PARTY = [
   "debug/deps/libserde-1a.rlib",
   "debug/.fingerprint/serde-1a/lib-serde",
-  "debug/build/ring-2b/out/libring.a",
   "release/deps/libserde-7a.rlib",
   "release/.fingerprint/serde-7a/lib-serde",
 ];
@@ -34,6 +33,7 @@ const APP = [
   "release/deps/kookaburra_cut-8b",
   "release/.fingerprint/kookaburra-cut-8b/bin-kookaburra-cut",
 ];
+const BUILD_SCRIPT_OUTPUT = ["debug/build/ring-2b/out/libring.a"];
 const UPLIFTED = ["debug/kookaburra-cut", "debug/ffmpeg", "debug/projects/a/project.json"];
 const roots = [];
 
@@ -87,7 +87,8 @@ describe("seed-cargo-target", { skip: process.platform !== "darwin" }, () => {
     assert.match(result.stdout, /cloned third-party artefacts \(debug release\)/);
     for (const file of [...THIRD_PARTY, "CACHEDIR.TAG"])
       assert.ok(existsSync(join(target, file)), file);
-    for (const file of [...APP, ...UPLIFTED]) assert.ok(!existsSync(join(target, file)), file);
+    for (const file of [...APP, ...BUILD_SCRIPT_OUTPUT, ...UPLIFTED])
+      assert.ok(!existsSync(join(target, file)), file);
     assert.deepEqual(stages(gitDir), []);
   });
 

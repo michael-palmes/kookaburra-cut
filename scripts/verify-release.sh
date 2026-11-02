@@ -2,8 +2,9 @@
 #
 # Verifies a signed release set on a machine that never held a key: the release workflow's
 # verify job, and the last step of a local rehearsal. Checks the signatures, notarisation and
-# Gatekeeper verdicts, runs the signed binary's headless CLI, and compares the sidecars'
-# signature-stripped digests with the ones the build job recorded.
+# Gatekeeper verdicts, the updater signature against plugins.updater.pubkey, runs the signed
+# binary's headless CLI, and compares the sidecars' signature-stripped digests with the ones the
+# build job recorded.
 #
 #   verify-release.sh [--adhoc] [--dir release/] [--sidecar-digests <file>]
 #     --adhoc             an ad-hoc rehearsal: no notarisation or Gatekeeper checks
@@ -24,7 +25,7 @@ while [[ $# -gt 0 ]]; do
     --adhoc) ADHOC=1; shift ;;
     --dir) DIR="${2:?--dir needs a path}"; shift 2 ;;
     --sidecar-digests) DIGESTS="${2:?--sidecar-digests needs a file}"; shift 2 ;;
-    --help | -h) sed -n '2,14p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    --help | -h) sed -n '2,15p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "ERROR: unknown argument '$1'" >&2; exit 2 ;;
   esac
 done
@@ -101,7 +102,14 @@ mkdir -p "$WORK/tar"
 /usr/bin/tar -xzf "$UPDATER_TAR" -C "$WORK/tar"
 [[ -z "$(/usr/bin/tar -tzf "$UPDATER_TAR" | grep -E '(^|/)\._' || true)" ]] || die "the updater tar carries AppleDouble entries"
 verify_app "$WORK/tar/$APP_NAME.app"
-base64 -d <"$UPDATER_TAR.sig" | sed -n 3p | tr '\t' '\n' | grep -Fxq "version:$VERSION" || die "the updater signature is not bound to version $VERSION"
+# A rehearsal signs with a throwaway key; a real release must verify against the key installed apps trust.
+if [[ "$ADHOC" == 1 ]]; then
+  UPDATER_PUBKEY=$(cat "$DIR/updater-adhoc.pub")
+else
+  UPDATER_PUBKEY=$(node -p "require('$ROOT/src-tauri/tauri.conf.json').plugins.updater.pubkey")
+fi
+node "$ROOT/scripts/verify-updater-sig.mjs" "$UPDATER_TAR" "$UPDATER_TAR.sig" "$UPDATER_PUBKEY" "$VERSION"
+log "The updater signature verifies against the configured key and binds version $VERSION"
 node -e '
   const m = require(process.argv[1]); const v = process.argv[2]; const sig = require("fs").readFileSync(process.argv[3], "utf8").trim();
   const p = m.platforms && m.platforms["darwin-aarch64"];
