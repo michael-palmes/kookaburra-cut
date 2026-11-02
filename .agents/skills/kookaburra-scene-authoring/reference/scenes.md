@@ -291,9 +291,12 @@ test), and children stack in JSX order. Use it instead of building a pose in fro
 
 - `front` (the default) draws over the finished frame: past depth of field, so a title
   stays sharp over a blurred scene. On a solo frame it sits past the effects too; during a
-  transition it crossfades with its scene and picks up the effects. A framed scene's front
-  layer covers the whole frame, not the cutout. A comparison draws it once over the
-  composite, from side A.
+  transition it crossfades with its scene and picks up the effects, so under effects its
+  colours visibly jump as a transition starts and ends: use `back`, or leave transitions off
+  that scene. A framed scene's front layer covers the whole frame, not the cutout. A
+  comparison draws it once over the composite, from side A.
+- A framed scene's panel owns its scene text, so a layer's headline there needs
+  `managedTextRole="embedded"` or it draws nothing.
 - `back` draws over the background and under everything 3D, inside the scene's own pass:
   effects, depth of field and transitions treat it like the backdrop, and glass refracts
   it. A 3D look's transparent parts (grid lines) still draw over it.
