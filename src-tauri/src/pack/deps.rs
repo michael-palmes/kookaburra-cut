@@ -406,26 +406,32 @@ fn scan_text_style(value: &Value, out: &mut DocRefs) {
     }
 }
 
-/// `ws:<slug>` tokens in TSX source. Deliberately blunt: a false hit resolves to nothing and warns, it never packs the wrong thing.
-fn scan_source(text: &str, out: &mut DocRefs) {
-    let bytes = text.as_bytes();
+/// Every `ws:` in source that is not inside a word, as `(start, end)` byte offsets, `end` past the slug (empty when no slug follows). Bytes, so a scene that is not UTF-8 reads the same way.
+pub(super) fn ws_tokens(bytes: &[u8]) -> Vec<(usize, usize)> {
+    let is_slug_byte = |b: u8| b.is_ascii_alphanumeric() || b == b'-' || b == b'_';
+    let mut tokens = Vec::new();
     let mut cursor = 0usize;
-    while let Some(offset) = text[cursor..].find("ws:") {
+    while let Some(offset) = bytes[cursor..].windows(3).position(|w| w == b"ws:") {
         let start = cursor + offset;
-        let preceded = start > 0 && {
-            let b = bytes[start - 1];
-            b.is_ascii_alphanumeric() || b == b'_' || b == b'-'
-        };
+        let preceded = start > 0 && is_slug_byte(bytes[start - 1]);
         let mut end = start + 3;
-        while end < bytes.len()
-            && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'-' || bytes[end] == b'_')
-        {
+        while end < bytes.len() && is_slug_byte(bytes[end]) {
             end += 1;
         }
-        if !preceded && end > start + 3 {
+        if !preceded {
+            tokens.push((start, end));
+        }
+        cursor = end;
+    }
+    tokens
+}
+
+/// `ws:<slug>` tokens in TSX source. Deliberately blunt: a false hit resolves to nothing and warns, it never packs the wrong thing.
+fn scan_source(text: &str, out: &mut DocRefs) {
+    for (start, end) in ws_tokens(text.as_bytes()) {
+        if end > start + 3 {
             out.workspace_ids.insert(text[start + 3..end].to_owned());
         }
-        cursor = end.max(start + 3);
     }
 }
 
@@ -530,7 +536,7 @@ fn base_from(slug: &str, name: &str, files: &[StagedFile]) -> PackItemBase {
 }
 
 /// Every file under `dir`, item-relative with forward slashes, sorted. Dot-prefixed names are skipped: they are caches, VCS or editor state, never payload.
-fn walk(dir: &Path, prefix: &str, out: &mut Vec<(String, PathBuf)>) {
+pub(super) fn walk(dir: &Path, prefix: &str, out: &mut Vec<(String, PathBuf)>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };

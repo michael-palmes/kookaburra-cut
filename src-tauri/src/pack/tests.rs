@@ -1201,6 +1201,102 @@ fn field(path: &Path, key: &str) -> String {
 
 /// The whole carriage: a template and a preset are packed with the theme they name, imported into a workspace that
 /// already owns both slugs, and land renamed, re-pointed at the renamed theme, and stamped as coming from a pack.
+/// The whole path on a real signed pack: staging verifies the bytes, the plan names the slug, and the scene lands following it.
+#[test]
+fn a_kept_both_object_follows_into_scene_code_through_a_real_pack() {
+    use super::apply::{apply_import, ItemOutcome};
+    use super::conflicts::plan_conflicts;
+    use super::deps::{item_key, resolve_closure, PackSelection};
+    use super::model::{ItemKind, Resolution};
+    use std::collections::HashMap;
+
+    let author = TempDir::new("tsx-author");
+    let out = TempDir::new("tsx-out");
+    let recipient = TempDir::new("tsx-recipient");
+    let scene = |id: &str| format!("<StagedObject objectId=\"ws:{id}\" />;\nuse(\"ws:coin-2\");\n");
+    let object = |name: &str| format!("{{\"name\":\"{name}\",\"glb\":\"model.glb\"}}");
+    for slug in ["coin", "coin-2"] {
+        write_file(
+            &author.path().join(format!("objects/{slug}/object.json")),
+            object(slug).as_bytes(),
+        );
+        write_file(
+            &author.path().join(format!("objects/{slug}/model.glb")),
+            slug.as_bytes(),
+        );
+    }
+    write_file(
+        &author.path().join("acme/project.json"),
+        br#"{"id":"acme","name":"Acme","themeId":"kookaburra-dark"}"#,
+    );
+    write_file(
+        &author.path().join("acme/scenes/01-hero.tsx"),
+        scene("coin").as_bytes(),
+    );
+    let selection = PackSelection {
+        projects: vec!["acme".into()],
+        ..Default::default()
+    };
+    let closure = resolve_closure(author.path(), &selection).expect("closure");
+    assert_eq!(closure.contents.objects.len(), 2);
+    let archive = out.path().join("acme.kbpack");
+    write_pack_from(&closure, &archive);
+
+    let mine = object("mine");
+    write_file(
+        &recipient.path().join("objects/coin/object.json"),
+        mine.as_bytes(),
+    );
+    let inspection = inspect(&archive).expect("inspect");
+    let staged = stage(
+        &archive,
+        recipient.path(),
+        &inspection.manifest,
+        |_, _| {},
+        &|| false,
+    )
+    .expect("stage");
+    let picked = PackSelection {
+        projects: vec!["acme".into()],
+        objects: vec!["coin".into(), "coin-2".into()],
+        ..Default::default()
+    };
+    let plan = plan_conflicts(recipient.path(), &staged, &picked).expect("plan");
+    let coin = plan
+        .items
+        .iter()
+        .find(|i| i.kind == ItemKind::Object && i.slug == "coin")
+        .expect("planned");
+    assert_eq!(coin.keep_both_slug.as_deref(), Some("coin-3"));
+
+    let resolutions: HashMap<String, Resolution> = [
+        (item_key(ItemKind::Object, "coin"), Resolution::KeepBoth),
+        (item_key(ItemKind::Object, "coin-2"), Resolution::Replace),
+        (item_key(ItemKind::Project, "acme"), Resolution::Replace),
+    ]
+    .into_iter()
+    .collect();
+    let outcome =
+        apply_import(recipient.path(), staged, &resolutions, |_, _, _| {}).expect("apply");
+
+    assert_eq!(outcome.stopped_at, None, "{:?}", outcome.results);
+    let landed = |rel: &str| std::fs::read_to_string(recipient.path().join(rel)).unwrap();
+    assert_eq!(landed("objects/coin/object.json"), mine);
+    assert_eq!(landed("objects/coin-3/object.json"), object("coin"));
+    assert_eq!(landed("objects/coin-2/object.json"), object("coin-2"));
+    assert_eq!(
+        landed("acme/scenes/01-hero.tsx"),
+        scene("coin-3"),
+        "the moved object follows, its neighbour does not"
+    );
+    let kept = outcome
+        .results
+        .iter()
+        .find(|r| r.kind == ItemKind::Object && r.slug == "coin-3")
+        .expect("kept both");
+    assert_eq!(kept.outcome, ItemOutcome::KeptBoth);
+}
+
 #[test]
 fn templates_and_presets_round_trip_into_another_workspace() {
     use super::apply::{apply_import, ItemOutcome};

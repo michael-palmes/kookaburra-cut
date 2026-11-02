@@ -3,14 +3,16 @@
 //! Hash first, date only as a tiebreak: an item that changed machines but not content still reads identical. The local
 //! side is scanned through `scan.rs` so both sides of the comparison build their content hash the same way.
 
+use super::apply::flatten;
 use super::deps::PackSelection;
 use super::error::PackError;
 use super::fonts::plan_font_merge;
-use super::model::{ConflictState, ItemKind, PackFont, PackItemBase, Resolution};
+use super::model::{ConflictState, ItemKind, PackFont, PackItemBase, PackManifest, Resolution};
 use super::read::StagedPack;
 use super::scan::{rfc3339, scan_dir, scan_file, ScannedItem};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -157,8 +159,21 @@ fn validate_file_name(name: &str) -> Result<(), PackError> {
     }
 }
 
-/// The first free `<slug>-2`, `<slug>-3`, … matching the media suffix convention.
-pub(crate) fn keep_both_slug(root: &Path, kind: ItemKind, slug: &str) -> Option<String> {
+/// Every slug a pack names, folded as the volume folds them: a keep-both landing on one would back that item out of the way.
+pub(crate) fn pack_slugs(manifest: &PackManifest) -> HashSet<(ItemKind, String)> {
+    flatten(manifest)
+        .into_iter()
+        .map(|(kind, slug, _)| (kind, slug.to_ascii_lowercase()))
+        .collect()
+}
+
+/// The first free `<slug>-2`, `<slug>-3`, … matching the media suffix convention, passing over anything in `claimed`.
+pub(crate) fn keep_both_slug(
+    root: &Path,
+    kind: ItemKind,
+    slug: &str,
+    claimed: &HashSet<(ItemKind, String)>,
+) -> Option<String> {
     if kind == ItemKind::Font {
         return None;
     }
@@ -168,9 +183,10 @@ pub(crate) fn keep_both_slug(root: &Path, kind: ItemKind, slug: &str) -> Option<
             Some(ext) => format!("{stem}-{n}.{ext}"),
             None => format!("{stem}-{n}"),
         };
-        let free = workspace_target(root, kind, &candidate)
-            .map(|t| !t.path.exists())
-            .unwrap_or(false);
+        let free = !claimed.contains(&(kind, candidate.to_ascii_lowercase()))
+            && workspace_target(root, kind, &candidate)
+                .map(|t| !t.path.exists())
+                .unwrap_or(false);
         if free {
             return Some(candidate);
         }
@@ -245,31 +261,37 @@ pub fn plan_conflicts(
     selection: &PackSelection,
 ) -> Result<ImportPlan, PackError> {
     let contents = &staged.manifest.contents;
+    let claimed = pack_slugs(&staged.manifest);
     let mut items = Vec::new();
 
     for project in &contents.projects {
         if picked(&selection.projects, &project.base.slug) {
-            items.push(plan_item(root, ItemKind::Project, &project.base)?);
+            items.push(plan_item(root, &claimed, ItemKind::Project, &project.base)?);
         }
     }
     for theme in &contents.themes {
         if picked(&selection.themes, &theme.base.slug) {
-            items.push(plan_item(root, ItemKind::Theme, &theme.base)?);
+            items.push(plan_item(root, &claimed, ItemKind::Theme, &theme.base)?);
         }
     }
     for brand in &contents.brands {
         if picked(&selection.brands, &brand.base.slug) {
-            items.push(plan_item(root, ItemKind::Brand, &brand.base)?);
+            items.push(plan_item(root, &claimed, ItemKind::Brand, &brand.base)?);
         }
     }
     for template in &contents.templates {
         if picked(&selection.templates, &template.base.slug) {
-            items.push(plan_item(root, ItemKind::Template, &template.base)?);
+            items.push(plan_item(
+                root,
+                &claimed,
+                ItemKind::Template,
+                &template.base,
+            )?);
         }
     }
     for preset in &contents.presets {
         if picked(&selection.presets, &preset.base.slug) {
-            items.push(plan_item(root, ItemKind::Preset, &preset.base)?);
+            items.push(plan_item(root, &claimed, ItemKind::Preset, &preset.base)?);
         }
     }
 
@@ -283,22 +305,32 @@ pub fn plan_conflicts(
 
     for object in &contents.objects {
         if picked(&selection.objects, &object.base.slug) {
-            items.push(plan_item(root, ItemKind::Object, &object.base)?);
+            items.push(plan_item(root, &claimed, ItemKind::Object, &object.base)?);
         }
     }
     for gradient in &contents.gradients {
         if picked(&selection.gradients, &gradient.base.slug) {
-            items.push(plan_item(root, ItemKind::Gradient, &gradient.base)?);
+            items.push(plan_item(
+                root,
+                &claimed,
+                ItemKind::Gradient,
+                &gradient.base,
+            )?);
         }
     }
     for preset in &contents.export_presets {
         if picked(&selection.export_presets, &preset.base.slug) {
-            items.push(plan_item(root, ItemKind::ExportPreset, &preset.base)?);
+            items.push(plan_item(
+                root,
+                &claimed,
+                ItemKind::ExportPreset,
+                &preset.base,
+            )?);
         }
     }
     for shot in &contents.screenshots {
         if picked(&selection.screenshots, &shot.base.slug) {
-            items.push(plan_item(root, ItemKind::Screenshot, &shot.base)?);
+            items.push(plan_item(root, &claimed, ItemKind::Screenshot, &shot.base)?);
         }
     }
 
@@ -309,7 +341,12 @@ fn picked(list: &[String], key: &str) -> bool {
     list.iter().any(|entry| entry == key)
 }
 
-fn plan_item(root: &Path, kind: ItemKind, base: &PackItemBase) -> Result<ItemPlan, PackError> {
+fn plan_item(
+    root: &Path,
+    claimed: &HashSet<(ItemKind, String)>,
+    kind: ItemKind,
+    base: &PackItemBase,
+) -> Result<ItemPlan, PackError> {
     let target = workspace_target(root, kind, &base.slug)?;
     let (state, local, keep_both) = if target.exists() {
         let scanned = if target.is_dir_item() {
@@ -323,7 +360,11 @@ fn plan_item(root: &Path, kind: ItemKind, base: &PackItemBase) -> Result<ItemPla
             modified_at: stamp_or_empty(scanned.modified_at),
             bytes: scanned.bytes,
         };
-        (state, Some(local), keep_both_slug(root, kind, &base.slug))
+        (
+            state,
+            Some(local),
+            keep_both_slug(root, kind, &base.slug, claimed),
+        )
     } else {
         (ConflictState::New, None, None)
     };
@@ -782,7 +823,7 @@ pub(crate) mod tests {
             put_local(&root, ItemKind::Theme, slug, "{}");
         }
         assert_eq!(
-            keep_both_slug(&root, ItemKind::Theme, "acme-dark").as_deref(),
+            keep_both_slug(&root, ItemKind::Theme, "acme-dark", &HashSet::new()).as_deref(),
             Some("acme-dark-4")
         );
 
@@ -790,10 +831,10 @@ pub(crate) mod tests {
             put_local(&root, ItemKind::Screenshot, name, "png");
         }
         assert_eq!(
-            keep_both_slug(&root, ItemKind::Screenshot, "hero.png").as_deref(),
+            keep_both_slug(&root, ItemKind::Screenshot, "hero.png", &HashSet::new()).as_deref(),
             Some("hero-3.png")
         );
-        assert!(keep_both_slug(&root, ItemKind::Font, "Acme Sans@700").is_none());
+        assert!(keep_both_slug(&root, ItemKind::Font, "Acme Sans@700", &HashSet::new()).is_none());
 
         let _ = std::fs::remove_dir_all(&root);
     }
