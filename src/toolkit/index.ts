@@ -141,11 +141,17 @@ export { type StampScaleOptions, stampScale } from "./motion/stampScale";
 export {
   type BeatGrid,
   type BeatPosition,
+  useBeatAt,
   useBeatGrid,
   useCues,
 } from "./music/useBeatGrid";
 // The 3D objects library: bundled + workspace manifests, staged by the sidecar `objects` array.
-export { ObjectsFallback, StagedObject } from "./objects/ObjectPrimitive";
+export {
+  ObjectsFallback,
+  type PlacedObjectProps,
+  StagedObject,
+  type StagedObjectProps,
+} from "./objects/ObjectPrimitive";
 export { preloadSceneObjects } from "./objects/preload";
 export {
   importObject,
@@ -202,11 +208,26 @@ export {
   useRoom,
 } from "./stage/Room";
 export { SceneStage } from "./stage/SceneStage";
+// A camera-locked layer in frame units, before or after the 3D pass, and the fills made for it.
+export { ScreenLayer, type ScreenLayerProps } from "./stage/ScreenLayer";
 // The scene camera's live pose, and the world rectangle it sees at a depth.
 export { type SceneCamera, useCameraFrame, useSceneCamera } from "./stage/sceneCamera";
+export {
+  Gradient,
+  type GradientProps,
+  type ScreenFillProps,
+  Scrim,
+  type ScrimProps,
+  Vignette,
+  type VignetteProps,
+} from "./stage/screenFills";
 export { AnimatedCounter, type AnimatedCounterProps } from "./text/AnimatedCounter";
 // Text primitives
-export { AnimatedHeadline, type AnimatedHeadlineProps } from "./text/AnimatedHeadline";
+export {
+  AnimatedHeadline,
+  type AnimatedHeadlineProps,
+  type HeadlineDepth,
+} from "./text/AnimatedHeadline";
 // Horizontal app-icon + title/subtitle lockup revealed as one unit.
 export { BrandLockup, type BrandLockupProps } from "./text/BrandLockup";
 export { ManagedTextStack, type ManagedTextStackProps } from "./text/ManagedTextStack";
@@ -221,10 +242,23 @@ export {
 } from "./text/presets";
 // Title + optional subtitle with theme-scale sizing and safe-area alignment.
 export { TitleBlock, type TitleBlockProps } from "./text/TitleBlock";
-export { type TextMetricsOptions, useTextMetrics } from "./text/useTextMetrics";
+export {
+  fitFontSize,
+  type MeasuredText,
+  type TextMetricsOptions,
+  useTextMetrics,
+} from "./text/useTextMetrics";
 // Extruded 3D text.
 export { ExtrudedText, type ExtrudedTextProps } from "./text3d/ExtrudedText";
 // Transition helpers
 export { fade } from "./transitions/fade";
 export { slide } from "./transitions/slide";
-export type { EaseName, FormatInfo, SceneModule, SceneProps, SceneTime, V3 } from "./types";
+export type {
+  EaseName,
+  FormatInfo,
+  FormatShape,
+  SceneModule,
+  SceneProps,
+  SceneTime,
+  V3,
+} from "./types";

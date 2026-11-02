@@ -73,7 +73,8 @@ Something behind the text must grow to fill the same share of the frame:
 - `useCameraFrame(z)`: `{ width, height, center }`, the world rectangle the scene
   camera sees on that plane this frame (its orbit or rig track included; the bounding
   box when tilted or rolled). Keep a plate covering the view through a camera move.
-- `useSceneCamera()`: the pose itself, `{ position, lookAt, fov, rollDeg? }`.
+- `useSceneCamera()`: the pose itself, `{ position, lookAt, fov, rollDeg? }`. To lock
+  something to the frame, use `ScreenLayer` (reference/scenes.md), not a pose built on this.
 
 ```tsx
 const view = useCameraFrame(-3);

@@ -1,7 +1,7 @@
 import { useContext } from "react";
 import { VSMShadowMap } from "three";
 import { useEditorStore } from "../store/editorStore";
-import type { FormatInfo } from "../toolkit/types";
+import type { FormatInfo, FormatShape } from "../toolkit/types";
 import { frameOnPlane } from "./frustum";
 import { FormatContext } from "./sceneContext";
 
@@ -94,6 +94,15 @@ function visibleWorldSize(aspect: number): { width: number; height: number } {
   return { width: height * aspect, height };
 }
 
+/** The shape thresholds. 5:4 (1.25) reads wide and 4:5 (0.8) reads tall, so only near-square frames, 1:1 among the export aspects, take the square layout. */
+export const WIDE_MIN_ASPECT = 1.2;
+export const TALL_MAX_ASPECT = 0.85;
+
+export function formatShape(aspect: number): FormatShape {
+  if (aspect >= WIDE_MIN_ASPECT) return "wide";
+  return aspect <= TALL_MAX_ASPECT ? "tall" : "square";
+}
+
 export function computeFormat(spec: FormatSpec): FormatInfo {
   const aspect = spec.width / spec.height;
   const frame = visibleWorldSize(aspect);
@@ -102,6 +111,7 @@ export function computeFormat(spec: FormatSpec): FormatInfo {
     width: spec.width,
     height: spec.height,
     aspect,
+    shape: formatShape(aspect),
     frame,
     safe: { top: inset, right: inset, bottom: inset, left: inset },
   };

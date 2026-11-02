@@ -50,6 +50,8 @@ import {
   STATIC_TEXT_PRESET,
   sampleTextUnit,
   shineBand,
+  TEXT_PRESET_LINES,
+  TEXT_PRESET_NAMES,
   type TextAnimTiming,
   type TextPresetName,
   type TextUnitSample,
@@ -60,6 +62,7 @@ import {
   TWIST_START_SCALE,
   textAnimationEndMs,
   textAnimationWindowToMs,
+  typewriterCount,
   UNDERLINE_RISE_EM,
   underlineProgress,
   unitHash01,
@@ -70,6 +73,7 @@ import {
   VAPOR_WOBBLE_EM,
   WEIGHT_EM,
   WORD_CYCLE_POP_SCALE,
+  WORD_STAGGER_SINGLE_LINE,
 } from "./presets";
 
 const baseTheme: Theme = {
@@ -1604,5 +1608,67 @@ describe("pinRevealDuration (the durationMs prop)", () => {
     expect(sampleTextUnit(t, 3, 999).alpha).toBeLessThan(1);
     expect(sampleTextUnit(t, 3, 1000).alpha).toBe(1);
     expect(sampleTextUnit(t, 0, 0).alpha).toBe(0);
+  });
+});
+
+describe("outDurationMs", () => {
+  const anim = {
+    preset: "fade" as const,
+    outPreset: "fade" as const,
+    ease: "linear",
+    staggerMs: 0,
+    granularity: null,
+    params: { startScale: 0.8, shine: false, twistDir: 1 as const },
+  };
+
+  it("plays the out over the in's duration by default", () => {
+    const timing = { anim, from: 0, to: 600, outAt: 1000 };
+    expect(sampleTextUnit(timing, 0, 1300).alpha).toBeCloseTo(0.5);
+  });
+
+  it("plays it over its own when set, leaving the in alone", () => {
+    const timing = { anim, from: 0, to: 600, outAt: 1000, outDurationMs: 200 };
+    expect(sampleTextUnit(timing, 0, 300).alpha).toBeCloseTo(0.5);
+    expect(sampleTextUnit(timing, 0, 1100).alpha).toBeCloseTo(0.5);
+    expect(sampleTextUnit(timing, 0, 1200).alpha).toBe(0);
+  });
+
+  it("is byte-for-byte the legacy sample when unset", () => {
+    const legacy = { anim, from: 0, to: 600, outAt: 1000 };
+    const unset = { ...legacy, outDurationMs: undefined };
+    for (const t of [0, 300, 1000, 1137, 1600]) {
+      expect(sampleTextUnit(unset, 0, t).alpha).toBe(sampleTextUnit(legacy, 0, t).alpha);
+    }
+  });
+
+  it("shortens a typewriter's backspace and an underline's wipe too", () => {
+    const typing = { ...anim, preset: "typewriter" as const, outPreset: "typewriter" as const };
+    const timing = { anim: typing, from: 0, to: 600, outAt: 1000, outDurationMs: 100 };
+    expect(typewriterCount(timing, 1050, 10)).toBe(5);
+    const drawn = { ...anim, preset: "underline-draw" as const, outPreset: "fade" as const };
+    expect(
+      underlineProgress({ anim: drawn, from: 0, to: 600, outAt: 1000, outDurationMs: 100 }, 1100),
+    ).toBe(0);
+  });
+});
+
+describe("TEXT_PRESET_LINES", () => {
+  it("marks exactly the motions that come apart on a second line", () => {
+    const single = Object.entries(TEXT_PRESET_LINES)
+      .filter(([, lines]) => lines === "single")
+      .map(([name]) => name)
+      .sort();
+    expect(single).toEqual(["build", "rise-mask", "underline-draw", "word-cycle"]);
+  });
+
+  it("says something for every preset", () => {
+    for (const name of [...TEXT_PRESET_NAMES, "static" as const]) {
+      expect(TEXT_PRESET_LINES[name]).toBeDefined();
+    }
+  });
+
+  it("flags the word-staggered rise, not the block one", () => {
+    expect(TEXT_PRESET_LINES["fade-up"]).toBe("two-line");
+    expect(WORD_STAGGER_SINGLE_LINE.has("fade-up")).toBe(true);
   });
 });

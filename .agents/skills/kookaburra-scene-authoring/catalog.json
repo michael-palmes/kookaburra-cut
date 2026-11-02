@@ -927,231 +927,306 @@
       "label": "None",
       "summary": "The plain linear reveal, no preset motion",
       "granularity": null,
-      "params": []
+      "params": [],
+      "lines": "two-line",
+      "impactMs": 600
     },
     {
       "id": "fade",
       "label": "Fade",
       "summary": "A clean opacity fade-in",
       "granularity": null,
-      "params": []
+      "params": [],
+      "lines": "two-line",
+      "impactMs": 450
     },
     {
       "id": "fade-up",
       "label": "Fade up",
       "summary": "Fades in while rising into place",
       "granularity": null,
-      "params": ["distance"]
+      "params": ["distance"],
+      "lines": "two-line",
+      "wordStaggerLines": "single",
+      "impactMs": 450
     },
     {
       "id": "blur-in",
       "label": "Blur in",
       "summary": "Sharpens out of a soft blur",
       "granularity": null,
-      "params": []
+      "params": [],
+      "lines": "two-line",
+      "impactMs": 433
     },
     {
       "id": "slide",
       "label": "Slide",
       "summary": "Slides in from the left as it fades",
       "granularity": null,
-      "params": ["distance"]
+      "params": ["distance"],
+      "lines": "two-line",
+      "impactMs": 450
     },
     {
       "id": "mask-reveal",
       "label": "Mask reveal",
       "summary": "Wipes on left-to-right",
       "granularity": null,
-      "params": []
+      "params": [],
+      "lines": "two-line",
+      "impactMs": 417
     },
     {
       "id": "fade-scale",
       "label": "Fade scale",
       "summary": "Grows (or settles) to size, optional shine sweep",
       "granularity": null,
-      "params": ["startScale", "shine"]
+      "params": ["startScale", "shine"],
+      "lines": "two-line",
+      "impactMs": 450
     },
     {
       "id": "twist-scale",
       "label": "Twist scale",
       "summary": "A perspective card turn to rest",
       "granularity": null,
-      "params": ["direction"]
+      "params": ["direction"],
+      "lines": "two-line",
+      "impactMs": 450
     },
     {
       "id": "scatter-scale",
       "label": "Scatter scale",
       "summary": "Every character flies in from the camera on its own clock",
       "granularity": "char",
-      "params": ["distance"]
+      "params": ["distance"],
+      "lines": "two-line",
+      "impactMs": 333
     },
     {
       "id": "tracking",
       "label": "Tracking",
       "summary": "Letters spread and sharpen into place",
       "granularity": "char",
-      "params": []
+      "params": [],
+      "lines": "two-line",
+      "impactMs": 450
     },
     {
       "id": "slam",
       "label": "Slam",
       "summary": "Drops in oversized and lands with a soft snap",
       "granularity": null,
-      "params": []
+      "params": [],
+      "lines": "two-line",
+      "impactMs": 500
     },
     {
       "id": "dolly",
       "label": "Dolly",
       "summary": "Words pull forward out of the deep",
       "granularity": "word",
-      "params": []
+      "params": [],
+      "lines": "two-line",
+      "impactMs": 483
     },
     {
       "id": "chromatic",
       "label": "Chromatic",
       "summary": "Colour-split echoes converge into focus",
       "granularity": null,
-      "params": []
+      "params": [],
+      "lines": "two-line",
+      "impactMs": 233
     },
     {
       "id": "line-stretch",
       "label": "Line stretch",
       "summary": "A glowing line stretches open into text",
       "granularity": null,
-      "params": []
+      "params": [],
+      "lines": "two-line",
+      "impactMs": 467
     },
     {
       "id": "highlight-wipe",
       "label": "Highlight wipe",
       "summary": "An accent block sweeps each word into view",
       "granularity": "word",
-      "params": []
+      "params": [],
+      "lines": "two-line",
+      "impactMs": 583
     },
     {
       "id": "rise-mask",
       "label": "Rise mask",
       "summary": "Words rise into view through a baseline mask",
       "granularity": "word",
-      "params": []
+      "params": [],
+      "lines": "single",
+      "impactMs": 450
     },
     {
       "id": "word-cycle",
       "label": "Word cycle",
       "summary": "Words take the stage one at a time",
       "granularity": "word",
-      "params": []
+      "params": [],
+      "lines": "single",
+      "impactMs": 117
     },
     {
       "id": "ribbon",
       "label": "Ribbon",
       "summary": "Words turn in like a ribbon settling flat",
       "granularity": "word",
-      "params": []
+      "params": [],
+      "lines": "two-line",
+      "impactMs": 467
     },
     {
       "id": "stand-up",
       "label": "Stand up",
       "summary": "Words tip upright from lying flat",
       "granularity": "word",
-      "params": []
+      "params": [],
+      "lines": "two-line",
+      "impactMs": 300
     },
     {
       "id": "spring-pop",
       "label": "Spring pop",
       "summary": "Pops up to size on a damped spring",
       "granularity": "word",
-      "params": []
+      "params": [],
+      "lines": "two-line",
+      "impactMs": 150
     },
     {
       "id": "spotlight",
       "label": "Spotlight",
       "summary": "A walking emphasis lights each word in turn",
       "granularity": "word",
-      "params": []
+      "params": [],
+      "lines": "two-line",
+      "impactMs": 517
     },
     {
       "id": "underline-draw",
       "label": "Underline draw",
       "summary": "An underline draws on, then the text rises in",
       "granularity": null,
-      "params": []
+      "params": [],
+      "lines": "single",
+      "impactMs": 467
     },
     {
       "id": "orbit",
       "label": "Orbit",
       "summary": "Letters sweep in along an arc",
       "granularity": "char",
-      "params": ["direction"]
+      "params": ["direction"],
+      "lines": "two-line",
+      "impactMs": 483
     },
     {
       "id": "weight-build",
       "label": "Weight build",
       "summary": "Type thickens from hairline to full weight",
       "granularity": null,
-      "params": []
+      "params": [],
+      "lines": "two-line",
+      "impactMs": 433
     },
     {
       "id": "develop",
       "label": "Develop",
       "summary": "Letters sharpen into view in random order",
       "granularity": "char",
-      "params": []
+      "params": [],
+      "lines": "two-line",
+      "impactMs": 450
     },
     {
       "id": "flip-cascade",
       "label": "Flip cascade",
       "summary": "Letters flip up from face-down",
       "granularity": "char",
-      "params": []
+      "params": [],
+      "lines": "two-line",
+      "impactMs": 383
     },
     {
       "id": "converge",
       "label": "Converge",
       "summary": "Letters streak in from both edges",
       "granularity": "char",
-      "params": []
+      "params": [],
+      "lines": "two-line",
+      "impactMs": 517
     },
     {
       "id": "glint-wipe",
       "label": "Glint wipe",
       "summary": "Wipes on behind a bright accent glint",
       "granularity": null,
-      "params": []
+      "params": [],
+      "lines": "two-line",
+      "impactMs": 417
     },
     {
       "id": "vapor",
       "label": "Vapour",
       "summary": "Text condenses out of drifting vapour",
       "granularity": "char",
-      "params": []
+      "params": [],
+      "lines": "two-line",
+      "impactMs": 433
     },
     {
       "id": "stamp",
       "label": "Stamp",
       "summary": "Stamps down from oversize and settles",
       "granularity": null,
-      "params": []
+      "params": [],
+      "lines": "two-line",
+      "impactMs": 150
     },
     {
       "id": "build",
       "label": "Build",
       "summary": "Words land one at a time as the line re-centres",
       "granularity": "word",
-      "params": ["buildShiftEm"]
+      "params": ["buildShiftEm"],
+      "lines": "single",
+      "impactMs": 500
     },
     {
       "id": "typewriter",
       "label": "Typewriter",
       "summary": "Types in one character at a time",
       "granularity": null,
-      "params": []
+      "params": [],
+      "lines": "two-line",
+      "impactMs": 100
     },
     {
       "id": "static",
       "label": "Static",
       "summary": "Fully still text, no reveal (the inspector's None).",
       "granularity": null,
-      "params": []
+      "params": [],
+      "lines": "two-line",
+      "impactMs": 0
+    }
+  ],
+  "stamps": [
+    {
+      "id": "Stamp",
+      "label": "Stamp",
+      "summary": "The primitive's default pop: 0 to 1.12 over 180 ms, back to 1 over 260 ms.",
+      "impactMs": 95
     }
   ],
   "textDeliveries": [
@@ -24066,7 +24141,7 @@
       {
         "id": "AnimatedCounter",
         "kind": "component",
-        "summary": "Number counting from `from` to `to` over durationMs; startMs, ease and steps shape it."
+        "summary": "Number counting from `from` to `to` over durationMs; startMs, hitAt, ease, steps, ticks and stepsAt shape it."
       },
       {
         "id": "AnimatedGroup",
@@ -24076,7 +24151,7 @@
       {
         "id": "AnimatedHeadline",
         "kind": "component",
-        "summary": "The core SDF text primitive: presets, stagger, looks, textKey styling."
+        "summary": "The core SDF text primitive: presets, stagger, looks, depth, fit, hitAt, opacity, textKey styling."
       },
       {
         "id": "BrandLockup",
@@ -24181,6 +24256,11 @@
         "summary": "android: what unknown or unavailable models render as."
       },
       {
+        "id": "Gradient",
+        "kind": "component",
+        "summary": "A frame-filling blend, linear or radial; inside a ScreenLayer."
+      },
+      {
         "id": "HeroObject",
         "kind": "component",
         "summary": "Bundled hero glTF with idle spin and float."
@@ -24268,6 +24348,16 @@
         "summary": "Theme lighting, backdrop and real shadows for the scene."
       },
       {
+        "id": "ScreenLayer",
+        "kind": "component",
+        "summary": "Camera-locked layer in frame units with no depth test: order=\"front\" over the finished frame, \"back\" behind everything 3D."
+      },
+      {
+        "id": "Scrim",
+        "kind": "component",
+        "summary": "Clear to a colour, linear or radial, for text to sit on; inside a ScreenLayer."
+      },
+      {
         "id": "SplitField",
         "kind": "component",
         "summary": "Frame split into tiles (images, videos, theme colours) with a staggered reveal that reflows per aspect; no tiles draws the sidecar mosaic."
@@ -24280,7 +24370,7 @@
       {
         "id": "Stamp",
         "kind": "component",
-        "summary": "<Stamp at rotateDeg? position rotation scale>: stamps children in at `at` ms with the stampScale pop and an optional rotation settle."
+        "summary": "<Stamp at|hitAt rotateDeg? position rotation scale>: stamps children in at `at` ms (or landing on `hitAt`) with the stampScale pop and an optional rotation settle."
       },
       {
         "id": "TEXT_PRESET_NAMES",
@@ -24313,6 +24403,11 @@
         "kind": "component",
         "summary": "Shim over a window-hosted media entry.",
         "legacy": true
+      },
+      {
+        "id": "Vignette",
+        "kind": "component",
+        "summary": "Darkened edges, clear centre; inside a ScreenLayer. opacity, keys."
       },
       {
         "id": "WORKSPACE_OBJECT_PREFIX",
@@ -24379,6 +24474,11 @@
         "id": "fade",
         "kind": "function",
         "summary": "fade(time, [startMs, endMs]) returns { opacity } 0..1."
+      },
+      {
+        "id": "fitFontSize",
+        "kind": "function",
+        "summary": "fitFontSize(metrics, fontSize, maxWidth): the size that fits a measured block."
       },
       {
         "id": "frameAtDepth",
@@ -24529,9 +24629,14 @@
         "summary": "stampScale({ from, peak, inMs, settleMs }?) returns ms => scale: a pop to 1.12 that settles."
       },
       {
+        "id": "useBeatAt",
+        "kind": "hook",
+        "summary": "useBeatAt()(bar, beat?, sixteenth?): scene ms, or null with one log line when the project has no grid."
+      },
+      {
         "id": "useBeatGrid",
         "kind": "hook",
-        "summary": "The authored audio.grid in scene ms, or null: bar(13, 3), at(\"cue:drop\"), position(localMs), beatMs."
+        "summary": "The authored audio.grid in scene ms, or null: at(13, 3), at(\"cue:drop\"), bar(13, 3), position(localMs), beatMs."
       },
       {
         "id": "useCameraFrame",
@@ -24556,7 +24661,7 @@
       {
         "id": "useFormat",
         "kind": "hook",
-        "summary": "{ width, height, aspect, frame, safe } in world units at z=0."
+        "summary": "{ width, height, aspect, shape, frame, safe }: frame and safe in world units at z=0, shape \"wide\", \"square\" or \"tall\"."
       },
       {
         "id": "useGroupAnimation",
@@ -24621,7 +24726,7 @@
       {
         "id": "useTextMetrics",
         "kind": "hook",
-        "summary": "useTextMetrics(textKey, text, opts?): the block an AnimatedHeadline with those props typesets, sidecar overrides included."
+        "summary": "useTextMetrics(textKey, text, opts?): the block an AnimatedHeadline with those props typesets, sidecar overrides included, plus fitFontSize(maxWidth); null until its face has loaded."
       },
       {
         "id": "useTheme",
@@ -24789,10 +24894,19 @@
         "id": "FormatInfo"
       },
       {
+        "id": "FormatShape"
+      },
+      {
+        "id": "GradientProps"
+      },
+      {
         "id": "GroupAnimationState"
       },
       {
         "id": "HardShadowSpec"
+      },
+      {
+        "id": "HeadlineDepth"
       },
       {
         "id": "HeroObjectProps"
@@ -24810,6 +24924,9 @@
         "id": "MeasureTextOptions"
       },
       {
+        "id": "MeasuredText"
+      },
+      {
         "id": "MotionKey"
       },
       {
@@ -24823,6 +24940,9 @@
       },
       {
         "id": "PillProps"
+      },
+      {
+        "id": "PlacedObjectProps"
       },
       {
         "id": "ProjectShared"
@@ -24891,6 +25011,15 @@
         "id": "SceneTime"
       },
       {
+        "id": "ScreenFillProps"
+      },
+      {
+        "id": "ScreenLayerProps"
+      },
+      {
+        "id": "ScrimProps"
+      },
+      {
         "id": "SeededRandom"
       },
       {
@@ -24904,6 +25033,9 @@
       },
       {
         "id": "SplitFieldTile"
+      },
+      {
+        "id": "StagedObjectProps"
       },
       {
         "id": "StaggerGranularity"
@@ -24940,6 +25072,9 @@
       },
       {
         "id": "VideoWindowProps"
+      },
+      {
+        "id": "VignetteProps"
       },
       {
         "id": "WireGridProps"

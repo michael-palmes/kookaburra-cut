@@ -5,6 +5,7 @@ import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import { useTextMotionRegistry } from "../../engine/textMotionRegistry";
 import { useTimeline } from "../../engine/timeline";
 import { useTheme } from "../../theme";
+import { hitWindow } from "../text/impact";
 import {
   hasOwnAnimationProps,
   sampleTextUnit,
@@ -29,6 +30,8 @@ export interface AnimatedGroupProps {
   from?: number;
   /** In-animation end, in ms. */
   to?: number;
+  /** Scene-local ms the group LANDS (first at rest size and full opacity), on a beat or a cut: the in keeps its duration and starts the motion's measured lead earlier. Wins over `from`. */
+  hitAt?: number;
   /** Out start, in ms; the out plays over the same duration as the in. */
   outAt?: number;
   /** Pins the reveal (the group is one unit) to this many ms; "authored" or absent keeps the authored window. */
@@ -61,7 +64,8 @@ export interface AnimatedGroupProps {
 
 /** Animates its children as one unit through the shared text-preset sampler, the group mechanism for icon+text lockups: granularity is forced null (`scatter-scale` on a group is the whole-lockup degenerate), child presets compose (alphas multiply through `GroupAnimationContext`, transforms nest), and the pivot is deliberately the group's origin since measured-bounds pivots depend on load timing, a determinism smell. */
 export function AnimatedGroup(props: AnimatedGroupProps) {
-  const { from = 0, to = 600, outAt, position = [0, 0, 0], children } = props;
+  const { from: authoredFrom = 0, to: authoredTo = 600, outAt, position = [0, 0, 0] } = props;
+  const { children } = props;
   const theme = useTheme();
   const doc = useContext(SceneDocContext);
   const parent = useContext(GroupAnimationContext);
@@ -86,6 +90,19 @@ export function AnimatedGroup(props: AnimatedGroupProps) {
   );
   // The window `to` carries the in duration; the effective end (delay included) is what present timing holds for.
   const pinnedMs = typeof props.durationMs === "number" ? Math.max(0, props.durationMs) : undefined;
+  const hit =
+    anim && props.hitAt !== undefined
+      ? hitWindow(
+          props.hitAt,
+          anim,
+          authoredFrom,
+          pinnedMs !== undefined
+            ? authoredFrom + pinnedMs
+            : textAnimationWindowToMs(authoredFrom, authoredTo, anim),
+        )
+      : null;
+  const from = hit?.from ?? authoredFrom;
+  const to = hit?.to ?? authoredTo;
   const windowTo =
     anim && pinnedMs !== undefined
       ? from + pinnedMs

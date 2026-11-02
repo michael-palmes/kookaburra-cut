@@ -34,9 +34,20 @@
   "eases": [{ "id": "linear" }, { "id": "inOutQuad" }, { "id": "outQuad" }, { "id": "inOutCubic" }],
   "textMotion": [
     { "id": "none", "label": "None" },
-    { "id": "fade-up", "label": "Fade up", "summary": "Rises while fading in" },
-    { "id": "fade", "label": "Fade" },
-    { "id": "tracking", "label": "Tracking", "granularity": "char" }
+    {
+      "id": "fade-up",
+      "label": "Fade up",
+      "summary": "Rises while fading in",
+      "lines": "two-line",
+      "wordStaggerLines": "single"
+    },
+    { "id": "fade", "label": "Fade", "lines": "two-line" },
+    { "id": "tracking", "label": "Tracking", "granularity": "char", "lines": "two-line" },
+    { "id": "slam", "label": "Slam", "lines": "two-line" },
+    { "id": "rise-mask", "label": "Rise mask", "granularity": "word", "lines": "single" },
+    { "id": "word-cycle", "label": "Word cycle", "granularity": "word", "lines": "single" },
+    { "id": "underline-draw", "label": "Underline draw", "lines": "single" },
+    { "id": "build", "label": "Build", "granularity": "word", "lines": "single" }
   ],
   "textLooks": [
     { "id": "gradient", "label": "Gradient" },

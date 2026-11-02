@@ -22,6 +22,8 @@ export interface BeatGrid {
   bar(bar: number, beat?: number, sixteenth?: number): number;
   /** Scene-local ms of a position (`"bar:13.3"`, `"cue:drop"`, `"section:outro"`, `"bar:9-40ms"`); throws when it can't resolve. */
   at(position: string): number;
+  /** Scene-local ms of a bar (and beat, sixteenth), all 1-based; the same as `bar()`. */
+  at(bar: number, beat?: number, sixteenth?: number): number;
   /** Project ms to scene-local ms. */
   local(projectMs: number): number;
   /** Scene-local ms to project ms. */
@@ -49,6 +51,28 @@ export function useBeatGrid(): BeatGrid | null {
   return useMemo(() => (music?.grid ? beatGridFor(music, startMs) : null), [music, startMs]);
 }
 
+/** Bar-to-ms that never needs a null check on the hook: `at(bar, beat?, sixteenth?)` is scene-local ms, or null with one log line when the project has no `audio.grid` (`at(13) ?? 4000` keeps the scene's own timing). */
+export function useBeatAt(): (bar: number, beat?: number, sixteenth?: number) => number | null {
+  const grid = useBeatGrid();
+  return useMemo(() => beatAtFor(grid), [grid]);
+}
+
+/** `useBeatAt()`'s value for a grid or none; exported for tests. */
+export function beatAtFor(
+  grid: BeatGrid | null,
+): (bar: number, beat?: number, sixteenth?: number) => number | null {
+  if (grid) return (bar, beat, sixteenth) => grid.at(bar, beat, sixteenth);
+  return () => {
+    if (!warnedNoGrid) {
+      warnedNoGrid = true;
+      console.warn("[beats] useBeatAt: this project has no audio.grid, so bar times are null");
+    }
+    return null;
+  };
+}
+
+let warnedNoGrid = false;
+
 /** The project's `audio.cues` as scene-local ms by id; `{}` when it has none, and a cue that can't resolve is left out. */
 export function useCues(): Readonly<Record<string, number>> {
   const { music, startMs } = useMusicScope();
@@ -60,18 +84,21 @@ export function beatGridFor(music: ProjectMusic, startMs: number): BeatGrid | nu
   const grid = music.grid;
   if (!grid) return null;
   const beatMs = 60000 / grid.bpm;
-  const at = (position: string): number => {
+  const atPosition = (position: string): number => {
     const r = resolveSceneLocalMs(position, music, startMs);
     if (!r.ok) throw new Error(`useBeatGrid: ${r.message}`);
     return r.projectMs;
   };
+  const bar = (bar: number, beat = 1, sixteenth = 1) =>
+    atPosition(`bar:${bar}.${beat}.${sixteenth}`);
   return {
     bpm: grid.bpm,
     beatsPerBar: grid.beatsPerBar,
     beatMs,
     barMs: beatMs * grid.beatsPerBar,
-    bar: (bar, beat = 1, sixteenth = 1) => at(`bar:${bar}.${beat}.${sixteenth}`),
-    at,
+    bar,
+    at: (position: string | number, beat?: number, sixteenth?: number) =>
+      typeof position === "number" ? bar(position, beat, sixteenth) : atPosition(position),
     local: (projectMs) => roundMs(projectMs - startMs),
     project: (localMs) => roundMs(localMs + startMs),
     position: (localMs) => {

@@ -1,6 +1,7 @@
 import { useTexture } from "@react-three/drei";
 import { useContext, useLayoutEffect, useMemo } from "react";
-import { MeshBasicMaterial, SRGBColorSpace, type Texture, Vector2, Vector4 } from "three";
+import { Color, MeshBasicMaterial, SRGBColorSpace, type Texture, Vector2, Vector4 } from "three";
+import { resolveTokenFill } from "../../engine/textStyleResolve";
 import { useTimeline } from "../../engine/timeline";
 import { useProjectAssetUrl } from "../../engine/useProjectAssetUrl";
 import { useTheme } from "../../theme";
@@ -35,13 +36,41 @@ export interface ImageCardProps {
   /** Optional linear fade-in window, ms (local scene time). Absent = always opaque. */
   from?: number;
   to?: number;
+  /** 0..1 (default 1); multiplies with the fades. */
+  opacity?: number;
+  /** Start of a linear fade-out, ms (local scene time). Absent never fades out. */
+  outAt?: number;
+  /** How long the fade-out lasts, ms (default the fade-in window, else 300). */
+  outDurationMs?: number;
+  /** One colour for a mark: a theme token or hex replaces every pixel's colour, keeping the asset's alpha. */
+  tint?: "text" | "muted" | "accent" | (string & {});
   /** A hard offset shadow behind the card; absent draws none. */
   shadow?: HardShadowSpec;
 }
 
+const DEFAULT_OUT_MS = 300;
+
+/** The card's opacity at `localMs`: the fade-in, the fade-out and `opacity` multiplied; every one left unset is exactly 1. */
+export function imageCardOpacity(
+  { from, to, opacity, outAt, outDurationMs }: ImageCardFade,
+  localMs: number,
+): number {
+  const fadeIn =
+    from === undefined || to === undefined || to <= from
+      ? 1
+      : Math.min(1, Math.max(0, (localMs - from) / (to - from)));
+  if (opacity === undefined && outAt === undefined) return fadeIn;
+  const inMs = from === undefined || to === undefined || to <= from ? DEFAULT_OUT_MS : to - from;
+  const outMs = Math.max(1, outDurationMs ?? inMs);
+  const fadeOut = outAt === undefined ? 1 : Math.min(1, Math.max(0, 1 - (localMs - outAt) / outMs));
+  return fadeIn * fadeOut * Math.min(1, Math.max(0, opacity ?? 1));
+}
+
+type ImageCardFade = Pick<ImageCardProps, "from" | "to" | "opacity" | "outAt" | "outDurationMs">;
+
 /** A flat image plane for icons, logos and stills: renders UNLIT with `toneMapped: false` so the asset's pixels land exactly (the device-screen/backdrop precedent), respecting PNG alpha so rounded/irregular shapes come from the asset itself; the suspense texture load is settled by the export preamble before frame 0. */
 export function ImageCard(props: ImageCardProps) {
-  const { src, position = [0, 0, 0], width = 1, maxHeight, from, to, shadow } = props;
+  const { src, position = [0, 0, 0], width = 1, maxHeight, shadow } = props;
   // Re-renders on an in-place replace (an app-icon swap), whose revision makes a new URL.
   const url = useProjectAssetUrl(src, "[image]");
   if (!url) return null;
@@ -52,8 +81,8 @@ export function ImageCard(props: ImageCardProps) {
         position={position}
         width={width}
         maxHeight={maxHeight}
-        from={from}
-        to={to}
+        fade={props}
+        tint={props.tint}
         shadow={shadow}
       />
     </AssetBoundary>
@@ -116,6 +145,14 @@ diffuseColor *= sampledDiffuseColor;
 #endif
 `;
 
+const IMAGE_TINT_DEFS = /* glsl */ `
+uniform vec3 uGanImageTint;
+`;
+
+const IMAGE_TINT_MAP = /* glsl */ `
+diffuseColor.rgb = uGanImageTint;
+`;
+
 const IMAGE_MOTION_MASK = /* glsl */ `if (uGanImageMask.w > 0.5) {
   float feather = max(uGanImageMask.z, 0.00001);
   float left = smoothstep(uGanImageMask.x - feather, uGanImageMask.x + feather, vMapUv.x);
@@ -128,6 +165,7 @@ function applyImageEffects(
   material: MeshBasicMaterial,
   shine: ImageShineUniforms | null,
   motion: ImageMotionUniforms | null,
+  tint: { uGanImageTint: { value: Color } } | null,
 ): void {
   material.onBeforeCompile = (shader) => {
     let opaque = "#include <opaque_fragment>";
@@ -149,11 +187,21 @@ function applyImageEffects(
       opaque = `${opaque}\n${IMAGE_MOTION_MASK}`;
     }
     shader.fragmentShader = shader.fragmentShader.replace("#include <opaque_fragment>", opaque);
+    if (tint) {
+      shader.uniforms.uGanImageTint = tint.uGanImageTint;
+      shader.fragmentShader = IMAGE_TINT_DEFS + shader.fragmentShader;
+      const mapped = motion
+        ? "diffuseColor *= sampledDiffuseColor;\n#endif"
+        : "#include <map_fragment>";
+      shader.fragmentShader = shader.fragmentShader.replace(mapped, `${mapped}${IMAGE_TINT_MAP}`);
+    }
   };
-  material.customProgramCacheKey = () =>
-    motion
-      ? `kookaburra-image-effects-v2:${shine ? "shine" : "plain"}:motion`
-      : "kookaburra-image-shine-v1";
+  const key = motion
+    ? `kookaburra-image-effects-v2:${shine ? "shine" : "plain"}:motion`
+    : shine
+      ? "kookaburra-image-shine-v1"
+      : "kookaburra-image-plain";
+  material.customProgramCacheKey = () => (tint ? `${key}:tint` : key);
 }
 
 function LoadedImageCard({
@@ -161,19 +209,20 @@ function LoadedImageCard({
   position,
   width,
   maxHeight,
-  from,
-  to,
+  fade,
+  tint,
   shadow,
 }: {
   url: string;
   position: V3;
   width: number;
   maxHeight?: number;
-  from?: number;
-  to?: number;
+  fade: ImageCardFade;
+  tint?: string;
   shadow?: HardShadowSpec;
 }) {
   const { localMs } = useTimeline();
+  const theme = useTheme();
   const group = useContext(GroupAnimationContext);
   const texture = useTexture(url) as Texture;
   useLayoutEffect(() => {
@@ -204,21 +253,29 @@ function LoadedImageCard({
         : null,
     [motionCapable],
   );
+  // Mount-stable, like the group flags: only whether a tint exists picks the program; its colour is a uniform.
+  const tinted = tint !== undefined;
+  const tintUniforms = useMemo(
+    () => (tinted ? { uGanImageTint: { value: new Color() } } : null),
+    [tinted],
+  );
+  if (tintUniforms && tint !== undefined) {
+    tintUniforms.uGanImageTint.value.set(resolveTokenFill(theme, tint));
+  }
   const material = useMemo(() => {
     const m = new MeshBasicMaterial({ transparent: true, depthWrite: false });
     m.toneMapped = false;
     m.map = texture;
-    if (shineUniforms || motionUniforms) applyImageEffects(m, shineUniforms, motionUniforms);
+    if (shineUniforms || motionUniforms || tintUniforms) {
+      applyImageEffects(m, shineUniforms, motionUniforms, tintUniforms);
+    }
     return m;
-  }, [texture, shineUniforms, motionUniforms]);
+  }, [texture, shineUniforms, motionUniforms, tintUniforms]);
   useLayoutEffect(() => () => material.dispose(), [material]);
 
   const img = texture.image as { width: number; height: number };
   const contained = containImageDimensions(img.width, img.height, width, maxHeight);
-  const opacity =
-    from === undefined || to === undefined || to <= from
-      ? 1
-      : Math.min(1, Math.max(0, (localMs - from) / (to - from)));
+  const opacity = imageCardOpacity(fade, localMs);
   // Group alpha multiplies in CPU-side (× 1 is fp-exact outside groups).
   material.opacity = opacity * (group?.alpha ?? 1);
   if (shineUniforms) {

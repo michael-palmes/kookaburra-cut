@@ -183,8 +183,9 @@ screenshot keys, taps, split-field reveals, scene durations and edit documents t
   scene, at a position: `{ "at": "bar:13", "zoom": 1.04, "releaseMs": 300 }`
   (reference/camera.md). Kicks are accents for the strongest hits (a section's first
   downbeat, a drop cue); a kick on every beat reads as shake.
-- In TSX, `useBeatGrid()`, `useCues()` and `pulse()` time scale, glow or opacity to the
-  grid (reference/scenes.md).
+- In TSX, `useBeatAt()`, `useBeatGrid()`, `useCues()` and `pulse()` time scale, glow or
+  opacity to the grid (reference/scenes.md). Never hard-code a bar length: `at(13, 3)` is
+  the ms, and `hitAt` lands a primitive's impact on it (reference/text.md).
 
 ## Capture on the beat
 

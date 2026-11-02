@@ -18,6 +18,7 @@ from . import bridge
 from . import capture as capturemod
 from . import reach
 from . import catalog as catmod
+from . import toolkit as toolkitmod
 from . import check as checkmod
 from . import coord_cli
 from . import docs as docmod
@@ -70,6 +71,7 @@ the cwd, or uses $CLAUDE_PROJECT_DIR.
              project fit --to song-end [--hold MS]   (the last scene ends with the music)
              theme list | theme show [ID] | theme set PATH VALUE
   Library    presets [list | show SLUG] | catalog [FAMILY] [--search Q]
+             toolkit show NAME | toolkit list [--kind K]
              fonts safe | fonts check REF... | fonts list
   Media      assets list | assets add FILE [--name N] [--no-conform] | assets probe ASSET [--deep]
              assets conform ASSET [--repoint] | assets replace NAME FILE [--keep-old K] [--as-new]
@@ -1248,6 +1250,7 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
 
     assets_cli.register(sub, common, Formatter)
     coord_cli.register(sub, common, Formatter)
+    toolkitmod.register(sub, common, Formatter)
 
     # A new command module: one import here and mod.register(sub, common, Formatter), as kb video does.
     from .video import commands as videomod
