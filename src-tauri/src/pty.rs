@@ -308,6 +308,9 @@ pub fn pty_spawn(
         options.launch.is_command(),
         &DENIED_ROOTS,
     )?;
+    if options.launch.is_command() {
+        crate::workspace::require_agent_files_reviewed(&app, &settings, &cwd)?;
+    }
 
     let pty = native_pty_system()
         .openpty(PtySize {

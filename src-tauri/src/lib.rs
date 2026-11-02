@@ -1427,6 +1427,7 @@ macro_rules! kookaburra_handler {
             workspace::is_project_trusted,
             workspace::check_project_trust,
             workspace::request_project_trust,
+            workspace::review_agent_files,
             workspace::trust_project,
             workspace::list_project_assets,
             workspace::list_project_environments,

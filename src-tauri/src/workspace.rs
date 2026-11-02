@@ -69,6 +69,9 @@ pub struct AppSettings {
     /// Consented workspace projects (the F-001 trust gate), keyed by slug; a grant stands until the sources change outside a trusted session.
     #[serde(default)]
     pub trusted_projects: HashMap<String, TrustRecord>,
+    /// What the kit stamp moved out of each project folder, by absolute path: here, not in the folder, so a folder can't mark itself reviewed.
+    #[serde(default)]
+    pub agent_files: HashMap<String, AgentFilesRecord>,
     /// Inverted so the serde/Default false means hardware ON; deterministic exports pin to software regardless.
     #[serde(default)]
     pub disable_hardware_video: bool,
@@ -170,6 +173,19 @@ pub struct TrustRecord {
     /// Absolute project folder of the grant, so a same-slug project under a different workspace root never inherits it.
     pub path: String,
     pub allowed_at_ms: u64,
+}
+
+/// A folder's kit sweep: a record means the app has seen it, so a later `CLAUDE.md` edit is the person's own.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentFilesRecord {
+    /// The first sweep finished. Until then a non-default root `CLAUDE.md` still counts as arrived.
+    pub swept: bool,
+    pub app_version: String,
+    pub stamped_at_ms: u64,
+    /// Moved and not yet shown; the embedded session stays off until the person has seen them.
+    #[serde(default)]
+    pub unreviewed: Vec<String>,
 }
 
 /// Managed settings cache. `None` = not yet loaded from disk.
@@ -868,6 +884,21 @@ fn retarget_trust(settings: &mut AppSettings, from: &Path, to: &Path) {
             record.path = format!("{to_prefix}{rest}");
         }
     }
+    let moved: Vec<String> = settings
+        .agent_files
+        .keys()
+        .filter(|path| {
+            path.strip_prefix(from_prefix.as_ref())
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+        })
+        .cloned()
+        .collect();
+    for path in moved {
+        if let Some(record) = settings.agent_files.remove(&path) {
+            let rest = &path[from_prefix.len()..];
+            settings.agent_files.insert(format!("{to_prefix}{rest}"), record);
+        }
+    }
 }
 
 /// Move the whole workspace to a new home and repoint settings at it. `parent` of `None` is the reset to default. Settings window only, behind a native sheet that names both folders: a webview can ask, only a person can confirm. Resolves to None when they cancel.
@@ -1288,6 +1319,14 @@ pub fn duplicate_project(
     manifest["name"] = serde_json::Value::String(display_name);
     let pretty = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
     std::fs::write(&manifest_path, pretty + "\n").map_err(|e| e.to_string())?;
+    // A copy of a folder the app has seen keeps the person's own CLAUDE.md.
+    update_settings(&app, &state, |settings| {
+        if let Some(record) = settings.agent_files.get(&*src.to_string_lossy()).cloned() {
+            settings
+                .agent_files
+                .insert(dst.to_string_lossy().into_owned(), record);
+        }
+    })?;
     stamp_claude_provisioning(&app, &dst)?;
     Ok(new_slug)
 }
@@ -1324,6 +1363,7 @@ pub async fn delete_project(
     // The trust grant dies with the project, so a later same-slug project starts untrusted.
     update_settings(&app, &state, |settings| {
         settings.trusted_projects.remove(&slug);
+        settings.agent_files.remove(&*dir.to_string_lossy());
         if settings.last_project.as_deref() == Some(&format!("ws:{slug}")) {
             settings.last_project = None;
         }
@@ -1836,8 +1876,154 @@ pub(crate) fn stamp_claude_provisioning(app: &AppHandle, dir: &Path) -> Result<b
         .iter()
         .map(|(name, src)| (*name, src.as_path()))
         .collect();
-    crate::kit::stamp_project(&skills, dir, &crate::kit::StampOptions::for_app(app))?;
+    let opts = crate::kit::StampOptions::for_app(app);
+    sweep_agent_files_recorded(app, dir, &opts)?;
+    crate::kit::stamp_project(&skills, dir, &opts)?;
     Ok(missing.is_empty())
+}
+
+fn sweep_agent_files_recorded(
+    app: &AppHandle,
+    dir: &Path,
+    opts: &crate::kit::StampOptions,
+) -> Result<(), String> {
+    let state = app.state::<SettingsState>();
+    let key = dir.to_string_lossy().into_owned();
+    let first_open = !load_settings(app, &state)?
+        .agent_files
+        .get(&key)
+        .is_some_and(|record| record.swept);
+    let sweep = crate::kit::sweep_agent_files(dir, first_open);
+    update_settings(app, &state, |settings| {
+        note_agent_sweep(settings, &key, &sweep, opts)
+    })?;
+    if let Some(error) = &sweep.error {
+        log::warn!("[kit] {}: {error}", dir.display());
+    }
+    Ok(())
+}
+
+/// Longest list of moved files a record holds: enough to read, bounded against a hostile folder.
+const UNREVIEWED_CAP: usize = 200;
+
+fn note_agent_sweep(
+    settings: &mut AppSettings,
+    key: &str,
+    sweep: &crate::kit::AgentSweep,
+    opts: &crate::kit::StampOptions,
+) {
+    let record = settings.agent_files.entry(key.to_owned()).or_default();
+    record.swept = record.swept || sweep.error.is_none();
+    record.app_version = opts.app_version.clone();
+    record.stamped_at_ms = opts.now_ms;
+    for line in &sweep.moved {
+        if !record.unreviewed.contains(line) && record.unreviewed.len() < UNREVIEWED_CAP {
+            record.unreviewed.push(line.clone());
+        }
+    }
+}
+
+/// Why a Claude session may not start yet, or None when it may: the folder is clean, the app has swept it, and the person has seen what moved.
+fn agent_files_block(record: Option<&AgentFilesRecord>, present: &[String]) -> Option<String> {
+    if !present.is_empty() {
+        let shown: Vec<&str> = present.iter().take(8).map(String::as_str).collect();
+        let more = present.len() - shown.len();
+        let tail = if more > 0 { format!(" and {more} more") } else { String::new() };
+        return Some(format!(
+            "Claude stays off while this folder holds files that could steer it: {}{tail}. Move or delete them, then start Claude again.",
+            shown.join(", ")
+        ));
+    }
+    match record {
+        Some(record) if record.swept && record.unreviewed.is_empty() => None,
+        Some(record) if record.swept => {
+            Some("Claude stays off until you've looked at what moved out of this folder. Start Claude again to see it.".into())
+        }
+        _ => Some("Kookaburra Cut hasn't finished checking this folder. Open the project again, then start Claude.".into()),
+    }
+}
+
+/// The last check before a Claude session starts, by the folder alone: no webview says it's clean. `cwd` is canonical and already confined to the workspace.
+pub(crate) fn require_agent_files_reviewed(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    cwd: &Path,
+) -> Result<(), String> {
+    let root = require_root(app, state)?;
+    let canonical = root.canonicalize().map_err(|e| e.to_string())?;
+    let slug = cwd
+        .strip_prefix(&canonical)
+        .ok()
+        .and_then(|rest| rest.components().next())
+        .ok_or("Claude starts inside a project folder")?;
+    let dir = root.join(slug);
+    let settings = load_settings(app, state)?;
+    let record = settings.agent_files.get(&*dir.to_string_lossy());
+    match agent_files_block(record, &crate::kit::foreign_agent_files(&dir)) {
+        Some(why) => Err(why),
+        None => Ok(()),
+    }
+}
+
+/// Show the person what moved out of the folder on a native sheet a webview can't answer. `true` starts the session; Return and Not now leave it off.
+pub(crate) async fn review_agent_files_for(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    slug: &str,
+    dir: &Path,
+) -> Result<bool, String> {
+    let present = crate::kit::foreign_agent_files(dir);
+    let key = dir.to_string_lossy().into_owned();
+    let record = load_settings(app, state)?.agent_files.get(&key).cloned();
+    let unreviewed = record.as_ref().map(|r| r.unreviewed.clone()).unwrap_or_default();
+    if unreviewed.is_empty() || !present.is_empty() {
+        return match agent_files_block(record.as_ref(), &present) {
+            Some(why) => Err(why),
+            None => Ok(true),
+        };
+    }
+    let name = consent_project_name(dir, slug);
+    let listed: Vec<String> = unreviewed.iter().take(12).map(|line| format!("• {line}")).collect();
+    let more = unreviewed.len() - listed.len();
+    let more = if more > 0 { format!("\nand {more} more, named in the log") } else { String::new() };
+    let body = format!(
+        "These could have steered Claude, so Kookaburra Cut moved them:\n\n{}{more}\n\nThe text is in NOTES.md, which Claude reads as notes, not instructions. If a CLAUDE.md was your own, copy back what you want.\n\nFolder: {}",
+        listed.join("\n"),
+        display_path(app, dir)
+    );
+    let declined = crate::native_alert::ask(
+        app,
+        "main",
+        crate::native_alert::Prompt {
+            title: &format!("“{name}” came with agent files"),
+            body: &body,
+            default_button: "Not now",
+            other_button: "Start Claude",
+        },
+    )
+    .await?;
+    if declined {
+        return Ok(false);
+    }
+    update_settings(app, state, |settings| {
+        if let Some(record) = settings.agent_files.get_mut(&key) {
+            record.unreviewed.retain(|line| !unreviewed.contains(line));
+        }
+    })?;
+    Ok(true)
+}
+
+/// The main window's question before starting Claude; see `review_agent_files_for`.
+#[tauri::command]
+pub async fn review_agent_files(
+    app: AppHandle,
+    window: tauri::Window,
+    state: State<'_, SettingsState>,
+    slug: String,
+) -> Result<bool, String> {
+    require_window(&window, "main")?;
+    let dir = project_dir(&app, &state, &slug)?;
+    review_agent_files_for(&app, &state, &slug, &dir).await
 }
 
 /// Re-stamp a project's kit: on every workspace project load and when the terminal starts Claude, off the main thread so it never blocks either.
@@ -2798,6 +2984,55 @@ fn collect_files(
 
 #[cfg(test)]
 mod tests {
+    fn sweep_of(moved: &[&str], error: Option<&str>) -> crate::kit::AgentSweep {
+        crate::kit::AgentSweep {
+            moved: moved.iter().map(|m| m.to_string()).collect(),
+            error: error.map(str::to_owned),
+        }
+    }
+
+    fn stamp_opts() -> crate::kit::StampOptions {
+        crate::kit::StampOptions {
+            app_version: "0.0.1".into(),
+            dev: false,
+            now_ms: 7,
+        }
+    }
+
+    #[test]
+    fn a_session_waits_for_a_swept_clean_reviewed_folder() {
+        let mut settings = AppSettings::default();
+        let blocked = |settings: &AppSettings, present: &[String]| {
+            agent_files_block(settings.agent_files.get("/w/p"), present)
+        };
+        assert!(blocked(&settings, &[]).unwrap().contains("finished checking"), "no record");
+
+        note_agent_sweep(&mut settings, "/w/p", &sweep_of(&["AGENTS.md → NOTES.md"], Some("disk full")), &stamp_opts());
+        assert!(!settings.agent_files["/w/p"].swept, "a failed first sweep stays a first open");
+        assert!(blocked(&settings, &[]).unwrap().contains("finished checking"));
+
+        note_agent_sweep(&mut settings, "/w/p", &sweep_of(&["AGENTS.md → NOTES.md"], None), &stamp_opts());
+        let record = &settings.agent_files["/w/p"];
+        assert!(record.swept);
+        assert_eq!(record.unreviewed, vec!["AGENTS.md → NOTES.md"], "the same line once");
+        assert!(blocked(&settings, &[]).unwrap().contains("what moved"));
+
+        settings.agent_files.get_mut("/w/p").unwrap().unreviewed.clear();
+        assert_eq!(blocked(&settings, &[]), None);
+        let held = blocked(&settings, &[".mcp.json".to_owned()]).unwrap();
+        assert!(held.contains(".mcp.json") && held.contains("Move or delete"), "{held}");
+    }
+
+    #[test]
+    fn the_review_record_follows_a_workspace_move_at_a_path_boundary() {
+        let mut settings = AppSettings::default();
+        settings.agent_files.insert("/old/root/p".into(), AgentFilesRecord::default());
+        settings.agent_files.insert("/old/root copy/p".into(), AgentFilesRecord::default());
+        retarget_trust(&mut settings, Path::new("/old/root"), Path::new("/new/root"));
+        assert!(settings.agent_files.contains_key("/new/root/p"));
+        assert!(settings.agent_files.contains_key("/old/root copy/p"));
+    }
+
     use super::*;
 
     fn settings_scratch(name: &str) -> PathBuf {

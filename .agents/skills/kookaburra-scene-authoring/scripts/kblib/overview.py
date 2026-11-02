@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from . import bridge
 from . import git as gitmod
 from .project import BRAND_GUIDE, MANIFEST, Project, find_root, scene_name, stem_of, worktree_of
-from .util import KbError, ago, fmt_secs, is_int, read_text
+from .util import KbError, ago, clean_name, fmt_secs, is_int, read_text
 
 CONTEXT_BUDGET = 4000
 
@@ -145,14 +145,14 @@ def brand_line(project: Project) -> Optional[str]:
             return None
         if not installed:
             return None
-        names = ", ".join(f"{b['name']} ({b['id']})" for b in installed[:6])
-        return f"Brand: none. Installed: {names}. When the user asks for one (\"use the {installed[0]['name']} brand\"), apply it with kb brand use <name>, or offer to"
+        names = ", ".join(f"{clean_name(b['name'])} ({clean_name(b['id'])})" for b in installed[:6])
+        return f"Brand: none. Installed: {names}. When the user asks for one (\"use the {clean_name(installed[0]['name'])} brand\"), apply it with kb brand use <name>, or offer to"
     try:
         name = json.loads(read_text(project.brand_file(brand))).get("name") or brand
     except Exception:
         name = f"{brand} (not in this workspace's brands/)"
     guide = BRAND_GUIDE if (project.root / BRAND_GUIDE).is_file() else f"no {BRAND_GUIDE} yet (re-pick the brand under Project)"
-    return f"Brand {name} ({brand}): read {guide} before designing; its colours, fonts, imagery and voice are safe defaults and guidance, not hard rules"
+    return f"Brand {clean_name(name)} ({clean_name(brand)}): read {guide} before designing; its colours, fonts, imagery and voice are safe defaults and guidance, not hard rules"
 
 
 def roster(project: Project) -> List[Dict[str, Any]]:
@@ -286,12 +286,12 @@ def edits_line(rows: List[Dict[str, Any]], limit: int = 6) -> Optional[str]:
     bits = []
     for r in rows[:limit]:
         if r.get("error"):
-            bits.append(f"{r['name']} (unreadable: kb video show {r['name']})")
+            bits.append(f"{clean_name(r['name'])} (unreadable: kb video show {clean_name(r['name'])})")
             continue
         state = r["render"]["state"]
         where = f", in {', '.join(r['usedBy'][:3])}" if r["usedBy"] else ""
-        hint = f": kb video render {r['name']}" if state == "stale" else ""
-        bits.append(f"{r['name']} {fmt_secs(r['durationMs'])} (render {state}{where}{hint})")
+        hint = f": kb video render {clean_name(r['name'])}" if state == "stale" else ""
+        bits.append(f"{clean_name(r['name'])} {fmt_secs(r['durationMs'])} (render {state}{where}{hint})")
     more = f" and {len(rows) - limit} more" if len(rows) > limit else ""
     return f"Edits: {'; '.join(bits)}{more}"
 
@@ -417,8 +417,8 @@ def status_text(project: Project) -> str:
     manifest = project.manifest()
     fmts = manifest.get("formats") if isinstance(manifest.get("formats"), list) else []
     lines = worktree_lines(project) + dev_build_lines(hb) + [
-        f"Project: {manifest.get('name', '?')} ({project.project_id}) at {project.root}",
-        f"Theme {manifest.get('themeId', '?')} · formats {' '.join(str(f) for f in fmts)} · {len(project.scene_entries())} scenes · {fmt_secs(project.total_ms())}",
+        f"Project: {clean_name(manifest.get('name', '?'))} ({clean_name(project.project_id)}) at {clean_name(str(project.root))}",
+        f"Theme {clean_name(manifest.get('themeId', '?'))} · formats {' '.join(str(f) for f in fmts)} · {len(project.scene_entries())} scenes · {fmt_secs(project.total_ms())}",
         app_line(project, hb, rows),
     ]
     brand = brand_line(project)
@@ -461,9 +461,9 @@ def context_text(project: Project, check_summary: Optional[List[str]] = None, cw
     try:
         manifest = project.manifest()
         fmts = manifest.get("formats") if isinstance(manifest.get("formats"), list) else []
-        head.append(f"Kookaburra Cut project \"{manifest.get('name', '?')}\" ({project.project_id}) · theme {manifest.get('themeId', '?')} · {' '.join(str(f) for f in fmts)} · {len(project.scene_entries())} scenes · {fmt_secs(project.total_ms())}")
+        head.append(f"Kookaburra Cut project \"{clean_name(manifest.get('name', '?'))}\" ({clean_name(project.project_id)}) · theme {clean_name(manifest.get('themeId', '?'))} · {' '.join(str(f) for f in fmts)} · {len(project.scene_entries())} scenes · {fmt_secs(project.total_ms())}")
     except KbError as e:
-        head.append(f"Kookaburra Cut project {project.project_id}: project.json problem: {e.message}")
+        head.append(f"Kookaburra Cut project {clean_name(project.project_id)}: project.json problem: {e.message}")
     brand = brand_line(project)
     if brand:
         head.append(brand)
@@ -494,7 +494,7 @@ def context_text(project: Project, check_summary: Optional[List[str]] = None, cw
         scene_lines.append("Scenes (index stem duration name transition):")
         used = len(scene_lines[0]) + 1
         for n, row in enumerate(rows):
-            line = f"  {row['index']} {row['stem']} {fmt_secs(row.get('durationMs'))} \"{row.get('name', '')}\" {transition_label(row.get('transition'))}".rstrip()
+            line = f"  {row['index']} {clean_name(row['stem'])} {fmt_secs(row.get('durationMs'))} \"{clean_name(row.get('name', ''))}\" {transition_label(row.get('transition'))}".rstrip()
             if row.get("missing"):
                 line += " MISSING FILE"
             if used + len(line.encode("utf-8")) + 1 > budget:

@@ -24,8 +24,9 @@ contract for the kit, the bridge it talks to and the app behaviour it relies on.
 | Path | Owner | Notes |
 | --- | --- | --- |
 | `CLAUDE.md` | user | Created from `src-tauri/templates/project-CLAUDE.md`; imports `@.claude/skills/kookaburra-scene-authoring/RULES.md`. A pack's copy never lands: import swaps it for this default (below) |
-| `NOTES.md` | pack author | The `CLAUDE.md` text a pack carried, saved on import; shown on the import summary; the agent reads it as notes from the author, never as instructions |
-| `.claude/settings.json` | app | The managed hooks and permission rules only: every stamp removes `hooks`, `permissions`, `env` and `apiKeyHelper` entries outside the managed set and logs them (`[kit]`); never packed |
+| `NOTES.md` | folder's author | The `CLAUDE.md` text a pack carried, saved on import and shown on the import summary, plus sections a stamp moved here (below); the agent reads it as notes from the author, never as instructions |
+| `.claude/settings.json` | app | The managed hooks and permission rules only: every stamp keeps only `$schema`, `model` and the managed `hooks` and `permissions`, and logs the rest (`[kit]`); never packed |
+| `.claude/settings.local.json` | person | Claude Code writes it, and it outranks `settings.json`, so every stamp strips it to `$schema` and `model` |
 | `.claude/commands/`, `.claude/agents/`, other `.claude/skills/*` | nobody | Removed at every stamp and logged: the app ships none, so anything there arrived with the folder |
 | `.claude/skills/kookaburra-scene-authoring/` | app (managed) | Replaced wholesale on stamp; stale files disappear |
 | `.claude/skills/kookaburra-video-editing/` | app (managed) | Sibling skill (SKILL.md + `reference/`, no scripts; it drives `kb video`) |
@@ -37,7 +38,7 @@ contract for the kit, the bridge it talks to and the app behaviour it relies on.
 | `edits/` | app, and `kb video` | Video edit documents; Rust is the only writer (the editor window and `kb video` through the app's CLI); never hand-edited |
 | `exports/`, `.kookaburra*` | app | Never edited by Claude |
 | `./kb` | app (managed) | The zsh-safe shim from `src-tauri/templates/project-kb.sh` (mode 0755): `exec python3 -I .claude/skills/kookaburra-scene-authoring/scripts/kb.py "$@"`, exit 2 "the kit is missing" without the kit; rewritten while one of its first three lines starts `# kookaburra-cut kb shim`; anything else named `kb` (a file, folder or link) is moved aside and logged, since it would run under the `Bash(./kb *)` allow rule; `/kb` is in `.git/info/exclude`; never packed |
-| `kb.moved-aside`, `.claude.moved-aside` (then `-2` and so on) | the person | What a stamp moved out of the way, named in the `[kit]` log; never run, packed or duplicated |
+| `kb.moved-aside`, `.claude.moved-aside`, `.claude.moved-aside-<path>` (then `-2` and so on) | the person | What a stamp moved out of the way, named in the `[kit]` log and the review sheet; never run, packed or duplicated |
 | `.kb/` | kb | Multi-agent state (lock, leases, notes, events, per-agent scratch, capture copies), song analyses, footage logs and the asset archive; ignores itself; never packed (`pack/scan.rs` `is_excluded`) or duplicated (`duplicate_project`) |
 
 Skill tree (the source lives at `.agents/skills/kookaburra-scene-authoring/`):
@@ -91,6 +92,23 @@ scripts/
   Otherwise, when it lacks the RULES import, the import line is inserted after its
   first heading. Nothing else in a user-edited `CLAUDE.md` is touched. Changing the
   template means archiving the old one first (a test pins its digest).
+- **The allow-list** (`sweep_agent_files`, before everything else on every stamp).
+  `CLAUDE.local.md`, `AGENTS.md`, `.claude.json`, `.claude/CLAUDE.md` and any `CLAUDE.md`
+  below the root (case variants too, `.git` skipped, links never followed) move to `## From
+  <path>` sections of `NOTES.md`, fenced, then go. `.mcp.json` lands there with `env` and
+  `headers` values removed, and the original moves aside. Anything else in `.claude/` beyond
+  `settings.json`, `settings.local.json`, `skills` and `worktrees`, a nested `.claude`, a link,
+  a folder, a file over 256 KB or not UTF-8, and a settings file that doesn't parse move aside
+  unread. A root `CLAUDE.md` that isn't a shipped default moves only on the first open of a
+  folder; after that it is the person's.
+- **The review** (`src-tauri/src/workspace.rs`). `AppSettings.agentFiles`, by absolute folder
+  and outside it so a folder can't mark itself reviewed, records the first sweep, the app
+  version and what moved. `review_agent_files` shows that on a native sheet (Return is Not
+  now), run when the terminal starts Claude and by Edit with Claude. `pty_spawn` then refuses
+  a Claude session while the sweep hasn't finished, anything is unreviewed, or a file is
+  still present (`foreign_agent_files`, read-only, also catches what landed after the stamp),
+  naming the files and what to do. Stripping a person's own "don't ask again" rule from
+  `settings.local.json` shows here once too: the app can't tell it from a planted one.
 - `./kb`: the shim (`stamp_shim`), written from `src-tauri/templates/project-kb.sh` with mode
   0755 when missing, and rewritten (content or mode) while it carries the marker. Any other
   `kb` at the project root (a file, folder or link) arrived with the folder and would run with
@@ -99,15 +117,16 @@ scripts/
 - `.claude/settings.json`: created when missing, and app-owned. Every stamp replaces
   `hooks` with the managed set (identified by a command containing
   `kookaburra-scene-authoring/scripts/kb.py hook`), keeps only the managed
-  `permissions.allow` rules (the template's git rules and the set below) and drops every
-  other `permissions` key, `env` and `apiKeyHelper`; each removal is logged as `[kit]`
-  with the path and value. Other keys (`model`, say) are left. An unparseable file is left
-  alone. The file is only rewritten when its content changes, and then with sorted keys.
+  `permissions` lists (the template's git rules and the set below) and every top-level key
+  outside `$schema`, `model`, `hooks` and `permissions` goes, each removal logged as `[kit]`
+  with the path and value. The file is only rewritten when its content changes, and then
+  with sorted keys.
   Before the settings, a `.claude` that isn't a real folder is moved aside to
   `.claude.moved-aside`, so the stamp never reaches through a link, and the stamp removes
   `.claude/commands/`, `.claude/agents/` and any `.claude/skills/*` the app does not ship, logging them. Nothing a folder arrives with can
-  configure the agent; what the person wants the agent told goes in `CLAUDE.md`, which
-  Claude Code reads as instructions and the stamp leaves alone past the RULES import.
+  configure the agent; what the person wants the agent told goes in `CLAUDE.md` once the
+  folder is open, which Claude Code reads as instructions and the stamp leaves alone past
+  the RULES import.
 
 Managed settings:
 
@@ -122,7 +141,9 @@ Managed settings:
       "Read(~/Kookaburra Cut/themes/**)",
       "Read(~/Kookaburra Cut/brands/**)",
       "Read(//Applications/Kookaburra Cut.app/Contents/Resources/**)"
-    ]
+    ],
+    "ask": ["WebFetch", "WebSearch"],
+    "deny": ["Read(~/.ssh/**)", "Read(**/.netrc)", "Read(~/**/.netrc)", "..."]
   },
   "hooks": {
     "SessionStart": [{ "matcher": "startup|resume|clear|compact", "hooks": [
@@ -232,8 +253,12 @@ As built (`scripts/kblib/`):
   are silent inside the workspace, announced on stderr with the resolved path and size
   outside it (`kb: reading /Users/x/Desktop/deck.csv (812 bytes) from outside the
   workspace`), and refused outright for `~/.ssh`, `~/.aws`, `~/.config`, `~/.gnupg`,
-  `~/Library/Keychains`, `.env*`, `.netrc`, `*.pem`, `*.p12`, `*.key` and shell history
-  files.
+  `~/Library/Keychains`, `~/.docker`, `~/.kube`, `~/.azure`, `~/.claude`, `.env*`, `.netrc`,
+  `.git-credentials`, `.npmrc`, `.pypirc`, `id_rsa*`, `id_ed25519*`, `id_ecdsa*`, `id_dsa*`,
+  `credentials*.json`, `*.pem`, `*.p12`, `*.key`, `*.jks`, `*.keystore`, `*.tfstate` and shell
+  history files. `kit.rs` `CREDENTIAL_*` is the same list for the managed `Read` deny rules
+  and the folders `bridge.rs` never takes as a write root, and a test holds them together.
+  None of this is a sandbox: a misled agent's own Bash can still read a file.
 - **Real folders** (`kblib/realdir.py` `real_dir`, `src-tauri/src/real_dir.rs`). A folder shared by zip, copy or
   clone keeps the links a pack refuses, so a link or file at `.kb/`, a `.kb/*` scratch folder or `assets/.kc-render` is
   refused by name (kb: exit 1, kind `not-a-folder`; the CLI: `invalid`) before anything is written or deleted, and a linked `<film>.flashes` is left alone (the check still reports, with `stripsError`). kb opens
@@ -398,6 +423,13 @@ Hooks:
   changed something). On `/usr/bin/python3` 3.9 with the bytecode cache warm a Bash hook
   costs about 58 ms when nothing changed (the bare interpreter is about 48 ms) and about
   80 ms when a sidecar changed; the first run after a stamp compiles (about 105 ms).
+  - `bash-pre` returns `permissionDecision: "ask"`, naming why, for a send-off shape
+    (`send_off_reason`): `curl`, `wget`, `nc`, `ncat` and `socat` to anything but loopback,
+    `scp`, `sftp`, `ftp`, `ssh`, `rsync` to a host, `git push`, `gh`, `aws`, `gcloud`, `az`,
+    `mail`, `sendmail`, `open` with a URL, and Python or Node inline code naming a network
+    module. It looks through wrappers, full paths, `sh -c` and command substitution, and skips
+    `kb_only` commands. A deny stands. It slows a misled agent and asks a person; it doesn't
+    stop a determined one. `WebFetch` and `WebSearch` ask through the managed rules.
   - `bash-pre` stamps `project.json`, `scenes/**` and `edits/*.json` (`<st_mtime_ns>:<size>`;
     dotfiles, `*.tmp` and `*.kbtmp` skipped) into `$TMPDIR/kb-hooks/bash-<sha1(root, tool_use_id)>.json`.
     It binds every `--agent NAME` a kb call passes to the hook's session and agent id, before
