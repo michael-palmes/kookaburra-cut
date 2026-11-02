@@ -5,12 +5,18 @@ plain words, what can leave the Mac, what the app keeps, how to clear it, and
 how an organisation can lock it down. The engineering version, with the file or
 command behind every sentence, is [SECURITY.md](../SECURITY.md).
 
+This page describes version 0.22.0. On 0.21.1, pressing Allow on a shared project
+runs its code with your account, and the app's own data is not private to your
+account. Update once a newer release is out, and until then open only projects
+you'd trust as a program.
+
 ## Nothing leaves your Mac unless you start it
 
 Opening a project, editing scenes, importing a pack, exporting a video or a PDF
 and presenting never touch the network. There is no account, no telemetry, no
 crash reporting, and nothing phones home. The app's own window can only talk to
-itself: the browser rules it ships with name no outside host.
+itself: the browser rules it ships with name no outside host. Those rules don't
+yet reach scene code you've allowed, so allow only projects you trust.
 
 Seven things can reach the internet, and each one starts with you:
 
@@ -41,10 +47,12 @@ account. The app never holds a key for you.
   you start.
 - **Edit with Claude** hands the project to the Claude desktop app and types a
   starter prompt in. Nothing is sent until you press Enter in that app.
-- **What the agent is allowed** comes from the app, not from the project. Every
-  time a project opens, the app rewrites the project's Claude settings: only the
-  app's own permission rules and hooks stay, and anything a shared folder or a
-  pack arrived with is removed and noted in the log.
+- **What the agent is allowed** mostly comes from the app. Every time a project
+  opens, the app rewrites the project's Claude settings: only the app's own
+  permission rules and hooks stay, and what a shared folder or a pack put there
+  is removed and noted in the log. Other agent files in a shared folder, such as
+  `.claude/settings.local.json` or `.mcp.json`, stay and Claude Code reads them,
+  so start Claude only in folders you trust.
 - **Text in a project is data, not instructions.** The rules the app gives the
   agent say that scene copy, notes, brand files, pack contents and captured
   frames are content to edit, never commands to obey, and to stop and ask before
@@ -64,9 +72,10 @@ it: importing only writes files, and the first open asks the question above.
 A pack is signed by the app that made it. On import the app checks that every
 file matches the signed list, tells you whether it has seen this publisher's
 key before, and shows the scene code, terminal commands and websites it
-carries. A publisher's name is never verified: only the key is. Agent settings
-never travel in a pack, and an author's notes for Claude are saved beside the
-project as `NOTES.md` for you to read, not for the agent to obey.
+carries. A publisher's name is never verified: only the key is. A pack's
+`.claude` folder is dropped, and an author's main `CLAUDE.md` is saved beside the
+project as `NOTES.md` for you to read, not for the agent to obey. Other agent
+files can still land, so treat a pack as you would a shared folder.
 
 ## What the app keeps on your Mac, and how to clear it
 
@@ -85,7 +94,8 @@ project as `NOTES.md` for you to read, not for the agent to obey.
   Storage shows their size and clears them; they are rebuilt as you work, and
   deleting a project or an asset clears its own frames and previews. Time
   Machine skips these two caches, since everything in them comes back from
-  your project's own footage.
+  your project's own footage. Frames the agent's tools save inside a project,
+  and the app's smaller caches, are backed up like any file.
 - **Settings**: your preferences, which publishers' keys you have imported from,
   which projects you allowed to run. The key that signs your own packs lives
   in your login Keychain and never synchronises; macOS may ask once to let the
@@ -111,8 +121,7 @@ run the same build with the network paths you do not want switched off and
 greyed out in Settings with a note that the organisation manages them: Claude
 (both paths and the version check), live websites, the update check, the
 publishers whose packs may be imported, and the workspace location. The keys
-and a sample profile are in [docs/mdm.md](./mdm.md) once that work lands; until
-then the switches above are per person.
+and a sample profile are in [docs/mdm.md](./mdm.md).
 
 Report a security problem privately through the repository's Security tab, as
 [SECURITY.md](../SECURITY.md) describes.
