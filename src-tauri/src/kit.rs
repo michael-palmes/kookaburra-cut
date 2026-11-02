@@ -323,9 +323,12 @@ fn credential_deny_rules() -> Vec<String> {
     }
     patterns.extend(CREDENTIAL_SUFFIXES.iter().map(|s| format!("*{s}")));
     patterns.push("credentials*.json".to_owned());
+    // Claude Code tells the agent to read its own saved results and memory under `~/.claude`, so only the secrets there are denied.
     let mut rules: Vec<String> = CREDENTIAL_DIRS
         .iter()
+        .filter(|dir| **dir != ".claude")
         .map(|dir| format!("Read(~/{dir}/**)"))
+        .chain(["Read(~/.claude/.credentials.json)".to_owned(), "Read(~/.claude.json)".to_owned()])
         .collect();
     for pattern in patterns {
         rules.push(format!("Read(**/{pattern})"));
@@ -636,6 +639,9 @@ fn foreign_in_claude_dir(claude: &Path, out: &mut Vec<Foreign>) {
         let name = entry.file_name().to_string_lossy().into_owned();
         let child = rel.join(entry.file_name());
         let path = entry.path();
+        if name.ends_with(".kit-tmp") {
+            continue;
+        }
         if !KEPT_IN_CLAUDE_DIR.contains(&name.as_str()) {
             out.push(if NOTE_FILES.contains(&name.to_ascii_lowercase().as_str()) {
                 Foreign::Note(child)
@@ -810,7 +816,7 @@ fn strip_local_settings(path: &Path) -> Result<(), String> {
     atomic_write(path, &(text + "\n"))
 }
 
-/// What the stamp would strip from a settings file, leaving out the app's own earlier rules. Read-only.
+/// What the stamp would strip from the settings files. Read-only.
 fn settings_removals(dir: &Path) -> Vec<String> {
     let claude = dir.join(CLAUDE_DIR);
     let mut out = Vec::new();
@@ -819,9 +825,7 @@ fn settings_removals(dir: &Path) -> Vec<String> {
             continue;
         };
         for removed in plan_settings(Some(&text)).1 {
-            if !removed.contains(SKILL_NAME) {
-                out.push(format!(".claude/{name}: removed {removed}"));
-            }
+            out.push(format!(".claude/{name}: removed {removed}"));
         }
     }
     out
@@ -2254,9 +2258,11 @@ mod tests {
 
         let deny = managed_settings()["permissions"]["deny"].clone();
         let has = |rule: String| deny.as_array().unwrap().contains(&json!(rule));
-        for dir in CREDENTIAL_DIRS {
+        for dir in CREDENTIAL_DIRS.iter().filter(|dir| **dir != ".claude") {
             assert!(has(format!("Read(~/{dir}/**)")), "{dir}");
         }
+        assert!(has("Read(~/.claude/.credentials.json)".to_owned()));
+        assert!(!has("Read(~/.claude/**)".to_owned()));
         for pattern in CREDENTIAL_NAMES
             .iter()
             .map(|n| n.to_string())

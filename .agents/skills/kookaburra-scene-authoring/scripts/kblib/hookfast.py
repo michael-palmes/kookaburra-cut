@@ -47,8 +47,8 @@ WRAPPERS = {"sudo", "env", "command", "exec", "nohup", "time", "nice", "timeout"
 SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "fish"}
 ASSIGNMENT = re.compile(r"^[A-Za-z_]\w*=")
 LOOPBACK = r"(?:localhost|127(?:\.\d+){3}|\[::1\]|::1|0\.0\.0\.0)"
-LOOPBACK_URL = re.compile(rf"^(?:[a-z][a-z0-9+.-]*://)?(?:[^/@]*@)?{LOOPBACK}(?:[:/?#]|$)", re.IGNORECASE)
-LOOPBACK_ANY = re.compile(rf"(?:^|[:=@/]){LOOPBACK}(?:[:/,?#]|$)", re.IGNORECASE)
+LOOPBACK_HOST = re.compile(rf"^{LOOPBACK}(?::\d*)?$", re.IGNORECASE)
+NET_ADDRESS = re.compile(r"^(?:tcp|udp|ssl|openssl|socks|proxy|ip|sctp|unix-connect)[\w-]*:", re.IGNORECASE)
 FETCH_VALUE_FLAGS = {"-o", "--output", "-O", "--output-document", "-H", "--header", "-X", "--request", "-A", "--user-agent", "-w", "--write-out",
                      "-D", "--dump-header", "-m", "--max-time", "--connect-timeout", "-d", "--data", "--data-binary", "--data-raw", "-F", "--form",
                      "-T", "--upload-file", "-b", "--cookie", "-c", "--cookie-jar", "-e", "--referer", "--retry", "-P", "--directory-prefix"}
@@ -409,6 +409,22 @@ def _command_words(command: str) -> List[List[str]]:
         return [part.split() for part in re.split(r"&&|\|\||[;|&\n()]", unquote(command))]
 
 
+def _is_loopback(target: str) -> bool:
+    """The authority alone, and none with userinfo: `http://localhost:80@host/` goes to `host`."""
+    authority = re.split(r"[/?#]", target.split("://", 1)[-1], maxsplit=1)[0]
+    return "@" not in authority and bool(LOOPBACK_HOST.match(authority))
+
+
+def _socket_tool_reason(head: str, args: List[str]) -> Optional[str]:
+    reason = f"{head} can send work off this Mac"
+    if head == "socat":
+        hosts = [a.split(",")[0].split(":") for a in args if NET_ADDRESS.match(a)]
+        return reason if any(len(h) > 2 and not _is_loopback(h[1]) for h in hosts) or not hosts else None
+    words = [a for i, a in enumerate(args) if not a.startswith("-") and (i == 0 or args[i - 1] not in ("-s", "-p"))]
+    targets = [w for w in words if not w.isdigit()]
+    return None if targets and all(_is_loopback(t) for t in targets) else reason
+
+
 def _fetch_targets(args: List[str]) -> List[str]:
     targets: List[str] = []
     skip = False
@@ -447,13 +463,13 @@ def _words_reason(words: List[str], command: str, depth: int) -> Optional[str]:
         return f"{head} can send work off this Mac"
     if head in ("curl", "wget"):
         targets = _fetch_targets(args)
-        if targets and all(LOOPBACK_URL.match(t) for t in targets):
+        if targets and all(_is_loopback(t) for t in targets):
             return None
         return f"{head} can send work off this Mac"
     if head in ("nc", "ncat", "socat"):
-        return None if any(LOOPBACK_ANY.search(a) for a in args) else f"{head} can send work off this Mac"
+        return _socket_tool_reason(head, args)
     if head == "rsync":
-        hosted = [a for a in args if not a.startswith("-") and ":" in a and not LOOPBACK_ANY.search(a)]
+        hosted = [a for a in args if not a.startswith("-") and ":" in a and not _is_loopback(a.split(":", 1)[0].rsplit("@", 1)[-1])]
         return "rsync to a host can send work off this Mac" if hosted else None
     if head == "git":
         rest = list(args)
@@ -492,7 +508,7 @@ def ask_before_send_off(payload: Dict[str, Any], result: Tuple[int, str, str]) -
 
     code, out, err = result
     command = tool_input(payload).get("command")
-    if not isinstance(command, str) or project_root(payload) is None or kb_only(command):
+    if not isinstance(command, str) or project_root(payload) is None:
         return result
     reason = send_off_reason(command)
     if not reason:

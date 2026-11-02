@@ -257,7 +257,9 @@ As built (`scripts/kblib/`):
   `.git-credentials`, `.npmrc`, `.pypirc`, `id_rsa*`, `id_ed25519*`, `id_ecdsa*`, `id_dsa*`,
   `credentials*.json`, `*.pem`, `*.p12`, `*.key`, `*.jks`, `*.keystore`, `*.tfstate` and shell
   history files. `kit.rs` `CREDENTIAL_*` is the same list for the managed `Read` deny rules
-  and the folders `bridge.rs` never takes as a write root, and a test holds them together.
+  and the folders `bridge.rs` never takes as a write root, and a test holds them together. The
+  deny rules name only the secrets in `~/.claude`, since Claude Code tells the agent to read
+  its saved results and memory there.
   None of this is a sandbox: a misled agent's own Bash can still read a file.
 - **Real folders** (`kblib/realdir.py` `real_dir`, `src-tauri/src/real_dir.rs`). A folder shared by zip, copy or
   clone keeps the links a pack refuses, so a link or file at `.kb/`, a `.kb/*` scratch folder or `assets/.kc-render` is

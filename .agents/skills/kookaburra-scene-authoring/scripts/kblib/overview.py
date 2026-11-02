@@ -248,7 +248,7 @@ def transition_label(spec: Optional[Dict[str, Any]]) -> str:
     if not spec:
         return ""
     ms = spec.get("durationMs")
-    return f"-> {spec.get('type', '?')}" + (f" {ms}ms" if ms is not None else "")
+    return f"-> {clean_name(spec.get('type', '?'))}" + (f" {ms}ms" if ms is not None else "")
 
 
 def edits_summary(project: Project) -> List[Dict[str, Any]]:
@@ -418,7 +418,7 @@ def status_text(project: Project) -> str:
     fmts = manifest.get("formats") if isinstance(manifest.get("formats"), list) else []
     lines = worktree_lines(project) + dev_build_lines(hb) + [
         f"Project: {clean_name(manifest.get('name', '?'))} ({clean_name(project.project_id)}) at {clean_name(str(project.root))}",
-        f"Theme {clean_name(manifest.get('themeId', '?'))} · formats {' '.join(str(f) for f in fmts)} · {len(project.scene_entries())} scenes · {fmt_secs(project.total_ms())}",
+        f"Theme {clean_name(manifest.get('themeId', '?'))} · formats {' '.join(clean_name(str(f)) for f in fmts)} · {len(project.scene_entries())} scenes · {fmt_secs(project.total_ms())}",
         app_line(project, hb, rows),
     ]
     brand = brand_line(project)
@@ -461,7 +461,7 @@ def context_text(project: Project, check_summary: Optional[List[str]] = None, cw
     try:
         manifest = project.manifest()
         fmts = manifest.get("formats") if isinstance(manifest.get("formats"), list) else []
-        head.append(f"Kookaburra Cut project \"{clean_name(manifest.get('name', '?'))}\" ({clean_name(project.project_id)}) · theme {clean_name(manifest.get('themeId', '?'))} · {' '.join(str(f) for f in fmts)} · {len(project.scene_entries())} scenes · {fmt_secs(project.total_ms())}")
+        head.append(f"Kookaburra Cut project \"{clean_name(manifest.get('name', '?'))}\" ({clean_name(project.project_id)}) · theme {clean_name(manifest.get('themeId', '?'))} · {' '.join(clean_name(str(f)) for f in fmts)} · {len(project.scene_entries())} scenes · {fmt_secs(project.total_ms())}")
     except KbError as e:
         head.append(f"Kookaburra Cut project {clean_name(project.project_id)}: project.json problem: {e.message}")
     brand = brand_line(project)
