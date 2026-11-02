@@ -2001,6 +2001,33 @@ pub async fn provision_project(
     .map_err(|e| e.to_string())?
 }
 
+/// Restore a kit that went missing while the project stays open: called on every load after the first, so it only stats until something is gone, then stamps exactly as `provision_project` does (the same stripping and trust re-stamp). Answers whether it stamped.
+#[tauri::command]
+pub async fn heal_project_kit(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    slug: String,
+) -> Result<bool, String> {
+    let dir = project_dir_mut(&app, &state, &slug)?;
+    if !dir.join(MANIFEST_FILENAME).is_file() {
+        return Ok(false);
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let missing = crate::kit::missing_parts(&dir);
+        if missing.is_empty() {
+            return Ok(false);
+        }
+        log::warn!("[kit] {slug}: restoring {}", missing.join(", "));
+        let state = app.state::<SettingsState>();
+        restamping_trust(&app, &state, &slug, || {
+            stamp_claude_provisioning(&app, &dir)
+        })?;
+        Ok(true)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// A project created before footage was kept out of git loses it from its history on its own thread: seconds once, never on the load, one `kookaburra://history-trimmed` event and one log line when it ran.
 fn trim_legacy_history(app: AppHandle, slug: String, dir: PathBuf) {
     std::thread::spawn(move || {
@@ -2254,9 +2281,26 @@ pub(crate) fn restamping_trust<T>(
     slug: &str,
     write: impl FnOnce() -> Result<T, String>,
 ) -> Result<T, String> {
+    restamping_trust_as(app, state, slug, true, write)
+}
+
+/// `restamping_trust`, saying whether the person made this write: the agent's own bridge inserts are its work, not an app edit it needs telling about.
+pub(crate) fn restamping_trust_as<T>(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    slug: &str,
+    journal: bool,
+    write: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
     let dir = project_dir(app, state, slug)?;
+    // Templates and presets have no agent beside them, and dev builds edit the bundled sets in the checkout.
+    let workspace = matches!(parse_project_id(slug), Ok((ProjectScope::Workspace, _)));
+    let before = (journal && workspace).then(|| crate::app_edits::snapshot(&dir));
     let trusted = stored_trust_matches(app, state, slug, &dir)?;
     let out = write()?;
+    if let Some(before) = &before {
+        crate::app_edits::record(&dir, before);
+    }
     if trusted {
         let fingerprint = trust_fingerprint(&dir);
         update_settings(app, state, |settings| {

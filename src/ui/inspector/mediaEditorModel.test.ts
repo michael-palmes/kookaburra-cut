@@ -3,6 +3,7 @@ import { parseSceneDoc, type SceneDoc, type SceneDocMediaSpec } from "../../engi
 import { createSceneMedia } from "../../engine/sceneMedia";
 import type { FrameDecorationSpec } from "../../toolkit/frame/types";
 import {
+  changeSceneMediaKind,
   defaultSceneMediaHost,
   deleteLegacyMedia,
   duplicateLegacyMedia,
@@ -67,6 +68,65 @@ describe("promote-on-write", () => {
     // The legacy blocks the promotion superseded are gone, in memory as well as on disk.
     expect(next.videoWindow).toBeUndefined();
     expect(next.images).toBeUndefined();
+  });
+});
+
+describe("changeSceneMediaKind", () => {
+  const entry = (over: Partial<SceneDocMediaSpec>): SceneDocMediaSpec => ({
+    id: "m1",
+    kind: "video",
+    src: "assets/a.mp4",
+    host: "window",
+    stage: { position: [0, 0, 0], size: 5.3, rotationDeg: [0, 0, 0] },
+    overlay: { position: [0, 0], size: 0.72, rotationDeg: 0, shape: "none", layer: "below" },
+    ...over,
+  });
+
+  it("takes a clip's playback, window host and clip-only motion when it becomes a still", () => {
+    const media = entry({
+      video: { startMs: 500, at: "bar:3", loop: true, aspect: 1.5 },
+      motion: { preset: "drift" },
+    });
+    changeSceneMediaKind(media, "image");
+    expect(media.kind).toBe("image");
+    expect(media.video).toBeUndefined();
+    expect(media.host).toBe("overlay");
+    expect(media.motion).toBeUndefined();
+  });
+
+  it("takes a still's shadow and still-only motion when it becomes a clip", () => {
+    const media = entry({
+      kind: "image",
+      src: "assets/a.png",
+      host: "stage",
+      castShadow: true,
+      motion: { preset: "turntable", degPerSec: 12 },
+    });
+    changeSceneMediaKind(media, "video");
+    expect(media.castShadow).toBeUndefined();
+    expect(media.motion).toBeUndefined();
+    expect(media.host).toBe("stage");
+  });
+
+  it("keeps what both kinds use", () => {
+    const media = entry({
+      host: "stage",
+      motion: { preset: "float", amplitude: 0.2 },
+      window: { radius: "macos" },
+      motionBlur: { enabled: false },
+    });
+    changeSceneMediaKind(media, "image");
+    expect(media.motion).toEqual({ preset: "float", amplitude: 0.2 });
+    expect(media.window).toEqual({ radius: "macos" });
+    expect(media.motionBlur).toEqual({ enabled: false });
+    expect(media.host).toBe("stage");
+  });
+
+  it("changes nothing within a kind", () => {
+    const media = entry({ video: { startMs: 500 }, castShadow: true });
+    const before = structuredClone(media);
+    changeSceneMediaKind(media, "video");
+    expect(media).toEqual(before);
   });
 });
 

@@ -1139,6 +1139,7 @@ pub struct CopiedSceneResult {
 #[allow(clippy::too_many_arguments)]
 pub fn copy_scene_to_project(
     app: AppHandle,
+    window: tauri::Window,
     state: State<'_, SettingsState>,
     trust: State<'_, TrustState>,
     slug: String,
@@ -1148,7 +1149,9 @@ pub fn copy_scene_to_project(
     name: Option<String>,
     guard: Option<InsertGuard>,
 ) -> Result<CopiedSceneResult, String> {
-    workspace::restamping_trust(&app, &state, &dest_slug, || {
+    // The render window only copies for the agent's own `insertPreset`.
+    let by_person = window.label() != "render";
+    workspace::restamping_trust_as(&app, &state, &dest_slug, by_person, || {
         workspace::require_multiple_scenes(&dest_slug)?;
         if slug == dest_slug {
             return Err("pick a different project to copy into".into());

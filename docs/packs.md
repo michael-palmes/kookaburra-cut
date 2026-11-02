@@ -235,7 +235,8 @@ test per item in `pack::tests`. Limits live in `pack::limits`.
 2. Inflate `manifest.json` capped at `MAX_MANIFEST_BYTES`, and `manifest.sig`
    capped at `MAX_SIGNATURE_BYTES` (256; a signature is 64 bytes, so a longer
    entry is refused as invalid rather than read to its end). Refuse a wrong
-   `format`, a `formatVersion` above ours, or a `minAppVersion` above ours.
+   `format` or a `formatVersion` above ours. `pack::commands` checks `minAppVersion`:
+   inspect shows the update screen and stage refuses.
 3. Recompute the publisher `keyId` from the public key beside it and refuse a
    declared id that differs. The trust store is keyed by the recomputed id.
 4. Validate every path in `files` **and every path in `contents`**. The second

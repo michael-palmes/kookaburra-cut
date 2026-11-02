@@ -9,7 +9,7 @@ const GROUPS: { outcome: ItemOutcome; label: string }[] = [
   { outcome: "failed", label: "Failed" },
 ];
 
-/** Screen 4. The primary action opens the first imported project, which is where F-001 asks. That second consent should feel like a normal project open, not another scary dialog. Terminal commands and website origins were reviewed on the trust screen, before anything landed. */
+/** Screen 4. The primary action opens the first imported project, which is where F-001 asks. That second consent should feel like a normal project open, not another scary dialog. Website origins were reviewed on the trust screen, before anything landed. */
 export function SummaryView({
   outcome,
   queued,

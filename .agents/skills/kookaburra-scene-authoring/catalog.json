@@ -25304,7 +25304,7 @@
       "durationMs": 3000,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
       "themeId": "kookaburra-daylight",
-      "blocks": ["managedText"],
+      "blocks": [],
       "preview": "preset-previews/blank.jpg"
     },
     {
