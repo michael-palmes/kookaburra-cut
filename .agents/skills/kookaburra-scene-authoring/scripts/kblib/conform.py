@@ -197,7 +197,7 @@ def find_media_cli(verb: str = "probe") -> Tuple[Optional[MediaCli], Optional[st
         return None, e.message
     cli = MediaCli(info, caps)
     if not cli.has(verb):
-        return None, f"Kookaburra Cut {caps.get('appVersion') or info.app_version or '?'} has no media {verb} (it predates the ingest conform)"
+        return None, f"Kookaburra Cut {caps.get('appVersion') or info.app_version or '?'} has no media {verb}: it is older than this kit"
     return cli, None
 
 

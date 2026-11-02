@@ -2,11 +2,14 @@
 
 use super::onset::{onset_strength, rms_envelope, smooth3, ONSET_HOP};
 
-/// Above this drift (ms) the track is not treated as one constant tempo.
-pub const CONSTANT_TEMPO_MAX_DRIFT_MS: f64 = 15.0;
+/// Above this drift (ms, one frame at 30 fps) the track is not treated as one constant tempo. kb's `model.MAX_GRID_DRIFT_MS` mirrors it.
+pub const CONSTANT_TEMPO_MAX_DRIFT_MS: f64 = 33.0;
 /// The running-mean length (beats) that separates real drift from single-beat jitter.
 const DRIFT_WINDOW: usize = 8;
 const KICK_CUTOFF_HZ: f64 = 150.0;
+const INTERVAL_KEEP_SHARE: f64 = 0.25;
+/// Under this, times sit on a period no better than chance would: the Rayleigh statistic, where 1.5 is a p of about 0.1.
+const MIN_CLUSTERING: f64 = 1.5;
 /// Off-beats must out-weigh the beats by this much in the kick band before the grid moves.
 const HALF_BEAT_MARGIN: f64 = 1.5;
 /// An in-range tempo wins when its contrast is at least half an out-of-range winner's.
@@ -260,6 +263,104 @@ pub fn line_through(times: &[f64]) -> Option<(f64, f64)> {
     Some((p, phi - ((phi + PHASE_EDGE_MS) / p).floor() * p))
 }
 
+/// The line a tracker's beats agree on locally: the mean interval (those within a quarter of the median) and the circular mean phase. A beat skipped or doubled slips `line_through`'s count, and the whole line with it; this line never counts: (period, phase in [0, period)).
+pub fn interval_line(times: &[f64]) -> Option<(f64, f64)> {
+    if times.len() < 4 {
+        return None;
+    }
+    let mut intervals: Vec<f64> = times
+        .windows(2)
+        .map(|w| w[1] - w[0])
+        .filter(|d| *d > 0.0)
+        .collect();
+    if intervals.is_empty() {
+        return None;
+    }
+    intervals.sort_by(f64::total_cmp);
+    let mid = median(&intervals);
+    let kept: Vec<f64> = intervals
+        .into_iter()
+        .filter(|d| (d - mid).abs() <= mid * INTERVAL_KEEP_SHARE)
+        .collect();
+    let p = kept.iter().sum::<f64>() / kept.len() as f64;
+    if !(p.is_finite() && p > 0.0) {
+        return None;
+    }
+    let turn = 2.0 * std::f64::consts::PI / p;
+    let (sin, cos) = times.iter().fold((0.0, 0.0), |(s, c), t| {
+        (s + (t * turn).sin(), c + (t * turn).cos())
+    });
+    Some((p, wrap_phase(sin.atan2(cos) / turn, p)))
+}
+
+/// The vector sum of weighted times (t, weight) wrapped onto a period: large when they fall in step.
+fn pull(points: &[(f64, f64)], period_ms: f64) -> f64 {
+    let turn = 2.0 * std::f64::consts::PI / period_ms;
+    let (sin, cos) = points.iter().fold((0.0, 0.0), |(s, c), (t, w)| {
+        (s + w * (t * turn).sin(), c + w * (t * turn).cos())
+    });
+    sin.hypot(cos)
+}
+
+/// How far weighted times cluster on a period beyond chance. Half the period counts too: a tracker can read half time for a stretch, and a song's hits can favour the off-beat.
+fn clustering(points: &[(f64, f64)], period_ms: f64) -> f64 {
+    let squares: f64 = points.iter().map(|(_, w)| w * w).sum();
+    if squares <= 0.0 {
+        return 0.0;
+    }
+    pull(points, period_ms).max(pull(points, period_ms / 2.0)) / squares.sqrt()
+}
+
+/// Whether weighted times cluster on this period at all.
+pub fn pulses_on(points: &[(f64, f64)], period_ms: f64) -> bool {
+    clustering(points, period_ms) >= MIN_CLUSTERING
+}
+
+/// The candidate a tracker's own beats land on, if any. Residual and drift can't choose: a line picks its own peaks, and in dense music a false tempo finds peaks as tight as the true one's.
+pub fn best_line(candidates: Vec<LineFit>, beats: &[f64]) -> Option<LineFit> {
+    let beats: Vec<(f64, f64)> = beats.iter().map(|&t| (t, 1.0)).collect();
+    candidates
+        .into_iter()
+        .map(|line| (clustering(&beats, line.period_ms), line))
+        .filter(|(score, _)| *score >= MIN_CLUSTERING)
+        .max_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, line)| line)
+}
+
+/// How far a tracker's beats stray from a line and where, (ms, track ms): the running median over `DRIFT_WINDOW` beats with the tracker's steady lag taken out. A line's own drift can't show a slip in the song, since it picks the peaks nearest itself.
+pub fn beat_stray(beats: &[f64], period_ms: f64) -> Option<(f64, f64)> {
+    if beats.len() < DRIFT_WINDOW {
+        return None;
+    }
+    let points: Vec<(f64, f64)> = beats.iter().map(|&t| (t, 1.0)).collect();
+    let unit = if pull(&points, period_ms / 2.0) > pull(&points, period_ms) {
+        period_ms / 2.0
+    } else {
+        period_ms
+    };
+    // Centred on the beats' own mean phase, so none sit on the wrap between plus and minus half a unit.
+    let turn = 2.0 * std::f64::consts::PI / unit;
+    let (sin, cos) = beats.iter().fold((0.0, 0.0), |(s, c), t| {
+        (s + (t * turn).sin(), c + (t * turn).cos())
+    });
+    let centre = sin.atan2(cos) / turn;
+    let residuals: Vec<f64> = beats
+        .iter()
+        .map(|t| wrap_phase(t - centre + unit / 2.0, unit) - unit / 2.0)
+        .collect();
+    let middle = |values: &[f64]| {
+        let mut sorted = values.to_vec();
+        sorted.sort_by(f64::total_cmp);
+        median(&sorted)
+    };
+    let lag = middle(&residuals);
+    residuals
+        .windows(DRIFT_WINDOW)
+        .enumerate()
+        .map(|(i, win)| ((middle(win) - lag).abs(), beats[i + DRIFT_WINDOW / 2]))
+        .max_by(|a, b| a.0.total_cmp(&b.0))
+}
+
 /// Two one-pole low-pass passes, then the onset chain: a kick-band onset signal.
 pub fn low_band_onset(samples: &[f32], sample_rate: u32) -> Vec<f64> {
     let a = (-2.0 * std::f64::consts::PI * KICK_CUTOFF_HZ / f64::from(sample_rate)).exp();
@@ -425,6 +526,127 @@ mod tests {
         let (period, phase) = line_through(&times).unwrap();
         assert!((period - p).abs() < 0.05, "{period}");
         assert!((phase - 213.7).abs() < 6.0, "{phase}");
+    }
+
+    #[test]
+    fn a_slipped_beat_tilts_the_counted_line_but_not_the_interval_line() {
+        let mut times: Vec<f64> = (0..130).map(|k| 500.0 + k as f64 * 500.0).collect();
+        // The tracker loses the plot through a breakdown: two beats land between grid lines, and one more goes missing.
+        times[60] += 240.0;
+        times[61] += 240.0;
+        times.remove(90);
+        times.remove(45);
+        let (counted, _) = line_through(&times).unwrap();
+        let (period, phase) = interval_line(&times).unwrap();
+        assert!((period - 500.0).abs() < 0.5, "{period}");
+        assert!(
+            phase.abs() < 25.0 || (phase - 500.0).abs() < 25.0,
+            "{phase}"
+        );
+        assert!(
+            (counted - 500.0).abs() > (period - 500.0).abs(),
+            "{counted} {period}"
+        );
+        assert!(interval_line(&[1.0, 2.0]).is_none());
+    }
+
+    fn line_at(period_ms: f64, residual_ms: f64) -> LineFit {
+        LineFit {
+            period_ms,
+            phase_ms: 0.0,
+            residual_ms,
+            max_drift_ms: 0.0,
+            points: Vec::new(),
+        }
+    }
+
+    /// 20 ms tracker frames: `first` beats at `period`, then `rest` at `other`.
+    fn two_speeds(period: f64, first: usize, other: f64, rest: usize) -> Vec<f64> {
+        let mut at = 1600.0;
+        let mut out = Vec::new();
+        for k in 0..first + rest {
+            out.push((at / 20.0_f64).round() * 20.0);
+            at += if k < first { period } else { other };
+        }
+        out
+    }
+
+    #[test]
+    fn a_tracker_that_drops_to_half_time_keeps_the_tempo_it_heard() {
+        let beats = two_speeds(379.7, 120, 759.4, 140);
+        let (counted, _) = line_through(&beats).unwrap();
+        let (interval, _) = interval_line(&beats).unwrap();
+        assert!((counted - 759.4).abs() > 100.0, "{counted}");
+        assert!((interval - 759.4).abs() < 2.0, "{interval}");
+        // The false line fits tighter, as it did on a real song.
+        let best = best_line(
+            vec![line_at(counted, 30.0), line_at(interval, 35.0)],
+            &beats,
+        )
+        .unwrap();
+        assert_eq!(best.period_ms, interval);
+    }
+
+    #[test]
+    fn a_song_that_changes_tempo_has_no_line() {
+        let beats = two_speeds(500.0, 120, 600.0, 100);
+        let lines: Vec<LineFit> = [line_through(&beats), interval_line(&beats)]
+            .into_iter()
+            .flatten()
+            .map(|(p, _)| line_at(p, 10.0))
+            .collect();
+        assert_eq!(lines.len(), 2);
+        assert!(best_line(lines, &beats).is_none());
+        assert!(best_line(Vec::new(), &beats).is_none());
+    }
+
+    #[test]
+    fn a_step_in_the_song_shows_in_the_beats_though_a_line_absorbs_it() {
+        let beats: Vec<f64> = (0..125)
+            .map(|k| {
+                let t = 100.0 + k as f64 * 400.0 - if k >= 90 { 140.0 } else { 0.0 };
+                (t / 20.0).round() * 20.0
+            })
+            .collect();
+        let (period, _) = line_through(&beats).unwrap();
+        let (stray, at) = beat_stray(&beats, period).unwrap();
+        assert!(stray > 66.0, "{stray}");
+        assert!(at > 20_000.0, "{at}");
+        let steady: Vec<f64> = (0..125)
+            .map(|k| ((100.0 + k as f64 * 400.0) / 20.0).round() * 20.0)
+            .collect();
+        assert!(beat_stray(&steady, 400.0).unwrap().0 < 10.0);
+        assert!(beat_stray(&steady[..4], 400.0).is_none());
+        let on_the_wrap: Vec<f64> = (0..125)
+            .map(|k| 200.0 + k as f64 * 400.0 + if k % 2 == 0 { 10.0 } else { -10.0 })
+            .collect();
+        assert!(beat_stray(&on_the_wrap, 400.0).unwrap().0 < 25.0);
+    }
+
+    #[test]
+    fn beats_in_half_time_are_no_stray() {
+        let beats = two_speeds(379.7, 120, 759.4, 140);
+        let (stray, _) = beat_stray(&beats, 759.4).unwrap();
+        assert!(stray < 30.0, "{stray}");
+    }
+
+    #[test]
+    fn times_pulse_on_their_period_and_noise_on_none() {
+        let steady: Vec<(f64, f64)> = (0..60).map(|k| (k as f64 * 500.0, 1.0)).collect();
+        assert!(pulses_on(&steady, 500.0));
+        assert!(pulses_on(&steady, 1000.0), "half the period counts");
+        assert!(!pulses_on(&steady, 613.0));
+        let mut state = 12345u64;
+        let noise: Vec<(f64, f64)> = (0..400)
+            .map(|_| {
+                state = state
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                ((state >> 40) as f64 / 16777216.0 * 120_000.0, 1.0)
+            })
+            .collect();
+        assert!(!pulses_on(&noise, 500.0));
+        assert!(!pulses_on(&[], 500.0));
     }
 
     #[test]

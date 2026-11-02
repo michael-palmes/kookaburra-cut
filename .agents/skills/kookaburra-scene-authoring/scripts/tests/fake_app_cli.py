@@ -388,11 +388,19 @@ def media_plan(f: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def cmd_media(argv: List[str]) -> None:
-    if not argv or argv[0] not in ("caps", "probe", "conform"):
-        fail("usage", "give a media command: caps, probe, conform", 2)
+    if not argv or argv[0] not in ("caps", "probe", "conform", "ocr"):
+        fail("usage", "give a media command: caps, probe, conform, ocr", 2)
     f = flags(argv[1:])
     if f"media-{argv[0]}" in (os.environ.get("FAKE_CLI_FAIL") or "").split(",") and argv[0] != "conform":
         fail("invalid", f"fake media {argv[0]} failure")
+    if argv[0] == "ocr":
+        folder = f.get("dir")
+        if not isinstance(folder, str) or not os.path.isabs(folder):
+            fail("usage", "--dir must be an absolute path", 2)
+        canned = os.environ.get("FAKE_CLI_OCR")
+        lines = json.loads(Path(canned).read_text(encoding="utf-8")) if canned else [{"text": "Launch day", "confidence": 0.9}]
+        emit({"ok": True, "engine": "vision", "frames": [{"file": name, "lines": lines} for name in sorted(os.listdir(folder)) if name.endswith((".png", ".jpg"))]})
+        return
     if argv[0] == "caps":
         emit({"ok": True, "cli": 1, "commands": ["caps", "probe", "conform"], "timingVersion": 1, "fps": 60, "keepOriginal": ["move", "copy"],
               "exitCodes": {"ok": 0, "failed": 1, "usage": 2, "interrupted": 130}})
@@ -471,16 +479,29 @@ def cmd_check(argv: List[str]) -> None:
 
 
 def fake_analysis(bpm: float = 120.0, offset: float = 250.0) -> Dict[str, Any]:
-    """A v2 song analysis of a steady click: 4/4 at bpm with bar 1 at offset ms."""
+    """A v3 song analysis of a steady click: 4/4 at bpm with bar 1 at offset ms, a fill in bar 8, a breakdown in bars 9-12
+    and music that stops at 30 s."""
     period = 60000 / bpm
     beats = [{"ms": round(offset + k * period, 3), "bar": k // 4 + 1, "beat": k % 4 + 1, "conf": 0.9} for k in range(64)]
     return {
-        "version": 2, "sha256": "", "decoder": {"name": "ffmpeg", "version": "fake", "sampleRate": 48000, "channels": 1},
+        "version": 3, "sha256": "", "decoder": {"name": "ffmpeg", "version": "fake", "sampleRate": 48000, "channels": 1},
         "tracker": "nn", "model": {"name": "beat_this_small", "sha256": "fake"}, "fallbackReason": None, "durationMs": 32000,
         "fit": {"bpm": bpm, "offsetMs": offset, "beatsPerBar": 4, "periodMs": period, "phaseMs": 0.5, "residualMs": 0.9,
                 "maxDriftMs": 1.4, "constantTempo": True},
         "beats": beats, "energy": None, "sections": [{"fromBar": 1, "toBar": 9, "novelty": 0.4}, {"fromBar": 9, "toBar": 17, "novelty": 0.7}],
         "breaths": [{"fromMs": 16000, "toMs": 16400, "kind": "silence"}], "stabs": {"per16th": [1.0] + [0.1] * 15},
+        "hits": {"full": [[offset, 1.0], [round(offset + period, 1), 0.4], [round(offset + 28 * period + period / 4, 1), 0.8]],
+                 "low": [[offset, 1.0]], "mid": [[round(offset + 28 * period + period / 4 + 12, 1), 0.7]], "high": []},
+        "ending": {"audibleEndMs": 30000.0, "trailingSilenceMs": 2000.0, "lastHitMs": 29750.0, "lastHitStrength": 0.8},
+        "form": {
+            "phrase": {"bars": 4, "startBar": 1, "detected": True},
+            "bars": [{"bar": b, "lufs": -14.0, "onsets": 8, "quiet": 0.0} for b in range(1, 16)],
+            "parts": [{"id": "peak-1", "label": "Peak 1", "kind": "peak", "fromBar": 1, "toBar": 9},
+                      {"id": "breakdown-1", "label": "Breakdown 1", "kind": "breakdown", "fromBar": 9, "toBar": 13},
+                      {"id": "peak-2", "label": "Peak 2", "kind": "peak", "fromBar": 13, "toBar": 16}],
+            "moments": [{"id": "fill-1", "kind": "fill", "ms": round(offset + 30 * period, 1), "bar": 8, "toBar": 9, "band": "mid"},
+                        {"id": "final-hit", "kind": "final", "ms": 29750.0, "bar": 15, "toBar": 16, "band": None}],
+        },
         "lyrics": None, "keyMoments": [{"tMs": 4250, "strength": 0.9}], "envelope": {"hopMs": 21.333, "values": []},
     }
 
@@ -489,7 +510,7 @@ def cmd_song(argv: List[str]) -> None:
     """`song caps|analyse --file ABS [--force] [--tracker nn|dsp]`: FAKE_CLI_SONG names a JSON analysis to answer with
     (its sha256 becomes the file's), else fake_analysis(); FAKE_CLI_FAIL=song fails the analysis."""
     if argv[:1] == ["caps"]:
-        emit({"ok": True, "commands": ["caps", "analyse"], "analysisVersion": 2, "trackers": ["nn", "dsp"],
+        emit({"ok": True, "commands": ["caps", "analyse"], "analysisVersion": 3, "trackers": ["nn", "dsp"],
               "model": {"name": "beat_this_small", "available": True, "dir": "/tmp"}})
         return
     if argv[:1] != ["analyse"]:
@@ -509,7 +530,7 @@ def cmd_song(argv: List[str]) -> None:
     if isinstance(f.get("tracker"), str):
         analysis["tracker"] = f["tracker"]
     emit({"ok": True, "file": path, "cached": not f.get("force") and bool(os.environ.get("FAKE_CLI_SONG_CACHED")),
-          "cachePath": f"/tmp/fake-beats/{digest}-v2.json", "analysis": analysis})
+          "cachePath": f"/tmp/fake-beats/{digest}-v3.json", "analysis": analysis})
 
 
 def load_behaviour() -> None:
