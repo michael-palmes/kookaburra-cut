@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from . import brandlib
 from . import bridge
 from . import git as gitmod
 from .project import BRAND_GUIDE, MANIFEST, Project, find_root, scene_name, stem_of, worktree_of
@@ -155,7 +156,10 @@ def brand_line(project: Project) -> Optional[str]:
     except Exception:
         name = f"{brand} (not in this workspace's brands/)"
     guide = BRAND_GUIDE if (project.root / BRAND_GUIDE).is_file() else f"no {BRAND_GUIDE} yet (re-pick the brand under Project)"
-    return f"Brand {clean_name(name)} ({clean_name(brand)}): read {guide} before designing; its colours, fonts, imagery and voice are safe defaults and guidance, not hard rules"
+    line = f"Brand {clean_name(name)} ({clean_name(brand)}): read {guide} before designing; its colours, fonts, imagery and voice are safe defaults and guidance, not hard rules"
+    folder = brandlib.folder_of(project.workspace_root, brand)
+    hint = brandlib.status_hint(folder) if folder else None
+    return f"{line}; {clean_name(hint)}" if hint else line
 
 
 def roster(project: Project) -> List[Dict[str, Any]]:
@@ -251,7 +255,7 @@ def transition_label(spec: Optional[Dict[str, Any]]) -> str:
     if not spec:
         return ""
     ms = spec.get("durationMs")
-    return f"-> {spec.get('type', '?')}" + (f" {ms}ms" if ms is not None else "")
+    return f"-> {clean_name(spec.get('type', '?'))}" + (f" {ms}ms" if ms is not None else "")
 
 
 def edits_summary(project: Project) -> List[Dict[str, Any]]:
@@ -346,6 +350,12 @@ def coordination(project: Project, caller: Any = None, mark: bool = True) -> Tup
         return None, [], [], []
 
 
+def brand_images(project: Project, brand: Any) -> Optional[Dict[str, int]]:
+    """The project's brand library by folder (kb status --json); None with no brand here."""
+    folder = brandlib.folder_of(project.workspace_root, brand)
+    return brandlib.counts_by_category(folder) if folder else None
+
+
 def status_data(project: Project) -> Dict[str, Any]:
     hb = bridge.live_heartbeat(project)
     rows = bridge.instance_rows(project)
@@ -360,6 +370,7 @@ def status_data(project: Project) -> Dict[str, Any]:
         "name": manifest.get("name"),
         "themeId": manifest.get("themeId"),
         "brand": manifest.get("brand"),
+        "brandImages": brand_images(project, manifest.get("brand")),
         "formats": manifest.get("formats"),
         "scenes": len(entries),
         "totalMs": project.total_ms(),
@@ -421,7 +432,7 @@ def status_text(project: Project) -> str:
     fmts = manifest.get("formats") if isinstance(manifest.get("formats"), list) else []
     lines = worktree_lines(project) + dev_build_lines(hb) + [
         f"Project: {clean_name(manifest.get('name', '?'))} ({clean_name(project.project_id)}) at {clean_name(str(project.root))}",
-        f"Theme {clean_name(manifest.get('themeId', '?'))} · formats {' '.join(str(f) for f in fmts)} · {len(project.scene_entries())} scenes · {fmt_secs(project.total_ms())}",
+        f"Theme {clean_name(manifest.get('themeId', '?'))} · formats {' '.join(clean_name(str(f)) for f in fmts)} · {len(project.scene_entries())} scenes · {fmt_secs(project.total_ms())}",
         app_line(project, hb, rows),
     ]
     brand = brand_line(project)
@@ -464,7 +475,7 @@ def context_text(project: Project, check_summary: Optional[List[str]] = None, cw
     try:
         manifest = project.manifest()
         fmts = manifest.get("formats") if isinstance(manifest.get("formats"), list) else []
-        head.append(f"Kookaburra Cut project \"{clean_name(manifest.get('name', '?'))}\" ({clean_name(project.project_id)}) · theme {clean_name(manifest.get('themeId', '?'))} · {' '.join(str(f) for f in fmts)} · {len(project.scene_entries())} scenes · {fmt_secs(project.total_ms())}")
+        head.append(f"Kookaburra Cut project \"{clean_name(manifest.get('name', '?'))}\" ({clean_name(project.project_id)}) · theme {clean_name(manifest.get('themeId', '?'))} · {' '.join(clean_name(str(f)) for f in fmts)} · {len(project.scene_entries())} scenes · {fmt_secs(project.total_ms())}")
     except KbError as e:
         head.append(f"Kookaburra Cut project {clean_name(project.project_id)}: project.json problem: {e.message}")
     brand = brand_line(project)

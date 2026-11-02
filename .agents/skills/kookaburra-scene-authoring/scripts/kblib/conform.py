@@ -527,19 +527,44 @@ def container_verdict(path: Path) -> Optional[Dict[str, Any]]:
     return None if box is None else evaluate(None, box, ext)
 
 
-def import_decision(path: Path) -> Dict[str, Any]:
+def import_decision(path: Path, *, deep: bool = True, say: Optional[Callable[[str], None]] = None) -> Dict[str, Any]:
     """Whether an import conforms: the app's static probe merged with the container check when the app's media CLI is
-    there (the drop path's rule), else kb's own check, which can only warn. { conform, checked, why, probe, refused, cli }."""
+    there, else kb's own check, which can only warn. A file the static probe passes only looks clean until both decoders
+    have read it, so it is decoded before the conform is skipped. { conform, checked, why, probe, refused, cli }."""
     cli, why_not = find_media_cli("conform")
     if cli is not None and not cli.has("probe"):
         cli, why_not = None, "the app's media CLI has no probe"
     box, ff = static_facts(path, cli)
     static = evaluate(ff, box, ext_of(path))
     if cli is None:
+        if deep and not static["recommended"] and box is not None and box.get("expected"):
+            static = evaluate(ff, box, ext_of(path), _container_mismatch(path, box, say))
         return {"conform": False, "checked": False, "why": why_not or "no app", "probe": summary(static), "refused": None, "cli": None}
     try:
         report = media_probe(cli, path)
     except KbError as e:
         return {"conform": False, "checked": False, "why": f"the app's probe failed: {e.message}", "probe": summary(static), "refused": None, "cli": None}
     merged = merge(report, static)
-    return {"conform": merged["recommended"], "checked": True, "why": None, "probe": summary(merged), "refused": merged["refused"], "cli": cli}
+    checks: Optional[List[str]] = None
+    if deep and not merged["recommended"] and merged["refused"] is None:
+        if say is not None:
+            say(f"decoding {path.name} to check it plays the same in both decoders")
+        try:
+            merged = merge(media_probe(cli, path, pts=True), static)
+        except KbError as e:
+            return {"conform": False, "checked": False, "why": f"the app's deep probe failed: {e.message}", "probe": summary(merged), "refused": None, "cli": None}
+        checks = ["app", "decode"]
+    return {"conform": merged["recommended"], "checked": True, "why": None, "probe": summary(merged), "refused": merged["refused"], "cli": cli, "checks": checks}
+
+
+def _container_mismatch(path: Path, box: Dict[str, Any], say: Optional[Callable[[str], None]]) -> Optional[List[str]]:
+    """Without the app: ffmpeg's decode against the timeline the container promises; None when it can't be read."""
+    ffmpeg = find_tool("ffmpeg")
+    if not ffmpeg:
+        return None
+    if say is not None:
+        say(f"decoding {path.name} to check it plays as its container says")
+    try:
+        return mp4box.span_reasons(box["expected"], ffmpeg_decode(ffmpeg, path))
+    except KbError:
+        return None

@@ -135,6 +135,33 @@ def record_origin(project: Any, rel: str, origin: Dict[str, Any], transforms: Li
     return _mutate(project, fn, "kb assets: provenance", opts)
 
 
+def record_origins(project: Any, records: List[Dict[str, Any]], opts: Any = None) -> Optional[lockmod.Mutation]:
+    """record_origin for a batch in one write: each { rel, origin, transforms }, hashed as the file is now."""
+    root = project.root if hasattr(project, "root") else Path(project)
+    rows = []
+    for r in records:
+        if not project_rel(r["rel"]):
+            raise KbError(f"provenance paths are project-relative under assets/, not {r['rel']!r}", EXIT_PROBLEMS, kind="invalid")
+        check_origin(r["origin"])
+        sha = file_hash(root, r["rel"])
+        if sha is not None:
+            rows.append((r, sha))
+    if not rows:
+        return None
+
+    def fn(doc: Any) -> Any:
+        doc = _checked(doc)
+        for r, sha in rows:
+            record = doc["assets"].get(r["rel"])
+            if not isinstance(record, dict):
+                record = {}
+            record.update(sha256=sha, origin=copy.deepcopy(r["origin"]), transforms=copy.deepcopy(r["transforms"]))
+            doc["assets"][r["rel"]] = record
+        return doc
+
+    return _mutate(project, fn, "kb assets: provenance", opts)
+
+
 def forget(project: Any, rel: str, opts: Any = None) -> lockmod.Mutation:
     def fn(doc: Any) -> Any:
         if doc is None:
@@ -208,12 +235,14 @@ def _mutate(project: Any, fn: Any, op: str, opts: Any) -> lockmod.Mutation:
     )
 
 
-def origin(kind: str, tool: str, *, source: Optional[str] = None, source_name: Optional[str] = None) -> Dict[str, Any]:
+def origin(kind: str, tool: str, *, source: Optional[str] = None, source_name: Optional[str] = None, source_sha256: Optional[str] = None) -> Dict[str, Any]:
     out: Dict[str, Any] = {"kind": kind}
     if source:
         out["from"] = source
     if source_name:
         out["sourceName"] = source_name
+    if source_sha256:
+        out["sourceSha256"] = source_sha256
     out["tool"] = tool
     out["atMs"] = now_ms()
     return out

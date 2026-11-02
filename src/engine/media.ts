@@ -20,15 +20,30 @@ export function listProjectMedia(slug: string): Promise<string[]> {
   return invoke<string[]>("list_project_media", { slug });
 }
 
-/** Copy files into the project's assets/; returns the imported relative paths. New files join the workspace asset inventory so `resolveAssetUrl` accepts them immediately, and the app-wide media-changed event refreshes every open picker in every window. */
-export async function importMedia(slug: string, paths: string[]): Promise<string[]> {
-  const rels = await invoke<string[]>("import_media", { slug, paths });
+/** What one import did to each file: one file's trouble never stops the rest. */
+export interface ImportReport {
+  rels: string[];
+  /** Stills baked into plain sRGB, upright pixels on the way in. */
+  converted: number;
+  /** Landed, but worth saying: a blank still, an animated one, one that wasn't what its name said. */
+  notes: string[];
+  /** Never landed, each with its reason. */
+  refused: string[];
+}
+
+async function announceImport(slug: string, report: ImportReport): Promise<void> {
   await refreshWorkspaceAssets(`ws:${slug}`);
-  if (rels.length > 0) {
-    await emit("kookaburra://media-imported", { rels });
+  if (report.rels.length > 0) {
+    await emit("kookaburra://media-imported", { rels: report.rels });
     await emit("kookaburra://media-changed", null);
   }
-  return rels;
+}
+
+/** Copy files into the project's assets/. New files join the workspace asset inventory so `resolveAssetUrl` accepts them immediately, and the app-wide media-changed event refreshes every open picker in every window. */
+export async function importMedia(slug: string, paths: string[]): Promise<ImportReport> {
+  const report = await invoke<ImportReport>("import_media", { slug, paths });
+  await announceImport(slug, report);
+  return report;
 }
 
 /** Import one file delivered as bytes (an HTML5 drop in the editor window, where WKWebView never exposes real paths); same destination, inventory refresh and media-changed broadcast as `importMedia`. */
@@ -36,16 +51,43 @@ export async function importMediaBytes(
   slug: string,
   fileName: string,
   bytes: Uint8Array,
-): Promise<string | null> {
-  const rel = await invoke<string | null>("import_media_bytes", bytes, {
+): Promise<ImportReport> {
+  const report = await invoke<ImportReport>("import_media_bytes", bytes, {
     headers: { "x-kookaburra-slug": slug, "x-kookaburra-name": fileName },
   });
-  if (rel !== null) {
-    await refreshWorkspaceAssets(`ws:${slug}`);
-    await emit("kookaburra://media-imported", { rels: [rel] });
-    await emit("kookaburra://media-changed", null);
+  await announceImport(slug, report);
+  return report;
+}
+
+/** A one-file import's path, for callers that place it straight away: a refused file is their error. */
+export function soleImport(report: ImportReport): string | undefined {
+  if (report.refused.length > 0) throw new Error(report.refused.join(". "));
+  return report.rels[0];
+}
+
+/** What a finished import has to say; null when it did nothing. `conforming` counts the clips still conforming. */
+export function importSummary(
+  report: ImportReport,
+  conforming = 0,
+): { kind: "success" | "error"; message: string; sticky: boolean } | null {
+  const added = report.rels.length;
+  const details = [
+    conforming > 0 &&
+      `${conforming} conforming (place ${conforming === 1 ? "it" : "them"} now, Media shows progress)`,
+    report.converted > 0 && `${report.converted} converted to plain sRGB`,
+  ].filter(Boolean);
+  const parts = [...report.notes, ...report.refused];
+  if (added > 0) {
+    parts.unshift(
+      `Added ${added} file${added === 1 ? "" : "s"} to assets${details.length > 0 ? `; ${details.join("; ")}` : ""}`,
+    );
   }
-  return rel;
+  if (parts.length === 0) return null;
+  return {
+    kind: report.refused.length > 0 ? "error" : "success",
+    message: parts.join(". "),
+    sticky: report.notes.length > 0,
+  };
 }
 
 /** One scene's terminal snapshot PNG, overwriting the canonical `assets/terminal-<stem>.png` in place (recaptures re-bake at one home; its refreshed revision moves mounted readers to a new URL). Same inventory refresh and media-changed broadcast as the other imports. */

@@ -277,7 +277,7 @@ def png_bytes(width: int = 2, height: int = 3) -> bytes:
     def chunk(kind: bytes, data: bytes) -> bytes:
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
 
-    raw = b"".join(b"\x00" + b"\x00\x00\x00\xff" * width for _ in range(height))
+    raw = b"".join(b"\x00" + b"".join(b"\xff\xff\xff\xff" if (x + y) % 2 else b"\x00\x00\x00\xff" for x in range(width)) for y in range(height))
     ihdr = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
 
@@ -344,7 +344,7 @@ def make_project(root: Path, scenes: Optional[List[str]] = None, git: bool = Fal
 
 
 # Every path a hostile folder can link for kb. Add a new .kb/ scratch folder here as it lands.
-HOSTILE_KB_FOLDERS = [".kb", ".kb/leases", ".kb/agents", ".kb/captures", ".kb/verify", ".kb/archive", ".kb/song", ".kb/reference", ".kb/footage", ".kb/flashes", ".kb/previews"]
+HOSTILE_KB_FOLDERS = [".kb", ".kb/leases", ".kb/agents", ".kb/captures", ".kb/verify", ".kb/archive", ".kb/song", ".kb/reference", ".kb/footage", ".kb/flashes", ".kb/previews", ".kb/thumbs"]
 HOSTILE_KB_FILES = [".kb/lock", ".kb/events.jsonl", ".kb/notes.md"]
 
 
