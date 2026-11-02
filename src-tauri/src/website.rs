@@ -204,7 +204,23 @@ struct WebsiteView {
 struct WebsiteRegistry {
     views: HashMap<String, WebsiteView>,
     loopback_grants: HashSet<(String, String)>,
+    /// (project key, origin) pairs a scene asked for this session; only these can reach the grant sheet.
+    grant_requests: HashSet<(String, String)>,
     tick: u64,
+}
+
+impl WebsiteRegistry {
+    /// One request buys one sheet, whatever the answer: a decline needs the scene to ask again.
+    fn take_grant_request(&mut self, project_key: &str, origin: &str) -> Result<(), String> {
+        if self
+            .grant_requests
+            .remove(&(project_key.to_owned(), origin.to_owned()))
+        {
+            Ok(())
+        } else {
+            Err("This website hasn't asked for access. Open it again.".into())
+        }
+    }
 }
 
 #[derive(Default)]
@@ -496,7 +512,19 @@ fn emit_to_owner<T: Serialize + Clone>(app: &AppHandle, owner: &str, event: &str
     }
 }
 
-fn emit_origin_request(app: &AppHandle, owner: &str, view_id: &str, origin: &str, loopback: bool) {
+fn request_origin_grant(
+    app: &AppHandle,
+    owner: &str,
+    view_id: &str,
+    project_key: &str,
+    origin: &str,
+    loopback: bool,
+) {
+    if let Ok(mut registry) = app.state::<WebsiteState>().0.lock() {
+        registry
+            .grant_requests
+            .insert((project_key.to_owned(), origin.to_owned()));
+    }
     emit_to_owner(
         app,
         owner,
@@ -567,7 +595,7 @@ fn navigation_allowed(app: &AppHandle, view_id: &str, target: &Url) -> bool {
             }
         }
         if owner == "main" {
-            emit_origin_request(app, &owner, view_id, &origin, loopback);
+            request_origin_grant(app, &owner, view_id, &project_key, &origin, loopback);
         } else {
             emit_view_state(app, &owner, view_id, "blocked", Some(origin));
         }
@@ -692,7 +720,7 @@ pub fn website_open(
 
     if !granted {
         if owner == "main" {
-            emit_origin_request(&app, &owner, &id, &origin, loopback);
+            request_origin_grant(&app, &owner, &id, &project_key, &origin, loopback);
         }
         return Ok(WebsiteOpenResponse {
             view_id: id,
@@ -865,18 +893,58 @@ pub fn website_show(
     child.show().map_err(|error| error.to_string())
 }
 
+/// The sheet's body: origin and project on lines of their own, so a project name can't reflow the origin.
+fn grant_sheet_body(origin: &str, project: &str, loopback: bool) -> String {
+    let reach = if loopback {
+        "This local address can change owners. Access lasts only until Kookaburra Cut quits."
+    } else {
+        "This lets the page make browser requests and use the shared Website login profile."
+    };
+    format!(
+        "Website: {origin}\nProject: {project}\n\n{reach} Every scene in this project can then open it."
+    )
+}
+
+/// Asks once per origin per project on a native sheet the webview cannot answer (Return declines), and only for a request `website_open` or a navigation raised this session. Resolves to whether the origin is now allowed.
 #[tauri::command]
-pub fn website_grant_origin(
+pub async fn website_grant_origin(
     app: AppHandle,
     webview: Webview,
     settings: State<'_, workspace::SettingsState>,
     state: State<'_, WebsiteState>,
     project_path: String,
     origin: String,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     require_caller(&webview, &["main"])?;
     let project_key = canonical_project_key(&app, &settings, &project_path)?;
     let (_, origin, loopback) = parse_navigation_url(&origin)?;
+    let granted = origin_granted(&app, &settings, &state, &project_key, &origin, loopback)?;
+    {
+        let mut registry = state.0.lock().map_err(|_| "website state poisoned")?;
+        let requested = registry.take_grant_request(&project_key, &origin);
+        if granted {
+            return Ok(true);
+        }
+        requested?;
+    }
+    let declined = crate::native_alert::ask(
+        &app,
+        "main",
+        crate::native_alert::Prompt {
+            title: "Allow this website?",
+            body: &grant_sheet_body(
+                &origin,
+                &workspace::consent_project_name_at(std::path::Path::new(&project_key)),
+                loopback,
+            ),
+            default_button: "Don't allow",
+            other_button: "Allow",
+        },
+    )
+    .await?;
+    if declined {
+        return Ok(false);
+    }
     if loopback {
         state
             .0
@@ -884,7 +952,7 @@ pub fn website_grant_origin(
             .map_err(|_| "website state poisoned")?
             .loopback_grants
             .insert((project_key, origin));
-        return Ok(());
+        return Ok(true);
     }
     workspace::update_settings(&app, &settings, |value| {
         let origins = value.website_origin_grants.entry(project_key).or_default();
@@ -892,7 +960,8 @@ pub fn website_grant_origin(
             origins.push(origin);
             origins.sort();
         }
-    })
+    })?;
+    Ok(true)
 }
 
 #[tauri::command]
@@ -2045,6 +2114,36 @@ mod tests {
         }
         .validate()
         .is_ok());
+    }
+
+    #[test]
+    fn a_grant_needs_a_request_and_any_answer_spends_it() {
+        let mut registry = WebsiteRegistry::default();
+        let (project, origin) = ("/Users/x/product-tour", "https://example.com");
+        assert!(registry.take_grant_request(project, origin).is_err());
+
+        registry
+            .grant_requests
+            .insert((project.to_owned(), origin.to_owned()));
+        assert!(registry
+            .take_grant_request("/Users/x/other", origin)
+            .is_err());
+        assert!(registry
+            .take_grant_request(project, "https://other.example")
+            .is_err());
+
+        assert!(registry.take_grant_request(project, origin).is_ok());
+        assert!(registry.grant_requests.is_empty());
+        assert!(registry.take_grant_request(project, origin).is_err());
+    }
+
+    #[test]
+    fn the_grant_sheet_names_the_origin_and_the_project() {
+        let body = grant_sheet_body("https://example.com", "Product tour", false);
+        assert!(body.starts_with("Website: https://example.com\nProject: Product tour\n"));
+        assert!(body.contains("shared Website login profile"));
+        let local = grant_sheet_body("http://localhost:3000", "Product tour", true);
+        assert!(local.contains("until Kookaburra Cut quits"));
     }
 
     #[test]

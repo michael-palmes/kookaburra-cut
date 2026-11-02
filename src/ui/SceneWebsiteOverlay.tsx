@@ -22,6 +22,7 @@ import {
   websiteBoundsForFrame,
 } from "../engine/sceneWebsiteNative";
 import {
+  type PendingWebsiteOrigin,
   sceneWebsiteKey,
   sceneWebsiteSession,
   useSceneWebsiteSessionStore,
@@ -66,6 +67,59 @@ const POSTER_ICON = (
     />
   </svg>
 );
+
+/** The scene waits here until the person answers the native sheet; the sheet is the consent, this only opens it. */
+export function WebsiteBlockedCard({ origin, onAllow }: { origin: string; onAllow: () => void }) {
+  return (
+    <div className="scene-website-consent" role="status">
+      <div className="scene-website-consent-icon">{OPEN_ICON}</div>
+      <div>
+        <strong>This website is blocked</strong>
+        <code>{origin}</code>
+      </div>
+      <div className="scene-website-consent-actions">
+        <button type="button" onClick={onAllow}>
+          {OPEN_ICON}
+          Allow this website…
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Rust's request event and `website_open`'s answer race; an origin already waiting keeps how it began. */
+export function pendingFromRequest(
+  previous: PendingWebsiteOrigin | null,
+  request: { origin: string; loopback: boolean },
+): PendingWebsiteOrigin {
+  return {
+    origin: request.origin,
+    loopback: request.loopback,
+    initial: previous?.origin === request.origin ? previous.initial : false,
+  };
+}
+
+/** What follows the sheet. A decline spends the request, so the poster's Open button or a return to the authored page asks again; the page stays blocked until then. */
+export async function settleWebsiteGrant(
+  pending: PendingWebsiteOrigin,
+  allowed: boolean,
+  steps: {
+    decline: () => void;
+    commit: () => Promise<void>;
+    reopen: () => Promise<void>;
+    resume: () => Promise<void>;
+    hasView: boolean;
+  },
+): Promise<void> {
+  if (!allowed) {
+    steps.decline();
+    if (!pending.initial) await steps.reopen();
+    return;
+  }
+  await steps.commit();
+  if (pending.initial || !steps.hasView) await steps.reopen();
+  else await steps.resume();
+}
 
 function rectStyle(rect: { x: number; y: number; width: number; height: number }, aspect: number) {
   return {
@@ -278,11 +332,7 @@ export function SceneWebsiteOverlay({
       patchSession(key, {
         active: false,
         focused: false,
-        pendingOrigin: {
-          origin: event.payload.origin,
-          loopback: event.payload.loopback,
-          initial: false,
-        },
+        pendingOrigin: pendingFromRequest(current.pendingOrigin, event.payload),
       });
       void hideView(event.payload.viewId);
     }).then(keep);
@@ -350,40 +400,52 @@ export function SceneWebsiteOverlay({
     return () => document.removeEventListener("pointerdown", release, true);
   }, [session?.focused, key, patchSession]);
 
-  const approveOrigin = useCallback(async () => {
+  const askingRef = useRef(false);
+  const askForOrigin = useCallback(async () => {
     const current = sceneWebsiteSession(key);
     const pending = current.pendingOrigin;
-    if (!pending || !projectPath || !website) return;
+    if (!pending || !projectPath || !website || askingRef.current) return;
     const requestedOrigins = [...website.requestedOrigins];
     if (!requestedOrigins.includes(pending.origin)) requestedOrigins.push(pending.origin);
-    patchSession(key, { state: "loading", pendingOrigin: null, error: null });
+    askingRef.current = true;
     try {
-      await grantWebsiteOrigin(projectPath, pending.origin);
-      await commit(
-        doc,
-        (next) => {
-          next.website = { ...(next.website ?? {}), requestedOrigins };
+      const allowed = await grantWebsiteOrigin(projectPath, pending.origin);
+      patchSession(key, { pendingOrigin: null, error: null });
+      await settleWebsiteGrant(pending, allowed, {
+        decline: () => patchSession(key, { active: false }),
+        commit: async () => {
+          patchSession(key, { state: "loading" });
+          await commit(
+            doc,
+            (next) => {
+              const latest = next.website?.requestedOrigins ?? [];
+              next.website = {
+                ...(next.website ?? {}),
+                requestedOrigins: [...new Set([...latest, ...requestedOrigins])],
+              };
+            },
+            "allow Website origin",
+          );
         },
-        "allow Website origin",
-      );
-      if (pending.initial || !current.viewId) {
-        await activate(requestedOrigins);
-      } else {
-        wantsLiveRef.current = true;
-        await resumeWebsiteNavigation(current.viewId, requestedOrigins);
-      }
+        reopen: () => activate(allowed ? requestedOrigins : undefined),
+        resume: async () => {
+          wantsLiveRef.current = true;
+          await resumeWebsiteNavigation(current.viewId as string, requestedOrigins);
+        },
+        hasView: current.viewId !== null,
+      });
     } catch (error) {
       wantsLiveRef.current = false;
-      patchSession(key, { state: "failed", active: false, error: plainError(error) });
+      patchSession(key, {
+        state: "failed",
+        active: false,
+        pendingOrigin: null,
+        error: plainError(error),
+      });
+    } finally {
+      askingRef.current = false;
     }
   }, [key, projectPath, website, patchSession, commit, doc, activate]);
-
-  const rejectOrigin = useCallback(() => {
-    const current = sceneWebsiteSession(key);
-    const initial = current.pendingOrigin?.initial ?? true;
-    patchSession(key, { pendingOrigin: null, active: false });
-    if (!initial) void activate();
-  }, [key, patchSession, activate]);
 
   if (!website || !layout || playing || cameraArmed || blocked) return null;
   const current = session ?? sceneWebsiteSession(key);
@@ -454,27 +516,10 @@ export function SceneWebsiteOverlay({
         </div>
       )}
       {current.pendingOrigin && (
-        <div className="scene-website-consent" role="dialog" aria-modal="true">
-          <div className="scene-website-consent-icon">{OPEN_ICON}</div>
-          <div>
-            <strong>Allow this website?</strong>
-            <code>{current.pendingOrigin.origin}</code>
-            <p>
-              {current.pendingOrigin.loopback
-                ? "This local address can change owners. Access lasts only until Kookaburra Cut quits."
-                : "This lets the page make browser requests and use the shared Website login profile."}
-            </p>
-          </div>
-          <div className="scene-website-consent-actions">
-            <button type="button" className="secondary" onClick={rejectOrigin}>
-              Not now
-            </button>
-            <button type="button" onClick={() => void approveOrigin()}>
-              {OPEN_ICON}
-              Allow origin
-            </button>
-          </div>
-        </div>
+        <WebsiteBlockedCard
+          origin={current.pendingOrigin.origin}
+          onAllow={() => void askForOrigin()}
+        />
       )}
     </div>
   );

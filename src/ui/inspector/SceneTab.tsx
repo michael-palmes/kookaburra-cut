@@ -43,7 +43,7 @@ import { deriveManagedTextModel, resolveManagedTextGroups } from "../../engine/m
 import { formatMediaDuration, fsUrl, type MediaMeta, mediaMeta } from "../../engine/media";
 import { useObjectEditStore } from "../../engine/objectEditStore";
 import { optionPreviewClip, optionPreviewStill } from "../../engine/optionPreviews";
-import { notePickedFolder } from "../../engine/pickedFolders";
+import { pickFolder } from "../../engine/pickedFolders";
 import {
   assetFileUrl,
   type LoadedProject,
@@ -7549,12 +7549,8 @@ export function SceneTab({
       }
     };
     const chooseStartFolder = async () => {
-      const picked = await openFolderPicker({
-        directory: true,
-        title: "Choose the session's start folder",
-      });
-      if (typeof picked === "string" && picked.length > 0) {
-        void notePickedFolder(picked);
+      const picked = await pickFolder("terminalStartFolder");
+      if (picked) {
         patchTerminal((t) => {
           t.startPath = picked;
         }, "set terminal start path");

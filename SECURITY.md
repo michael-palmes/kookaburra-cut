@@ -208,7 +208,8 @@ are backed up like any document. `$APPDATA` is
   overwriting, or the project's `exports/` folder (Settings ▸ Video, "Save
   exports to Downloads"; terminal and bridge runs always use the project
   folder). ffmpeg writes a hidden `.part` sibling and renames it on success.
-  Stills and `.kbpack` files go where the save dialog points
+  Stills go where the save dialog points; `.kbpack` files go where the Save
+  dialog `build_pack` runs from Rust points, never a webview path
   (`pack::commands::validate_destination` refuses system folders, `$APPDATA`
   and the app bundle). Control: `resolve_export_output` in `lib.rs`.
 - **`~/.claude`**: Claude Code's own history, sessions and login. The app only
@@ -299,9 +300,10 @@ and install. The app holds no API key and sends nothing to Anthropic itself.
   content, and before anything that sends work off the Mac.
 - **kb reach** (`kblib/reach.py`): writes (`capture --out`, `assets unused --archive`,
   the CLI's `render --out` in `cli.rs`) land only inside the project, the
-  workspace or a folder the app's own dialog returned this session
-  (`note_picked_folder` in `bridge.rs`, which refuses the home folder, shallow
-  paths and credential folders); reads outside the workspace print the resolved
+  workspace or a folder a Rust-run dialog returned this session (`pick_folder`
+  and the pack Save dialog, through `note_chosen_folder` in `bridge.rs`, which
+  keeps out the home folder, shallow paths and credential folders; the webview
+  cannot add one); reads outside the workspace print the resolved
   path and size to stderr and refuse `~/.ssh`, `~/.aws`, `~/.config`,
   `~/.gnupg`, `~/Library/Keychains`, `.env*`, `.netrc`, `*.pem`, `*.p12`,
   `*.key` and shell histories. Bridge captures, checks, preset inserts and
@@ -349,6 +351,14 @@ drop a request, which is the out-of-scope case above.
   allowed it (`require_source_allowed`); bundled templates and presets ship
   with the app and pass. The main window asks through the native sheet before
   calling, so a person meets the sheet, never the refusal.
+- **Website origin grants** (`website_grant_origin`, main window only): an
+  `NSAlert` sheet names the origin and the project; the default button, Return,
+  is Don't allow. Only a request `website_open` or a blocked navigation raised
+  this session can reach it, and any answer spends that request. A grant is once
+  per origin per project; an origin already granted asks nothing. The Allow
+  gate, moving the workspace, bridge confirmations and these grants are all
+  answered natively, so a compromised webview can show the question but never
+  press the button.
 - **Per-window ACL** (`src-tauri/permissions/*.json`, `src-tauri/capabilities/*.json`):
   every `#[tauri::command]` belongs to exactly one permission set, and each
   window gets only its sets. Main: project read, render and write, trust, media
@@ -558,5 +568,11 @@ Deliberately deferred, recorded so nobody mistakes them for done:
   `website.rs` and the AVFoundation conform path).
 - A Homebrew cask, so MDM fleets can install and pin versions without the DMG.
 - A per-project website data store: approved projects share one login profile
-  today (`docs/scene-website.md`, "Accepted residual risk").
-- The bridge queue has no authentication beyond the user account.
+  today (F-033, `docs/scene-website.md`, "Accepted residual risk").
+- Bridge request signing: the queue is 0700 and same-user processes are out of
+  scope, so it has no authentication beyond the user account.
+- Sealing the trust grants with an HMAC under a Keychain secret: the Keychain is
+  unavailable to headless exports, and after the stage worker a forged grant buys
+  only a sandboxed render; native consent closes the webview path.
+- A launch token for the `KOOKABURRA_*` autorun set: any same-user wrapper can
+  mint one, and same-user processes are out of scope.

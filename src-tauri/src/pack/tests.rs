@@ -2365,3 +2365,14 @@ fn cancellation_leaves_nothing_behind() {
     assert_eq!(error.variant(), "cancelled");
     assert!(workspace.staging_is_empty());
 }
+
+#[test]
+fn a_suggested_pack_name_is_only_ever_a_file_name() {
+    use super::commands::suggested_file_name;
+    assert_eq!(suggested_file_name("acme-brand-kit"), "acme-brand-kit.kbpack");
+    assert_eq!(suggested_file_name("../../etc/passwd"), "etcpasswd.kbpack");
+    assert_eq!(suggested_file_name("/Users/x/evil"), "Usersxevil.kbpack");
+    assert_eq!(suggested_file_name(".."), "pack.kbpack");
+    assert_eq!(suggested_file_name(" \u{0} "), "pack.kbpack");
+    assert!(suggested_file_name(&"a".repeat(400)).len() < 255);
+}
