@@ -2477,7 +2477,7 @@ export default function App() {
     if (!playing) playUntilRef.current = null;
   }, [playing]);
 
-  // Spacebar toggles play/pause, committing the value first when it comes from a slider, number or hex field (a literal space means nothing there); arrows step one frame (shift = 10) on the export frame grid. Text fields, selects and xterm's hidden textarea keep their keys, and arrows always stay in a focused control so a frame step can never interrupt an edit; an open modal or media preview stands the whole handler down (the preview owns the transport keys, as it does in the editor window). Keyframe arbitration: while the camera editor has a selected diamond, arrows nudge that key instead and the playhead step stands down.
+  // Spacebar toggles play/pause, committing the value first when it comes from a slider, number or hex field (a literal space means nothing there); arrows step one frame (shift = 10) on the export frame grid. Text fields and selects keep their keys, and arrows always stay in a focused control so a frame step can never interrupt an edit; an open modal or media preview stands the whole handler down (the preview owns the transport keys, as it does in the editor window). Keyframe arbitration: while the camera editor has a selected diamond, arrows nudge that key instead and the playhead step stands down.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
