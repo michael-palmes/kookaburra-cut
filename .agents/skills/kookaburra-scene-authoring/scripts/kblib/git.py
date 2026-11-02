@@ -5,7 +5,9 @@ from __future__ import annotations
 import copy
 import json
 import os
+import re
 import shutil
+import stat
 import subprocess
 import time
 from pathlib import Path
@@ -20,7 +22,16 @@ EXCLUDES = ["/assets/", "/exports/", "edits/*.json.tmp", "edits/.*.tmp", "edits/
 FALLBACK_IDENTITY = ["-c", "user.name=Kookaburra Cut", "-c", "user.email=kookaburra@localhost"]
 INDEX_LOCK_BACKOFF_MS = (50, 100, 200, 400, 800, 1600)
 STALE_LOCK_S = 60
+# A folder's .git arrives with it, so nothing in it may name a program. Keys the allow-list below can't see still lose to these.
+GUARDS = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "log.showSignature=false", "-c", "gpg.program=/usr/bin/false", "-c", "core.pager=cat"]
+# What git init and git remote add write. None names a program or moves the repository, and kb never fetches.
+INERT_KEYS = {
+    "core.repositoryformatversion", "core.filemode", "core.bare", "core.logallrefupdates", "core.ignorecase", "core.precomposeunicode", "core.symlinks",
+    "extensions.objectformat", "extensions.refstorage", "user.name", "user.email",
+}
+INERT_VARS = {"remote": {"url", "fetch"}, "branch": {"remote", "merge"}}
 _available: Optional[bool] = None
+_config_seen: Tuple[Any, Optional[str]] = (None, None)
 
 
 def git_available() -> bool:
@@ -68,15 +79,73 @@ def index_locked(root: Path, args: List[str]) -> KbError:
     )
 
 
-def run(root: Path, args: List[str], check: bool = True, timeout: float = 30) -> subprocess.CompletedProcess:
-    """git in the project; a failure naming index.lock is retried (50 ms doubling to 1.6 s), then exit 3 kind index-locked."""
-    env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GIT_OPTIONAL_LOCKS="0", LC_ALL="C")
+def isolated_env() -> Dict[str, str]:
+    env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GIT_OPTIONAL_LOCKS="0", LC_ALL="C", GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null")
     env.pop("GIT_DIR", None)
     env.pop("GIT_WORK_TREE", None)
     env.pop("GIT_INDEX_FILE", None)
+    return env
+
+
+def inert_key(key: str) -> bool:
+    if key in INERT_KEYS:
+        return True
+    section, _, rest = key.partition(".")
+    return rest.rpartition(".")[2] in INERT_VARS.get(section, ()) and "." in rest
+
+
+def _config_refusal(config: str) -> Optional[str]:
+    """Git's own parser reads the file, with includes off, so no reading of it can differ from git's."""
+    if not git_available():
+        return ".git/config can't be read"
+    try:
+        proc = subprocess.run(["git", "config", "--file", config, "--no-includes", "--list", "--name-only", "-z"], capture_output=True, timeout=10, cwd="/",
+                              stdin=subprocess.DEVNULL, env=isolated_env())
+    except (OSError, subprocess.TimeoutExpired):
+        return ".git/config can't be read"
+    if proc.returncode != 0:
+        return ".git/config can't be read"
+    for key in proc.stdout.decode("utf-8", "replace").split("\0"):
+        if key and not inert_key(key):
+            return f".git/config sets {re.sub(r'[^A-Za-z0-9._/-]', '?', key)[:80]}, which the app and kb didn't write"
+    return None
+
+
+def refusal(root: Path) -> Optional[str]:
+    """Why git must not run in root: a .git that reaches elsewhere for its settings, or a .git/config key nothing here wrote."""
+    global _config_seen
+    git_dir = os.path.abspath(os.path.join(str(root), ".git"))
+    config = os.path.join(git_dir, "config")
+    try:
+        if not stat.S_ISDIR(os.lstat(git_dir).st_mode):
+            return ".git is a link or a file"
+        if os.path.lexists(os.path.join(git_dir, "commondir")):
+            return ".git/commondir takes its settings from another repository"
+        info = os.lstat(config)
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return ".git can't be read"
+    if not stat.S_ISREG(info.st_mode):
+        return ".git/config is not a plain file"
+    seen = (config, info.st_ino, info.st_mtime_ns, info.st_size)
+    if _config_seen[0] != seen:
+        _config_seen = (seen, _config_refusal(config))
+    return _config_seen[1]
+
+
+def run(root: Path, args: List[str], check: bool = True, timeout: float = 30) -> subprocess.CompletedProcess:
+    """git in the project, isolated from the folder's settings and any repository above it; a failure naming index.lock is retried (50 ms doubling to 1.6 s), then exit 3 kind index-locked."""
+    refused = refusal(root)
+    if refused:
+        if check:
+            raise KbError(f"kb won't run git in {root}: {refused}", EXIT_PROBLEMS, kind="git-config")
+        return subprocess.CompletedProcess(args, 128, "", refused)
+    env = isolated_env()
+    env["GIT_CEILING_DIRECTORIES"] = os.path.dirname(os.path.realpath(str(root)))
     for attempt in range(len(INDEX_LOCK_BACKOFF_MS) + 1):
         try:
-            proc = subprocess.run(["git", "-c", "core.quotepath=off", "-C", str(root)] + args, capture_output=True, text=True, timeout=timeout, env=env)
+            proc = subprocess.run(["git", *GUARDS, "-c", "core.quotepath=off", "-C", str(root)] + args, capture_output=True, text=True, timeout=timeout, env=env)
         except subprocess.TimeoutExpired:
             raise KbError(f"git {args[0]} timed out after {int(timeout)} s", EXIT_TRANSIENT, kind="transient", retry_after_ms=5000) from None
         except OSError as e:
@@ -98,10 +167,18 @@ def require_git() -> None:
         raise KbError("git is not available (macOS asks to install the developer tools on first use); checkpoints need it", EXIT_ENV)
 
 
+def _holds_repo(folder: Path) -> bool:
+    git_dir = folder / ".git"
+    return git_dir.is_file() or (git_dir / "HEAD").exists()
+
+
 def repo_state(project: Project) -> str:
-    """"own" (a repo rooted at the project), "none" or "foreign" (inside another repo)."""
+    """"own" (a repo rooted at the project), "none" or "foreign" (inside another repo). Read from the files, so git never loads a parent's settings."""
     if not git_available():
         return "none"
+    root = project.root.resolve()
+    if not os.path.lexists(root / ".git") and any(_holds_repo(parent) for parent in root.parents):
+        return "foreign"
     proc = run(project.root, ["rev-parse", "--show-toplevel"], check=False)
     if proc.returncode != 0:
         return "none"
@@ -176,10 +253,18 @@ def edit_hashes(project: Project) -> Dict[str, str]:
     return out
 
 
+def _global_config(key: str) -> str:
+    """One value from the person's own global file, outside the project, since run() can't see that file."""
+    try:
+        return subprocess.run(["git", "config", "--global", "--get", key], capture_output=True, text=True, timeout=5, cwd="/", stdin=subprocess.DEVNULL).stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
 def identity(project: Project) -> List[str]:
-    name = run(project.root, ["config", "user.name"], check=False).stdout.strip()
-    email = run(project.root, ["config", "user.email"], check=False).stdout.strip()
-    return [] if name and email else list(FALLBACK_IDENTITY)
+    name = run(project.root, ["config", "user.name"], check=False).stdout.strip() or _global_config("user.name")
+    email = run(project.root, ["config", "user.email"], check=False).stdout.strip() or _global_config("user.email")
+    return ["-c", f"user.name={name}", "-c", f"user.email={email}"] if name and email else list(FALLBACK_IDENTITY)
 
 
 def has_head(project: Project) -> bool:

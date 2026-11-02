@@ -112,6 +112,9 @@ def app_line(project: Project, hb: Optional[Dict[str, Any]], rows: Optional[List
 
 
 def checkpoint_line(project: Project) -> str:
+    refused = gitmod.git_available() and gitmod.refusal(project.root)
+    if refused:
+        return f"Checkpoints: unavailable, kb won't run git here ({refused}); don't run git in this folder, tell the person"
     state = gitmod.repo_state(project)
     if state == "none":
         return "Checkpoints: none yet (kb checkpoint starts the history)" if gitmod.git_available() else "Checkpoints: unavailable (git is not installed)"

@@ -1853,10 +1853,14 @@ pub async fn provision_project(
     }
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<SettingsState>();
+        // The terminal stamps too, so git waits for Allow here rather than at each caller.
+        let allowed = stored_trust_matches(&app, &state, &slug, &dir).unwrap_or(false);
         let stamped = restamping_trust(&app, &state, &slug, || {
             stamp_claude_provisioning(&app, &dir)
         });
-        trim_legacy_history(app.clone(), slug, dir);
+        if allowed {
+            trim_legacy_history(app.clone(), slug, dir);
+        }
         stamped
     })
     .await

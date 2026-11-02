@@ -2,12 +2,130 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import threading
 import time
+import types
+from unittest import mock
 
-from kblib import git
+from kblib import git, overview
 
 from .helpers import KbTestCase, make_project, read_json, run_git, write, write_json
+
+
+class FolderGitSettings(KbTestCase):
+    """A shared folder carries .git as ordinary content: its settings must never make kb run a program."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        if not git.git_available():
+            self.skipTest("git is not available")
+        self.root = make_project(self.tmp, git=True)
+        self.marker = self.tmp / "ran"
+        self.program = self.tmp / "program"
+        self.program.write_text(f"#!/bin/sh\ntouch '{self.marker}'\nexit 0\n")
+        self.program.chmod(0o755)
+
+    def refused(self, args: list, needle: str) -> None:
+        proc = self.kb([*args, "--json"], cwd=self.root)
+        self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+        body = json.loads(proc.stdout)
+        self.assertEqual(body["code"], "git-config")
+        self.assertIn(needle, body["error"])
+        self.assertFalse(self.marker.exists(), "a planted program ran")
+
+    def test_a_planted_key_runs_nothing_and_is_refused_by_name(self) -> None:
+        included = self.tmp / "included.cfg"
+        included.write_text(f"[core]\n\tfsmonitor = {self.program}\n")
+        write(self.root / ".gitattributes", "* filter=mark diff=mark\n")
+        write(self.root / "scenes" / "02-hero.json", '{"version": 1, "name": "Edited"}\n')
+        for key in ["core.fsmonitor", "core.hooksPath", "diff.external", "filter.mark.clean", "filter.mark.smudge", "diff.mark.textconv", "gpg.program", "include.path"]:
+            with self.subTest(key=key):
+                run_git(self.root, ["config", key, str(included if key == "include.path" else self.program)])
+                status = self.kb(["status"], cwd=self.root)
+                self.assertExit(status, 0)
+                self.assertIn("won't run git", status.stdout)
+                self.refused(["checkpoint", "x"], key.lower())
+                self.refused(["undo"], key.lower())
+                self.assertFalse(self.marker.exists(), "a planted program ran")
+                run_git(self.root, ["config", "--file", ".git/config", "--unset", key])
+        self.assertExit(self.kb(["checkpoint", "clean again"], cwd=self.root), 0)
+
+    def test_a_git_folder_that_reaches_elsewhere_is_refused(self) -> None:
+        git_dir = self.root / ".git"
+        kept = self.tmp / "kept-git"
+        git_dir.rename(kept)
+        for plant, needle in [(lambda: git_dir.write_text(f"gitdir: {kept}\n"), ".git is a link"), (lambda: git_dir.symlink_to(kept), ".git is a link")]:
+            plant()
+            self.refused(["checkpoint", "x"], needle)
+            git_dir.unlink()
+        kept.rename(git_dir)
+        (git_dir / "commondir").write_text(str(kept))
+        self.refused(["checkpoint", "x"], "commondir")
+        (git_dir / "commondir").unlink()
+        config = git_dir / "config"
+        (self.tmp / "other-config").write_bytes(config.read_bytes())
+        config.unlink()
+        config.symlink_to(self.tmp / "other-config")
+        self.refused(["checkpoint", "x"], "plain file")
+        config.unlink()
+        config.write_text("[core\nfsmonitor = x\n")
+        self.refused(["checkpoint", "x"], "can't be read")
+
+    def test_the_guards_hold_where_the_refusal_is_not_consulted(self) -> None:
+        hook = self.root / ".git" / "hooks" / "reference-transaction"
+        hook.parent.mkdir(exist_ok=True)
+        hook.write_bytes(self.program.read_bytes())
+        hook.chmod(0o755)
+        run_git(self.root, ["update-ref", "refs/heads/control", "HEAD"])
+        self.assertTrue(self.marker.exists(), "the control run fires the hook")
+        self.marker.unlink()
+        original = git.refusal
+        git.refusal = lambda root: None
+        self.addCleanup(setattr, git, "refusal", original)
+        run_git(self.root, ["config", "core.fsmonitor", str(self.program)])
+        run_git(self.root, ["config", "gpg.program", str(self.program)])
+        run_git(self.root, ["config", "log.showSignature", "true"])
+        for args in (["status", "--porcelain"], ["ls-files"], ["log", "-1"], ["update-ref", "refs/heads/guarded", "HEAD"]):
+            self.assertEqual(git.run(self.root, args).returncode, 0, args)
+        self.assertFalse(self.marker.exists(), "a planted program ran")
+
+    def test_a_parents_settings_are_never_loaded(self) -> None:
+        outer = self.tmp
+        shutil.rmtree(self.root / ".git")
+        run_git(outer, ["init", "-q"])
+        run_git(outer, ["config", "core.fsmonitor", str(self.program)])
+        write(outer / ".gitattributes", "* filter=mark\n")
+        run_git(outer, ["config", "filter.mark.clean", str(self.program)])
+        proc = self.kb(["checkpoint"], cwd=self.root)
+        self.assertExit(proc, 2)
+        self.assertIn("inside another git repository", proc.stderr)
+        self.assertExit(self.kb(["status"], cwd=self.root), 0)
+        self.assertFalse(self.marker.exists(), "a parent's program ran")
+
+    def test_what_git_itself_writes_is_not_refused(self) -> None:
+        run_git(self.root, ["remote", "add", "origin", "/Users/x/shared.git"])
+        for key, value in [("branch.main.remote", "origin"), ("branch.main.merge", "refs/heads/main"), ("user.name", "Someone"), ("user.email", "someone@example.com")]:
+            run_git(self.root, ["config", key, value])
+        write(self.root / "scenes" / "02-hero.json", '{"version": 1, "name": "Edited"}\n')
+        self.assertExit(self.kb(["checkpoint", "mine"], cwd=self.root), 0)
+        self.assertIn("Someone <someone@example.com>", run_git(self.root, ["log", "-1", "--format=%an <%ae>"]))
+        run_git(self.root, ["config", "remote.origin.uploadpack", str(self.program)])
+        self.refused(["checkpoint", "x"], "uploadpack")
+
+    def test_without_git_nothing_spawns_it(self) -> None:
+        project = types.SimpleNamespace(root=self.root)
+        with mock.patch.object(git, "_available", False), mock.patch.object(git, "_config_seen", (None, None)), mock.patch.object(git.subprocess, "run", side_effect=AssertionError("git ran")):
+            self.assertEqual(git.refusal(self.root), ".git/config can't be read")
+            self.assertIn("git is not installed", overview.checkpoint_line(project))
+
+    def test_a_checkpoint_keeps_the_persons_global_identity(self) -> None:
+        home = self.tmp / "home"
+        home.mkdir()
+        write(home / ".gitconfig", "[user]\n\tname = Global Person\n\temail = global@example.com\n")
+        env = dict(os.environ, GIT_CONFIG_GLOBAL=str(home / ".gitconfig"))
+        with mock.patch.dict(os.environ, env):
+            self.assertEqual(git.identity(types.SimpleNamespace(root=self.root)), ["-c", "user.name=Global Person", "-c", "user.email=global@example.com"])
 
 
 class CheckpointTests(KbTestCase):
