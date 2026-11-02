@@ -118,7 +118,11 @@ mod tests {
         std::fs::write(project.join("scenes/01-a.tsx"), "changed since").unwrap();
         assert_eq!(ask(&root)["allowed"], false);
 
-        grant(&root.join("data"), &root.join("elsewhere"), &trust_fingerprint(&project));
+        grant(
+            &root.join("data"),
+            &root.join("elsewhere"),
+            &trust_fingerprint(&project),
+        );
         assert_eq!(ask(&root)["allowed"], false);
         let _ = std::fs::remove_dir_all(&root);
     }

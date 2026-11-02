@@ -44,6 +44,8 @@ pub(crate) fn snapshot(dir: &Path) -> Sources {
             }
             if meta.is_dir() {
                 stack.push(path);
+            } else if !meta.is_file() {
+                continue;
             } else if let (Ok(rel), Ok(bytes)) = (path.strip_prefix(dir), std::fs::read(&path)) {
                 files.insert(rel.to_string_lossy().replace('\\', "/"), bytes);
             }
@@ -64,7 +66,10 @@ fn shown(value: &Value) -> Value {
 
 fn change(path: &str, before: Option<&Value>, after: Option<&Value>) -> Value {
     let mut out = Map::new();
-    out.insert("path".into(), Value::String(clean_text_with_cap(path, VALUE_CAP)));
+    out.insert(
+        "path".into(),
+        Value::String(clean_text_with_cap(path, VALUE_CAP)),
+    );
     if let Some(before) = before {
         out.insert("before".into(), shown(before));
     }
@@ -126,7 +131,10 @@ fn walk_scenes(before: &[Value], after: &[Value], out: &mut Vec<Value>) {
     }
     for scene in after {
         let Some(name) = file(scene) else { continue };
-        if let Some(old) = before.iter().find(|s| file(s).as_deref() == Some(name.as_str())) {
+        if let Some(old) = before
+            .iter()
+            .find(|s| file(s).as_deref() == Some(name.as_str()))
+        {
             walk(&format!("scenes[{}]", stem(&name)), old, scene, out);
         }
     }
@@ -204,11 +212,17 @@ fn encode(line: &Value) -> String {
     if text.len() <= LINE_MAX_BYTES {
         return text;
     }
-    // Long values are capped, so only a very wide edit gets here: the file alone still says something changed.
+    // Long values are capped, so only a very wide edit gets here: the file and a count still say something changed.
+    let listed = line
+        .get("changes")
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len) as u64;
+    let more = line.get("more").and_then(Value::as_u64).unwrap_or(0);
     json!({
         "v": 1,
         "atMs": line.get("atMs").cloned().unwrap_or(Value::Null),
         "file": line.get("file").cloned().unwrap_or(Value::Null),
+        "more": listed + more,
     })
     .to_string()
 }
@@ -218,11 +232,15 @@ fn append(dir: &Path, lines: &[Value]) -> std::io::Result<()> {
     use std::os::unix::fs::OpenOptionsExt;
     let folder = dir.join(JOURNAL_DIR);
     if std::fs::symlink_metadata(&folder).is_ok_and(|meta| !meta.is_dir()) {
-        return Err(std::io::Error::other(format!("{JOURNAL_DIR} is not a folder")));
+        return Err(std::io::Error::other(format!(
+            "{JOURNAL_DIR} is not a folder"
+        )));
     }
     std::fs::create_dir_all(&folder)?;
     let path = folder.join(JOURNAL);
-    if std::fs::symlink_metadata(&path).is_ok_and(|meta| meta.is_file() && meta.len() > JOURNAL_MAX_BYTES) {
+    if std::fs::symlink_metadata(&path)
+        .is_ok_and(|meta| meta.is_file() && meta.len() > JOURNAL_MAX_BYTES)
+    {
         std::fs::rename(&path, folder.join(JOURNAL_OLD))?;
     }
     let text: String = lines.iter().map(|line| encode(line) + "\n").collect();
@@ -313,11 +331,17 @@ mod tests {
     #[test]
     fn sidecars_walk_into_arrays_and_code_only_names_the_file() {
         let before = sources(&[
-            ("scenes/01-a.json", r#"{"text":{"title":"Old"},"camera":{"keys":[{"id":"k1","tMs":0},{"id":"k2","tMs":2000}]}}"#),
+            (
+                "scenes/01-a.json",
+                r#"{"text":{"title":"Old"},"camera":{"keys":[{"id":"k1","tMs":0},{"id":"k2","tMs":2000}]}}"#,
+            ),
             ("scenes/01-a.tsx", "old code"),
         ]);
         let after = sources(&[
-            ("scenes/01-a.json", r#"{"text":{"title":"New"},"camera":{"keys":[{"id":"k1","tMs":0},{"id":"k2","tMs":2500}]}}"#),
+            (
+                "scenes/01-a.json",
+                r#"{"text":{"title":"New"},"camera":{"keys":[{"id":"k1","tMs":0},{"id":"k2","tMs":2500}]}}"#,
+            ),
             ("scenes/01-a.tsx", "new code"),
             ("scenes/02-b.json", "{}"),
         ]);
@@ -330,8 +354,14 @@ mod tests {
                 { "path": "text.title", "before": "Old", "after": "New" },
             ])
         );
-        assert_eq!(lines[1], json!({ "v": 1, "atMs": 1, "file": "scenes/01-a.tsx" }));
-        assert_eq!(lines[2], json!({ "v": 1, "atMs": 1, "file": "scenes/02-b.json", "created": true }));
+        assert_eq!(
+            lines[1],
+            json!({ "v": 1, "atMs": 1, "file": "scenes/01-a.tsx" })
+        );
+        assert_eq!(
+            lines[2],
+            json!({ "v": 1, "atMs": 1, "file": "scenes/02-b.json", "created": true })
+        );
         let gone = entries(&after, &before, 2);
         assert_eq!(gone[2]["removed"], true);
     }
@@ -339,7 +369,10 @@ mod tests {
     #[test]
     fn a_reformat_is_not_an_edit_and_values_are_capped_and_escaped() {
         let before = sources(&[("scenes/01-a.json", r#"{"text":{"title":"Same"}}"#)]);
-        let spaced = sources(&[("scenes/01-a.json", "{ \"text\": { \"title\": \"Same\" } }\n")]);
+        let spaced = sources(&[(
+            "scenes/01-a.json",
+            "{ \"text\": { \"title\": \"Same\" } }\n",
+        )]);
         assert!(entries(&before, &spaced, 1).is_empty());
         let long = "x".repeat(400);
         let hostile = sources(&[(
@@ -351,6 +384,27 @@ mod tests {
         assert!(!after.contains('\u{1b}'), "{after}");
         assert!(after.contains("\\u001B"), "{after}");
         assert!(after.chars().count() < 200, "{after}");
+    }
+
+    #[test]
+    fn a_pipe_in_scenes_is_never_opened() {
+        let dir = scratch("fifo");
+        let pipe = std::ffi::CString::new(dir.join("scenes/x.tsx").to_str().unwrap()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(pipe.as_ptr(), 0o644) }, 0);
+        assert!(!snapshot(&dir).contains_key("scenes/x.tsx"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_line_too_long_to_list_keeps_its_count() {
+        let changes: Vec<Value> = (0..CHANGES_MAX)
+            .map(|i| json!({ "path": format!("k{i}"), "before": "x".repeat(200), "after": "y".repeat(200) }))
+            .collect();
+        let line =
+            json!({ "v": 1, "atMs": 1, "file": "project.json", "changes": changes, "more": 3 });
+        let short: Value = serde_json::from_str(&encode(&line)).unwrap();
+        assert_eq!(short["more"], CHANGES_MAX as u64 + 3);
+        assert!(short.get("changes").is_none());
     }
 
     #[test]
@@ -371,11 +425,22 @@ mod tests {
     #[test]
     fn record_appends_and_rotates() {
         let dir = scratch("record");
-        std::fs::write(dir.join("project.json"), r#"{"audio":{"gainDb":0},"scenes":[]}"#).unwrap();
+        std::fs::write(
+            dir.join("project.json"),
+            r#"{"audio":{"gainDb":0},"scenes":[]}"#,
+        )
+        .unwrap();
         let before = snapshot(&dir);
         record(&dir, &before);
-        assert!(!dir.join(JOURNAL_DIR).join(JOURNAL).exists(), "nothing changed");
-        std::fs::write(dir.join("project.json"), r#"{"audio":{"gainDb":-6},"scenes":[]}"#).unwrap();
+        assert!(
+            !dir.join(JOURNAL_DIR).join(JOURNAL).exists(),
+            "nothing changed"
+        );
+        std::fs::write(
+            dir.join("project.json"),
+            r#"{"audio":{"gainDb":-6},"scenes":[]}"#,
+        )
+        .unwrap();
         record(&dir, &before);
         let text = std::fs::read_to_string(dir.join(JOURNAL_DIR).join(JOURNAL)).unwrap();
         let line: Value = serde_json::from_str(text.trim()).unwrap();
@@ -395,7 +460,11 @@ mod tests {
     #[test]
     fn a_planted_link_never_takes_a_journal_line() {
         for link_folder in [false, true] {
-            let dir = scratch(if link_folder { "link-folder" } else { "link-file" });
+            let dir = scratch(if link_folder {
+                "link-folder"
+            } else {
+                "link-file"
+            });
             let target = dir.join("profile");
             std::fs::write(&target, "mine\n").unwrap();
             std::fs::write(dir.join("project.json"), r#"{"name":"A"}"#).unwrap();

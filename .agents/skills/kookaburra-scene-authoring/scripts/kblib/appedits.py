@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import stat
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -16,6 +18,10 @@ from .util import clean_text
 
 JOURNAL = "app-edits.jsonl"
 JOURNAL_OLD = "app-edits.1.jsonl"
+READ_CAP = 1 << 20
+CHANGES_KEPT = 32
+FILE_SHAPE = re.compile(r"(?:project\.json|scenes/[\w.\-/]{1,160})\Z")
+PATH_SHAPE = re.compile(r"[\w.\-\[\]]{1,200}\Z")
 VALUE_SHOWN = 80
 FIRST_LOOK_MS = 3_600_000
 LINE_BUDGET = 320
@@ -43,33 +49,45 @@ def _clean(value: Any) -> Any:
     return clean_text(json.dumps(value, ensure_ascii=False), VALUE_SHOWN)
 
 
+def _count(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _shaped(pattern: Any, value: Any) -> bool:
+    return isinstance(value, str) and pattern.match(value) is not None
+
+
 def _entry(raw: Any) -> Optional[Dict[str, Any]]:
-    """One journal line as kb trusts it: only the fields it knows, every string escaped and capped."""
-    if not isinstance(raw, dict) or not isinstance(raw.get("file"), str) or not isinstance(raw.get("atMs"), int):
+    """One journal line as kb trusts it: only the fields it knows, names only in the shapes the app writes (they reach the
+    agent unquoted, so a project's own text can't pose as one) and every value escaped and capped. A change whose path
+    isn't a path only adds to the count."""
+    if not isinstance(raw, dict) or not _shaped(FILE_SHAPE, raw.get("file")) or not _count(raw.get("atMs")):
         return None
-    out: Dict[str, Any] = {"atMs": raw["atMs"], "file": clean_text(raw["file"], 200)}
+    out: Dict[str, Any] = {"atMs": raw["atMs"], "file": raw["file"]}
     for flag in ("created", "removed"):
         if raw.get(flag) is True:
             out[flag] = True
-    if isinstance(raw.get("more"), int) and raw["more"] > 0:
-        out["more"] = raw["more"]
+    more = raw["more"] if _count(raw.get("more")) and raw["more"] > 0 else 0
     changes = raw.get("changes")
     if isinstance(changes, list):
         kept: List[Dict[str, Any]] = []
         for change in changes:
-            if not isinstance(change, dict) or not isinstance(change.get("path"), str):
+            if len(kept) >= CHANGES_KEPT or not isinstance(change, dict) or not _shaped(PATH_SHAPE, change.get("path")):
+                more += 1
                 continue
-            item: Dict[str, Any] = {"path": clean_text(change["path"], 200)}
+            item: Dict[str, Any] = {"path": change["path"]}
             for key in ("before", "after"):
                 if key in change:
                     item[key] = _clean(change[key])
             for key in ("added", "removed"):
                 if isinstance(change.get(key), list):
-                    item[key] = [clean_text(str(v), 200) for v in change[key]][:16]
+                    item[key] = [v for v in change[key] if _shaped(FILE_SHAPE, v)][:16]
             if change.get("moved") is True:
                 item["moved"] = True
             kept.append(item)
         out["changes"] = kept
+    if more:
+        out["more"] = more
     return out
 
 
@@ -86,16 +104,22 @@ def _parse(data: bytes) -> List[Dict[str, Any]]:
 
 
 def _read_bytes(path: str, offset: int = 0) -> Tuple[bytes, int]:
-    """Complete lines from offset on, and the offset just past the last one. Never through a link: a project folder can
-    arrive with the journal pointing anywhere."""
+    """Complete lines from offset on, the newest READ_CAP bytes at most, and the offset just past the last one. Only a plain
+    file: a project folder can arrive with the journal, or its folder, pointing anywhere, or a pipe that never answers."""
+    if os.path.islink(os.path.dirname(path)):
+        return b"", offset
     try:
-        with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), "rb") as f:
-            f.seek(offset)
-            data = f.read()
+        with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as f:
+            st = os.fstat(f.fileno())
+            if not stat.S_ISREG(st.st_mode):
+                return b"", offset
+            start = max(offset, st.st_size - READ_CAP, 0)
+            f.seek(start)
+            data = f.read(READ_CAP)
     except OSError:
         return b"", offset
     end = data.rfind(b"\n")
-    return (b"", offset) if end < 0 else (data[: end + 1], offset + end + 1)
+    return (b"", offset) if end < 0 else (data[: end + 1], start + end + 1)
 
 
 def since_ms(root: str, at_ms: int) -> List[Dict[str, Any]]:
@@ -109,7 +133,7 @@ def from_mark(root: str, inode: Any, offset: Any) -> Tuple[List[Dict[str, Any]],
     rest of the old one comes first."""
     path = journal_path(root)
     try:
-        st = os.stat(path)
+        st = os.lstat(path)
     except OSError:
         return [], 0, 0
     if isinstance(inode, int) and isinstance(offset, int) and inode == st.st_ino and offset <= st.st_size:
@@ -117,7 +141,7 @@ def from_mark(root: str, inode: Any, offset: Any) -> Tuple[List[Dict[str, Any]],
         return _parse(data), st.st_ino, end
     older: List[Dict[str, Any]] = []
     try:
-        if isinstance(inode, int) and isinstance(offset, int) and os.stat(journal_path(root, old=True)).st_ino == inode:
+        if isinstance(inode, int) and isinstance(offset, int) and os.lstat(journal_path(root, old=True)).st_ino == inode:
             older = _parse(_read_bytes(journal_path(root, old=True), offset)[0])
     except OSError:
         pass
@@ -127,7 +151,7 @@ def from_mark(root: str, inode: Any, offset: Any) -> Tuple[List[Dict[str, Any]],
 
 def end_mark(root: str) -> Tuple[int, int]:
     try:
-        st = os.stat(journal_path(root))
+        st = os.lstat(journal_path(root))
     except OSError:
         return 0, 0
     return st.st_ino, st.st_size
@@ -194,7 +218,7 @@ def merged(entries: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
         for flag in ("created", "removed"):
             if entry.get(flag):
                 row[flag] = True
-        if "changes" not in entry and not entry.get("created") and not entry.get("removed"):
+        if "changes" not in entry and not entry.get("created") and not entry.get("removed") and not entry.get("more"):
             row["code"] = True
         for change in entry.get("changes") or []:
             if change["path"] == "scenes" and ("added" in change or "removed" in change or "moved" in change):
