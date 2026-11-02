@@ -2144,6 +2144,57 @@ fn strips_the_executable_bit() {
     );
 }
 
+/// A hidden file inside an item is dropped and named, never written, even though its extension is on the list.
+#[test]
+fn drops_hidden_files_inside_an_item() {
+    let tag = "dot-leaf";
+    let source = TempDir::new(tag);
+    let workspace = Workspace::new(tag);
+    let archive = Fixture::valid()
+        .entry(Entry::new("payload/projects/acme/.mcp.json", b"{\"mcpServers\":{}}"))
+        .entry(Entry::new("payload/projects/acme/assets/.claude.json", b"{}"))
+        .build(source.path());
+
+    let inspection = inspect(&archive).expect("inspect");
+    let staged = stage(
+        &archive,
+        workspace.root(),
+        &inspection.manifest,
+        |_, _| {},
+        &|| false,
+    )
+    .expect("stage");
+
+    assert_eq!(
+        staged.dropped,
+        vec![
+            "payload/projects/acme/.mcp.json".to_owned(),
+            "payload/projects/acme/assets/.claude.json".to_owned(),
+        ]
+    );
+    assert!(!staged.root.join("payload/projects/acme/.mcp.json").exists());
+    assert!(!staged.root.join("payload/projects/acme/assets/.claude.json").exists());
+}
+
+/// Hidden scene code is refused whole, listed in `sceneFiles` or not: dropping it would change the film unseen.
+#[test]
+fn refuses_a_hidden_scene_source() {
+    for (tag, listed, expected) in [
+        ("dot-scene-unlisted", vec![], "sceneFilesMismatch"),
+        ("dot-scene-listed", vec!["scenes/.hidden.tsx"], "extensionNotAllowed"),
+    ] {
+        let mut contents = PackContents::default();
+        contents.projects.push(project_item("payload/projects/acme", &listed));
+        assert_refused(
+            tag,
+            Fixture::valid()
+                .entry(Entry::new("payload/projects/acme/scenes/.hidden.tsx", b"code"))
+                .contents(contents),
+            expected,
+        );
+    }
+}
+
 /// A dotted directory other than `.claude` never lands, whatever the file inside it is called.
 #[test]
 fn refuses_other_dotted_directories() {

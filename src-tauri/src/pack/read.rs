@@ -8,7 +8,7 @@ use super::hash::{sha256_bytes, sha256_file};
 use super::key;
 use super::limits::*;
 use super::model::{ItemKind, PackManifest, PACK_FORMAT, PACK_FORMAT_VERSION};
-use super::paths::{is_agent_config, is_ignorable, validate_archive_path};
+use super::paths::{is_dropped_entry, is_ignorable, validate_archive_path};
 use serde::Serialize;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::io::Read;
@@ -52,7 +52,7 @@ impl SceneSource {
 pub struct StagedPack {
     pub root: PathBuf,
     pub manifest: PackManifest,
-    /// Archive paths of agent configuration the pack carried and staging left out (`paths::is_agent_config`).
+    /// Archive paths of agent configuration and hidden files the pack carried and staging left out (`paths::is_dropped_entry`).
     pub dropped: Vec<String>,
 }
 
@@ -451,7 +451,7 @@ pub fn stage(
     let total_bytes = manifest
         .files
         .iter()
-        .filter(|f| !is_agent_config(&f.path))
+        .filter(|f| !is_dropped_entry(&f.path))
         .fold(0u64, |sum, f| sum.saturating_add(f.bytes));
     check_staging_space(
         total_bytes,
@@ -496,8 +496,8 @@ pub fn stage(
         if entry.is_dir() {
             continue;
         }
-        // Agent configuration is never written: the app stamps its own. Listed in `files` or not, it is dropped and named.
-        if is_agent_config(&raw) {
+        // Agent configuration and hidden files are never written. Listed in `files` or not, each is dropped and named.
+        if is_dropped_entry(&raw) {
             seen.insert(raw.clone());
             staged.dropped.push(raw);
             continue;
@@ -542,7 +542,7 @@ pub fn stage(
         }
         if let Some(parent) = destination.parent() {
             std::fs::create_dir_all(parent)?;
-            set_dir_mode(parent);
+            force_dir_modes(&root, parent);
         }
 
         let remaining = MAX_TOTAL_UNCOMPRESSED.saturating_sub(written);
@@ -592,6 +592,13 @@ pub fn stage(
     Ok(staged)
 }
 
+/// Every folder from `dir` up to, but not including, the staging root: `create_dir_all` leaves its parents to the umask.
+fn force_dir_modes(root: &Path, dir: &Path) {
+    for folder in dir.ancestors().take_while(|folder| *folder != root) {
+        set_dir_mode(folder);
+    }
+}
+
 #[cfg(unix)]
 fn set_file_mode(path: &Path) {
     use std::os::unix::fs::PermissionsExt;
@@ -635,6 +642,25 @@ pub fn sweep_stale(workspace_root: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn folder_modes_are_forced_up_to_the_staging_root() {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        let root = std::env::temp_dir().join(unique_name(b"force-dir-modes"));
+        let deep = root.join("payload/projects/acme/scenes");
+        std::fs::create_dir_all(&deep).unwrap();
+        for folder in deep.ancestors().take(5) {
+            std::fs::set_permissions(folder, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        force_dir_modes(&root, &deep);
+        assert_eq!(mode(&deep), 0o755);
+        assert_eq!(mode(&root.join("payload/projects")), 0o755);
+        assert_eq!(mode(&root.join("payload")), 0o755);
+        assert_eq!(mode(&root), 0o700, "the staging root is not a landing folder");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn kind_caps_follow_the_extension() {

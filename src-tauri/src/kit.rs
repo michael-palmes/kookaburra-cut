@@ -158,7 +158,7 @@ fn normalise(text: &str) -> String {
 }
 
 /// The project's name for the heading: one line, control characters flattened, capped.
-fn heading_name(raw: &str) -> String {
+pub(crate) fn heading_name(raw: &str) -> String {
     let flat = raw
         .chars()
         .map(|c| if c.is_control() { ' ' } else { c })

@@ -31,14 +31,21 @@ fn kind_for_dir(dir: &str) -> Option<ItemKind> {
         .find(|k| k.payload_dir() == dir)
 }
 
-/// Names macOS archivers add that carry no payload; ignored rather than refused.
-/// An entry under an item's `.claude/` folder: agent configuration a pack may still carry (older packs shipped
-/// `settings.json`) that is dropped at staging and reported, never written.
-pub fn is_agent_config(raw: &str) -> bool {
-    raw.strip_prefix(PAYLOAD_PREFIX)
-        .is_some_and(|rest| rest.split('/').skip(2).any(|segment| segment == ".claude"))
+/// An entry dropped at staging and reported, never written: anything under an item's `.claude/` folder (older packs
+/// shipped `settings.json`) or a hidden file inside an item (`.mcp.json`). A malformed path is not dropped, so it refuses.
+pub fn is_dropped_entry(raw: &str) -> bool {
+    if validate_shape(raw).is_err() {
+        return false;
+    }
+    let Some(rest) = raw.strip_prefix(PAYLOAD_PREFIX) else {
+        return false;
+    };
+    let inside: Vec<&str> = rest.split('/').skip(2).collect();
+    inside.contains(&".claude")
+        || inside.last().is_some_and(|leaf| leaf.starts_with('.'))
 }
 
+/// Names macOS archivers add that carry no payload; ignored rather than refused.
 pub fn is_ignorable(raw: &str) -> bool {
     let name = raw.rsplit('/').next().unwrap_or(raw);
     raw.starts_with("__MACOSX/")
@@ -48,6 +55,12 @@ pub fn is_ignorable(raw: &str) -> bool {
 
 /// Validate a raw zip entry name and return a relative path that is safe to join onto the staging root.
 pub fn validate_archive_path(raw: &str) -> Result<PathBuf, PackError> {
+    let out = validate_shape(raw)?;
+    check_extension(raw)?;
+    Ok(out)
+}
+
+fn validate_shape(raw: &str) -> Result<PathBuf, PackError> {
     let owned = raw.to_string();
 
     if raw.is_empty() {
@@ -102,12 +115,11 @@ pub fn validate_archive_path(raw: &str) -> Result<PathBuf, PackError> {
         out.push(component);
     }
 
-    check_extension(raw)?;
     Ok(out)
 }
 
-/// `payload/<kind-dir>/…` must carry an extension the kind allows. No dotted directory is accepted (`.claude/` entries
-/// are dropped before validation, `is_agent_config`).
+/// `payload/<kind-dir>/…` must carry an extension the kind allows. No dotted directory or hidden file is accepted (what
+/// an item may carry and lose is dropped before validation, `is_dropped_entry`).
 fn check_extension(raw: &str) -> Result<(), PackError> {
     let rest = &raw[PAYLOAD_PREFIX.len()..];
     let mut parts = rest.split('/');
@@ -122,10 +134,8 @@ fn check_extension(raw: &str) -> Result<(), PackError> {
     if tail.is_empty() {
         return Err(PackError::PathOutsidePayload(raw.to_string()));
     }
-    for segment in &tail[..tail.len() - 1] {
-        if segment.starts_with('.') {
-            return Err(PackError::ExtensionNotAllowed(raw.to_string()));
-        }
+    if tail.iter().any(|segment| segment.starts_with('.')) {
+        return Err(PackError::ExtensionNotAllowed(raw.to_string()));
     }
 
     let name = tail[tail.len() - 1];
@@ -153,10 +163,19 @@ mod tests {
         assert!(validate_archive_path("payload/projects/acme/CLAUDE.md").is_ok());
         assert!(validate_archive_path("payload/projects/acme/NOTES.md").is_ok());
         assert!(validate_archive_path("payload/projects/acme/.claude/settings.json").is_err());
-        assert!(is_agent_config("payload/projects/acme/.claude/settings.json"));
-        assert!(is_agent_config("payload/templates/promo/.claude/skills/x/SKILL.md"));
-        assert!(!is_agent_config("payload/projects/acme/CLAUDE.md"));
-        assert!(!is_agent_config("payload/projects/.claude/scenes/a.tsx"));
+        assert!(is_dropped_entry(
+            "payload/projects/acme/.claude/settings.json"
+        ));
+        assert!(is_dropped_entry(
+            "payload/templates/promo/.claude/skills/x/SKILL.md"
+        ));
+        assert!(is_dropped_entry("payload/projects/acme/.mcp.json"));
+        assert!(is_dropped_entry("payload/brands/acme/images/.claude.json"));
+        assert!(!is_dropped_entry("payload/projects/acme/CLAUDE.md"));
+        assert!(!is_dropped_entry("payload/projects/.claude/scenes/a.tsx"));
+        assert!(!is_dropped_entry("payload/fonts/.hidden.ttf"));
+        assert!(!is_dropped_entry("payload/projects/a/../../.mcp.json"));
+        assert!(!is_dropped_entry("payload/projects/a/.mcp\u{202E}.json"));
         assert!(validate_archive_path("payload/themes/acme-dark/theme.json").is_ok());
         assert!(validate_archive_path("payload/templates/acme-promo/template.json").is_ok());
         assert!(validate_archive_path("payload/templates/acme-promo/poster.jpg").is_ok());
@@ -213,6 +232,19 @@ mod tests {
         assert_eq!(err("payload/fonts/evil.dylib"), "extensionNotAllowed");
         assert_eq!(err("payload/projects/a/.git/config"), "extensionNotAllowed");
         assert_eq!(err("payload/themes/a/theme.tsx"), "extensionNotAllowed");
+        assert_eq!(err("payload/projects/a/.mcp.json"), "extensionNotAllowed");
+        assert_eq!(
+            err("payload/projects/a/.claude.json"),
+            "extensionNotAllowed"
+        );
+        assert_eq!(
+            err("payload/projects/a/scenes/.hidden.tsx"),
+            "extensionNotAllowed"
+        );
+        assert_eq!(
+            err("payload/screenshots/.hidden.png"),
+            "extensionNotAllowed"
+        );
         assert_eq!(err("payload/projects/a/noext"), "extensionNotAllowed");
         assert_eq!(
             err("payload/brands/acme/images/x.tsx"),
