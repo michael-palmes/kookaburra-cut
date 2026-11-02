@@ -395,7 +395,10 @@ and install. The app holds no API key and sends nothing to Anthropic itself.
   `~/.claude`, `.env*`, `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`, private
   keys by name, `credentials*.json`, `*.pem`, `*.p12`, `*.key`, `*.jks`,
   `*.keystore`, `*.tfstate` and shell histories (`kit.rs` `CREDENTIAL_*` is the
-  same list, and a test holds them together). Bridge captures, frame ranges, checks, preset
+  same list, and a test holds them together). The kit denies the agent's own Read
+  tool the credential paths kb refuses (of `~/.claude`, only the secrets), which
+  binds Claude Code's file tools and not a script the agent runs. Bridge captures,
+  frame ranges, checks, preset
   inserts and `openEdit` for a workspace project other than the one open ask
   once per project per session through a native dialog (`bridge_confirm_project`,
   decline held 60 s); `openEdit` is enforced in Rust, the other four in the
@@ -692,7 +695,8 @@ Deliberately deferred, recorded so nobody mistakes them for done:
 - A token on the autorun launch variables: `KOOKABURRA_ACTION` and its set are
   honoured in release builds, which is the same-user case above.
 - A sandbox for the agent. Its allow and deny rules, hooks and reach checks bound
-  its own tools and ask a person; a misled agent's own Bash can still read a file.
+  its own tools and ask a person; a script a misled agent runs can still read a
+  file.
 - The still checks on app icons: `import_app_icon` takes only the extension list.
 - A managed key for Claude Code's permission mode: sessions always start in auto.
   Claude Code's own managed settings outrank that flag today.
