@@ -69,12 +69,20 @@ export function reportLastLoad(report: LastLoadReport): void {
 }
 
 const stampedThisSession = new Set<string>();
+const healing = new Set<string>();
 
-/** Re-stamp the project's Claude Code kit once per project per app session (every live reload is a load, and each save would otherwise re-walk the kit); native, off the main thread, never awaited by the load. A failed stamp retries on the next load. */
+/** Re-stamp the project's Claude Code kit in full once per project per app session (every live reload is a load, and each save would otherwise re-walk the kit), and on every later load restore whatever has gone missing, which costs only a few stats until something has; native, off the main thread, never awaited by the load. A failed stamp retries on the next load. */
 export function stampProjectKit(projectId: string): void {
   if (!isWorkspaceProjectId(projectId)) return;
   const slug = nativeProjectSlug(projectId);
-  if (stampedThisSession.has(slug)) return;
+  if (stampedThisSession.has(slug)) {
+    if (healing.has(slug)) return;
+    healing.add(slug);
+    void invoke("heal_project_kit", { slug })
+      .catch((e) => console.warn("[kit] heal failed:", e))
+      .finally(() => healing.delete(slug));
+    return;
+  }
   stampedThisSession.add(slug);
   void invoke("provision_project", { slug }).catch((e) => {
     stampedThisSession.delete(slug);

@@ -36,6 +36,7 @@ const HEARTBEAT_MIN_INTERVAL_MS: u64 = 2_000;
 const HEARTBEAT_FRESH_MS: u64 = 30_000;
 /// Another instance's heartbeat this old is pruned even when its pid is alive (pid reuse after a crash).
 const INSTANCE_PRUNE_MS: u64 = 600_000;
+const CONFIRM_IMPORT: &str = "confirmImport";
 /// The request kinds this build serves; a request without `kind` is a v1 capture.
 pub const BRIDGE_KINDS: &[&str] = &[
     "capture",
@@ -48,9 +49,16 @@ pub const BRIDGE_KINDS: &[&str] = &[
     "export",
     "cancelExport",
     "range",
+    "confirmImport",
 ];
 /// The kinds `spawn_native_bridge` serves from Rust; the render window never claims them (a `debug` request routes by its op, `RoutePeek::native`).
-pub const NATIVE_KINDS: &[&str] = &["mediaChanged", "openEdit", "export", "cancelExport"];
+pub const NATIVE_KINDS: &[&str] = &[
+    "mediaChanged",
+    "openEdit",
+    "export",
+    "cancelExport",
+    "confirmImport",
+];
 /// The headless edit CLI contract this binary answers (`<exe> edit caps` reports the same `cli`).
 pub const CLI_VERSION: u32 = 1;
 /// Where kb finds this binary's CLI while the app is closed (docs/agent-kit.md, "Heartbeat").
@@ -473,6 +481,7 @@ fn access_verb(kind: &str) -> &'static str {
         "check" => "load and check",
         "insertPreset" => "add a scene to",
         "openEdit" => "open the video editor for",
+        CONFIRM_IMPORT => "copy a scene from",
         _ => "use",
     }
 }
@@ -485,7 +494,9 @@ pub(crate) fn confirm_project_access(
     client: Option<&str>,
 ) -> bool {
     let project_id = format!("ws:{slug}");
-    if editor_context(app).and_then(|c| c.project_id) == Some(project_id.clone()) {
+    // An import reads this project for another one, so having it open says nothing about that.
+    let importing = kind == CONFIRM_IMPORT;
+    if !importing && editor_context(app).and_then(|c| c.project_id) == Some(project_id.clone()) {
         return true;
     }
     let grants = app.state::<BridgeGrants>();
@@ -516,8 +527,13 @@ pub(crate) fn confirm_project_access(
         .filter(|c| !c.is_empty())
         .map(|c| format!(" (request from {c})"))
         .unwrap_or_default();
+    let reason = if importing {
+        "into the project it is working on"
+    } else {
+        "which is not the project open in Kookaburra Cut"
+    };
     let message = format!(
-        "Claude asked to {} \"{name}\", which is not the project open in Kookaburra Cut{who}.\n\nAllow it for the rest of this session?",
+        "Claude asked to {} \"{name}\", {reason}{who}.\n\nAllow it for the rest of this session?",
         access_verb(kind)
     );
     let allowed = app
@@ -1905,6 +1921,7 @@ async fn serve_native(app: &AppHandle, root: &Path, request: BridgeRequest) {
     let served = match request.kind.as_deref() {
         Some("mediaChanged") => serve_media_changed(app, &request).await,
         Some("openEdit") => serve_open_edit(app, &request).await,
+        Some("confirmImport") => serve_confirm_import(app, &request).await,
         Some("debug") => serve_debug(app, &request),
         Some("export" | "cancelExport") => crate::bridge_export::serve(app, root, &request).await,
         other => Err(format!("{other:?} isn't a native bridge kind")),
@@ -2114,6 +2131,23 @@ fn open_or_focus(
         }
     }
     Ok(opened)
+}
+
+/// The person's yes before `kb scene import` reads another project; kb refuses without it. The kind fixes the dialog's wording, so a request can't choose what the person is asked.
+async fn serve_confirm_import(app: &AppHandle, request: &BridgeRequest) -> Result<Value, String> {
+    let (slug, _dir) = native_project(app, request)?;
+    let (handle, s, client) = (app.clone(), slug.clone(), request.client.clone());
+    let allowed = tauri::async_runtime::spawn_blocking(move || {
+        confirm_project_access(&handle, &s, CONFIRM_IMPORT, client.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    if !allowed {
+        return Err(format!(
+            "the person did not allow Claude to copy a scene from \"ws:{slug}\""
+        ));
+    }
+    Ok(json!({ "allowed": true }))
 }
 
 /// Open the video editor on an existing edit of any workspace project (busy while exporting or while the editor renders another edit).
@@ -2423,7 +2457,8 @@ mod tests {
                 "debug",
                 "export",
                 "cancelExport",
-                "range"
+                "range",
+                "confirmImport"
             ])
         );
         assert_eq!(

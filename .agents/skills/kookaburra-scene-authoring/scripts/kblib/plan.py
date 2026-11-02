@@ -13,7 +13,7 @@ from . import lock as lockmod
 from .util import EXIT_ENV, EXIT_OK, EXIT_PROBLEMS, KbError, emit, set_command
 
 PLANNABLE = (
-    "scene add", "scene duplicate", "scene move", "scene remove", "scene set",
+    "scene add", "scene duplicate", "scene move", "scene remove", "scene set", "scene split", "scene renumber", "scene import",
     "doc set", "doc unset", "doc merge", "project set", "project unset", "project fit", "theme set",
     "assets add", "assets add-folder", "assets conform", "assets replace", "assets unused", "assets restore", "assets meta", "checkpoint", "undo", "lease",
 )
@@ -23,7 +23,7 @@ REFUSAL_FIELDS = ("holder", "untilMs", "scene", "file", "issues", "files", "by")
 
 EPILOG = """\
 Runs the command with --dry-run --json and reports what it would do; nothing is written,
-committed or leased. Covers scene add, duplicate, move, remove and set; doc set, unset and
+committed or leased. Covers scene add, duplicate, move, remove, set, split, renumber and import; doc set, unset and
 merge; project set, unset and fit; theme set; assets add, add-folder, conform, replace, unused,
 restore and meta; checkpoint; undo; lease.
 
