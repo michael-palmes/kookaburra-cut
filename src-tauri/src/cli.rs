@@ -942,7 +942,7 @@ mod tests {
         assert_eq!(caps["zoom"], true);
         assert_eq!(
             caps["song"],
-            json!({"analysisVersion": 2, "trackers": ["nn", "dsp"]})
+            json!({"analysisVersion": 3, "trackers": ["nn", "dsp"]})
         );
         assert_eq!(
             caps["tap"]["styles"][0],
@@ -957,7 +957,7 @@ mod tests {
         );
         assert_eq!(
             caps["media"],
-            json!({"version": 1, "commands": ["probe", "conform"]})
+            json!({"version": 1, "commands": ["probe", "conform", "ocr"]})
         );
     }
 

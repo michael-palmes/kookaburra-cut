@@ -8,6 +8,7 @@ mod brands;
 mod bridge;
 mod bridge_export;
 mod bridge_health;
+mod bridge_range;
 mod capture_service;
 mod claude_app;
 mod claude_update;
@@ -43,6 +44,8 @@ mod media;
 mod mp4box;
 mod native_alert;
 mod objects;
+#[cfg(target_os = "macos")]
+mod ocr;
 mod pack;
 mod png_decode;
 mod packs_win;
@@ -50,6 +53,7 @@ mod present;
 mod preset_posters;
 mod privacy;
 mod pty;
+mod real_dir;
 mod render_win;
 mod scene_doc;
 mod settings_win;
@@ -241,7 +245,32 @@ fn flash_report_path(output: &std::path::Path) -> PathBuf {
     output.with_file_name(name)
 }
 
+/// kb's frame strips of the film's flagged moments (`<export>.flashes/strip-*.png`); a new export makes them stale.
+fn flash_strips_dir(output: &std::path::Path) -> PathBuf {
+    let mut name = output.file_name().unwrap_or_default().to_os_string();
+    name.push(".flashes");
+    output.with_file_name(name)
+}
+
+fn remove_flash_strips(output: &std::path::Path) {
+    let dir = flash_strips_dir(output);
+    if !real_dir::is_real_dir(&dir) {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with("strip-") && name.ends_with(".png") {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+    let _ = std::fs::remove_dir(&dir);
+}
+
 fn write_flash_report(output: &std::path::Path, report: Option<&flashes::FlashReport>) {
+    remove_flash_strips(output);
     let path = flash_report_path(output);
     match report.filter(|r| !r.issues.is_empty()) {
         Some(report) => {
@@ -249,6 +278,7 @@ fn write_flash_report(output: &std::path::Path, report: Option<&flashes::FlashRe
                 .map_err(|e| e.to_string())
                 .and_then(|text| {
                     let tmp = path.with_extension("json.tmp");
+                    let _ = std::fs::remove_file(&tmp);
                     std::fs::write(&tmp, text + "\n").map_err(|e| e.to_string())?;
                     std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
                 });
@@ -1451,6 +1481,9 @@ macro_rules! kookaburra_handler {
             bridge::get_editor_context,
             bridge::set_last_load,
             bridge::bridge_write_sheet,
+            bridge_range::range_flash_begin,
+            bridge_range::range_flash_push,
+            bridge_range::range_flash_finish,
             bridge::bridge_check_assets,
             bridge::bridge_instance,
             bridge::bridge_request_live,
@@ -1651,6 +1684,7 @@ pub fn run() {
         .manage(FlashState::default())
         .manage(ScreenshotState(Mutex::new(None)))
         .manage(bridge::BridgeScreenshotState::default())
+        .manage(bridge_range::RangeFlashState::default())
         .manage(concurrency::BackgroundLimiter::default())
         .manage(clip_cache::ClipCacheState::default())
         .manage(media::ConformJobs::default())
@@ -2219,6 +2253,28 @@ mod tests {
     }
 
     #[test]
+    fn a_new_export_never_reaches_through_linked_flash_files() {
+        use crate::real_dir::hostile;
+        let (project, victim) = hostile::folder("flash-links");
+        let output = project.join("demo-16x9.mp4");
+        std::fs::write(victim.join("strip-01.png"), b"mine").unwrap();
+        hostile::plant(&project, "demo-16x9.mp4.flashes", &victim);
+        hostile::plant(&project, "demo-16x9.mp4.flashes.json.tmp", &victim.join("old.txt"));
+        remove_flash_strips(&output);
+        assert_eq!(std::fs::read(victim.join("strip-01.png")).unwrap(), b"mine");
+
+        let mut tap = Some(flashes::FlashDetector::new(64, 36, 60.0, flashes::Standards::BOTH));
+        let (dark, light) = (rgba(64, 36, 10), rgba(64, 36, 240));
+        for frame in 0..90 {
+            tap_flash_frame(&mut tap, if frame % 12 < 6 { &dark } else { &light });
+        }
+        write_flash_report(&output, Some(&finish_flash_tap(tap).0.unwrap()));
+        assert_eq!(std::fs::read(victim.join("old.txt")).unwrap(), b"mine");
+        assert!(flash_report_path(&output).is_file());
+        hostile::clean_up(&project);
+    }
+
+    #[test]
     fn the_flash_report_sits_beside_a_flagged_export_and_goes_with_a_clean_one() {
         let dir = std::env::temp_dir().join(format!("kc-flash-report-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -2236,7 +2292,11 @@ mod tests {
             tap_flash_frame(&mut tap, if frame % 12 < 6 { &dark } else { &light });
         }
         let flagged = finish_flash_tap(tap).0.unwrap();
+        let strips = flash_strips_dir(&output);
+        std::fs::create_dir_all(&strips).unwrap();
+        std::fs::write(strips.join("strip-01-00m00.100s.png"), b"png").unwrap();
         write_flash_report(&output, Some(&flagged));
+        assert!(!strips.exists());
         let saved: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(flash_report_path(&output)).unwrap())
                 .unwrap();

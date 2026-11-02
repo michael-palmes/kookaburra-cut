@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import { Color, type Object3D } from "three";
+import { useFormat } from "../../engine/format";
 import { registerGizmoTarget, unregisterGizmoTarget } from "../../engine/gizmoTargetRegistry";
 import {
   type ManagedTextRenderRole,
@@ -38,6 +39,7 @@ import type { FontRef, TextAnimationSpec, TextLookSpec, Theme } from "../../them
 import { foldBandToChild, GroupAnimationContext } from "../group/context";
 import { LookText3D } from "../text3d/LookText3D";
 import type { EaseName, V3 } from "../types";
+import { depthLayers, type HeadlineDepth } from "./depthStack";
 import { type PreparedDisplayText, parseEmphasisMarkup, prepareDisplayText } from "./displayText";
 import {
   caretQuad,
@@ -50,6 +52,7 @@ import { computeEmphasisRects, type ResolvedEmphasis, resolveEmphasis } from "./
 import { materialProp, useExactText, useExactTextBase } from "./exactText";
 import { computeUnitYExtents, HighlightQuads } from "./HighlightQuads";
 import { resolveHeadlineType } from "./headlineType";
+import { hitWindow, impactUnitCount } from "./impact";
 import {
   arcGlyphTransform,
   arcSpec,
@@ -120,6 +123,9 @@ import {
   writeTypeMaskUniforms,
 } from "./staggerMaterial";
 import { UnderlineRule } from "./UnderlineRule";
+import { useTextMetrics } from "./useTextMetrics";
+
+export type { HeadlineDepth };
 
 export interface AnimatedHeadlineProps {
   text: string;
@@ -131,8 +137,14 @@ export interface AnimatedHeadlineProps {
   preset?: TextPresetName;
   /** Out-animation preset; plays only when `outAt` is set. Defaults to `textAnimation.out`. */
   outPreset?: TextPresetName;
-  /** Out start, in ms; the out plays over the same duration as the in. */
+  /** Out start, in ms; the out plays over the same duration as the in unless `outDurationMs` sets its own. */
   outAt?: number;
+  /** How long the out lasts, ms (default the in's duration). */
+  outDurationMs?: number;
+  /** Scene-local ms the first unit LANDS (first at rest size and full opacity), on a beat or a cut: the in keeps its duration and starts the motion's measured lead earlier, `delayMs` included. Wins over `from`; the out never moves. */
+  hitAt?: number;
+  /** 0..1, multiplied into every fade (default 1). */
+  opacity?: number;
   /** Per-char / per-word stagger granularity. Paragraph delivery is spelled through `delivery`, never here. */
   stagger?: "char" | "word";
   /** Per-unit stagger delay, ms. Defaults to the theme's `textAnimation.staggerMs`. */
@@ -175,8 +187,12 @@ export interface AnimatedHeadlineProps {
   anchorX?: "left" | "center" | "right";
   /** Where `position` sits on the block's Y axis (default troika "middle"); "top" anchors multi-line blocks by their top edge so following content can budget below them. */
   anchorY?: "top" | "middle" | "bottom";
-  /** Wrap width in world units; unset means no wrapping, `\n` is the only line break. */
+  /** Wrap width in world units; unset means no wrapping, `\n` is the only line break. With `fit` it is the width to fit instead, and nothing wraps. */
   maxWidth?: number;
+  /** "width" shrinks the font (never grows it) so the widest line fits `maxWidth`, or the safe width when that's unset. */
+  fit?: "width";
+  /** A layered depth look in any checked font: a stack of the same text receding behind the face, shading dark to light. `true` takes the finished default. */
+  depth?: boolean | HeadlineDepth;
   /** Line spacing as a multiple of the font size; unset means troika's own "normal" (the font's metrics), which is also how the dispatcher applies a sidecar `<textKey>LineHeight`. */
   lineHeight?: number;
   /** Scene text stands down when `managedText` is present. Embedded composition text opts out; managed renderer nodes opt back in. */
@@ -187,6 +203,19 @@ export interface AnimatedHeadlineProps {
   look?: string;
   /** Look parameter overrides riding beside `look` (colours, angle, stroke, intensity, offset, curve). */
   lookParams?: Partial<TextLookSpec>;
+}
+
+/** A fade lands on the face first: under-layers stay out of it until it is almost opaque, or their overlap reads as a dark silhouette popping in. */
+const UNDER_LAYER_ALPHA_EXP = 6;
+
+/** What the renderer takes beyond the public props: `underLayer` marks a depth layer, which keeps the motion but drops the look, the emoji and the registries. */
+export type HeadlineRenderProps = AnimatedHeadlineProps & { underLayer?: boolean };
+
+/** A surface's final alpha: `opacity` multiplies in, and an under-layer's curve applies last. Exact when neither is set. */
+function surfaceAlpha(alpha: number, props: HeadlineRenderProps): number {
+  const faded =
+    props.opacity === undefined ? alpha : alpha * Math.min(1, Math.max(0, props.opacity));
+  return props.underLayer ? faded ** UNDER_LAYER_ALPHA_EXP : faded;
 }
 
 /** Layout props forwarded to troika; spread-conditional so an unset prop can never disturb troika's own defaults (the legacy byte contract). */
@@ -244,19 +273,103 @@ export function AnimatedHeadline(props: AnimatedHeadlineProps) {
   const role = props.managedTextRole ?? "scene";
   if (!shouldRenderManagedTextHeadline(doc, role, claimed)) return null;
   const blur = motionBlurScale(resolveTextMotionBlur(theme, doc, props.motionKey ?? props.textKey));
-  if (blur === undefined) return <AnimatedHeadlineRenderer {...props} />;
-  return (
-    <MotionBlurContext.Provider value={blur}>
+  const body =
+    props.fit === "width" ? (
+      <FittedHeadline {...props} />
+    ) : props.depth ? (
+      <DepthHeadline {...props} />
+    ) : (
       <AnimatedHeadlineRenderer {...props} />
-    </MotionBlurContext.Provider>
+    );
+  if (blur === undefined) return body;
+  return <MotionBlurContext.Provider value={blur}>{body}</MotionBlurContext.Provider>;
+}
+
+/** `fit="width"`: measures the block from the parsed face, the same maths troika typesets with, and hands the renderer the size that fits; captures wait for the measure, so no frame sees the unfitted size. A face that can't parse keeps the authored size. */
+function FittedHeadline({ fit: _fit, maxWidth, ...props }: AnimatedHeadlineProps) {
+  const format = useFormat();
+  const metrics = useTextMetrics(props.textKey, props.text, {
+    fontSize: props.fontSize,
+    face: props.face,
+    fontRef: props.fontRef,
+    lineHeight: props.lineHeight,
+    styleKey: props.styleKey,
+  });
+  const width = maxWidth ?? format.frame.width - format.safe.left - format.safe.right;
+  const fontSize = metrics ? metrics.fitFontSize(width) : props.fontSize;
+  return props.depth ? (
+    <DepthHeadline {...props} fontSize={fontSize} />
+  ) : (
+    <AnimatedHeadlineRenderer {...props} fontSize={fontSize} />
   );
 }
 
-function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
+/** The depth stack, one full headline per layer so per-word motion stays in step on every path; only the face keeps `textKey`, so the inspector sees one line. Text, not geometry, so it needs no parsed outlines and takes any checked font. */
+function DepthHeadline({ depth, ...props }: AnimatedHeadlineProps) {
+  const theme = useTheme();
+  const doc = useContext(SceneDocContext);
+  const styleKey = props.styleKey ?? props.textKey;
+  const motionKey = props.motionKey ?? props.textKey;
+  const coded = styleKey ? doc?.textStyle?.[`${styleKey}Color`] : undefined;
+  const face = resolveFill(
+    theme,
+    props.color ?? (coded as string | undefined) ?? props.defaultColor ?? "text",
+  );
+  const fontSize = resolveHeadlineType(theme, doc, props).fontSize;
+  const [x, y, z] = props.position ?? [0, 0, 0];
+  const layers = depthLayers(typeof depth === "object" ? depth : {}, face, fontSize, (c) =>
+    resolveFill(theme, c),
+  ).map((layer) => (
+    <AnimatedHeadlineRenderer
+      key={layer.index}
+      {...props}
+      underLayer
+      textKey={undefined}
+      styleKey={styleKey}
+      motionKey={motionKey}
+      color={layer.colour}
+      position={[x + layer.offset[0], y + layer.offset[1], z + layer.offset[2]]}
+    />
+  ));
+  return (
+    <>
+      {layers}
+      <AnimatedHeadlineRenderer {...props} />
+    </>
+  );
+}
+
+/** Moves the window so the motion lands on `hitAt`. The v0 linear ramp lands where it ends. */
+export function withHitAt(
+  props: HeadlineRenderProps,
+  anim: ResolvedTextAnimation | null,
+): HeadlineRenderProps {
+  const hitAt = props.hitAt as number;
+  const from = props.from ?? 0;
+  const to = props.to ?? 600;
+  const pinned = typeof props.durationMs === "number" ? Math.max(0, props.durationMs) : undefined;
+  if (anim === null) {
+    const start = hitAt - (pinned ?? to - from);
+    return { ...props, from: start, to: start + (to - from) };
+  }
+  const end = pinned === undefined ? textAnimationWindowToMs(from, to, anim) : from + pinned;
+  const units = impactUnitCount(anim, parseEmphasisMarkup(props.text).text);
+  const start = hitWindow(hitAt, anim, from, end, units).from;
+  return { ...props, from: start, to: start + (to - from) };
+}
+
+function AnimatedHeadlineRenderer(rawProps: HeadlineRenderProps) {
   const theme = useTheme();
   const doc = useContext(SceneDocContext);
   const ctx = useSceneContext();
   const sceneIndex = ctx?.index;
+  const anim = resolveTextAnimationWithDoc(
+    rawProps,
+    theme,
+    doc,
+    rawProps.motionKey ?? rawProps.textKey,
+  );
+  const props = rawProps.hitAt === undefined ? rawProps : withHitAt(rawProps, anim);
   // Report coded motion to the registry; the Text-motion panel warns and offers the sidecar force override instead of silently losing the user's pick.
   const coded = hasOwnAnimationProps(props);
   useEffect(() => {
@@ -264,7 +377,6 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
     useTextMotionRegistry.getState().register(sceneIndex);
     return () => useTextMotionRegistry.getState().unregister(sceneIndex);
   }, [coded, sceneIndex]);
-  const anim = resolveTextAnimationWithDoc(props, theme, doc, props.motionKey ?? props.textKey);
   const animPreset = anim?.preset;
   const animOutPreset = anim?.outPreset;
   const animEase = anim?.ease;
@@ -486,20 +598,35 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
   // Report the text + resolved size; the Scene tab derives its default scene name from the scene's largest mounted text. UI-only, an effect.
   const registeredText = useMemo(() => parseEmphasisMarkup(props.text).text, [props.text]);
   const registeredSize = styled.fontSize ?? 0.6;
+  const underLayer = props.underLayer === true;
   useEffect(() => {
-    if (sceneIndex === undefined || typeof registeredText !== "string" || !registeredText.trim()) {
+    if (
+      underLayer ||
+      sceneIndex === undefined ||
+      typeof registeredText !== "string" ||
+      !registeredText.trim()
+    ) {
       return;
     }
     return registerSceneText(sceneIndex, registeredText, registeredSize);
-  }, [sceneIndex, registeredText, registeredSize]);
+  }, [underLayer, sceneIndex, registeredText, registeredSize]);
   // Emphasis markup strips and emoji clusters swap to placeholder codepoints before troika sees the string; identical text for markup- and emoji-free strings, so legacy bytes stay safe (the registry above keeps the ORIGINAL text).
-  const prepared = useMemo(() => prepareDisplayText(props.text), [props.text]);
+  const prepared = useMemo(() => {
+    const display = prepareDisplayText(props.text);
+    return underLayer ? { ...display, clusters: [] } : display;
+  }, [props.text, underLayer]);
   const emphasisValue = styleOf("Emphasis");
-  const emphasis =
+  const resolvedEmphasis =
     prepared.emphasis.length > 0
       ? resolveEmphasis(theme.colors, emphasisValue, type.fontRef.weight)
       : null;
-  const look = lookResolved !== null && lookResolved.preset !== "none" ? lookResolved : null;
+  // A depth layer keeps the emphasis weight so its outline matches the face, in the layer's own shade.
+  const emphasis =
+    resolvedEmphasis && underLayer
+      ? { ...resolvedEmphasis, color: resolveFill(theme, fill ?? "text") }
+      : resolvedEmphasis;
+  const look =
+    !underLayer && lookResolved !== null && lookResolved.preset !== "none" ? lookResolved : null;
   const look3d = look !== null && lookIs3d(look.preset);
   const emojiIn3d = look3d && prepared.clusters.length > 0;
   if (emojiIn3d && look) warnEmoji3dFallback(look.preset);
@@ -550,6 +677,8 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
         from={animated.from}
         to={whole.to}
         outAt={animated.outAt}
+        outDurationMs={animated.outDurationMs}
+        opacity={animated.opacity}
         position={animated.position}
         fontSize={animated.fontSize}
         fontRef={animated.fontRef}
@@ -682,7 +811,7 @@ type HeadlineHost = { meshRef: RefObject<Object3D | null>; rotZ: number };
 
 /** The v0 path, verbatim, the null-for-legacy contract for every pre-v8 project (role/color default to the original headline-face/text-token resolution, so pixels cannot move); inside an `AnimatedGroup` the group's alpha multiplies in (× 1 is fp-exact outside groups) and shine-capable groups mount the band material, both structurally inert when there is no group, so legacy bytes stay safe. Emoji quads (and their caret capture) mount only when the text actually contains emoji. */
 function LegacyHeadline(
-  props: AnimatedHeadlineProps &
+  props: HeadlineRenderProps &
     HeadlineHost & {
       theme: Theme;
       prepared: PreparedDisplayText;
@@ -742,7 +871,7 @@ function LegacyHeadline(
     );
   }
 
-  const alpha = reveal * (group?.alpha ?? 1);
+  const alpha = surfaceAlpha(reveal * (group?.alpha ?? 1), props);
   const states: EmojiQuadState[] = [];
   if (hasEmoji && carets) {
     for (const cluster of prepared.clusters) {
@@ -817,7 +946,7 @@ function LegacyHeadline(
 type Bounds = readonly [number, number, number, number];
 
 function BlockHeadline(
-  props: AnimatedHeadlineProps &
+  props: HeadlineRenderProps &
     HeadlineHost & {
       theme: Theme;
       anim: ResolvedTextAnimation;
@@ -847,7 +976,7 @@ function BlockHeadline(
   const hasEmoji = prepared.clusters.length > 0;
   const [carets, setCarets] = useState<Float32Array | null>(null);
 
-  const timing: TextAnimTiming = { anim, from, to, outAt };
+  const timing: TextAnimTiming = { anim, from, to, outAt, outDurationMs: props.outDurationMs };
   const sample = sampleTextUnit(timing, 0, localMs);
   const { font, fill } = textStyle(theme, props);
 
@@ -888,7 +1017,7 @@ function BlockHeadline(
   // Until the first typeset reports bounds, a partial sweep clips to nothing; the measured rect lands on the next committed frame (deterministic in preview AND export). An unclipped state must be spelled null, never undefined: r3f leaves a prop that merely disappears at its previous value (troika itself clears a clip with null, the JSX cast covers drei's narrower typing), so a seek jumping from pre-reveal (zero-width rect) straight past `to` would keep the stale rect and clip the text to nothing forever (the invisible mask-reveal title bug).
   const clipRect = masked ? (sweepToClipRect(sample.sweep, bounds) ?? null) : null;
   const blurring = anim.preset === "blur-in" || anim.outPreset === "blur-in";
-  const haloOpacity = blurring ? Math.min(1, sample.blurEm / BLUR_EM) : 0;
+  const haloOpacity = blurring ? surfaceAlpha(Math.min(1, sample.blurEm / BLUR_EM), props) : 0;
   const measuring = masked || ownShine;
   // The plain-prop looks. Neon + blur-in share the outline slots: the look owns the colour, blur-in's radius folds in additively, opacity takes the stronger (the transient halo wins mid-entry, neon holds after).
   const accent = theme.colors.accent;
@@ -896,7 +1025,7 @@ function BlockHeadline(
   const halo = lookSpec?.preset === "neon" ? neonHalo(lookSpec, accent, fontSize) : null;
   const coreFill = lookSpec?.preset === "neon" ? neonCoreFill(fill, lookSpec.intensity) : fill;
 
-  const alpha = sample.alpha * (group?.alpha ?? 1);
+  const alpha = surfaceAlpha(sample.alpha * (group?.alpha ?? 1), props);
   const states: EmojiQuadState[] = [];
   if (hasEmoji && carets) {
     // Quads ride the block transform via the wrapping group; only alpha and the mask-reveal coverage are per-quad.
@@ -1005,7 +1134,7 @@ function sweepToClipRect(
 }
 
 function StaggeredHeadline(
-  props: AnimatedHeadlineProps &
+  props: HeadlineRenderProps &
     HeadlineHost & {
       theme: Theme;
       anim: ResolvedTextAnimation;
@@ -1170,7 +1299,13 @@ function StaggeredHeadline(
       ? pinRevealDuration(anim, from, to, blockUnit ? 1 : (units?.count ?? 1), props.durationMs)
       : null;
   const unitAnim = pinned?.anim ?? anim;
-  const unitTo = pinned?.to ?? to;
+  // A pinned reveal only learns its unit duration from the real count, so its hit lands here.
+  const pinnedHit =
+    pinned && props.hitAt !== undefined
+      ? hitWindow(props.hitAt, pinned.anim, from, pinned.to, impactUnitCount(pinned.anim, text))
+      : null;
+  const unitFrom = pinnedHit?.from ?? from;
+  const unitTo = pinnedHit?.to ?? pinned?.to ?? to;
   const pinPending =
     pinned !== null && units === null && !blockUnit && anim.staggerMs > 0 && text.length > 0;
   useLayoutEffect(() => (pinPending ? reportTextDerivedPending() : undefined), [pinPending]);
@@ -1192,7 +1327,13 @@ function StaggeredHeadline(
     return reportPresentTimingPending(sceneIndex);
   }, [sceneIndex, spreadPending]);
 
-  const timing: TextAnimTiming = { anim: unitAnim, from, to: unitTo, outAt };
+  const timing: TextAnimTiming = {
+    anim: unitAnim,
+    from: unitFrom,
+    to: unitTo,
+    outAt,
+    outDurationMs: props.outDurationMs,
+  };
   const { font, fill } = textStyle(theme, props);
   const count = units ? Math.max(1, units.count) : 1;
   const measuring = ownShine || scattering || pack || lookGradient || lookArc;
@@ -1201,9 +1342,9 @@ function StaggeredHeadline(
   const elemCY = bounds ? (bounds[1] + bounds[3]) / 2 : 0;
   // Group alpha folds into every unit's alpha CPU-side (× 1 fp-exact outside groups, so the uploaded uniform floats cannot move on standing projects); legacyReveal mounts fold the v0 linear ramp in the same way.
   const legacyAlpha = props.legacyReveal
-    ? unitTo <= from
+    ? unitTo <= unitFrom
       ? 1
-      : Math.min(1, Math.max(0, (localMs - from) / (unitTo - from)))
+      : Math.min(1, Math.max(0, (localMs - unitFrom) / (unitTo - unitFrom)))
     : 1;
   const groupAlpha = (group?.alpha ?? 1) * legacyAlpha;
   // build re-centres the growing line about the anchor, single line only.
@@ -1229,7 +1370,7 @@ function StaggeredHeadline(
           }
         : undefined;
     const sample = sampleTextUnit(timing, i, localMs, ctx);
-    sample.alpha *= groupAlpha;
+    sample.alpha = surfaceAlpha(sample.alpha * groupAlpha, props);
     samples.push(sample);
   }
   // frosted: a constant soften + weight gain on every unit, riding the pack fields (exactly zero at intensity 0).
@@ -1486,7 +1627,7 @@ function StaggeredHeadline(
       >
         {text}
       </Text>
-      {(highlighting || underlining || lookHighlight) && (
+      {!props.underLayer && (highlighting || underlining || lookHighlight) && (
         <group position={position} {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}>
           {lookHighlight && lookWordUnits && lookWordBoxes && lookHighlightSamples && (
             <HighlightQuads
@@ -1512,7 +1653,7 @@ function StaggeredHeadline(
               draw={underlineProgress(timing, localMs)}
               fontSize={fontSize}
               color={accent}
-              opacity={groupAlpha}
+              opacity={surfaceAlpha(groupAlpha, props)}
             />
           )}
         </group>

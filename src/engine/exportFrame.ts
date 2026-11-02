@@ -1,6 +1,7 @@
 import { flushSync } from "react-dom";
 import type { Camera, Object3D, PerspectiveCamera, Scene, Vector2, WebGLRenderer } from "three";
 import { Text as TroikaText } from "troika-three-text";
+import { settleUsedObjects } from "../toolkit/objects/preload";
 import { awaitEmojiRastersIdle } from "../toolkit/text/emojiRaster";
 import { applyCameraTrack, type CameraKeyframe } from "./cameraTrack";
 import { awaitVideoFramesReady } from "./clips";
@@ -70,6 +71,7 @@ export async function awaitHoldsCommitted(version: number): Promise<void> {
 /** Awaits typesetting for every troika text mesh in the scene: per-frame layout can be async (e.g. a counter whose text changes each frame), so we must wait for it before capturing or read stale glyphs. Hard-won subtleties (the text half of the back-to-back Verify ×2 race): meshes are matched by class, since troika's mesh carries no `isTroikaText` flag and its `material` getter returns `[outline, main]` for outlined text (neon, whole-block blur-in), so material sniffing misses them; a pending typeset is kicked here (pre-render) rather than left to troika's own `onBeforeRender` kick (which would start it a frame late), with quiescence awaited via the `synccomplete` event since `sync(cb)` drops callbacks when no new sync is needed; and the wait is spin-bounded, failing the run rather than hanging on a typeset that never lands. Exported for the borrowed-clock capture paths (snapshots.ts), whose single forced paint otherwise reads glyphs one capture late (the invisible-Playfair-title theme-preview bug). */
 export async function awaitTextSync(scene: Scene): Promise<void> {
   await settleTypesets(scene);
+  await settleUsedObjects();
   if (textDerivedPendingCount() === 0) return;
   // Layout derived from measured text re-renders after its typesets land; settle until none is outstanding, then once more for typesets the settling commit queued.
   for (let spins = 0; textDerivedPendingCount() > 0; spins++) {
@@ -77,6 +79,7 @@ export async function awaitTextSync(scene: Scene): Promise<void> {
       throw new Error(`Text-derived layout never settled: ${textDerivedPendingCount()} pending.`);
     }
     await yieldMacrotask();
+    await settleUsedObjects();
     await settleTypesets(scene);
   }
   await settleTypesets(scene);

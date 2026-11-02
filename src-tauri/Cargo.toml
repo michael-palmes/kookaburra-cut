@@ -133,6 +133,15 @@ objc2-core-video = { version = "0.3.2", default-features = false, features = [
   "CVPixelBuffer",
   "CVReturn",
 ] }
+# Reference films (ocr.rs): words on screen through Vision, on this Mac only; the 0.3.2 family again, so no second binary to sign.
+objc2-vision = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "VNObservation",
+  "VNRequest",
+  "VNRequestHandler",
+  "VNRecognizeTextRequest",
+  "VNTypes",
+] }
 # Never imported: pins the webview layer to tauri-runtime-wry's wry, so move it with tauri (one wry in the lock).
 wry = "=0.57.0"
 

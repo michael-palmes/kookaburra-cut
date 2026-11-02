@@ -54,3 +54,4 @@ ds-bundle/
 
 # Python bytecode (kb runs from the project kit)
 __pycache__/
+fixtures/impact-probe/

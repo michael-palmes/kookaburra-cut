@@ -462,7 +462,7 @@ the mix like every pixel. Rules:
   envelope mirrors the qsin afade curves per clock tick. The mux is the only
   mixdown that counts.
 - **Song analysis never feeds render.** The beat lane's and `<exe> song
-  analyse`'s output (`src-tauri/src/song/`, cached as `<sha>-v2.json`) is
+  analyse`'s output (`src-tauri/src/song/`, cached as `<sha>-v3.json`) is
   editor and agent guidance only; an autorun never starts it, and only an
   authored `audio.grid` copied from it reaches a frame.
 
@@ -1149,6 +1149,39 @@ camera exactly:
   while both sides flood) is the machine-local fixture: look at it after any room
   change; it is not in any gate.
 
+### Screen layers
+
+`<ScreenLayer>` adds no compositor pass of its own, so it can't drift between lanes.
+
+- **Front** registers a hidden root-level group as one more frame panel
+  (`framePanelRegistry`, `screenLayer: true`). The panel pass already draws at the base pose
+  with depth cleared, after depth of field and after the composer on a solo frame, and into
+  each side's target on a transition. Panels draw one at a time, the scene's own first, so
+  they never z-fight, and `beforeDraw` stacks the layer in JSX order: three breaks a
+  same-plane tie by object id, and an id follows when a child finished loading.
+- **Back** puts a zero-size mesh at `SCREEN_BACK_RENDER_ORDER` (-30, over the room, under all
+  content) in the host group. Its `onBeforeRender` renders the layer's own `Scene` with the
+  base camera into whatever target is current, with `autoClear` off and every material's
+  depth test off. It follows the host's visibility on every path: solo, composer, dof,
+  framed, both sides of a comparison, both sides of a transition. The scene hangs off the
+  root, invisible, so `awaitTextSync`'s traverse still settles its text. A nested render into
+  an MSAA target also resolves that target once more; the extra blit is harmless.
+- Neither mounts anything unless a scene asks: with none, `framePanelsFor` returns what it
+  always did and the pass draws the same calls, which `ws:launch-2026` EQUAL proves.
+- Known seam, shared with every frame panel: under declared effects, a solo frame's front
+  layer sits past the composer but a transition's goes through it, so its colour can shift
+  at the cut. A framed scene under effects drops panels on a transition, screen layers too.
+
+### Placed objects
+
+`<StagedObject objectId>` is named by no sidecar, so `preloadSceneObjects` can't see it, and a
+first use mid-film must not suspend: that drops every scene behind the shared boundary for a
+frame. It loads without suspending and reports pending from a layout effect, and
+`awaitTextSync` waits for the real load (`settleUsedObjects`, not the spin bound) before any
+capture, so frame N is the same however cold the cache was. An unknown id, or a glb that fails
+to load, resolves to nothing rendered, so a capture never hangs on a scene's bad id. A scene's id
+reaches the window only through `NativePort.readObject`, the same door a sidecar's takes.
+
 ### Fonts
 
 - **Every rendered glyph comes from a file we control.** Theme typography is a
@@ -1818,6 +1851,11 @@ it.
   baseline with no commit to blame. Bundled projects (`projects/showcase-tour`)
   are per-worktree and immune, so gate hard on those and treat a `ws:` hash as
   advisory whenever more than one worktree is live.
+- **Machine-local baselines drift silently.** `pnpm ready` re-runs a machine-local
+  fixture only when its own area changes, so a merge elsewhere, or something outside
+  the repo, moves its baseline with no check on the pixels. A MOVED leg on a PR doesn't
+  prove the PR moved it: export from clean main first, then from the commit that
+  recorded the baseline. If that commit also exports the new hash, no merge moved it.
 
 ### Current baselines
 
@@ -1844,15 +1882,15 @@ Verify ×2 here (the 2026-10-23 note):
 | `long-device-spike` (long-film memory gate: devices, a fold, compare media, 61 s) | `36ced02f…` | — | — | — | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `33c75ab8…` | — | — | — | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `273e778c…` | — | — | — | — | — | — | — | — |
-| `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `c3d51b40…` | — | — | — | — | — | — | — | — |
+| `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `090ba516…` | — | — | — | — | — | — | — | — |
 | `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `d4cca56e…` | — | — | — | — | — | — | — | — |
 | `ws:multi-device-spike` (deviceLayout gate, machine-local) | `8800fa97…` | `3ea055dc…` | `d8bd6272…` | — | — | — | — | — | — |
 | `ws:dof-spike` (depth-of-field gate, machine-local) | `8d99c5ae…` | `903a0f32…` | — | — | — | — | — | — | — |
 | `ws:motion-blur-spike` (motion blur gate, machine-local) | `8f2bf463…` | `f66de282…` | — | — | — | — | — | — | — |
-| `ws:camera-kick-spike` (camera kicks, musical positions and `useBeatGrid`, machine-local; never in a gate) | `4e965b6c…` | — | — | — | — | — | — | — | — |
-| `ws:chart-spike` (chart gate, machine-local) | `01c32706…` | `7b706307…` | `f1820470…` | `d5611672…` | — | — | — | — | — |
+| `ws:camera-kick-spike` (camera kicks, musical positions and `useBeatGrid`, machine-local; never in a gate) | `e9b6efc3…` | — | — | — | — | — | — | — | — |
+| `ws:chart-spike` (chart gate, machine-local) | `01c32706…` | `7b706307…` | `fb9d3d90…` | `7245a01d…` | — | — | — | — | — |
 | `ws:duplicate-spike` (scene-id heal gate, machine-local) | `74cfca6c…` | — | — | — | — | — | — | — | — |
-| `ws:overlay-spike` (overlay gate, machine-local) | `f3d115a5…` | — | — | — | — | — | — | — | — |
+| `ws:overlay-spike` (overlay gate, machine-local) | `ef78da55…` | — | — | — | — | — | — | — | — |
 | `ws:duo-spike` (foldable gate, machine-local) | `c16be077…` | `372327a9…` | — | — | — | — | — | — | — |
 | `ws:device-video-spike` (device/media/camera gate, built-in-lit devices, machine-local) | `c1a9ff92…` | — | — | — | — | — | — | — | — |
 | `ws:device-env-spike` (cold frame-0 repro: a built-in-lit handset's top edge, machine-local) | `47d94e84…` | — | — | — | — | — | — | — | — |
@@ -1860,6 +1898,26 @@ Verify ×2 here (the 2026-10-23 note):
 | `ws:rooms-spike` (room cuts, a flood with a tokened light, a wipe while both sides flood; machine-local, never gated) | `fee706ac…` | `219c3507…` | — | — | — | — | — | — | — |
 | `ws:mask-fx-spike` (an image-mask seam between two bloom scenes on the effects lane; machine-local, never gated) | `6555ff7f…` | — | — | — | — | — | — | — | — |
 | `ws:motion-toolkit-spike` (the toolkit primitives: shapes, device anchors, text metrics and presets, stamps, dashes, mosaic, taps; machine-local, gated when motion or shape primitives change) | `06b79ae2…` | `fa64bced…` | — | — | — | — | — | — | — |
+
+> **2026-10-31 (five machine-local cells re-recorded, four with no known cause):**
+> `ws:overlay-spike` 16:9 `f3d115a5…` → `ef78da55…` is #268's floor shift: `23e4c58b`
+> exports the old hash and `2ca01528` the new, and only the first 276 frames differ (the two
+> pitched-device scenes, on the handset's lower edge and floor shadow). No merge moved
+> the other four: `ws:lighting-spike-fable` 16:9 `c3d51b40…` → `090ba516…`,
+> `ws:camera-kick-spike` 16:9 `4e965b6c…` → `e9b6efc3…`, `ws:chart-spike` 1:1
+> `f1820470…` → `fb9d3d90…` and 4:5 `d5611672…` → `7245a01d…`. `343f9119`, which
+> recorded them, now exports the new hashes itself, while `ws:duo-spike` there still
+> gives its pre-#268 `8d28f65a…`, so the checkout really ran the old code. Their old
+> hashes last matched on 2026-10-29 at 11:19 ACDT and the new ones first appeared on
+> 2026-10-30 at 20:33 ACDT, so something outside the repo changed between. Not found.
+> Ruled out: the fixture files, workspace fonts, themes and gradients, the licensed
+> models, and preview warmth (cold equals warm on camera-kick, lighting and chart 1:1).
+> All five were ×2 identical on `100ed2d6`'s tree, and they export the same after a
+> reboot and macOS 27.0.1 → 27.2. Eyeballed: one frame per leg and a contact sheet of
+> the lighting film, where devices keep their shadows and the charts draw. No old
+> export survives, so these four have no before and after. The
+> clipped value-axis title in chart 4:5 is not new: its frame is byte-identical at
+> `343f9119`.
 
 > **2026-10-29 (v0.21.1, the first CI release): packaged parity EQUAL on both
 > anchors** (`showcase-tour` `fe6b6c20…`, `ws:launch-2026` `cc23761e…`) for the

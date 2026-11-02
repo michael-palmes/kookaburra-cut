@@ -15,8 +15,10 @@ import { useTheme } from "../../theme";
 import { formatFontString, parseFontString } from "../../theme/fontRef";
 import { fontUrl, SDF_GLYPH_SIZE } from "../../theme/fonts";
 import { foldBandToChild, GroupAnimationContext } from "../group/context";
+import { pulse } from "../motion/pulse";
+import { useBeatGrid } from "../music/useBeatGrid";
 import type { EaseName, V3 } from "../types";
-import { counterProgress } from "./counterProgress";
+import { beatsInWindow, counterProgress } from "./counterProgress";
 import { caretQuad, type EmojiQuadState, EmojiQuads } from "./EmojiQuads";
 import { prepareEmojiText } from "./emojiText";
 import { materialProp, useExactText, useExactTextBase } from "./exactText";
@@ -25,7 +27,7 @@ import { createStaggerTextMaterial, writeShineBand } from "./staggerMaterial";
 export interface AnimatedCounterProps {
   from: number;
   to: number;
-  /** Count-up duration, in ms (local scene time). */
+  /** Count-up duration, in ms (local scene time); `steps` jumps inside it, `stepsAt` replaces it. */
   durationMs: number;
   /** Formats the interpolated value for display. Defaults to a rounded integer. */
   format?: (n: number) => string;
@@ -37,10 +39,18 @@ export interface AnimatedCounterProps {
   textKey?: string;
   /** When the count starts, in ms (scene-local; default 0). */
   startMs?: number;
-  /** An ease name shaping the count (default "linear"). */
+  /** Scene-local ms the count LANDS on `to`, on a beat or a cut: it starts `durationMs` earlier. Wins over `startMs`; `stepsAt` ignores it. */
+  hitAt?: number;
+  /** An ease name shaping the count (default "linear"). With `steps` it moves when each jump falls; with `stepsAt` or `ticks` it bends how far each jump goes. */
   ease?: EaseName;
-  /** Count in this many equal jumps instead of continuously, landing on `to`. */
+  /** Count in this many equal jumps instead of continuously, landing on `to`: a jump falls where the eased progress crosses each k/n, so the first comes after 1/n of the count (never at `startMs`), the last exactly at the end, and `ease` shifts the ones between. */
   steps?: number;
+  /** "beats": one jump on every grid beat from the start of the count to its end, each with a pop, landing on `to` on the last. Counts continuously (with one log line) when the project has no grid. */
+  ticks?: "beats";
+  /** One jump (with a pop) at each scene-local ms, landing on `to` on the last. Wins over `ticks`, `steps` and the count window. */
+  stepsAt?: readonly number[];
+  /** The scale each `ticks` or `stepsAt` jump pops by (default 0.08, so 1.08 and back over 180 ms); 0 turns it off. */
+  pop?: number;
   /** Where `position` sits on the number's Y axis (default "middle"). */
   anchorY?: "top" | "middle" | "bottom";
 }
@@ -52,7 +62,32 @@ export function AnimatedCounter(props: AnimatedCounterProps) {
   return <AnimatedCounterRenderer {...props} />;
 }
 
-function AnimatedCounterRenderer(props: AnimatedCounterProps) {
+const TICK_POP_DEFAULT = 0.08;
+const TICK_POP_RELEASE_MS = 180;
+const TICK_POP_ATTACK_MS = 17;
+
+let warnedBeatTicks = false;
+
+function AnimatedCounterRenderer(rawProps: AnimatedCounterProps) {
+  const grid = useBeatGrid();
+  const startMs =
+    rawProps.hitAt === undefined ? rawProps.startMs : rawProps.hitAt - rawProps.durationMs;
+  const beats = useMemo(
+    () =>
+      rawProps.ticks === "beats" && grid
+        ? beatsInWindow(grid, startMs ?? 0, rawProps.durationMs)
+        : null,
+    [rawProps.ticks, grid, startMs, rawProps.durationMs],
+  );
+  if (rawProps.ticks === "beats" && !grid && !warnedBeatTicks) {
+    warnedBeatTicks = true;
+    console.warn('[counter] ticks="beats" needs an audio.grid; counting continuously instead');
+  }
+  const stepsAt = rawProps.stepsAt?.length ? rawProps.stepsAt : beats?.length ? beats : undefined;
+  const props: AnimatedCounterProps =
+    startMs === rawProps.startMs && stepsAt === rawProps.stepsAt
+      ? rawProps
+      : { ...rawProps, startMs, stepsAt };
   const {
     from,
     to,
@@ -87,8 +122,8 @@ function AnimatedCounterRenderer(props: AnimatedCounterProps) {
   const rotZ = textStyleRotationRad(doc, textKey);
 
   const sceneIndex = useSceneContext()?.index;
-  const counts = durationMs > 0 && from !== to;
-  const countEndMs = (props.startMs ?? 0) + durationMs;
+  const counts = (durationMs > 0 || !!stepsAt?.length) && from !== to;
+  const countEndMs = stepsAt?.length ? Math.max(...stepsAt) : (props.startMs ?? 0) + durationMs;
   useEffect(() => {
     if (sceneIndex === undefined || !counts) return;
     return registerPresentTiming(sceneIndex, { kind: "counter", toMs: countEndMs });
@@ -144,6 +179,17 @@ function AnimatedCounterRenderer(props: AnimatedCounterProps) {
   useEffect(() => () => holder?.dispose(), [holder]);
   if (holder) writeShineBand(holder, foldBandToChild(group, pos));
 
+  // A tick's pop scales about `position`; a count without ticks has no wrapping group at all.
+  const ticked = stepsAt !== undefined;
+  const popScale = ticked
+    ? 1 +
+      (props.pop ?? TICK_POP_DEFAULT) *
+        pulse(localMs, stepsAt, {
+          attackMs: TICK_POP_ATTACK_MS,
+          releaseMs: TICK_POP_RELEASE_MS,
+        })
+    : 1;
+
   const alpha = group?.alpha ?? 1;
   const states: EmojiQuadState[] = [];
   if (hasEmoji && carets) {
@@ -167,11 +213,11 @@ function AnimatedCounterRenderer(props: AnimatedCounterProps) {
     }
   }
 
-  return (
+  const body = (
     <>
       <Text
         font={fontUrl(fontRefValue)}
-        position={pos}
+        position={ticked ? ORIGIN : pos}
         fontSize={size}
         color={fill}
         anchorX={props.anchorX ?? "center"}
@@ -192,10 +238,18 @@ function AnimatedCounterRenderer(props: AnimatedCounterProps) {
         {prepared.text}
       </Text>
       {hasEmoji && (
-        <group position={pos} {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}>
+        <group position={ticked ? ORIGIN : pos} {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}>
           <EmojiQuads clusters={prepared.clusters} states={states} fontSize={size} />
         </group>
       )}
     </>
   );
+  if (!ticked) return body;
+  return (
+    <group position={pos} scale={popScale}>
+      {body}
+    </group>
+  );
 }
+
+const ORIGIN: V3 = [0, 0, 0];

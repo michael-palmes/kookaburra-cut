@@ -11,6 +11,7 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 from . import catalog as catmod
 from . import fonts as fontmod
+from . import lines as linesmod
 from . import music
 from . import themes as thememod
 from . import tsx as tsxmod
@@ -248,7 +249,7 @@ class Checker:
                 self.asset(file, "audio.file", rel)
                 ext = rel.rsplit(".", 1)[-1].lower()
                 if ext not in AUDIO_EXTS:
-                    rep.error(file, "audio.file", f'"{rel}" is not audio; use mp3, wav, m4a, aac, flac or ogg')
+                    rep.error(file, "audio.file", f'"{rel}" is not audio; use mp3, wav, m4a, aac, flac or ogg (Music > Choose track takes the audio from an mp4)')
                 curve = audio.get("fadeOutCurve")
                 if curve is not None and curve not in catmod.AUDIO_FADE_CURVES:
                     warn(file, "audio.fadeOutCurve", f'unknown curve "{curve}" (renders as smooth); one of {", ".join(catmod.AUDIO_FADE_CURVES)}')
@@ -508,7 +509,7 @@ class Checker:
         if isinstance(overrides, dict):
             for key, spec in overrides.items():
                 self.text_animation(file, f"textAnimationOverrides.{key}", spec)
-        self.build_single_line(file, doc)
+        self.single_line_motions(file, doc)
         self.text_look(file, "textLook", doc.get("textLook"))
         looks = doc.get("textLookOverrides")
         if isinstance(looks, dict):
@@ -1060,16 +1061,22 @@ class Checker:
             self.report.error(file, f"{path}.buildShiftEm", "must be a number of em (the app drops it)")
         self.stagger_exact(file, path, spec)
 
-    def build_single_line(self, file: str, doc: Dict[str, Any]) -> None:
-        """build re-centres one growing line; copy with a line break plays a plain word fade instead."""
-        text = doc.get("text") if isinstance(doc.get("text"), dict) else {}
-        overrides = doc.get("textAnimationOverrides") if isinstance(doc.get("textAnimationOverrides"), dict) else {}
-        scene_build = dig(doc, "textAnimation", "in") == "build"
-        for key, value in text.items():
-            spec = overrides.get(key)
-            builds = dig(spec, "in") == "build" if isinstance(spec, dict) else scene_build
-            if builds and isinstance(value, str) and "\n" in value:
-                self.report.warn(file, f"text.{key}", "build is single line; this copy breaks lines, so it plays a plain word fade")
+    def single_line_tsx(self, rel: str, text: str) -> None:
+        """An AnimatedHeadline's literal preset against its literal or sidecar copy, and any maxWidth that can wrap it."""
+        doc = None
+        if rel.endswith(".tsx"):
+            try:
+                doc = json.loads(read_text(self.project.root / f"{rel[:-4]}.json"))
+            except (OSError, ValueError, UnicodeDecodeError):
+                doc = None
+        motions = linesmod.motion_lines(self.cat.entries("textMotion"))
+        for line, message in linesmod.tsx_warnings(tsxmod.strip_comments(text), doc, motions):
+            self.report.warn(rel, f"line {line}", message)
+
+    def single_line_motions(self, file: str, doc: Dict[str, Any]) -> None:
+        """A single-line motion over copy with a line break plays badly; the catalogue says which is which."""
+        for path, message in linesmod.sidecar_warnings(doc, linesmod.motion_lines(self.cat.entries("textMotion"))):
+            self.report.warn(file, path, message)
 
     def stagger_exact(self, file: str, path: str, spec: Any) -> None:
         """A spec's staggerMs 0 without staggerExact plays the granularity's default delay wherever the spec picks one."""
@@ -1388,6 +1395,7 @@ class Checker:
                 rep.error(rel, "", f"unreadable ({e})")
                 return
         code = tsxmod.blank_comments_and_strings(text)
+        self.single_line_tsx(rel, text)
         persistent = self.project_persistent() == rel
         toolkit_names: Set[str] = set()
         exports = self.cat.ids("toolkit.exports")
@@ -1752,8 +1760,61 @@ def free_id(base: str, taken: Set[Any]) -> str:
     return f"{base}-{n}"
 
 
-def check_project(project: Project, files: Optional[List[str]] = None, heartbeat: Optional[Dict[str, Any]] = None, ctx: Optional[Context] = None) -> Report:
-    """Full check, or one scoped to `files` (project-relative) plus the manifest's errors."""
+THEME_FILE_PREFIX = "../themes/"
+THEME_NOTES = "theme-warnings.json"
+
+
+def file_stamp(path: Any) -> Optional[str]:
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    return f"{st.st_mtime_ns}:{st.st_size}"
+
+
+def collapse_theme_warnings(project: Project, report: Report, caller: Any = None) -> None:
+    """Workspace-theme warnings show once per agent session with the theme file's path; until that file changes, later checks in the session keep one info line instead."""
+    from . import identity, lock
+    from .util import atomic_write_json
+
+    groups: Dict[str, List[Any]] = {}
+    for issue in report.issues:
+        if issue.severity == "warning" and issue.file.startswith(THEME_FILE_PREFIX):
+            groups.setdefault(issue.file, []).append(issue)
+    caller = caller or identity.current()
+    if not groups or not caller.session:
+        return
+    try:
+        notes = lock.kb_dir(project) / "agents" / caller.name / THEME_NOTES
+    except Exception:
+        return
+    try:
+        seen = json.loads(read_text(notes))
+    except Exception:
+        seen = None
+    if not isinstance(seen, dict) or seen.get("session") != caller.session or not isinstance(seen.get("files"), dict):
+        seen = {"session": caller.session, "files": {}}
+    changed = False
+    for rel, issues in groups.items():
+        path = os.path.normpath(str(project.root / rel))
+        stamp = file_stamp(path)
+        if stamp is not None and seen["files"].get(path) == stamp:
+            report.issues = [i for i in report.issues if not any(i is j for j in issues)]
+            report.info(rel, "", f"{len(issues)} warning{'s' if len(issues) != 1 else ''} from this workspace theme already shown this session (unchanged since): {path}")
+            continue
+        report.info(rel, "", f"workspace theme file {path}, shared by every project that uses it; its warnings show once a session")
+        seen["files"][path] = stamp
+        changed = True
+    if changed:
+        try:
+            atomic_write_json(notes, seen)
+        except Exception:
+            pass
+
+
+def check_project(project: Project, files: Optional[List[str]] = None, heartbeat: Optional[Dict[str, Any]] = None, ctx: Optional[Context] = None,
+                  once: bool = False) -> Report:
+    """Full check, or one scoped to `files` (project-relative) plus the manifest's errors; `once` shows workspace-theme warnings once a session (only where the report reaches the agent)."""
     ctx = ctx or Context(project, heartbeat=heartbeat)
     checker = Checker(ctx)
     scoped = files is not None
@@ -1778,6 +1839,8 @@ def check_project(project: Project, files: Optional[List[str]] = None, heartbeat
         from . import assets_check
 
         assets_check.run(checker)
+        if once:
+            collapse_theme_warnings(project, checker.report)
         return checker.report
     for f in files or []:
         if f == MANIFEST:
@@ -1790,4 +1853,6 @@ def check_project(project: Project, files: Optional[List[str]] = None, heartbeat
             checker.sidecar(stem_of(f[:-5]))
         elif f.startswith("assets/"):
             continue
+    if once:
+        collapse_theme_warnings(project, checker.report)
     return checker.report

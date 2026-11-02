@@ -1,0 +1,3593 @@
+{
+  "AVAILABLE_DEVICE_IDS": {
+    "kind": "constant",
+    "summary": "Device ids this build can render with their own model.",
+    "signature": "const AVAILABLE_DEVICE_IDS: DeviceId[];",
+    "doc": "Devices this build can render with their own model and screen contract."
+  },
+  "AnimatedCounter": {
+    "kind": "component",
+    "summary": "Number counting from `from` to `to` over durationMs; startMs, hitAt, ease, steps, ticks and stepsAt shape it.",
+    "signature": "function AnimatedCounter(props: AnimatedCounterProps): ReactElement | null;",
+    "doc": "Counts from `from` to `to` over `durationMs` (from `startMs`, shaped by `ease`, in `steps` jumps when set), as a pure function of the timeline; inside an `AnimatedGroup` the group's alpha multiplies into the fill and shine-capable groups mount the band material so the sweep doesn't skip the digits, both structurally absent outside groups (standing bytes stay safe). With a `textKey` it joins the managed-text lifecycle, so it stands down under a generic takeover like every scene-owned text primitive.",
+    "props": [
+      {
+        "name": "from",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "to",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "durationMs",
+        "type": "number",
+        "required": true,
+        "units": "ms",
+        "doc": "Count-up duration, in ms (local scene time); `steps` jumps inside it, `stepsAt` replaces it."
+      },
+      {
+        "name": "format",
+        "type": "(n: number) => string",
+        "required": false,
+        "default": "a rounded integer",
+        "doc": "Formats the interpolated value for display. Defaults to a rounded integer."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]"
+      },
+      {
+        "name": "fontSize",
+        "type": "number",
+        "required": false,
+        "default": "0.5"
+      },
+      {
+        "name": "anchorX",
+        "type": "\"left\" | \"center\" | \"right\"",
+        "required": false,
+        "default": "\"center\"",
+        "doc": "Where `position` sits on the number's X axis (default \"center\", the legacy contract)."
+      },
+      {
+        "name": "textKey",
+        "type": "string",
+        "required": false,
+        "doc": "The sidecar style key this counter honours: registers the row in the Edit-text drill and applies the `textStyle.<textKey>*` overrides (Size/Color/Font/OffsetX/OffsetY/RotationDeg)."
+      },
+      {
+        "name": "startMs",
+        "type": "number",
+        "required": false,
+        "default": "0",
+        "units": "ms",
+        "doc": "When the count starts, in ms (scene-local; default 0)."
+      },
+      {
+        "name": "hitAt",
+        "type": "number",
+        "required": false,
+        "units": "ms",
+        "doc": "Scene-local ms the count LANDS on `to`, on a beat or a cut: it starts `durationMs` earlier. Wins over `startMs`; `stepsAt` ignores it."
+      },
+      {
+        "name": "ease",
+        "type": "EaseName",
+        "required": false,
+        "default": "\"linear\"",
+        "doc": "An ease name shaping the count (default \"linear\"). With `steps` it moves when each jump falls; with `stepsAt` or `ticks` it bends how far each jump goes."
+      },
+      {
+        "name": "steps",
+        "type": "number",
+        "required": false,
+        "doc": "Count in this many equal jumps instead of continuously, landing on `to`: a jump falls where the eased progress crosses each k/n, so the first comes after 1/n of the count (never at `startMs`), the last exactly at the end, and `ease` shifts the ones between."
+      },
+      {
+        "name": "ticks",
+        "type": "\"beats\"",
+        "required": false,
+        "doc": "\"beats\": one jump on every grid beat from the start of the count to its end, each with a pop, landing on `to` on the last. Counts continuously (with one log line) when the project has no grid."
+      },
+      {
+        "name": "stepsAt",
+        "type": "readonly number[]",
+        "required": false,
+        "units": "ms",
+        "doc": "One jump (with a pop) at each scene-local ms, landing on `to` on the last. Wins over `ticks`, `steps` and the count window."
+      },
+      {
+        "name": "pop",
+        "type": "number",
+        "required": false,
+        "default": "0.08",
+        "units": "ms",
+        "doc": "The scale each `ticks` or `stepsAt` jump pops by (default 0.08, so 1.08 and back over 180 ms); 0 turns it off."
+      },
+      {
+        "name": "anchorY",
+        "type": "\"top\" | \"middle\" | \"bottom\"",
+        "required": false,
+        "default": "\"middle\"",
+        "doc": "Where `position` sits on the number's Y axis (default \"middle\")."
+      }
+    ],
+    "example": "<AnimatedCounter from={0} to={1200} durationMs={1600} startMs={400} ease=\"outCubic\" />",
+    "timing": [
+      "The count runs startMs to startMs + durationMs. hitAt lands it on `to` at that ms, starting durationMs earlier.",
+      "steps: equal jumps where the EASED progress crosses each k/n, so the first falls after 1/n (never at startMs), the last exactly at the end, and ease moves the ones between.",
+      "stepsAt: one jump at each ms, whatever the window says, landing on `to` on the last. ticks=\"beats\": one on every grid beat inside the window. Both pop; with them ease bends how far each jump goes, not when."
+    ]
+  },
+  "AnimatedCounterProps": {
+    "kind": "type",
+    "signature": "interface AnimatedCounterProps { from: number; to: number; durationMs: number; format?: (n: number) => string; position?: V3; fontSize?: number; anchorX?: \"left\" | \"center\" | \"right\"; textKey?: string; startMs?: number; hitAt?: number; ease?: EaseName; steps?: number; ticks?: \"beats\"; stepsAt?: readonly number[]; pop?: number; anchorY?: \"top\" | \"middle\" | \"bottom\"; }"
+  },
+  "AnimatedGroup": {
+    "kind": "component",
+    "summary": "Animates icon + text lockups as one unit with the text presets.",
+    "signature": "function AnimatedGroup(props: AnimatedGroupProps): ReactElement;",
+    "doc": "Animates its children as one unit through the shared text-preset sampler, the group mechanism for icon+text lockups: granularity is forced null (`scatter-scale` on a group is the whole-lockup degenerate), child presets compose (alphas multiply through `GroupAnimationContext`, transforms nest), and the pivot is deliberately the group's origin since measured-bounds pivots depend on load timing, a determinism smell.",
+    "props": [
+      {
+        "name": "from",
+        "type": "number",
+        "required": false,
+        "default": "0",
+        "units": "ms",
+        "doc": "In-animation start, in ms (local scene time)."
+      },
+      {
+        "name": "to",
+        "type": "number",
+        "required": false,
+        "default": "600",
+        "units": "ms",
+        "doc": "In-animation end, in ms."
+      },
+      {
+        "name": "hitAt",
+        "type": "number",
+        "required": false,
+        "units": "ms",
+        "doc": "Scene-local ms the group LANDS (first at rest size and full opacity), on a beat or a cut: the in keeps its duration and starts the motion's measured lead earlier. Wins over `from`."
+      },
+      {
+        "name": "outAt",
+        "type": "number",
+        "required": false,
+        "units": "ms",
+        "doc": "Out start, in ms; the out plays over the same duration as the in."
+      },
+      {
+        "name": "durationMs",
+        "type": "number | \"authored\"",
+        "required": false,
+        "units": "ms",
+        "doc": "Pins the reveal (the group is one unit) to this many ms; \"authored\" or absent keeps the authored window."
+      },
+      {
+        "name": "preset",
+        "type": "TextPresetName",
+        "required": false,
+        "default": "the theme's textAnimation.in",
+        "doc": "In-animation preset. Defaults to the theme's `textAnimation.in`."
+      },
+      {
+        "name": "outPreset",
+        "type": "TextPresetName",
+        "required": false,
+        "doc": "Out-animation preset; plays only when `outAt` is set."
+      },
+      {
+        "name": "ease",
+        "type": "EaseName",
+        "required": false,
+        "default": "the theme's motion.easings.standard",
+        "doc": "Easing for preset animations. Defaults to the theme's `motion.easings.standard`."
+      },
+      {
+        "name": "startScale",
+        "type": "number",
+        "required": false,
+        "doc": "fade-scale: starting scale, landing at 1."
+      },
+      {
+        "name": "shine",
+        "type": "boolean",
+        "required": false,
+        "doc": "fade-scale and twist-scale: sweep the soft white shine band once across the whole lockup."
+      },
+      {
+        "name": "direction",
+        "type": "TextDirection",
+        "required": false,
+        "doc": "twist-scale: the side the card turns in from."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]"
+      },
+      {
+        "name": "em",
+        "type": "number",
+        "required": false,
+        "default": "0.6",
+        "units": "em",
+        "doc": "World units per em for offset presets (default 0.6)."
+      },
+      {
+        "name": "extent",
+        "type": "readonly [number, number]",
+        "required": false,
+        "doc": "Group extent [width, height] the shine band sweeps, group-local units."
+      },
+      {
+        "name": "textKey",
+        "type": "string",
+        "required": false,
+        "doc": "Stable managed-text key used to resolve an item-level motion exception."
+      },
+      {
+        "name": "ignoreSceneMotion",
+        "type": "boolean",
+        "required": false,
+        "doc": "Keep this coded group reveal independent of the scene motion fields."
+      },
+      {
+        "name": "imageEffects",
+        "type": "boolean",
+        "required": false,
+        "doc": "Lets managed image icons participate in blur-in and mask-reveal."
+      },
+      {
+        "name": "children",
+        "type": "ReactNode",
+        "required": false
+      }
+    ],
+    "example": "<AnimatedGroup preset=\"fade-up\" hitAt={1200} to={500}><ImageCard src=\"assets/icon.png\" /></AnimatedGroup>",
+    "timing": [
+      "from to to is the in window, the whole group one unit. durationMs pins it; hitAt lands it, starting the motion's lead earlier and winning over `from`.",
+      "An out starts at outAt and plays over the same duration as the in."
+    ]
+  },
+  "AnimatedGroupProps": {
+    "kind": "type",
+    "signature": "interface AnimatedGroupProps { from?: number; to?: number; hitAt?: number; outAt?: number; durationMs?: number | \"authored\"; preset?: TextPresetName; outPreset?: TextPresetName; ease?: EaseName; startScale?: number; shine?: boolean; direction?: TextDirection; position?: V3; em?: number; extent?: readonly [number, number]; textKey?: string; ignoreSceneMotion?: boolean; imageEffects?: boolean; children?: ReactNode; }"
+  },
+  "AnimatedHeadline": {
+    "kind": "component",
+    "summary": "The core SDF text primitive: presets, stagger, looks, depth, fit, hitAt, opacity, textKey styling.",
+    "signature": "function AnimatedHeadline(props: AnimatedHeadlineProps): ReactElement | null;",
+    "doc": "SDF headline rendered through troika (via drei `<Text>`); all motion is a pure function of the timeline, never the wall clock. Three render paths chosen once per mount: LEGACY (nothing configured, the original v0 linear fillOpacity ramp byte-for-byte, must not change), BLOCK (preset without stagger, whole-block opacity/offset/blur/clip via troika props), and STAGGERED (staggerMs > 0, one mesh with a per-glyph derived material).",
+    "props": [
+      {
+        "name": "text",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "from",
+        "type": "number",
+        "required": false,
+        "default": "0",
+        "units": "ms",
+        "doc": "Reveal start, in ms (local scene time)."
+      },
+      {
+        "name": "to",
+        "type": "number",
+        "required": false,
+        "default": "600",
+        "units": "ms",
+        "doc": "Reveal end, in ms (local scene time)."
+      },
+      {
+        "name": "preset",
+        "type": "TextPresetName",
+        "required": false,
+        "default": "the theme's textAnimation.in",
+        "doc": "In-animation preset. Defaults to the theme's `textAnimation.in`."
+      },
+      {
+        "name": "outPreset",
+        "type": "TextPresetName",
+        "required": false,
+        "default": "textAnimation.out",
+        "doc": "Out-animation preset; plays only when `outAt` is set. Defaults to `textAnimation.out`."
+      },
+      {
+        "name": "outAt",
+        "type": "number",
+        "required": false,
+        "units": "ms",
+        "doc": "Out start, in ms; the out plays over the same duration as the in unless `outDurationMs` sets its own."
+      },
+      {
+        "name": "outDurationMs",
+        "type": "number",
+        "required": false,
+        "default": "the in's duration",
+        "units": "ms",
+        "doc": "How long the out lasts, ms (default the in's duration)."
+      },
+      {
+        "name": "hitAt",
+        "type": "number",
+        "required": false,
+        "units": "ms",
+        "doc": "Scene-local ms the first unit LANDS (first at rest size and full opacity), on a beat or a cut: the in keeps its duration and starts the motion's measured lead earlier, `delayMs` included. Wins over `from`; the out never moves."
+      },
+      {
+        "name": "opacity",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "units": "0..1",
+        "doc": "0..1, multiplied into every fade (default 1)."
+      },
+      {
+        "name": "stagger",
+        "type": "\"char\" | \"word\"",
+        "required": false,
+        "doc": "Per-char / per-word stagger granularity. Paragraph delivery is spelled through `delivery`, never here."
+      },
+      {
+        "name": "staggerMs",
+        "type": "number",
+        "required": false,
+        "default": "the theme's textAnimation.staggerMs",
+        "units": "ms",
+        "doc": "Per-unit stagger delay, ms. Defaults to the theme's `textAnimation.staggerMs`."
+      },
+      {
+        "name": "delayMs",
+        "type": "number",
+        "required": false,
+        "default": "textAnimation.delayMs",
+        "units": "ms",
+        "doc": "Hold before the in starts, ms (clamped ≥ 0; the out never shifts). Defaults to `textAnimation.delayMs`."
+      },
+      {
+        "name": "durationMs",
+        "type": "number | \"authored\"",
+        "required": false,
+        "units": "ms",
+        "doc": "Pins the whole reveal, first unit's start to last unit's settle, to this many ms for the text's unit count (stagger and unit duration scale together); \"authored\" or absent keeps the authored per-unit timing."
+      },
+      {
+        "name": "startScale",
+        "type": "number",
+        "required": false,
+        "default": "0.8",
+        "doc": "fade-scale: starting scale, landing at 1 (default 0.8, clamped 0.05-4)."
+      },
+      {
+        "name": "shine",
+        "type": "boolean",
+        "required": false,
+        "doc": "fade-scale: sweep the soft white shine band once during the scale-in."
+      },
+      {
+        "name": "direction",
+        "type": "TextDirection",
+        "required": false,
+        "default": "\"from-left\"",
+        "doc": "twist-scale: the side the card turns in from (default \"from-left\")."
+      },
+      {
+        "name": "buildShiftEm",
+        "type": "number",
+        "required": false,
+        "default": "0.3",
+        "units": "em",
+        "doc": "build: how far each arriving word slides in, em (default 0.3)."
+      },
+      {
+        "name": "delivery",
+        "type": "TextDelivery",
+        "required": false,
+        "doc": "all-at-once / by-paragraph / by-paragraph-group. Paragraphs split on `\\n`, groups on blank lines; all-at-once forces the whole-block path."
+      },
+      {
+        "name": "ease",
+        "type": "EaseName",
+        "required": false,
+        "default": "the theme's motion.easings.standard",
+        "doc": "Easing for preset animations. Defaults to the theme's `motion.easings.standard`."
+      },
+      {
+        "name": "face",
+        "type": "\"headline\" | \"body\"",
+        "required": false,
+        "doc": "Which theme face renders the text: the headline or body font."
+      },
+      {
+        "name": "color",
+        "type": "\"text\" | \"muted\" | \"accent\" | (string & {})",
+        "required": false,
+        "doc": "Theme colour token filling the text, or a raw sRGB hex (the per-scene text-colour escape hatch; tokens stay the default). Setting this pins the fill: the sidecar can no longer override it and the Edit-text drill-in shows no swatch. Prefer `defaultColor` on sidecar-driven scenes."
+      },
+      {
+        "name": "textKey",
+        "type": "string",
+        "required": false,
+        "doc": "The sidecar text key this headline renders (what `useSceneText` was called with): enables the app-editable fill (`textStyle.<textKey>Color` in the scene document) and registers the field's colour swatch in the inspector."
+      },
+      {
+        "name": "styleKey",
+        "type": "string",
+        "required": false,
+        "doc": "Compatibility-only style source when the stable managed key differs from an older sidecar style key."
+      },
+      {
+        "name": "motionKey",
+        "type": "string",
+        "required": false,
+        "doc": "Compatibility-only motion source when the stable managed key differs from an older keyed override."
+      },
+      {
+        "name": "defaultColor",
+        "type": "\"text\" | \"muted\" | \"accent\" | (string & {})",
+        "required": false,
+        "default": "\"text\"",
+        "doc": "Fill when neither `color` nor the sidecar set one (default \"text\"): the token a scene wants as its design default while staying app-editable."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]"
+      },
+      {
+        "name": "fontSize",
+        "type": "number",
+        "required": false,
+        "default": "0.6"
+      },
+      {
+        "name": "fontRef",
+        "type": "FontRef",
+        "required": false,
+        "doc": "Explicit font override replacing the theme face; also how the dispatcher applies a sidecar `<textKey>Font`."
+      },
+      {
+        "name": "textAlign",
+        "type": "\"left\" | \"center\" | \"right\"",
+        "required": false,
+        "doc": "Per-line alignment inside the measured block (visible on multi-line text only)."
+      },
+      {
+        "name": "anchorX",
+        "type": "\"left\" | \"center\" | \"right\"",
+        "required": false,
+        "default": "\"center\"",
+        "doc": "Where `position` sits on the block's X axis (default \"center\", the legacy contract)."
+      },
+      {
+        "name": "anchorY",
+        "type": "\"top\" | \"middle\" | \"bottom\"",
+        "required": false,
+        "default": "troika \"middle\"",
+        "doc": "Where `position` sits on the block's Y axis (default troika \"middle\"); \"top\" anchors multi-line blocks by their top edge so following content can budget below them."
+      },
+      {
+        "name": "maxWidth",
+        "type": "number",
+        "required": false,
+        "units": "world units",
+        "doc": "Wrap width in world units; unset means no wrapping, `\\n` is the only line break. With `fit` it is the width to fit instead, and nothing wraps."
+      },
+      {
+        "name": "fit",
+        "type": "\"width\"",
+        "required": false,
+        "doc": "\"width\" shrinks the font (never grows it) so the widest line fits `maxWidth`, or the safe width when that's unset."
+      },
+      {
+        "name": "depth",
+        "type": "boolean | HeadlineDepth",
+        "required": false,
+        "doc": "A layered depth look in any checked font: a stack of the same text receding behind the face, shading dark to light. `true` takes the finished default."
+      },
+      {
+        "name": "lineHeight",
+        "type": "number",
+        "required": false,
+        "doc": "Line spacing as a multiple of the font size; unset means troika's own \"normal\" (the font's metrics), which is also how the dispatcher applies a sidecar `<textKey>LineHeight`."
+      },
+      {
+        "name": "managedTextRole",
+        "type": "ManagedTextRenderRole",
+        "required": false,
+        "doc": "Scene text stands down when `managedText` is present. Embedded composition text opts out; managed renderer nodes opt back in."
+      },
+      {
+        "name": "managedTextCodedMotion",
+        "type": "TextAnimationSpec",
+        "required": false,
+        "doc": "Effective coded parent motion to retain if the inspector takes ownership of this line."
+      },
+      {
+        "name": "look",
+        "type": "string",
+        "required": false,
+        "default": "→ sidecar textLook → props",
+        "doc": "Text-look preset name (the style catalogue); resolution follows the textAnimation pattern (theme default → sidecar `textLook` → props, `textLookForce` flips the order)."
+      },
+      {
+        "name": "lookParams",
+        "type": "Partial<TextLookSpec>",
+        "required": false,
+        "doc": "Look parameter overrides riding beside `look` (colours, angle, stroke, intensity, offset, curve)."
+      }
+    ],
+    "example": "<AnimatedHeadline text={title} textKey=\"title\" fontSize={0.6} preset=\"stamp\" hitAt={grid?.bar(5) ?? 2000} to={600} />",
+    "timing": [
+      "from to to is the in window, ms: each unit plays the whole window and later units start stagger ms later, so the last settles after `to`.",
+      "A motion's durationMs wins over `to`: the `durationMs` prop pins first unit's start to last unit's settle (stagger and unit duration scale together), a sidecar spec's durationMs replaces the window.",
+      "hitAt is the first unit's landing: the in keeps its duration and starts the motion's lead earlier (delayMs included). See kb catalog textMotion for each motion's measured impactMs at 600 ms; it wins over `from`.",
+      "An out starts at outAt, plays over outDurationMs (default the in's duration) and never shifts with hitAt or delayMs."
+    ]
+  },
+  "AnimatedHeadlineProps": {
+    "kind": "type",
+    "signature": "interface AnimatedHeadlineProps { text: string; from?: number; to?: number; preset?: TextPresetName; outPreset?: TextPresetName; outAt?: number; outDurationMs?: number; hitAt?: number; opacity?: number; stagger?: \"char\" | \"word\"; staggerMs?: number; delayMs?: number; durationMs?: number | \"authored\"; startScale?: number; shine?: boolean; direction?: TextDirection; buildShiftEm?: number; delivery?: TextDelivery; ease?: EaseName; face?: \"headline\" | \"body\"; color?: \"text\" | \"muted\" | \"accent\" | (string & {}); textKey?: string; styleKey?: string; motionKey?: string; defaultColor?: \"text\" | \"muted\" | \"accent\" | (string & {}); position?: V3; fontSize?: number; fontRef?: FontRef; textAlign?: \"left\" | \"center\" | \"right\"; anchorX?: \"left\" | \"center\" | \"right\"; anchorY?: \"top\" | \"middle\" | \"bottom\"; maxWidth?: number; fit?: \"width\"; depth?: boolean | HeadlineDepth; lineHeight?: number; managedTextRole?: ManagedTextRenderRole; managedTextCodedMotion?: TextAnimationSpec; look?: string; lookParams?: Partial<TextLookSpec>; }"
+  },
+  "BeatGrid": {
+    "kind": "type",
+    "signature": "interface BeatGrid { bpm: number; beatsPerBar: number; beatMs: number; barMs: number; bar(bar: number, beat?: number, sixteenth?: number): number; at(position: string): number; at(bar: number, beat?: number, sixteenth?: number): number; local(projectMs: number): number; project(localMs: number): number; position(localMs: number): BeatPosition; }",
+    "doc": "The project's authored `audio.grid` in this scene's time. Every time is integer scene-local ms through the same rounding as sidecar `at` positions, so `grid.bar(13)` and a key at `\"bar:13\"` land on the same frame."
+  },
+  "BeatPosition": {
+    "kind": "type",
+    "signature": "interface BeatPosition { bar: number; beat: number; sixteenth: number; beatPhase: number; barPhase: number; }",
+    "doc": "Where a scene-local time sits on the grid: 1-based bar, beat and sixteenth (bar 0 and below are pickups), plus how far through the beat and the bar it is (0..1)."
+  },
+  "BrandLockup": {
+    "kind": "component",
+    "summary": "App icon beside a small title over a hero subtitle, revealed as one unit.",
+    "signature": "function BrandLockup(props: BrandLockupProps): ReactElement | null;",
+    "doc": "Horizontal brand lockup: app icon left, small muted title over a large hero subtitle to its right, revealed as ONE unit (fade-scale + a single shine sweep). Text lives in the sidecar under `title`/`subtitle`; centring and overflow shrink come from character-count estimates so layout never waits on font measurement.",
+    "props": [
+      {
+        "name": "title",
+        "type": "string",
+        "required": true,
+        "doc": "Small muted label above the hero line (usually the app name)."
+      },
+      {
+        "name": "subtitle",
+        "type": "string",
+        "required": true,
+        "doc": "The hero line (usually the version number)."
+      },
+      {
+        "name": "icon",
+        "type": "string",
+        "required": false,
+        "doc": "Project-relative icon path; every project ships `assets/app-icon.png`."
+      },
+      {
+        "name": "from",
+        "type": "number",
+        "required": false,
+        "default": "200",
+        "units": "ms",
+        "doc": "Group reveal window (scene-local ms)."
+      },
+      {
+        "name": "to",
+        "type": "number",
+        "required": false,
+        "default": "1100"
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]",
+        "units": "world units",
+        "doc": "Offset added after the built-in centring (world units)."
+      },
+      {
+        "name": "iconWidth",
+        "type": "number",
+        "required": false,
+        "default": "1.4",
+        "units": "world units",
+        "doc": "Icon width in world units; height follows the image's aspect."
+      },
+      {
+        "name": "titleSize",
+        "type": "number",
+        "required": false,
+        "default": "0.36",
+        "units": "world units",
+        "doc": "Title label size in world units (default 0.36); the sidecar's `titleSize` multiplier still applies on top."
+      },
+      {
+        "name": "subtitleSize",
+        "type": "number",
+        "required": false,
+        "default": "0.82",
+        "units": "world units",
+        "doc": "Hero subtitle size in world units (default 0.82); the sidecar's `subtitleSize` multiplier still applies on top."
+      },
+      {
+        "name": "titleColor",
+        "type": "\"text\" | \"muted\" | \"accent\" | (string & {})",
+        "required": false,
+        "default": "\"muted\"",
+        "doc": "Title fill token or raw hex (default \"muted\"); beats the sidecar's `textStyle.titleColor`."
+      },
+      {
+        "name": "subtitleColor",
+        "type": "\"text\" | \"muted\" | \"accent\" | (string & {})",
+        "required": false,
+        "doc": "Subtitle fill token or raw hex; beats the sidecar's `textStyle.subtitleColor`."
+      }
+    ],
+    "example": "<BrandLockup title=\"...\" subtitle=\"...\" />"
+  },
+  "BrandLockupProps": {
+    "kind": "type",
+    "signature": "interface BrandLockupProps { title: string; subtitle: string; icon?: string; from?: number; to?: number; position?: V3; iconWidth?: number; titleSize?: number; subtitleSize?: number; titleColor?: \"text\" | \"muted\" | \"accent\" | (string & {}); subtitleColor?: \"text\" | \"muted\" | \"accent\" | (string & {}); }"
+  },
+  "Chart": {
+    "kind": "component",
+    "summary": "Draws the sidecar chart block; usually the whole chart TSX.",
+    "signature": "function Chart(props?: ChartProps): ReactElement | null;",
+    "props": [
+      {
+        "name": "type",
+        "type": "ChartType",
+        "required": false
+      },
+      {
+        "name": "dimension",
+        "type": "ChartDimension",
+        "required": false
+      },
+      {
+        "name": "mount",
+        "type": "ChartMount",
+        "required": false
+      },
+      {
+        "name": "placement",
+        "type": "DevicePlacement",
+        "required": false,
+        "doc": "Staged mount only, `DevicePlacement` semantics."
+      },
+      {
+        "name": "look",
+        "type": "Partial<Chart2DAppearance>",
+        "required": false,
+        "doc": "Appearance overrides applied over the preset's flat facet, straight through to `Chart2D`."
+      },
+      {
+        "name": "reveal",
+        "type": "ChartRevealSource",
+        "required": false,
+        "doc": "Build state replacing the block's own build-in, a bare per-element lookup or a whole sampler; absent samples the sidecar's animation preset."
+      },
+      {
+        "name": "opacity",
+        "type": "number",
+        "required": false,
+        "default": "1"
+      },
+      {
+        "name": "lit",
+        "type": "boolean",
+        "required": false,
+        "doc": "Bundle the standard rig for a 3D chart (the `Device` contract): defaults true, or false under a lighting `<SceneStage>`; an explicit value wins. Inert for flat charts, which are unlit."
+      }
+    ],
+    "example": "<Chart />"
+  },
+  "Chart2D": {
+    "kind": "component",
+    "summary": "Flat chart renderer behind Chart; prefer Chart.",
+    "signature": "function Chart2D(props: Chart2DProps): ReactElement;",
+    "props": [
+      {
+        "name": "surface",
+        "type": "ChartStyleSurface",
+        "required": false,
+        "default": "preset",
+        "doc": "The resolved appearance; absent takes the catalogue's default preset, so the primitive still stands alone."
+      },
+      {
+        "name": "look",
+        "type": "Partial<Chart2DAppearance>",
+        "required": false,
+        "doc": "Appearance overrides, applied over the surface's flat facet."
+      },
+      {
+        "name": "chart",
+        "type": "ChartConfig",
+        "required": true
+      },
+      {
+        "name": "layout",
+        "type": "ChartLayout",
+        "required": true
+      },
+      {
+        "name": "colours",
+        "type": "string[]",
+        "required": true
+      },
+      {
+        "name": "size",
+        "type": "{ width: number; height: number }",
+        "required": true
+      },
+      {
+        "name": "reveal",
+        "type": "ChartRevealSource",
+        "required": false
+      },
+      {
+        "name": "opacity",
+        "type": "number",
+        "required": false,
+        "default": "1"
+      }
+    ],
+    "example": "<Chart2D chart={...} layout={...} colours={...} size={...} />"
+  },
+  "Chart2DProps": {
+    "kind": "type",
+    "signature": "interface Chart2DProps extends ChartRendererProps { surface?: ChartStyleSurface; look?: Partial<Chart2DAppearance>; }"
+  },
+  "Chart3D": {
+    "kind": "component",
+    "summary": "3D chart renderer behind Chart; prefer Chart.",
+    "signature": "function Chart3D(props: Chart3DProps): ReactElement;",
+    "props": [
+      {
+        "name": "surface",
+        "type": "ChartStyleSurface",
+        "required": false,
+        "default": "preset",
+        "doc": "The resolved appearance; absent takes the catalogue's default preset, so the primitive still stands alone."
+      },
+      {
+        "name": "chart",
+        "type": "ChartConfig",
+        "required": true
+      },
+      {
+        "name": "layout",
+        "type": "ChartLayout",
+        "required": true
+      },
+      {
+        "name": "colours",
+        "type": "string[]",
+        "required": true
+      },
+      {
+        "name": "size",
+        "type": "{ width: number; height: number }",
+        "required": true
+      },
+      {
+        "name": "reveal",
+        "type": "ChartRevealSource",
+        "required": false
+      },
+      {
+        "name": "opacity",
+        "type": "number",
+        "required": false,
+        "default": "1"
+      }
+    ],
+    "example": "<Chart3D chart={...} layout={...} colours={...} size={...} />"
+  },
+  "ChartAnimationConfig": {
+    "kind": "type",
+    "signature": "interface ChartAnimationConfig { preset: string; delivery: ChartAnimationDelivery; staggerMs: number; durationMs: number; from: ChartAnimationFrom; motionBlur?: MotionBlurOverride; }"
+  },
+  "ChartAxisConfig": {
+    "kind": "type",
+    "signature": "interface ChartAxisConfig { value: ChartValueAxis; category: ChartCategoryAxis; }"
+  },
+  "ChartConfig": {
+    "kind": "type",
+    "signature": "interface ChartConfig { type: ChartType; dimension: ChartDimension; mount: ChartMount; placement?: DevicePlacement; data: ChartData; palette: string | null; font: string | null; style: ChartStyle; axis: ChartAxisConfig; labels: ChartLabelConfig; animation: ChartAnimationConfig; }",
+    "doc": "The resolved chart block: what the scene hands the renderers."
+  },
+  "ChartData": {
+    "kind": "type",
+    "signature": "interface ChartData { categories: string[]; series: ChartSeries[]; source?: string; }"
+  },
+  "ChartDimension": {
+    "kind": "type",
+    "signature": "type ChartDimension = \"2d\" | \"3d\";"
+  },
+  "ChartLabelConfig": {
+    "kind": "type",
+    "signature": "interface ChartLabelConfig { legend: ChartLegend; values: ChartValueLabels; }"
+  },
+  "ChartLayout": {
+    "kind": "type",
+    "signature": "interface ChartLayout { type: ChartType; orientation: ChartOrientation; valueAxis: ChartAxisKey; categoryAxis: ChartAxisKey; stacked: boolean; seriesCount: number; categoryCount: number; bars: ChartBarMark[]; series: ChartSeriesLayout[]; pie: ChartPieLayout | null; value: ChartValueAxisLayout; category: ChartCategoryAxisLayout; bandWidth: number; barWidth: number; }",
+    "doc": "The renderer-complete resolution of (data, config): pure, deterministic, unit-space. Only the family for `type` is populated (`bars`, or `series`, or `pie`)."
+  },
+  "ChartMount": {
+    "kind": "type",
+    "signature": "type ChartMount = \"hero\" | \"staged\" | \"panel\";",
+    "doc": "`hero` is the chart scene kind, `staged` places it among devices/text, `panel` renders it inside an overlay panel column."
+  },
+  "ChartProps": {
+    "kind": "type",
+    "signature": "interface ChartProps { type?: ChartType; dimension?: ChartDimension; mount?: ChartMount; placement?: DevicePlacement; look?: Partial<Chart2DAppearance>; reveal?: ChartRevealSource; opacity?: number; lit?: boolean; }",
+    "doc": "Overrides applied over the sidecar block; every field is optional, so `<Chart />` is the whole authoring surface for a sidecar-driven chart."
+  },
+  "ChartRendererProps": {
+    "kind": "type",
+    "signature": "interface ChartRendererProps { chart: ChartConfig; layout: ChartLayout; colours: string[]; size: { width: number; height: number }; reveal?: ChartRevealSource; opacity?: number; }",
+    "doc": "What every chart renderer takes, 2D and 3D alike: the resolved block, its computed layout, one colour per series (one per CATEGORY for pie), the plot area in WORLD units, and the optional build state."
+  },
+  "ChartReveal": {
+    "kind": "type",
+    "signature": "interface ChartReveal { grow: number; alpha: number; count: number; pulse: number; shine: number; drop: number; }",
+    "doc": "Per-element build state. `grow` scales a mark from its base (0 = nothing there, 1 = final size; an overshoot preset may push it to `CHART_GROW_MAX` and a landing squash a little under 1). `alpha` multiplies its opacity. `count` is the CLAMPED, monotone counting channel a value label prints against (`value * count`), so a label never runs past the true value while `grow` overshoots. `pulse` is a 0..1 emphasis envelope (glow and scale pops), 0 at rest. `shine` is the shine-band sweep position, 0..1 with 1 = swept past; -1 = no band. `drop` translates the whole element along the VALUE axis in plot-space units (positive = displaced toward the far end), which is the one entrance a scaling channel cannot express; 0 at rest."
+  },
+  "ChartRevealFn": {
+    "kind": "type",
+    "signature": "type ChartRevealFn = (seriesIndex: number, categoryIndex: number) => ChartReveal;",
+    "doc": "Per-element reveal lookup, called once per mark. Pie slices key on `categoryIndex`, line and area points on both. Absent means everything is fully revealed."
+  },
+  "ChartSeries": {
+    "kind": "type",
+    "signature": "interface ChartSeries { id: string; name: string; values: number[]; colour?: string | null; }"
+  },
+  "ChartStyle": {
+    "kind": "type",
+    "signature": "interface ChartStyle { preset: string; depth: number; gap: number; cornerRadius: number; rotation: [number, number]; innerRadius: number; offset: [number, number]; scale: number; }"
+  },
+  "ChartType": {
+    "kind": "type",
+    "signature": "type ChartType = | \"column\" | \"stackedColumn\" | \"bar\" | \"stackedBar\" | \"line\" | \"area\" | \"stackedArea\" | \"pie\";"
+  },
+  "ChartValueFormat": {
+    "kind": "type",
+    "signature": "interface ChartValueFormat { decimals: number | null; separator: boolean; prefix: string; suffix: string; compact: boolean; }",
+    "doc": "Number presentation shared by axis labels, value labels and the counter tick-up, so a counting label settles on exactly the printed static value."
+  },
+  "Cursor": {
+    "kind": "component",
+    "summary": "Cursor keys=[{ tMs, position, ease? }] presses=[ms]: a pointer travelling a keyed path, pressing with a small scale and a tap ring.",
+    "signature": "function Cursor(props: CursorProps): ReactElement;",
+    "doc": "A pointer that travels a keyed path (`sampleKeys`) and presses with a small scale at each `presses` time, firing a tap ring there.",
+    "props": [
+      {
+        "name": "keys",
+        "type": "CursorKey[]",
+        "required": true,
+        "doc": "The path: the tip holds the first key before it and the last after it."
+      },
+      {
+        "name": "presses",
+        "type": "number[]",
+        "required": false,
+        "default": "[]",
+        "units": "ms",
+        "doc": "Scene-local ms of each click: a small press scale, and a `TapRing` unless `ring` is false."
+      },
+      {
+        "name": "ring",
+        "type": "boolean",
+        "required": false,
+        "default": "true"
+      },
+      {
+        "name": "size",
+        "type": "number",
+        "required": false,
+        "default": "0.16",
+        "units": "world units",
+        "doc": "Arrow height, world units (default 0.16)."
+      },
+      {
+        "name": "colour",
+        "type": "string",
+        "required": false,
+        "default": "the text colour",
+        "doc": "Fill, a theme token hex (default the text colour)."
+      },
+      {
+        "name": "outline",
+        "type": "string",
+        "required": false,
+        "default": "the background colour",
+        "doc": "Edge, a theme token hex (default the background colour)."
+      },
+      {
+        "name": "ringColour",
+        "type": "string",
+        "required": false,
+        "default": "the accent",
+        "doc": "Press ring colour (default the accent)."
+      },
+      {
+        "name": "opacity",
+        "type": "number",
+        "required": false,
+        "default": "1"
+      },
+      {
+        "name": "renderOrder",
+        "type": "number",
+        "required": false,
+        "default": "0"
+      }
+    ],
+    "example": "<Cursor keys={...} />"
+  },
+  "CursorKey": {
+    "kind": "type",
+    "signature": "interface CursorKey { tMs: number; position: [number, number] | V3; ease?: string; }"
+  },
+  "CursorProps": {
+    "kind": "type",
+    "signature": "interface CursorProps { keys: CursorKey[]; presses?: number[]; ring?: boolean; size?: number; colour?: string; outline?: string; ringColour?: string; opacity?: number; renderOrder?: number; }"
+  },
+  "DEFAULT_DEVICE_ID": {
+    "kind": "constant",
+    "summary": "The studio default device id for this build.",
+    "signature": "const DEFAULT_DEVICE_ID: DeviceId;",
+    "doc": "Keeps the studio default when licensed assets exist, otherwise uses bundled Android."
+  },
+  "DEPTH_BANDS": {
+    "kind": "constant",
+    "summary": "DepthStage slot depths: foreground 1.8, content 0, midground -2.4, backdrop -5.5.",
+    "signature": "const DEPTH_BANDS: { readonly foreground: 1.8; readonly content: 0; readonly midground: -2.4; readonly backdrop: -5.5; };",
+    "doc": "World z of each band. Foreground sits between the base camera (z 5) and the content plane; the two rear bands spread far enough apart to read as parallax without leaving the cyclorama (wall at z -6)."
+  },
+  "DEVICE_AVAILABILITY": {
+    "kind": "constant",
+    "summary": "Per device id: whether this build has its model.",
+    "signature": "const DEVICE_AVAILABILITY: Readonly<Record<DeviceId, boolean>>;"
+  },
+  "DEVICE_CATALOG": {
+    "kind": "constant",
+    "summary": "Device specs by id (name, form, colours, screen aspect).",
+    "signature": "const DEVICE_CATALOG: Record<DeviceId, DeviceSpec>;"
+  },
+  "DEVICE_IDS": {
+    "kind": "constant",
+    "summary": "Every catalogue device id.",
+    "signature": "const DEVICE_IDS: DeviceId[];"
+  },
+  "DashedBracket": {
+    "kind": "component",
+    "summary": "Dashed bracket over a span: span, depth, side top|bottom|left|right, plus the DashedRule style; progress draws out from the middle.",
+    "signature": "function DashedBracket(props: DashedBracketProps): ReactElement;",
+    "doc": "A dashed bracket marking a span: a long run with an end tick at each side. The draw-on grows out from the middle to both ticks.",
+    "props": [
+      {
+        "name": "span",
+        "type": "number",
+        "required": true,
+        "units": "world units",
+        "doc": "Length of the bracket's long run in world units, centred on the group origin."
+      },
+      {
+        "name": "depth",
+        "type": "number",
+        "required": false,
+        "default": "0.18",
+        "units": "world units",
+        "doc": "End tick length in world units (default 0.18)."
+      },
+      {
+        "name": "side",
+        "type": "DashedBracketSide",
+        "required": false,
+        "default": "\"top\"",
+        "doc": "Where the bracket sits against what it marks: `top` (ticks point down, the default), `bottom` (up), `left` (right) or `right` (left)."
+      },
+      {
+        "name": "thickness",
+        "type": "number",
+        "required": false,
+        "default": "0.02",
+        "units": "world units",
+        "doc": "Line weight in world units (default 0.02)."
+      },
+      {
+        "name": "dash",
+        "type": "number",
+        "required": false,
+        "default": "0.12",
+        "units": "world units",
+        "doc": "Dash length in world units (default 0.12); each run starts and ends on a dash, so dashes stretch slightly to fit."
+      },
+      {
+        "name": "gap",
+        "type": "number",
+        "required": false,
+        "default": "0.08",
+        "units": "world units",
+        "doc": "Gap between dashes in world units (default 0.08)."
+      },
+      {
+        "name": "color",
+        "type": "string",
+        "required": false,
+        "default": "the theme muted colour",
+        "doc": "A theme token hex (default the theme muted colour)."
+      },
+      {
+        "name": "opacity",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "progress",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "units": "0..1",
+        "doc": "Draw-on, 0..1 (default 1, fully drawn)."
+      },
+      {
+        "name": "round",
+        "type": "boolean",
+        "required": false,
+        "doc": "Round dash ends."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false
+      },
+      {
+        "name": "rotation",
+        "type": "V3",
+        "required": false,
+        "doc": "Radians."
+      },
+      {
+        "name": "renderOrder",
+        "type": "number",
+        "required": false
+      }
+    ],
+    "example": "<DashedBracket span={1} />"
+  },
+  "DashedBracketProps": {
+    "kind": "type",
+    "signature": "interface DashedBracketProps extends DashStyleProps { span: number; depth?: number; side?: DashedBracketSide; }"
+  },
+  "DashedBracketSide": {
+    "kind": "type",
+    "signature": "type DashedBracketSide = \"top\" | \"bottom\" | \"left\" | \"right\";"
+  },
+  "DashedRule": {
+    "kind": "component",
+    "summary": "Dashed straight rule from `from` to `to` [x, y]: thickness, dash, gap, color, opacity, progress (draw-on), round.",
+    "signature": "function DashedRule(props: DashedRuleProps): ReactElement;",
+    "doc": "A dashed straight rule from `from` to `to`, one flat colour-exact mesh per dash, with an optional draw-on.",
+    "props": [
+      {
+        "name": "from",
+        "type": "[number, number]",
+        "required": true,
+        "units": "world units",
+        "doc": "Start point in the group's plane (world units); the draw-on starts here."
+      },
+      {
+        "name": "to",
+        "type": "[number, number]",
+        "required": true
+      },
+      {
+        "name": "thickness",
+        "type": "number",
+        "required": false,
+        "default": "0.02",
+        "units": "world units",
+        "doc": "Line weight in world units (default 0.02)."
+      },
+      {
+        "name": "dash",
+        "type": "number",
+        "required": false,
+        "default": "0.12",
+        "units": "world units",
+        "doc": "Dash length in world units (default 0.12); each run starts and ends on a dash, so dashes stretch slightly to fit."
+      },
+      {
+        "name": "gap",
+        "type": "number",
+        "required": false,
+        "default": "0.08",
+        "units": "world units",
+        "doc": "Gap between dashes in world units (default 0.08)."
+      },
+      {
+        "name": "color",
+        "type": "string",
+        "required": false,
+        "default": "the theme muted colour",
+        "doc": "A theme token hex (default the theme muted colour)."
+      },
+      {
+        "name": "opacity",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "progress",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "units": "0..1",
+        "doc": "Draw-on, 0..1 (default 1, fully drawn)."
+      },
+      {
+        "name": "round",
+        "type": "boolean",
+        "required": false,
+        "doc": "Round dash ends."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false
+      },
+      {
+        "name": "rotation",
+        "type": "V3",
+        "required": false,
+        "doc": "Radians."
+      },
+      {
+        "name": "renderOrder",
+        "type": "number",
+        "required": false
+      }
+    ],
+    "example": "<DashedRule from={...} to={...} />"
+  },
+  "DashedRuleProps": {
+    "kind": "type",
+    "signature": "interface DashedRuleProps extends DashStyleProps { from: [number, number]; to: [number, number]; }"
+  },
+  "DepthBand": {
+    "kind": "type",
+    "signature": "interface DepthBand { name: DepthBandName; z: number; width: number; height: number; }",
+    "doc": "What a band offers its children: its depth and the world rect that covers the frame there for the whole of the scene's camera travel."
+  },
+  "DepthBandName": {
+    "kind": "type",
+    "signature": "type DepthBandName = keyof typeof DEPTH_BANDS;"
+  },
+  "DepthStage": {
+    "kind": "component",
+    "summary": "Four depth slots sized to stay full-bleed through a camera rig.",
+    "signature": "function DepthStage(props: { foreground?: ReactNode; content?: ReactNode; midground?: ReactNode; backdrop?: ReactNode; }): ReactElement;",
+    "props": [
+      {
+        "name": "foreground",
+        "type": "ReactNode",
+        "required": false
+      },
+      {
+        "name": "content",
+        "type": "ReactNode",
+        "required": false
+      },
+      {
+        "name": "midground",
+        "type": "ReactNode",
+        "required": false
+      },
+      {
+        "name": "backdrop",
+        "type": "ReactNode",
+        "required": false
+      }
+    ],
+    "example": "<DepthStage />"
+  },
+  "Device": {
+    "kind": "component",
+    "summary": "A catalogue device with screen media, placement, motion and shadow.",
+    "signature": "function Device(props: DeviceProps): ReactElement;",
+    "doc": "The pillar device primitive: the export preamble awaits `preloadCatalogModels` / `prepareExportClips` / `preloadProjectImages` so every frame renders synchronously after load; see docs/determinism.md and docs/decisions.md.",
+    "props": [
+      {
+        "name": "id",
+        "type": "string",
+        "required": false,
+        "doc": "Scene-document id: sidecar devices carry it (it is what the inspector and the gizmo select on), hand-authored ones do not."
+      },
+      {
+        "name": "model",
+        "type": "DeviceId",
+        "required": true,
+        "doc": "Catalog id, e.g. `\"iphone-15-pro\"`."
+      },
+      {
+        "name": "colour",
+        "type": "string",
+        "required": false,
+        "default": "colour",
+        "doc": "Colour id from the catalog (default: the model's default colour)."
+      },
+      {
+        "name": "media",
+        "type": "DeviceMediaSpec",
+        "required": false
+      },
+      {
+        "name": "coverMedia",
+        "type": "DeviceMediaSpec",
+        "required": false,
+        "doc": "Foldables only: the outside display's media (`media` is the inside one)."
+      },
+      {
+        "name": "placement",
+        "type": "DevicePlacement",
+        "required": false,
+        "default": "{}"
+      },
+      {
+        "name": "motion",
+        "type": "DeviceMotionSpec",
+        "required": false,
+        "default": "{ preset: \"none\" }"
+      },
+      {
+        "name": "shadow",
+        "type": "DeviceShadowMode",
+        "required": false,
+        "default": "\"soft\"",
+        "doc": "Presentation shadow: defaults to `\"soft\"` and remains independent from real `<SceneStage>` map shadows; an explicit value wins."
+      },
+      {
+        "name": "lit",
+        "type": "boolean",
+        "required": false,
+        "doc": "Bundle the lit set (rig + one-shot environment); defaults true, or false under a lighting `<SceneStage>` since the stage lights the scene; an explicit value wins."
+      },
+      {
+        "name": "lidDeg",
+        "type": "number",
+        "required": false,
+        "default": "the model's authored angle",
+        "units": "degrees",
+        "doc": "Laptop lid opening in degrees (0 closed, default the model's authored angle); ignored by devices with no hinge."
+      },
+      {
+        "name": "foldDeg",
+        "type": "number",
+        "required": false,
+        "default": "open",
+        "units": "degrees",
+        "doc": "Foldable hinge angle in degrees (0 closed, 180 open flat, default open); ignored by devices that do not fold."
+      },
+      {
+        "name": "bothScreensOn",
+        "type": "boolean",
+        "required": false,
+        "default": "false",
+        "doc": "Foldables only: light both displays at every angle instead of handing power over as it opens."
+      },
+      {
+        "name": "foldTransition",
+        "type": "DeviceFoldTransitionSpec",
+        "required": false
+      },
+      {
+        "name": "motionBlur",
+        "type": "MotionBlurOverride",
+        "required": false,
+        "doc": "Motion blur override; absent inherits the scene's Objects switch."
+      },
+      {
+        "name": "children",
+        "type": "ReactNode",
+        "required": false,
+        "doc": "Content riding the device's pose in its fitted frame; `DeviceScreenAnchor` pins it to the screen."
+      }
+    ],
+    "example": "<Device model={...} />"
+  },
+  "DeviceColourSpec": {
+    "kind": "type",
+    "signature": "interface DeviceColourSpec { id: string; name: string; overrides: Record<string, DeviceMaterialOverride>; swatch: string; }"
+  },
+  "DeviceForm": {
+    "kind": "type",
+    "signature": "type DeviceForm = \"phone\" | \"laptop\" | \"tablet\" | \"foldable\";",
+    "doc": "The device catalog: devices keyed by stable id + colour id, with build-time availability separate from document identity so a missing licensed model never rewrites a project. Real product names are a deliberate 2026-07-05 trade-dress-risk decision (see docs/decisions.md), and iphone-15-pro's model derives from a LICENSED vendor .blend (see src/assets/models/README.md) whose colour overrides are exact linear-to-sRGB baseColorFactor replacements, not approximate tints."
+  },
+  "DeviceId": {
+    "kind": "type",
+    "signature": "type DeviceId = | \"iphone-15-pro\" | \"iphone-17-pro\" | \"iphone-duo\" | \"macbook-pro-16\" | \"ipad-pro-13\" | \"android\";"
+  },
+  "DeviceMediaSpec": {
+    "kind": "type",
+    "signature": "interface DeviceMediaSpec { src: string; kind: \"video\" | \"image\"; startMs?: number; at?: string; fit?: \"cover\"; rotateDeg?: DeviceMediaRotation; startOn?: \"open\"; inMs?: number; outMs?: number; speed?: number; loop?: boolean; posterMs?: number; }",
+    "doc": "Media shown on the device screen. Videos ride the deterministic clip-frame pipeline."
+  },
+  "DeviceMockup": {
+    "kind": "component",
+    "summary": "Pre-catalogue phone with a static screen image.",
+    "signature": "function DeviceMockup(props: DeviceMockupProps): ReactElement | null;",
+    "doc": "Loads a bundled handset glTF and maps a static project image onto its screen mesh; the export preamble awaits `preloadDeviceModels()` / `preloadProjectImages()` so a cold export never races a still-loading asset. See docs/determinism.md. A missing screen asset degrades to no mockup; never tear down the canvas tree.",
+    "props": [
+      {
+        "name": "model",
+        "type": "DeviceModelName",
+        "required": true,
+        "doc": "Which bundled handset model to render."
+      },
+      {
+        "name": "screen",
+        "type": "string",
+        "required": true,
+        "doc": "Project-relative image path shown on the device screen, e.g. `\"assets/screen.png\"`."
+      },
+      {
+        "name": "rotation",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]",
+        "units": "radians",
+        "doc": "Base rotation in radians."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]"
+      },
+      {
+        "name": "scale",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "doc": "Multiplier on the auto-fit scale (the model auto-sizes to a sensible world height)."
+      },
+      {
+        "name": "spinDegPerSec",
+        "type": "number",
+        "required": false,
+        "default": "0",
+        "units": "degrees",
+        "doc": "Optional idle spin about Y, in degrees/second, a pure function of the timeline."
+      }
+    ],
+    "example": "<DeviceMockup model={...} screen=\"...\" />"
+  },
+  "DeviceMockupProps": {
+    "kind": "type",
+    "signature": "interface DeviceMockupProps { model: DeviceModelName; screen: string; rotation?: V3; position?: V3; scale?: number; spinDegPerSec?: number; }"
+  },
+  "DeviceMotionPreset": {
+    "kind": "type",
+    "signature": "type DeviceMotionPreset = \"none\" | \"turntable\" | \"float\" | \"tilt-reveal\" | \"push-in\";"
+  },
+  "DeviceMotionSpec": {
+    "kind": "type",
+    "signature": "interface DeviceMotionSpec { preset: DeviceMotionPreset; degPerSec?: number; amplitude?: number; hz?: number; durationMs?: number; }"
+  },
+  "DevicePlacement": {
+    "kind": "type",
+    "signature": "interface DevicePlacement { position?: V3; rotationDeg?: V3; scale?: number; ground?: boolean; resolvedLayout?: { position: V3; rotationDeg: V3; scale: number }; }"
+  },
+  "DeviceProps": {
+    "kind": "type",
+    "signature": "interface DeviceProps { id?: string; model: DeviceId; colour?: string; media?: DeviceMediaSpec; coverMedia?: DeviceMediaSpec; placement?: DevicePlacement; motion?: DeviceMotionSpec; shadow?: DeviceShadowMode; lit?: boolean; lidDeg?: number; foldDeg?: number; bothScreensOn?: boolean; foldTransition?: DeviceFoldTransitionSpec; motionBlur?: MotionBlurOverride; children?: ReactNode; }"
+  },
+  "DeviceScreen": {
+    "kind": "type",
+    "signature": "interface DeviceScreen extends DeviceScreenContextValue { rect: DeviceScreenRect; coverRect?: DeviceScreenRect; local: (u: number, v: number, lift?: number, display?: DeviceScreenDisplay) => V3; }"
+  },
+  "DeviceScreenAnchor": {
+    "kind": "component",
+    "summary": "Child of Device: <DeviceScreenAnchor u v> pins content to its screen (u right, v down, 0..1).",
+    "signature": "function DeviceScreenAnchor(props: DeviceScreenAnchorProps): ReactElement | null;",
+    "doc": "Pins its children to a point on the parent `Device`'s screen, in the screen's own plane (x right, y up, +z out of the glass, fitted units scaled with the device), so they follow float, rotation, intro, scale and a laptop's lid.",
+    "props": [
+      {
+        "name": "u",
+        "type": "number",
+        "required": true,
+        "doc": "0 at the display's left edge to 1 at its right."
+      },
+      {
+        "name": "v",
+        "type": "number",
+        "required": true,
+        "doc": "0 at the display's top edge to 1 at its bottom (media pixel order)."
+      },
+      {
+        "name": "lift",
+        "type": "number",
+        "required": false,
+        "default": "SCREEN_LIFT",
+        "doc": "Off the glass along the display's normal, in fitted units (default `SCREEN_LIFT`)."
+      },
+      {
+        "name": "display",
+        "type": "DeviceScreenDisplay",
+        "required": false,
+        "default": "\"main\"",
+        "doc": "A foldable's display (default `\"main\"`, the inside one)."
+      },
+      {
+        "name": "children",
+        "type": "ReactNode",
+        "required": false
+      }
+    ],
+    "example": "<DeviceScreenAnchor u={1} v={1} />"
+  },
+  "DeviceScreenAnchorProps": {
+    "kind": "type",
+    "signature": "interface DeviceScreenAnchorProps { u: number; v: number; lift?: number; display?: DeviceScreenDisplay; children?: ReactNode; }"
+  },
+  "DeviceScreenDisplay": {
+    "kind": "type",
+    "signature": "type DeviceScreenDisplay = \"main\" | \"cover\";",
+    "doc": "A foldable's inside (`\"main\"`) or outside (`\"cover\"`) display; every other device has only `\"main\"`."
+  },
+  "DeviceScreenHinge": {
+    "kind": "type",
+    "signature": "interface DeviceScreenHinge { display?: DeviceScreenDisplay; lidDeg?: number; foldDeg?: number; }",
+    "doc": "The hinge pose a point is read at; absent angles take the device's defaults."
+  },
+  "DeviceScreenPose": {
+    "kind": "type",
+    "signature": "interface DeviceScreenPose extends DeviceScreenHinge { position: V3; rotationDeg?: V3; scale?: number; }",
+    "doc": "A device's resolved world pose (static: no motion preset or device track)."
+  },
+  "DeviceScreenRect": {
+    "kind": "type",
+    "signature": "interface DeviceScreenRect { width: number; height: number; centre: [number, number]; z: number; cornerRadius: number; frame?: { lidDeg?: number; foldDeg?: number }; }",
+    "doc": "Where a display's media sits, measured off the glb (`screenGeometry.ts`) in the frame `Device` renders in at placement scale 1 (recentred and fitted). UV (0, 0) is the top-left corner, u runs right and v down."
+  },
+  "DeviceShadowMode": {
+    "kind": "type",
+    "signature": "type DeviceShadowMode = | \"soft\" | \"long\" | \"sun\" | \"studio\" | \"overhead\" | \"drop\" | \"backlight\" | \"feather\" | \"window\" | \"wetfloor\" | \"none\";",
+    "doc": "The presentation modes' parameter sets."
+  },
+  "DeviceSpec": {
+    "kind": "type",
+    "signature": "interface DeviceSpec { id: DeviceId; name: string; form: DeviceForm; glbUrl: string; screen: DeviceScreenSpec; coverScreen?: DeviceScreenSpec; colours: DeviceColourSpec[]; defaultColour: string; previews: Record<string, string>; fit?: DeviceFitSpec; layoutWidth: number; fittedHeight: number; shadow: DeviceShadowSpec; lid?: { node: string; openDeg: number; defaultDeg: number; pivot?: V3 }; fold?: DeviceFoldSpec; }"
+  },
+  "EASE_NAMES": {
+    "kind": "constant",
+    "summary": "Every ease name (see kb catalog eases).",
+    "signature": "const EASE_NAMES: readonly EaseName[];",
+    "doc": "Every valid ease name (stable order: linear, jump, then in/out/inOut per family)."
+  },
+  "EaseName": {
+    "kind": "type",
+    "signature": "type EaseName = \"linear\" | \"jump\" | `${\"in\" | \"out\" | \"inOut\"}${EaseFamily}`;"
+  },
+  "EaseOptions": {
+    "kind": "type",
+    "signature": "interface EaseOptions { overshoot?: number; }",
+    "doc": "Per-call curve options; absent fields keep the table curves exactly."
+  },
+  "ExtrudedText": {
+    "kind": "component",
+    "summary": "Lit 3D extruded text (ASCII, bundled face).",
+    "signature": "function ExtrudedText(props: ExtrudedTextProps): ReactElement | null;",
+    "doc": "Extruded 3D text: real depth + bevels via FontLoader/TextGeometry, unlike the flat troika SDF of `AnimatedHeadline`; geometry is a pure function of props + the bundled typeface (parsed synchronously from JSON, see `fonts.ts`), and the reveal (rise + tilt settle) is a pure function of `useTimeline()`, never the wall clock. It animates transforms only, no transparency, so mid-reveal frames never show internal faces. With a `textKey` it joins the managed-text lifecycle, so it stands down under a generic takeover like every scene-owned text primitive.",
+    "props": [
+      {
+        "name": "text",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "from",
+        "type": "number",
+        "required": false,
+        "default": "0",
+        "units": "ms",
+        "doc": "Reveal start, in ms (local scene time)."
+      },
+      {
+        "name": "to",
+        "type": "number",
+        "required": false,
+        "default": "600",
+        "units": "ms",
+        "doc": "Reveal end, in ms (local scene time)."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]"
+      },
+      {
+        "name": "rotation",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]",
+        "units": "radians",
+        "doc": "Base rotation in radians (the reveal tilt settles onto `rotation[0]`)."
+      },
+      {
+        "name": "fontSize",
+        "type": "number",
+        "required": false,
+        "default": "0.6"
+      },
+      {
+        "name": "depth",
+        "type": "number",
+        "required": false,
+        "default": "fontSize * 0.25",
+        "units": "world units",
+        "doc": "Extrusion depth in world units. Defaults to `fontSize * 0.25`."
+      },
+      {
+        "name": "bevel",
+        "type": "boolean",
+        "required": false,
+        "default": "true",
+        "doc": "Bevelled edges (on by default; bevels are what sell the extrusion under light)."
+      },
+      {
+        "name": "tone",
+        "type": "\"text\" | \"accent\" | \"muted\"",
+        "required": false,
+        "default": "\"text\"",
+        "doc": "Theme colour token for the material."
+      },
+      {
+        "name": "lit",
+        "type": "boolean",
+        "required": false,
+        "doc": "Bundle a self-contained light rig (DeviceMockup pattern). Turn off when the scene lights itself or stacks several lit primitives (rigs add up)."
+      },
+      {
+        "name": "textKey",
+        "type": "string",
+        "required": false,
+        "doc": "The sidecar style key this text honours: registers the row in the Edit-text drill and applies the `textStyle.<textKey>*` overrides (Size/Color/OffsetX/OffsetY/RotationDeg)."
+      }
+    ],
+    "example": "<ExtrudedText text=\"...\" />"
+  },
+  "ExtrudedTextProps": {
+    "kind": "type",
+    "signature": "interface ExtrudedTextProps { text: string; from?: number; to?: number; position?: V3; rotation?: V3; fontSize?: number; depth?: number; bevel?: boolean; tone?: \"text\" | \"accent\" | \"muted\"; lit?: boolean; textKey?: string; }"
+  },
+  "FALLBACK_DEVICE_ID": {
+    "kind": "constant",
+    "summary": "android: what unknown or unavailable models render as.",
+    "signature": "const FALLBACK_DEVICE_ID: DeviceId;"
+  },
+  "FormatInfo": {
+    "kind": "type",
+    "signature": "interface FormatInfo { width: number; height: number; aspect: number; shape: FormatShape; frame: { width: number; height: number }; safe: { top: number; right: number; bottom: number; left: number }; }"
+  },
+  "FormatShape": {
+    "kind": "type",
+    "signature": "type FormatShape = \"wide\" | \"square\" | \"tall\";",
+    "doc": "How a frame reads for layout, from `FormatInfo.aspect`: \"wide\" at 1.2 and up (16:9, 3:2, 5:4), \"tall\" at 0.85 and below (9:16, 2:3, 4:5, phone), \"square\" between (1:1)."
+  },
+  "Gradient": {
+    "kind": "component",
+    "summary": "A frame-filling blend, linear or radial; inside a ScreenLayer.",
+    "signature": "function Gradient(props: GradientProps): ReactElement;",
+    "doc": "A frame-filling blend between two colours, linear or radial. Mount inside a `ScreenLayer`.",
+    "props": [
+      {
+        "name": "from",
+        "type": "Colour",
+        "required": true,
+        "doc": "Start colour: a theme token or hex."
+      },
+      {
+        "name": "to",
+        "type": "Colour",
+        "required": true,
+        "default": "\"background\"",
+        "doc": "End colour: a theme token or hex."
+      },
+      {
+        "name": "kind",
+        "type": "\"linear\" | \"radial\"",
+        "required": false,
+        "default": "\"linear\"",
+        "doc": "\"linear\" (default) runs along `angleDeg`; \"radial\" runs from `centre` outward."
+      },
+      {
+        "name": "angleDeg",
+        "type": "number",
+        "required": false,
+        "default": "180",
+        "units": "degrees",
+        "doc": "Direction `from` runs toward `to`, degrees clockwise from up (default 180, top to bottom)."
+      },
+      {
+        "name": "centre",
+        "type": "readonly [number, number]",
+        "required": false,
+        "default": "[0.5, 0.5]",
+        "doc": "Radial centre, frame fractions from the bottom left (default [0.5, 0.5])."
+      },
+      {
+        "name": "start",
+        "type": "number",
+        "required": false,
+        "default": "0",
+        "units": "0..1",
+        "doc": "Where along the run the blend starts, 0..1 (default 0)."
+      },
+      {
+        "name": "end",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "units": "0..1",
+        "doc": "Where along the run the blend ends, 0..1 (default 1)."
+      },
+      {
+        "name": "opacity",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "units": "0..1",
+        "doc": "0..1 (default 1)."
+      },
+      {
+        "name": "keys",
+        "type": "readonly MotionKey[]",
+        "required": false,
+        "doc": "Keyframes over `opacity` and the fill's numeric props; a key's `ease` shapes the segment arriving at it."
+      }
+    ],
+    "example": "<Gradient from=\"accent\" to=\"background\" kind=\"radial\" />",
+    "timing": [
+      "keys override the props they name; a keyed fill holds stills until its last key lands."
+    ]
+  },
+  "GradientProps": {
+    "kind": "type",
+    "signature": "interface GradientProps extends ScreenFillProps { from: Colour; to: Colour; kind?: \"linear\" | \"radial\"; angleDeg?: number; centre?: readonly [number, number]; start?: number; end?: number; }"
+  },
+  "GroupAnimationState": {
+    "kind": "type",
+    "signature": "interface GroupAnimationState { alpha: number; band: GroupShineBand | null; shineCapable: boolean; imageEffectsCapable?: boolean; imageBlurWorld?: number; imageSweep?: readonly [number, number]; }"
+  },
+  "HardShadowSpec": {
+    "kind": "type",
+    "signature": "interface HardShadowSpec { offset?: [number, number]; colour?: string; opacity?: number; radius?: number; }",
+    "doc": "A flat, unblurred offset shadow (the hard-shadow look). Offsets and radius are fractions of the card's short edge."
+  },
+  "HeadlineDepth": {
+    "kind": "type",
+    "signature": "interface HeadlineDepth { em?: number; angleDeg?: number; layers?: number; dark?: \"text\" | \"muted\" | \"accent\" | (string & {}); light?: \"text\" | \"muted\" | \"accent\" | (string & {}); }",
+    "doc": "The depth stack. Every field is optional."
+  },
+  "HeroObject": {
+    "kind": "component",
+    "summary": "Bundled hero glTF with idle spin and float.",
+    "signature": "function HeroObject(props: HeroObjectProps): ReactElement;",
+    "doc": "Product/hero glTF object on a lit set, the generic sibling of `DeviceMockup`: loads a bundled model by name, recentres + auto-fits it, and offers idle spin + float driven by `useTimeline()`; the export preamble awaits `preloadHeroModels()` so a cold export never captures a still-loading hero. See docs/determinism.md.",
+    "props": [
+      {
+        "name": "model",
+        "type": "HeroModelName",
+        "required": true,
+        "doc": "Which bundled hero model to render."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]"
+      },
+      {
+        "name": "rotation",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]",
+        "units": "radians",
+        "doc": "Base rotation in radians (idle spin adds to `rotation[1]`)."
+      },
+      {
+        "name": "scale",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "doc": "Multiplier on the auto-fit scale (models auto-size to a sensible world height)."
+      },
+      {
+        "name": "spinDegPerSec",
+        "type": "number",
+        "required": false,
+        "default": "0",
+        "units": "degrees",
+        "doc": "Idle spin about Y, in degrees/second, a pure function of the timeline."
+      },
+      {
+        "name": "floatAmplitude",
+        "type": "number",
+        "required": false,
+        "default": "0",
+        "units": "world units",
+        "doc": "Gentle vertical bob, in world units (0 disables). Pure function of the timeline."
+      },
+      {
+        "name": "floatHz",
+        "type": "number",
+        "required": false,
+        "default": "0.5",
+        "doc": "Bob frequency, in cycles/second."
+      },
+      {
+        "name": "lit",
+        "type": "boolean",
+        "required": false,
+        "doc": "Bundle the lit set (rig + one-shot environment); defaults true, or false under a lighting `<SceneStage>` since the stage lights the scene; an explicit value wins."
+      }
+    ],
+    "example": "<HeroObject model={...} />"
+  },
+  "HeroObjectProps": {
+    "kind": "type",
+    "signature": "interface HeroObjectProps { model: HeroModelName; position?: V3; rotation?: V3; scale?: number; spinDegPerSec?: number; floatAmplitude?: number; floatHz?: number; lit?: boolean; }"
+  },
+  "ImageCard": {
+    "kind": "component",
+    "summary": "Flat, colour-exact image plane; PNG alpha shapes it.",
+    "signature": "function ImageCard(props: ImageCardProps): ReactElement | null;",
+    "doc": "A flat image plane for icons, logos and stills: renders UNLIT with `toneMapped: false` so the asset's pixels land exactly (the device-screen/backdrop precedent), respecting PNG alpha so rounded/irregular shapes come from the asset itself; the suspense texture load is settled by the export preamble before frame 0.",
+    "props": [
+      {
+        "name": "src",
+        "type": "string",
+        "required": true,
+        "doc": "Project-relative asset path (e.g. `assets/app-icon.png`)."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]"
+      },
+      {
+        "name": "width",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "units": "world units",
+        "doc": "World-unit width; height follows the image's aspect ratio."
+      },
+      {
+        "name": "maxHeight",
+        "type": "number",
+        "required": false,
+        "units": "world units",
+        "doc": "Optional world-unit height cap; both dimensions shrink together to contain the image."
+      },
+      {
+        "name": "from",
+        "type": "number",
+        "required": false,
+        "units": "ms",
+        "doc": "Optional linear fade-in window, ms (local scene time). Absent = always opaque."
+      },
+      {
+        "name": "to",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "opacity",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "units": "0..1",
+        "doc": "0..1 (default 1); multiplies with the fades."
+      },
+      {
+        "name": "outAt",
+        "type": "number",
+        "required": false,
+        "units": "ms",
+        "doc": "Start of a linear fade-out, ms (local scene time). Absent never fades out."
+      },
+      {
+        "name": "outDurationMs",
+        "type": "number",
+        "required": false,
+        "default": "the fade-in window",
+        "units": "ms",
+        "doc": "How long the fade-out lasts, ms (default the fade-in window, else 300)."
+      },
+      {
+        "name": "tint",
+        "type": "\"text\" | \"muted\" | \"accent\" | (string & {})",
+        "required": false,
+        "doc": "One colour for a mark: a theme token or hex replaces every pixel's colour, keeping the asset's alpha."
+      },
+      {
+        "name": "shadow",
+        "type": "HardShadowSpec",
+        "required": false,
+        "doc": "A hard offset shadow behind the card; absent draws none."
+      }
+    ],
+    "example": "<ImageCard src=\"assets/mark.png\" width={1} tint=\"accent\" from={0} to={300} outAt={3000} />",
+    "timing": [
+      "from to to is a linear fade-in; absent is opaque at once. outAt starts a linear fade-out over outDurationMs (default the fade-in's length, else 300 ms). opacity multiplies both."
+    ]
+  },
+  "ImageCardProps": {
+    "kind": "type",
+    "signature": "interface ImageCardProps { src: string; position?: V3; width?: number; maxHeight?: number; from?: number; to?: number; opacity?: number; outAt?: number; outDurationMs?: number; tint?: \"text\" | \"muted\" | \"accent\" | (string & {}); shadow?: HardShadowSpec; }"
+  },
+  "LayeredScreenshot": {
+    "kind": "component",
+    "summary": "Renders the sidecar layeredScreenshot stack.",
+    "signature": "function LayeredScreenshot(props?: LayeredScreenshotProps): ReactElement | null;",
+    "doc": "The scene document's layered-screenshot stack at its resolved pose (rest pose, or the sampled animation when the scene's animated track is the layered screenshot). Registers the scene as a consumer so the host-side fallback stands down. In-flight builder drafts merge here in React behind the store's export guard, so the export path only ever sees the sidecar.",
+    "props": [
+      {
+        "name": "title",
+        "type": "string",
+        "required": false,
+        "doc": "Optional specialised title, rendered in a reserved band above the stack."
+      }
+    ],
+    "example": "<LayeredScreenshot />"
+  },
+  "LayeredScreenshotProps": {
+    "kind": "type",
+    "signature": "interface LayeredScreenshotProps { title?: string; }"
+  },
+  "LightRig": {
+    "kind": "component",
+    "summary": "Shared three-light rig; mount once, pass lit={false} to lit primitives.",
+    "signature": "function LightRig(): ReactElement;",
+    "doc": "The toolkit's standard three-point-ish light rig: ambient fill + key + rim, matching the constants the lit primitives (`ExtrudedText`, `Ribbon`) bundle; scenes stacking several lit primitives should mount ONE `<LightRig />` and pass `lit={false}` to each, since rigs add up. Static lights only, nothing here reads the clock."
+  },
+  "ManagedTextStack": {
+    "kind": "component",
+    "summary": "Responsive stack for inspector-owned managedText.",
+    "signature": "function ManagedTextStack(props: ManagedTextStackProps): ReactElement | null;",
+    "doc": "Inspector-owned deterministic safe-area text stack. It renders only for a present managed block.",
+    "props": [
+      {
+        "name": "region",
+        "type": "ManagedTextRegion",
+        "required": false
+      }
+    ],
+    "example": "<ManagedTextStack />"
+  },
+  "ManagedTextStackProps": {
+    "kind": "type",
+    "signature": "interface ManagedTextStackProps { region?: ManagedTextRegion; }"
+  },
+  "MeasureTextOptions": {
+    "kind": "type",
+    "signature": "interface MeasureTextOptions { font: FontRef | string; fontSize: number; letterSpacing?: number; lineHeight?: number; }"
+  },
+  "MeasuredText": {
+    "kind": "type",
+    "signature": "interface MeasuredText extends TextMetrics { fitFontSize(maxWidth: number): number; }",
+    "doc": "A measured block, plus the size that makes it fit a width."
+  },
+  "MotionBlur": {
+    "kind": "component",
+    "summary": "Scales motion blur for a subtree's own motion: amount 0 sharp, 1 the shutter, 2 double.",
+    "signature": "function MotionBlur(props: { amount: number; children: ReactNode }): ReactElement;",
+    "doc": "Scales motion blur from its subtree's own motion: 0 keeps it sharp, 1 is the scene's shutter, 2 doubles the trail. Camera blur is unaffected.",
+    "props": [
+      {
+        "name": "amount",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "children",
+        "type": "ReactNode",
+        "required": true
+      }
+    ],
+    "example": "<MotionBlur amount={1} />"
+  },
+  "MotionKey": {
+    "kind": "type",
+    "signature": "type MotionKey = { tMs: number; ease?: string; [prop: string]: unknown };",
+    "doc": "One key: a scene-local time, the ease of the segment ARRIVING at it, and any values."
+  },
+  "ObjectLicence": {
+    "kind": "type",
+    "signature": "interface ObjectLicence { name: string; holder?: string; url?: string; redistributable?: boolean; }"
+  },
+  "ObjectManifest": {
+    "kind": "type",
+    "signature": "interface ObjectManifest { version: number; id: string; name: string; glb: string; thumbnail?: string; fitHeight?: number; licence?: ObjectLicence; tags?: string[]; }"
+  },
+  "ParticleField": {
+    "kind": "component",
+    "summary": "Seeded instanced particles drifting on the clock.",
+    "signature": "function ParticleField(props: ParticleFieldProps): ReactElement;",
+    "doc": "Instanced particle scatter: every particle's base position/size/phase is drawn from `createSeededRandom(seed)` (never `Math.random`), and per-frame drift/twinkle are pure functions of `useTimeline()` so the field is byte-identical run-to-run; the RNG draw order below is part of that contract, reordering it re-scatters every committed project.",
+    "props": [
+      {
+        "name": "count",
+        "type": "number",
+        "required": false,
+        "default": "200",
+        "doc": "Instance count."
+      },
+      {
+        "name": "seed",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "doc": "RNG seed; same seed, same field, every run (the determinism contract)."
+      },
+      {
+        "name": "bounds",
+        "type": "V3",
+        "required": false,
+        "default": "[6, 3.5, 2]",
+        "units": "world units",
+        "doc": "Half-extents of the scatter box, in world units."
+      },
+      {
+        "name": "size",
+        "type": "number",
+        "required": false,
+        "default": "0.04",
+        "units": "world units",
+        "doc": "Base particle radius, in world units."
+      },
+      {
+        "name": "drift",
+        "type": "number",
+        "required": false,
+        "default": "0.15",
+        "units": "world units",
+        "doc": "Upward drift in world-units/second; particles wrap inside the bounds. 0 = static."
+      },
+      {
+        "name": "twinkle",
+        "type": "number",
+        "required": false,
+        "default": "0.25",
+        "doc": "Scale-pulse amplitude as a fraction of `size` (0 disables)."
+      },
+      {
+        "name": "tone",
+        "type": "\"text\" | \"accent\" | \"muted\"",
+        "required": false,
+        "default": "\"accent\"",
+        "doc": "Theme colour token (unlit material, pops under bloom)."
+      },
+      {
+        "name": "glow",
+        "type": "number",
+        "required": false,
+        "doc": "Glow: a target luminance (above a bloom threshold over 1) reached by raising only the tone's full channels, unlit with tone mapping off so it still lands exactly on the token (see `glowColour`). Absent renders as before."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]"
+      }
+    ],
+    "example": "<ParticleField />"
+  },
+  "ParticleFieldProps": {
+    "kind": "type",
+    "signature": "interface ParticleFieldProps { count?: number; seed?: number; bounds?: V3; size?: number; drift?: number; twinkle?: number; tone?: \"text\" | \"accent\" | \"muted\"; glow?: number; position?: V3; }"
+  },
+  "Pill": {
+    "kind": "component",
+    "summary": "RoundedRect with fully round ends: width, height, color, opacity, stroke.",
+    "signature": "function Pill(props: PillProps): ReactElement;",
+    "doc": "A RoundedRect whose radius is half the shorter side.",
+    "props": [
+      {
+        "name": "width",
+        "type": "number",
+        "required": true,
+        "units": "world units",
+        "doc": "World-unit width."
+      },
+      {
+        "name": "height",
+        "type": "number",
+        "required": true,
+        "units": "world units",
+        "doc": "World-unit height."
+      },
+      {
+        "name": "color",
+        "type": "string",
+        "required": false,
+        "default": "the theme accent",
+        "doc": "Fill colour (a theme token hex); defaults to the theme accent."
+      },
+      {
+        "name": "opacity",
+        "type": "number",
+        "required": false,
+        "default": "1"
+      },
+      {
+        "name": "strokeWidth",
+        "type": "number",
+        "required": false,
+        "default": "0",
+        "units": "world units",
+        "doc": "Border ring width in world units, drawn just inside the edge; 0 or absent draws none."
+      },
+      {
+        "name": "strokeColor",
+        "type": "string",
+        "required": false,
+        "default": "the theme text colour",
+        "doc": "Border colour; defaults to the theme text colour."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]"
+      },
+      {
+        "name": "rotation",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]",
+        "doc": "Radians."
+      },
+      {
+        "name": "scale",
+        "type": "number | V3",
+        "required": false,
+        "default": "1"
+      },
+      {
+        "name": "renderOrder",
+        "type": "number",
+        "required": false,
+        "default": "0"
+      }
+    ],
+    "example": "<Pill width={1} height={1} />"
+  },
+  "PillProps": {
+    "kind": "type",
+    "signature": "interface PillProps { width: number; height: number; color?: string; opacity?: number; strokeWidth?: number; strokeColor?: string; position?: V3; rotation?: V3; scale?: number | V3; renderOrder?: number; }"
+  },
+  "PlacedObjectProps": {
+    "kind": "type",
+    "signature": "interface PlacedObjectProps { objectId: string; position?: V3; rotationDeg?: V3; scale?: number; ground?: boolean; }",
+    "doc": "A library object placed directly in TSX: an id and where it sits."
+  },
+  "ProjectShared": {
+    "kind": "type",
+    "signature": "type ProjectShared = { readonly [key: string]: ProjectSharedValue };",
+    "doc": "The manifest's `shared` block: author constants (palette, timings) every scene can read."
+  },
+  "PromptBar": {
+    "kind": "component",
+    "summary": "Chat prompt bar: text types in from `from` to `to` (45 ms a key by default), caret, send button.",
+    "signature": "function PromptBar(props: PromptBarProps): ReactElement;",
+    "doc": "A chat-style prompt bar: a rounded bar whose text types in one keystroke at a time (the typewriter preset's pace, revealed by a clip rect so the line scrolls like a real input once it outgrows the bar), a caret that blinks on the timeline once typing is idle, and a procedural send button. Theme tokens only; a pure function of the clock.",
+    "props": [
+      {
+        "name": "text",
+        "type": "string",
+        "required": true,
+        "doc": "The prompt, typed in one keystroke at a time (emphasis markup is stripped and drawn plain)."
+      },
+      {
+        "name": "textKey",
+        "type": "string",
+        "required": false,
+        "doc": "Sidecar style key: `textStyle.<key>Color`, `Font` and `Size` apply."
+      },
+      {
+        "name": "from",
+        "type": "number",
+        "required": false,
+        "default": "0",
+        "units": "ms",
+        "doc": "Typing starts, ms (scene-local; default 0)."
+      },
+      {
+        "name": "to",
+        "type": "number",
+        "required": false,
+        "default": "from",
+        "units": "ms",
+        "doc": "Typing ends, ms (default `from` + 45 ms per keystroke)."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]"
+      },
+      {
+        "name": "width",
+        "type": "number",
+        "required": false,
+        "default": "0.62 × the frame width",
+        "units": "world units",
+        "doc": "Bar width, world units (default 0.62 × the frame width)."
+      },
+      {
+        "name": "height",
+        "type": "number",
+        "required": false,
+        "default": "0.62",
+        "units": "world units",
+        "doc": "Bar height, world units (default 0.62)."
+      },
+      {
+        "name": "fontSize",
+        "type": "number",
+        "required": false,
+        "default": "0.4 × the height",
+        "doc": "Text size (default 0.4 × the height)."
+      },
+      {
+        "name": "face",
+        "type": "\"headline\" | \"body\"",
+        "required": false,
+        "default": "\"body\"",
+        "doc": "Which theme face types the prompt (default \"body\")."
+      },
+      {
+        "name": "send",
+        "type": "boolean",
+        "required": false,
+        "default": "true",
+        "doc": "Draw the send button (default true)."
+      },
+      {
+        "name": "caret",
+        "type": "boolean",
+        "required": false,
+        "default": "true",
+        "doc": "Draw the caret (default true)."
+      }
+    ],
+    "example": "<PromptBar text=\"...\" />"
+  },
+  "PromptBarProps": {
+    "kind": "type",
+    "signature": "interface PromptBarProps { text: string; textKey?: string; from?: number; to?: number; position?: V3; width?: number; height?: number; fontSize?: number; face?: \"headline\" | \"body\"; send?: boolean; caret?: boolean; }"
+  },
+  "PulseOptions": {
+    "kind": "type",
+    "signature": "interface PulseOptions { attackMs?: number; holdMs?: number; releaseMs: number; ease?: EaseName | ((t: number) => number); }",
+    "doc": "One pulse's shape in ms: rise over `attackMs` (default 0, a snap), hold for `holdMs` (default 0), fall over `releaseMs`; `ease` (default `\"outQuad\"`) shapes both ramps."
+  },
+  "ResolvedChart": {
+    "kind": "type",
+    "signature": "interface ResolvedChart extends ChartConfig { track: ResolvedChartTrack; }",
+    "doc": "The chart block with every default baked and the data track resolved: what the renderers and the editor read. `data.categories` and every `series.values` row are the same length, so a sampled matrix is always rectangular."
+  },
+  "ResolvedObjectAsset": {
+    "kind": "type",
+    "signature": "interface ResolvedObjectAsset { manifest: ObjectManifest; glbUrl: string; thumbnailUrl?: string; }",
+    "doc": "A picker/renderer-ready object: the manifest plus resolved asset URLs."
+  },
+  "Ribbon": {
+    "kind": "component",
+    "summary": "Seeded tube that grows along a curve.",
+    "signature": "function Ribbon(props: RibbonProps): ReactElement;",
+    "doc": "A tube swept along a seeded control curve, growing along the clock: control points are drawn from `createSeededRandom(seed)` (never `Math.random`) with x ordered left to right so the sweep reads as a stroke, and the RNG call order is part of the determinism contract; geometry is built once, growth only animates `drawRange` (no per-frame reallocation) as a pure function of `useTimeline()`, written during commit.",
+    "props": [
+      {
+        "name": "seed",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "doc": "RNG seed for the control curve; same seed, same sweep, every run."
+      },
+      {
+        "name": "points",
+        "type": "number",
+        "required": false,
+        "default": "6",
+        "doc": "Control-point count along the sweep (left → right)."
+      },
+      {
+        "name": "bounds",
+        "type": "V3",
+        "required": false,
+        "default": "[5, 2.5, 1.5]",
+        "units": "world units",
+        "doc": "Half-extents of the control-point scatter, in world units."
+      },
+      {
+        "name": "radius",
+        "type": "number",
+        "required": false,
+        "default": "0.05",
+        "units": "world units",
+        "doc": "Tube radius, in world units."
+      },
+      {
+        "name": "from",
+        "type": "number",
+        "required": false,
+        "default": "0",
+        "units": "ms",
+        "doc": "Grow start, in ms (local scene time)."
+      },
+      {
+        "name": "to",
+        "type": "number",
+        "required": false,
+        "default": "1500",
+        "units": "ms",
+        "doc": "Grow end, in ms (local scene time)."
+      },
+      {
+        "name": "tone",
+        "type": "\"text\" | \"accent\" | \"muted\"",
+        "required": false,
+        "default": "\"accent\"",
+        "doc": "Theme colour token."
+      },
+      {
+        "name": "lit",
+        "type": "boolean",
+        "required": false,
+        "doc": "Bundle the standard light rig (see `LightRig`); turn off when the scene lights itself."
+      },
+      {
+        "name": "glow",
+        "type": "number",
+        "required": false,
+        "doc": "Glow: a target luminance (above a bloom threshold over 1) reached by raising only the tone's full channels, drawn as an unlit emitter with tone mapping off so it still lands exactly on the token (see `glowColour`). Absent renders as before."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]"
+      },
+      {
+        "name": "rotation",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]"
+      }
+    ],
+    "example": "<Ribbon />"
+  },
+  "RibbonProps": {
+    "kind": "type",
+    "signature": "interface RibbonProps { seed?: number; points?: number; bounds?: V3; radius?: number; from?: number; to?: number; tone?: \"text\" | \"accent\" | \"muted\"; lit?: boolean; glow?: number; position?: V3; rotation?: V3; }"
+  },
+  "Room": {
+    "kind": "component",
+    "summary": "Camera-locked room: colour fills the frame behind all content, flood? grows over it. The sidecar room block draws its own.",
+    "signature": "function Room(props: RoomProps): ReactElement;",
+    "doc": "A camera-locked room: a frame-filling colour behind all content plus an optional flood. Both meshes stay mounted, so a room changing never mounts or compiles anything mid-run.",
+    "props": [
+      {
+        "name": "colour",
+        "type": "string | null",
+        "required": true,
+        "doc": "The room colour filling the frame behind all content (hex); null shows the scene's own background."
+      },
+      {
+        "name": "flood",
+        "type": "RoomFloodProps | null",
+        "required": false,
+        "doc": "A flood growing over the room."
+      }
+    ],
+    "example": "<Room colour={...} />"
+  },
+  "RoomFlood": {
+    "kind": "component",
+    "summary": "RoomFlood colour origin? radius: a circle of colour growing from a frame point ([0,0] top-left); radius 1 covers the frame.",
+    "signature": "function RoomFlood(props: RoomFloodProps): ReactElement;",
+    "doc": "A camera-locked circle of colour growing from a point in the frame (a 256-gon over the room, under all content). For scenes composing their own flood; the sidecar `room` block draws its own.",
+    "props": [
+      {
+        "name": "colour",
+        "type": "string",
+        "required": true,
+        "doc": "The incoming room colour (hex, e.g. a theme token)."
+      },
+      {
+        "name": "origin",
+        "type": "readonly [number, number]",
+        "required": false,
+        "default": "the centre",
+        "doc": "Where the flood starts, in frame fractions: [0, 0] top-left to [1, 1] bottom-right; default the centre."
+      },
+      {
+        "name": "radius",
+        "type": "number",
+        "required": true,
+        "units": "0..1",
+        "doc": "0..1 of the radius that covers the whole frame; ease it yourself (e.g. `ramp`)."
+      }
+    ],
+    "example": "<RoomFlood colour=\"...\" radius={1} />"
+  },
+  "RoomFloodProps": {
+    "kind": "type",
+    "signature": "interface RoomFloodProps { colour: string; origin?: readonly [number, number]; radius: number; }"
+  },
+  "RoomFloodSample": {
+    "kind": "type",
+    "signature": "interface RoomFloodSample { colour: string; origin: [number, number]; progress: number; radius: number; }"
+  },
+  "RoomProps": {
+    "kind": "type",
+    "signature": "interface RoomProps { colour: string | null; flood?: RoomFloodProps | null; }"
+  },
+  "RoomSample": {
+    "kind": "type",
+    "signature": "interface RoomSample { colour: string | null; key: number; flood: RoomFloodSample | null; pose: LightingPose; }"
+  },
+  "RoundedRect": {
+    "kind": "component",
+    "summary": "Flat, colour-exact rounded rect: width, height, radius, color, opacity, stroke.",
+    "signature": "function RoundedRect(props: RoundedRectProps): ReactElement;",
+    "doc": "An unlit, antialiased rounded rectangle with an optional border ring; colour-exact like ImageCard, and size, radius and colours animate without rebuilding geometry.",
+    "props": [
+      {
+        "name": "radius",
+        "type": "number",
+        "required": false,
+        "default": "0",
+        "units": "world units",
+        "doc": "Corner radius in world units, capped at half the shorter side."
+      },
+      {
+        "name": "width",
+        "type": "number",
+        "required": true,
+        "units": "world units",
+        "doc": "World-unit width."
+      },
+      {
+        "name": "height",
+        "type": "number",
+        "required": true,
+        "units": "world units",
+        "doc": "World-unit height."
+      },
+      {
+        "name": "color",
+        "type": "string",
+        "required": false,
+        "default": "the theme accent",
+        "doc": "Fill colour (a theme token hex); defaults to the theme accent."
+      },
+      {
+        "name": "opacity",
+        "type": "number",
+        "required": false,
+        "default": "1"
+      },
+      {
+        "name": "strokeWidth",
+        "type": "number",
+        "required": false,
+        "default": "0",
+        "units": "world units",
+        "doc": "Border ring width in world units, drawn just inside the edge; 0 or absent draws none."
+      },
+      {
+        "name": "strokeColor",
+        "type": "string",
+        "required": false,
+        "default": "the theme text colour",
+        "doc": "Border colour; defaults to the theme text colour."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]"
+      },
+      {
+        "name": "rotation",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]",
+        "doc": "Radians."
+      },
+      {
+        "name": "scale",
+        "type": "number | V3",
+        "required": false,
+        "default": "1"
+      },
+      {
+        "name": "renderOrder",
+        "type": "number",
+        "required": false,
+        "default": "0"
+      }
+    ],
+    "example": "<RoundedRect width={1} height={1} />"
+  },
+  "RoundedRectProps": {
+    "kind": "type",
+    "signature": "interface RoundedRectProps extends PillProps { radius?: number; }"
+  },
+  "SCREEN_LIFT": {
+    "kind": "constant",
+    "summary": "Default gap between anchored content and the glass (fitted units).",
+    "signature": "const SCREEN_LIFT: 0.002;",
+    "doc": "How far anchored content sits off the display along its normal, in fitted units, so it never z-fights the screen."
+  },
+  "SampleKeysOptions": {
+    "kind": "type",
+    "signature": "interface SampleKeysOptions extends EaseOptions { ease?: string; }"
+  },
+  "SceneCamera": {
+    "kind": "type",
+    "signature": "interface SceneCamera { position: V3; lookAt: V3; fov: number; rollDeg?: number; }",
+    "doc": "The scene camera's pose this frame, as the render applies it."
+  },
+  "SceneDeviceProps": {
+    "kind": "type",
+    "signature": "interface SceneDeviceProps extends Omit<DeviceProps, \"model\"> { id: string; model: DeviceId; }",
+    "doc": "`Device`-spreadable props (the sidecar device entry, with `model` narrowed)."
+  },
+  "SceneDoc": {
+    "kind": "type",
+    "signature": "interface SceneDoc { version: number; name?: string; duration?: SceneDocDuration; text?: Record<string, string>; textLayout?: { align?: SceneTextAlign }; textStyle?: Record<string, string | number>; headerIcon?: string; managedText?: SceneManagedTextBlock; devices?: SceneDocDeviceSpec[]; media?: SceneDocMediaSpec[]; images?: SceneDocImageSpec[]; deviceLayout?: SceneDocDeviceLayout; deviceTrack?: { keys: SceneDocDeviceKey[]; segments: SceneDocDeviceSegment[] }; objects?: SceneDocObjectSpec[]; camera?: { keys: SceneDocCameraKey[]; segments: SceneDocCameraSegment[]; presentLoop?: SceneDocCameraPresentLoop; }; cameraMode?: \"orbit\" | \"rig\"; cameraRig?: { keys: SceneDocRigKey[]; segments: SceneDocRigSegment[]; presentLoop?: SceneDocCameraPresentLoop; }; cameraKicks?: SceneDocCameraKick[]; themeId?: string; backdrop?: ThemeBackdrop; background?: ThemeBackground; textAnimation?: TextAnimationSpec; textAnimationForce?: boolean; textAnimationOverrides?: Record<string, TextAnimationSpec>; textLook?: TextLookSpec; textLookForce?: boolean; textLookOverrides?: Record<string, TextLookSpec>; lighting?: LightingSpec; frame?: FrameOverrideSpec; layeredScreenshot?: SceneDocLayeredScreenshot; videoWindow?: SceneDocVideoWindow; compare?: SceneDocCompare; chart?: SceneDocChart; terminal?: SceneDocTerminal; website?: SceneDocWebsite; animatedTrack?: \"camera\" | \"layeredScreenshot\" | \"compare\" | \"chart\" | \"lighting\"; stills?: SceneDocStills; motionBlur?: SceneDocMotionBlur; room?: SceneDocRoom; taps?: SceneDocTap[]; mosaic?: SceneDocMosaic; }"
+  },
+  "SceneDocDeviceSpec": {
+    "kind": "type",
+    "signature": "interface SceneDocDeviceSpec { id: string; model: string; colour?: string; media?: DeviceMediaSpec; coverMedia?: DeviceMediaSpec; placement?: DevicePlacement; motion?: DeviceMotionSpec; shadow?: DeviceShadowMode; lidDeg?: number; foldDeg?: number; bothScreensOn?: boolean; foldTransition?: DeviceFoldTransitionSpec; motionBlur?: MotionBlurOverride; }",
+    "doc": "One device entry, deliberately shaped as `Device` props plus a stable id."
+  },
+  "SceneDocDuration": {
+    "kind": "type",
+    "signature": "type SceneDocDuration = | { mode: \"manual\" } | { mode: \"follow-media\"; sourceDeviceId?: string; source?: \"device\" | \"videoWindow\" | \"media\"; sourceMediaId?: string; };"
+  },
+  "SceneDocObjectSpec": {
+    "kind": "type",
+    "signature": "interface SceneDocObjectSpec { id: string; objectId: string; placement?: DevicePlacement; }",
+    "doc": "One staged 3D object, deliberately shaped like the device entry: a stable scene-local id plus a library reference and the shared placement block."
+  },
+  "SceneModule": {
+    "kind": "type",
+    "signature": "interface SceneModule { id: string; durationMs: number; Scene: ComponentType; key?: string; }",
+    "doc": "A registered scene: a default-exported `defineScene(...)` result."
+  },
+  "SceneProps": {
+    "kind": "type",
+    "signature": "interface SceneProps { time: SceneTime; format: FormatInfo; theme: Theme; }",
+    "doc": "Everything a scene can read. Available via hooks (`useTimeline`/`useFormat`/`useTheme`)."
+  },
+  "SceneStage": {
+    "kind": "component",
+    "summary": "Theme lighting, backdrop and real shadows for the scene.",
+    "signature": "function SceneStage(props: { children?: ReactNode; floorY?: number; }): ReactElement;",
+    "props": [
+      {
+        "name": "children",
+        "type": "ReactNode",
+        "required": false
+      },
+      {
+        "name": "floorY",
+        "type": "number",
+        "required": false,
+        "default": "−1.5",
+        "doc": "Stage floor height for a floor backdrop (world y; default −1.5)."
+      }
+    ],
+    "example": "<SceneStage />"
+  },
+  "SceneTextAlign": {
+    "kind": "type",
+    "signature": "type SceneTextAlign = \"left\" | \"center\" | \"right\";",
+    "doc": "Troika's textAlign values, 1:1 (never localise these; UI labels may)."
+  },
+  "SceneTime": {
+    "kind": "type",
+    "signature": "interface SceneTime { localMs: number; globalMs: number; progress: number; }",
+    "doc": "Time exposed to a scene, all derived purely from the global clock."
+  },
+  "ScreenFillProps": {
+    "kind": "type",
+    "signature": "interface ScreenFillProps { opacity?: number; keys?: readonly MotionKey[]; }",
+    "doc": "What every fill shares: an opacity and keys over any of its numbers (`tMs` is scene-local)."
+  },
+  "ScreenLayer": {
+    "kind": "component",
+    "summary": "Camera-locked layer in frame units with no depth test: order=\"front\" over the finished frame, \"back\" behind everything 3D.",
+    "signature": "function ScreenLayer(props: ScreenLayerProps): ReactElement;",
+    "doc": "A camera-locked layer laid out in frame units: (0, 0) is the centre and `useFormat().frame` the full size, whatever the scene camera does, and nothing in the 3D pass can hide it (no depth test). Replaces a hand-built pose in front of `useSceneCamera()`. For flat primitives (text, images, shapes, `Vignette`, `Scrim`, `Gradient`): a 3D model needs its depth test, and its materials are shared with any world copy. Both orders draw inside the compositor's own passes, so preview, Present and export agree.",
+    "props": [
+      {
+        "name": "order",
+        "type": "\"front\" | \"back\"",
+        "required": false,
+        "default": "\"front\"",
+        "doc": "\"front\" (default) draws over the finished frame, past depth of field; \"back\" draws over the background and under everything 3D, and its pixels go through the scene's effects and transitions like the backdrop."
+      },
+      {
+        "name": "children",
+        "type": "ReactNode",
+        "required": false
+      }
+    ],
+    "example": "<ScreenLayer order=\"front\"><Scrim to=\"background\" start={0.5} /><AnimatedHeadline text={title} position={[0, -1.4, 0]} /></ScreenLayer>",
+    "timing": [
+      "Children stack in JSX order. front draws over the finished frame, past depth of field and, on a solo frame, past the effects; during a transition it crossfades with its scene and picks up the effects.",
+      "back draws over the background and under everything 3D, inside the scene's own pass: effects and depth of field apply to it like the backdrop."
+    ]
+  },
+  "ScreenLayerProps": {
+    "kind": "type",
+    "signature": "interface ScreenLayerProps { order?: \"front\" | \"back\"; children?: ReactNode; }"
+  },
+  "Scrim": {
+    "kind": "component",
+    "summary": "Clear to a colour, linear or radial, for text to sit on; inside a ScreenLayer.",
+    "signature": "function Scrim(props: ScrimProps): ReactElement;",
+    "doc": "Clear to a colour, linear or radial, for text to sit on. Mount inside a `ScreenLayer`.",
+    "props": [
+      {
+        "name": "to",
+        "type": "Colour",
+        "required": false,
+        "default": "\"background\"",
+        "doc": "The colour it deepens to: a theme token or hex (default \"background\")."
+      },
+      {
+        "name": "kind",
+        "type": "\"linear\" | \"radial\"",
+        "required": false,
+        "default": "\"linear\"",
+        "doc": "\"linear\" (default) deepens along `angleDeg`; \"radial\" deepens from `centre` outward."
+      },
+      {
+        "name": "angleDeg",
+        "type": "number",
+        "required": false,
+        "default": "180",
+        "units": "degrees",
+        "doc": "Direction it deepens, degrees clockwise from up (default 180, solid at the bottom)."
+      },
+      {
+        "name": "centre",
+        "type": "readonly [number, number]",
+        "required": false,
+        "default": "[0.5, 0.5]",
+        "doc": "Radial centre, frame fractions from the bottom left (default [0.5, 0.5])."
+      },
+      {
+        "name": "start",
+        "type": "number",
+        "required": false,
+        "default": "0",
+        "units": "0..1",
+        "doc": "Where along the run it starts to show, 0..1 (default 0)."
+      },
+      {
+        "name": "end",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "units": "0..1",
+        "doc": "Where along the run it goes solid, 0..1 (default 1)."
+      },
+      {
+        "name": "opacity",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "units": "0..1",
+        "doc": "0..1 (default 1)."
+      },
+      {
+        "name": "keys",
+        "type": "readonly MotionKey[]",
+        "required": false,
+        "doc": "Keyframes over `opacity` and the fill's numeric props; a key's `ease` shapes the segment arriving at it."
+      }
+    ],
+    "example": "<Scrim to=\"background\" kind=\"linear\" angleDeg={180} start={0.4} opacity={0.8} />",
+    "timing": [
+      "keys override the props they name; a keyed fill holds stills until its last key lands."
+    ]
+  },
+  "ScrimProps": {
+    "kind": "type",
+    "signature": "interface ScrimProps extends ScreenFillProps { to?: Colour; kind?: \"linear\" | \"radial\"; angleDeg?: number; centre?: readonly [number, number]; start?: number; end?: number; }"
+  },
+  "SeededRandom": {
+    "kind": "type",
+    "signature": "type SeededRandom = () => number;",
+    "doc": "A generator of floats in [0, 1), advancing on each call."
+  },
+  "SharedKeyframe": {
+    "kind": "type",
+    "signature": "interface SharedKeyframe { tMs: number; position?: [number, number, number]; rotation?: [number, number, number]; scale?: number; opacity?: number; }",
+    "doc": "One morph keyframe. Fields are per-property optional (see engine/keyframes.ts)."
+  },
+  "SharedTransform": {
+    "kind": "type",
+    "signature": "interface SharedTransform { position: [number, number, number]; rotation: [number, number, number]; scale: number; opacity: number; }",
+    "doc": "A fully-resolved morph transform for one frame."
+  },
+  "SplitField": {
+    "kind": "component",
+    "summary": "Frame split into tiles (images, videos, theme colours) with a staggered reveal that reflows per aspect; no tiles draws the sidecar mosaic.",
+    "signature": "function SplitField(props: SplitFieldProps): ReactElement | null;",
+    "doc": "A frame split into tiles (project images, videos or theme colours) with a staggered reveal; the grid reflows per aspect unless `columns` fixes it. Without `tiles` it draws the sidecar `mosaic` block, and mounting it stands the host fallback down.",
+    "props": [
+      {
+        "name": "tiles",
+        "type": "SplitFieldTile[]",
+        "required": false,
+        "doc": "The tiles, in reading order; absent draws the sidecar `mosaic` block."
+      },
+      {
+        "name": "columns",
+        "type": "number",
+        "required": false,
+        "doc": "Fixed column count; absent picks the most square grid for the aspect, so the field reflows."
+      },
+      {
+        "name": "gap",
+        "type": "number",
+        "required": false,
+        "default": "0.02",
+        "doc": "Gap between tiles as a fraction of the field's short side (default 0.02)."
+      },
+      {
+        "name": "reveal",
+        "type": "SceneDocMosaicReveal",
+        "required": false
+      },
+      {
+        "name": "width",
+        "type": "number",
+        "required": false,
+        "default": "the whole frame at the field's depth",
+        "units": "world units",
+        "doc": "Field size in world units (default the whole frame at the field's depth)."
+      },
+      {
+        "name": "height",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, -0.05]",
+        "doc": "Default [0, 0, -0.05], just behind content at z = 0."
+      }
+    ],
+    "example": "<SplitField />"
+  },
+  "SplitFieldProps": {
+    "kind": "type",
+    "signature": "interface SplitFieldProps { tiles?: SplitFieldTile[]; columns?: number; gap?: number; reveal?: SceneDocMosaicReveal; width?: number; height?: number; position?: V3; }"
+  },
+  "SplitFieldTile": {
+    "kind": "type",
+    "signature": "type SplitFieldTile = SceneDocMosaicTile;"
+  },
+  "StagedObject": {
+    "kind": "component",
+    "summary": "One sidecar objects entry, auto-fitted.",
+    "signature": "function StagedObject(props: StagedObjectProps): ReactElement;",
+    "doc": "One staged library object, from a sidecar `spec` or an `objectId` placed in TSX. `readObjectAsset` suspends until the manifest + URLs land (unknown ids degrade to nothing), then `LoadedObject` suspends on the glb through the objects' own gltf cache (both pre-warmed by the export preamble and the option-preview capture).",
+    "props": [
+      {
+        "name": "spec",
+        "type": "SceneDocObjectSpec",
+        "required": false
+      },
+      {
+        "name": "objectId",
+        "type": "string",
+        "required": false,
+        "doc": "A bundled id or `ws:<slug>`, as in `kb catalog objects`; an unknown id renders nothing."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "the origin",
+        "doc": "World position (default the origin)."
+      },
+      {
+        "name": "rotationDeg",
+        "type": "V3",
+        "required": false,
+        "default": "none",
+        "units": "degrees",
+        "doc": "Euler rotation, degrees (default none)."
+      },
+      {
+        "name": "scale",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "doc": "Multiplies the object's fitted size (default 1)."
+      },
+      {
+        "name": "ground",
+        "type": "boolean",
+        "required": false,
+        "default": "false",
+        "doc": "Sit the object on the stage floor; its y is then ignored (default false)."
+      }
+    ],
+    "example": "<StagedObject objectId=\"bitcoin-coin\" position={[0, 0.3, 0]} rotationDeg={[0, 20, 0]} scale={1.2} />",
+    "timing": [
+      "objectId placed in TSX loads when it first mounts, even mid-film: every capture waits for it, so no frame shows it missing. A preview pops it in. No gizmo: use the sidecar `objects` array for an object the inspector should move."
+    ]
+  },
+  "StagedObjectProps": {
+    "kind": "type",
+    "signature": "type StagedObjectProps = { spec: SceneDocObjectSpec } | PlacedObjectProps;"
+  },
+  "StaggerGranularity": {
+    "kind": "type",
+    "signature": "type StaggerGranularity = \"char\" | \"word\" | \"paragraph\" | \"paragraph-group\";",
+    "doc": "Stagger granularities: words split on whitespace, chars are non-whitespace characters; paragraph granularities (spelled through `delivery`, never the public `stagger` prop) split on `\\n` / blank lines and walk Y-key unit boundaries."
+  },
+  "Stamp": {
+    "kind": "component",
+    "summary": "<Stamp at|hitAt rotateDeg? position rotation scale>: stamps children in at `at` ms (or landing on `hitAt`) with the stampScale pop and an optional rotation settle.",
+    "signature": "function Stamp(props: StampProps): ReactElement;",
+    "doc": "Stamps its children in at `at`: the `stampScale` pop (its defaults are contract) about the group origin, with an optional small rotation settle.",
+    "props": [
+      {
+        "name": "at",
+        "type": "number",
+        "required": false,
+        "default": "0",
+        "units": "ms",
+        "doc": "Scene-local ms the stamp starts (default 0); hidden (at `from` scale) before it."
+      },
+      {
+        "name": "hitAt",
+        "type": "number",
+        "required": false,
+        "units": "ms",
+        "doc": "Scene-local ms the stamp LANDS (first reaches full size), on a beat or a cut; the stamp starts its measured lead earlier. Wins over `at`."
+      },
+      {
+        "name": "rotateDeg",
+        "type": "number",
+        "required": false,
+        "default": "0",
+        "units": "degrees",
+        "doc": "Optional settle: starts this many degrees off (about Z) and swings back to 0 with a small overshoot over the stamp."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false
+      },
+      {
+        "name": "rotation",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]",
+        "doc": "Radians; the settle adds to Z."
+      },
+      {
+        "name": "scale",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "doc": "Base scale the stamp multiplies."
+      },
+      {
+        "name": "children",
+        "type": "ReactNode",
+        "required": false
+      },
+      {
+        "name": "from",
+        "type": "number",
+        "required": false,
+        "doc": "Scale before the stamp starts."
+      },
+      {
+        "name": "peak",
+        "type": "number",
+        "required": false,
+        "doc": "Overshoot scale reached at `inMs`."
+      },
+      {
+        "name": "inMs",
+        "type": "number",
+        "required": false,
+        "units": "ms",
+        "doc": "`from` to `peak`, outCubic."
+      },
+      {
+        "name": "settleMs",
+        "type": "number",
+        "required": false,
+        "units": "ms",
+        "doc": "`peak` back to 1, inOutSine."
+      }
+    ],
+    "example": "<Stamp hitAt={2000}><AnimatedHeadline text={title} preset=\"static\" /></Stamp>",
+    "timing": [
+      "at is when the pop starts; hitAt is when it first reaches full size, about 95 ms after the start on the default pop (kb catalog stamps). It overshoots at inMs and settles by inMs + settleMs."
+    ]
+  },
+  "StampProps": {
+    "kind": "type",
+    "signature": "interface StampProps extends StampScaleOptions { at?: number; hitAt?: number; rotateDeg?: number; position?: V3; rotation?: V3; scale?: number; children?: ReactNode; }"
+  },
+  "StampScaleOptions": {
+    "kind": "type",
+    "signature": "interface StampScaleOptions { from?: number; peak?: number; inMs?: number; settleMs?: number; }"
+  },
+  "TEXT_PRESET_NAMES": {
+    "kind": "constant",
+    "summary": "Every text motion preset name.",
+    "signature": "const TEXT_PRESET_NAMES: readonly [\"none\", \"fade\", \"fade-up\", \"blur-in\", \"slide\", \"mask-reveal\", \"fade-scale\", \"twist-scale\", \"scatter-scale\", \"tracking\", \"slam\", \"dolly\", \"chromatic\", \"line-stretch\", \"highlight-wipe\", \"rise-mask\", \"word-cycle\", \"ribbon\", \"stand-up\", \"spring-pop\", \"spotlight\", \"underline-draw\", \"orbit\", \"weight-build\", \"develop\", \"flip-cascade\", \"converge\", \"glint-wipe\", \"vapor\", \"stamp\", \"build\", \"typewriter\"];",
+    "doc": "Text-animation presets, the library behind `theme.textAnimation` and `AnimatedHeadline`'s `preset`/`ease`/`stagger` props: everything here is PURE math over the local scene clock so preview and the deterministic export loop agree byte-for-byte, and easing goes through the golden-tested `engine/ease` table, never an animation runtime. IMPORTANT (the null-for-legacy contract): when nothing is configured, `resolveTextAnimation` returns null and AnimatedHeadline runs its original v0 linear-ramp code verbatim, so committed projects on legacy themes must not change by a byte."
+  },
+  "TapRing": {
+    "kind": "component",
+    "summary": "TapRing at radius? colour? dot? position: a ring pulse on the video editor's 550 ms tap curve.",
+    "signature": "function TapRing(props: TapRingProps): ReactElement;",
+    "doc": "A tap pulse: an analytic ring (and centre dot) popping in, pulsing once and fading on the video editor's tap curve, facing +z. Hidden outside its 550 ms window.",
+    "props": [
+      {
+        "name": "at",
+        "type": "number",
+        "required": true,
+        "units": "ms",
+        "doc": "Scene-local ms the pulse starts; it runs the video editor's 550 ms tap curve."
+      },
+      {
+        "name": "radius",
+        "type": "number",
+        "required": false,
+        "default": "0.12",
+        "units": "world units",
+        "doc": "Outer ring radius at rest scale, world units (default 0.12)."
+      },
+      {
+        "name": "colour",
+        "type": "string",
+        "required": false,
+        "default": "the accent",
+        "doc": "A theme token hex (default the accent)."
+      },
+      {
+        "name": "dot",
+        "type": "boolean",
+        "required": false,
+        "default": "true",
+        "doc": "Draw the centre dot (default true)."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false
+      },
+      {
+        "name": "renderOrder",
+        "type": "number",
+        "required": false,
+        "default": "0"
+      }
+    ],
+    "example": "<TapRing at={1} />"
+  },
+  "TapRingProps": {
+    "kind": "type",
+    "signature": "interface TapRingProps { at: number; radius?: number; colour?: string; dot?: boolean; position?: V3; renderOrder?: number; }"
+  },
+  "TextMetrics": {
+    "kind": "type",
+    "signature": "interface TextMetrics { width: number; height: number; ascent: number; descent: number; lines: number; }",
+    "doc": "A typeset block in world units: `ascent` runs from the block top to the first baseline and `descent` from the last baseline to the block bottom, so one line has `ascent + descent === height`."
+  },
+  "TextMetricsOptions": {
+    "kind": "type",
+    "signature": "interface TextMetricsOptions { fontSize?: number; face?: \"headline\" | \"body\"; fontRef?: FontRef; lineHeight?: number; letterSpacing?: number; styleKey?: string; }",
+    "doc": "The AnimatedHeadline props that shape the measured block; pass the same values the headline gets."
+  },
+  "TextPresetName": {
+    "kind": "type",
+    "signature": "type TextPresetName = (typeof TEXT_PRESET_NAMES)[number] | typeof STATIC_TEXT_PRESET;"
+  },
+  "Theme": {
+    "kind": "type",
+    "signature": "interface Theme { id: string; name: string; mode?: ThemeMode; colors: { background: string; text: string; accent: string; muted: string; }; gradients?: Record<string, GradientSpec>; chartColors?: string[]; typography: { headline: FontRef; body: FontRef; scale: number; chart?: FontRef; }; motion: { durations: { fast: number; base: number; slow: number }; easings: { standard: string; emphasized: string }; }; textAnimation?: TextAnimationSpec; textLook?: TextLookSpec; card?: ThemeCard; lighting?: LightingSpec; environment?: ThemeEnvironment; backdrop?: ThemeBackdrop; background?: ThemeBackground; effects?: EffectsConfig; }"
+  },
+  "TitleBlock": {
+    "kind": "component",
+    "summary": "Title + optional subtitle, theme-scaled, safe-area aligned.",
+    "signature": "function TitleBlock(props: TitleBlockProps): ReactElement | null;",
+    "doc": "Title + optional subtitle with theme-scale sizing and safe-area alignment: the standard top-of-scene text block. Alignment resolves prop → sidecar `textLayout.align` → centre, so the inspector can steer scenes that don't hard-code it.",
+    "props": [
+      {
+        "name": "title",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "subtitle",
+        "type": "string",
+        "required": false,
+        "doc": "Empty or absent recentres the title (the natural single-line format)."
+      },
+      {
+        "name": "align",
+        "type": "SceneTextAlign",
+        "required": false,
+        "doc": "Beats the sidecar's `textLayout.align`; the block anchors against the safe area."
+      },
+      {
+        "name": "from",
+        "type": "number",
+        "required": false,
+        "default": "200",
+        "units": "ms",
+        "doc": "Title reveal window (scene-local ms); the subtitle rides 350ms behind."
+      },
+      {
+        "name": "to",
+        "type": "number",
+        "required": false,
+        "default": "900"
+      },
+      {
+        "name": "fontSize",
+        "type": "number",
+        "required": false,
+        "units": "world units",
+        "doc": "Title size in world units (portrait 0.34 / landscape 0.56); the subtitle derives via `theme.typography.scale`."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]",
+        "units": "world units",
+        "doc": "Offset added after alignment (world units)."
+      },
+      {
+        "name": "maxWidth",
+        "type": "number",
+        "required": false,
+        "units": "world units",
+        "doc": "Wrap width in world units for both lines; unset means no wrapping."
+      },
+      {
+        "name": "titleColor",
+        "type": "\"text\" | \"muted\" | \"accent\" | (string & {})",
+        "required": false,
+        "doc": "Title fill: a token or raw hex; beats the sidecar's `textStyle.titleColor`."
+      },
+      {
+        "name": "subtitleColor",
+        "type": "\"text\" | \"muted\" | \"accent\" | (string & {})",
+        "required": false,
+        "default": "\"muted\"",
+        "doc": "Subtitle fill token or raw hex (default \"muted\"); beats the sidecar's `textStyle.subtitleColor`."
+      },
+      {
+        "name": "subtitleDelayMs",
+        "type": "number",
+        "required": false,
+        "default": "350",
+        "units": "ms",
+        "doc": "Subtitle reveal delay behind the title, ms (default 350)."
+      },
+      {
+        "name": "register",
+        "type": "boolean",
+        "required": false,
+        "default": "true",
+        "doc": "Register the title/subtitle text keys (default true). Legacy host fallbacks keep this off."
+      },
+      {
+        "name": "managedTextRole",
+        "type": "ManagedTextRenderRole",
+        "required": false,
+        "default": "\"scene\"",
+        "doc": "Render registration role. Host fallbacks use managed so they do not count as authored consumers."
+      },
+      {
+        "name": "icon",
+        "type": "string",
+        "required": false,
+        "default": "the sidecar's headerIcon",
+        "doc": "Header icon drawn above the title: an emoji/glyph or a project asset path. Defaults to the sidecar's `headerIcon`, so a scaffolded scene's own `TitleBlock` shows it without wiring; overlay scenes carry it on `frame.icon` instead."
+      }
+    ],
+    "example": "<TitleBlock title=\"...\" />"
+  },
+  "TitleBlockProps": {
+    "kind": "type",
+    "signature": "interface TitleBlockProps { title: string; subtitle?: string; align?: SceneTextAlign; from?: number; to?: number; fontSize?: number; position?: V3; maxWidth?: number; titleColor?: \"text\" | \"muted\" | \"accent\" | (string & {}); subtitleColor?: \"text\" | \"muted\" | \"accent\" | (string & {}); subtitleDelayMs?: number; register?: boolean; managedTextRole?: ManagedTextRenderRole; icon?: string; }"
+  },
+  "V3": {
+    "kind": "type",
+    "signature": "type V3 = [number, number, number];",
+    "doc": "A 3D vector, used for positions / rotations / scales."
+  },
+  "VideoClip": {
+    "kind": "component",
+    "summary": "Deterministic video plane (pre-extracted 60 fps frames).",
+    "signature": "function VideoClip(props: VideoClipProps): ReactElement;",
+    "doc": "Embedded video clip: the ffmpeg sidecar pre-extracts the source to a CFR frame sequence, and frame selection is a pure function of the timeline (never `HTMLVideoElement` seeking) so preview and export pick the identical frame; the sampling/binding core lives in `engine/clipTexture.ts` (shared with the Device screen), and this primitive is the plane-mesh consumer, sized via `fit`. See docs/determinism.md.",
+    "props": [
+      {
+        "name": "src",
+        "type": "string",
+        "required": true,
+        "doc": "Project-relative source path, e.g. `\"assets/clip.mp4\"`. Extracted to frames on demand."
+      },
+      {
+        "name": "startMs",
+        "type": "number",
+        "required": true,
+        "units": "ms",
+        "doc": "When the clip starts, in ms (local scene time)."
+      },
+      {
+        "name": "fit",
+        "type": "\"cover\" | \"contain\"",
+        "required": false,
+        "default": "\"contain\"",
+        "doc": "`contain` fits the whole clip in the frame (letterbox); `cover` fills + crops."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]"
+      },
+      {
+        "name": "scale",
+        "type": "number",
+        "required": false,
+        "default": "1"
+      }
+    ],
+    "example": "<VideoClip src=\"...\" startMs={1} />"
+  },
+  "VideoClipProps": {
+    "kind": "type",
+    "signature": "interface VideoClipProps { src: string; startMs: number; fit?: \"cover\" | \"contain\"; position?: V3; scale?: number; }"
+  },
+  "VideoWindow": {
+    "kind": "component",
+    "summary": "Shim over a window-hosted media entry.",
+    "signature": "function VideoWindow(_props?: VideoWindowProps): ReactElement;",
+    "doc": "The scene document's windowed media: a screen recording (or a still) presented as a floating rounded window with a drop shadow, over whatever the scene stages behind it; sits in world space so the per-scene camera moves around it with real parallax. Registers the scene as the window family's consumer so the host-side fallback stands down.",
+    "props": [
+      {
+        "name": "_reserved",
+        "type": "never",
+        "required": false,
+        "doc": "Reserved: the primitive is sidecar-driven; props may later override the doc."
+      }
+    ],
+    "example": "<VideoWindow />"
+  },
+  "VideoWindowProps": {
+    "kind": "type",
+    "signature": "interface VideoWindowProps { _reserved?: never; }"
+  },
+  "Vignette": {
+    "kind": "component",
+    "summary": "Darkened edges, clear centre; inside a ScreenLayer. opacity, keys.",
+    "signature": "function Vignette(props: VignetteProps): ReactElement;",
+    "doc": "Darkened edges, clear centre. Mount inside a `ScreenLayer`.",
+    "props": [
+      {
+        "name": "colour",
+        "type": "Colour",
+        "required": false,
+        "default": "black",
+        "doc": "The edge colour: a theme token or hex (default black)."
+      },
+      {
+        "name": "start",
+        "type": "number",
+        "required": false,
+        "default": "0.45",
+        "units": "0..1",
+        "doc": "How far in the clear centre reaches, 0..1 (default 0.45)."
+      },
+      {
+        "name": "end",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "units": "0..1",
+        "doc": "How far out it reaches full strength, 0..1 (default 1)."
+      },
+      {
+        "name": "opacity",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "units": "0..1",
+        "doc": "0..1 (default 1)."
+      },
+      {
+        "name": "keys",
+        "type": "readonly MotionKey[]",
+        "required": false,
+        "doc": "Keyframes over `opacity` and the fill's numeric props; a key's `ease` shapes the segment arriving at it."
+      }
+    ],
+    "example": "<Vignette opacity={0.6} keys={[{ tMs: 0, opacity: 0 }, { tMs: 500, opacity: 0.6 }]} />",
+    "timing": [
+      "keys override the props they name; a keyed fill holds stills until its last key lands."
+    ]
+  },
+  "VignetteProps": {
+    "kind": "type",
+    "signature": "interface VignetteProps extends ScreenFillProps { colour?: Colour; start?: number; end?: number; }"
+  },
+  "WireGrid": {
+    "kind": "component",
+    "summary": "Travelling-wave wire grid on the clock.",
+    "signature": "function WireGrid(props: WireGridProps): ReactElement;",
+    "doc": "Procedural line grid with a travelling wave: the lattice is built once (pure function of size/divisions), and per-frame the Y displacement is recomputed on the CPU as a pure function of `useTimeline()` (no RNG, no shader time uniform) during commit, so the export loop's canvas-commit barrier sees it before capture.",
+    "props": [
+      {
+        "name": "size",
+        "type": "number",
+        "required": false,
+        "default": "12",
+        "units": "world units",
+        "doc": "Grid extent (a size × size square in the local XZ plane), in world units."
+      },
+      {
+        "name": "divisions",
+        "type": "number",
+        "required": false,
+        "default": "24",
+        "doc": "Cells per side."
+      },
+      {
+        "name": "amplitude",
+        "type": "number",
+        "required": false,
+        "default": "0.35",
+        "units": "world units",
+        "doc": "Wave height, in world units. 0 = flat static grid."
+      },
+      {
+        "name": "wavelength",
+        "type": "number",
+        "required": false,
+        "default": "3",
+        "units": "world units",
+        "doc": "Wave length, in world units."
+      },
+      {
+        "name": "speed",
+        "type": "number",
+        "required": false,
+        "default": "0.25",
+        "doc": "Wave travel speed, in cycles/second, a pure function of the timeline."
+      },
+      {
+        "name": "tone",
+        "type": "\"text\" | \"accent\" | \"muted\"",
+        "required": false,
+        "default": "\"muted\"",
+        "doc": "Theme colour token."
+      },
+      {
+        "name": "opacity",
+        "type": "number",
+        "required": false,
+        "default": "0.6",
+        "doc": "Line opacity (lines don't bloom hard; keep them a quiet backdrop)."
+      },
+      {
+        "name": "glow",
+        "type": "number",
+        "required": false,
+        "doc": "Glow: a target luminance (above a bloom threshold over 1) reached by raising only the tone's full channels, unlit with tone mapping off so it still lands exactly on the token (see `glowColour`). Absent renders as before."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]"
+      },
+      {
+        "name": "rotation",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]",
+        "units": "radians",
+        "doc": "Base rotation in radians; lay it flat as a floor (default) or tilt it as a backdrop."
+      }
+    ],
+    "example": "<WireGrid />"
+  },
+  "WireGridProps": {
+    "kind": "type",
+    "signature": "interface WireGridProps { size?: number; divisions?: number; amplitude?: number; wavelength?: number; speed?: number; tone?: \"text\" | \"accent\" | \"muted\"; opacity?: number; glow?: number; position?: V3; rotation?: V3; }"
+  },
+  "clamp01": {
+    "kind": "function",
+    "summary": "clamp01(x): x clamped to 0..1.",
+    "signature": "function clamp01(x: number): number;",
+    "doc": "Clamps to [0, 1]; NaN reads as 0."
+  },
+  "createSeededRandom": {
+    "kind": "function",
+    "summary": "Seeded PRNG: createSeededRandom(seed)() returns 0..1. Use instead of Math.random.",
+    "signature": "function createSeededRandom(seed: number): SeededRandom;",
+    "doc": "Create a mulberry32 generator from an integer seed (fractional seeds are truncated)."
+  },
+  "cssOpacity": {
+    "kind": "function",
+    "summary": "cssOpacity(fg, room, a): fg at opacity a over the room, as the exact opaque hex.",
+    "signature": "function cssOpacity(fg: string, room: string, a: number): string;",
+    "doc": "`fg` at opacity `a` over a room colour, as the opaque hex a CSS overlay would show (the `liftColour` display-domain blend), so text and panels over a room stay exact."
+  },
+  "defineScene": {
+    "kind": "function",
+    "summary": "Every scene file default-exports defineScene({ id, durationMs, Scene }).",
+    "signature": "function defineScene(cfg: SceneModule): SceneModule;",
+    "doc": "Every scene file must `export default defineScene({...})`; an identity wrapper today, kept as the seam for future validation/registration."
+  },
+  "deviceColour": {
+    "kind": "function",
+    "summary": "Resolve a colour id against a device spec.",
+    "signature": "function deviceColour(spec: DeviceSpec, colourId: string | undefined): DeviceColourSpec;",
+    "doc": "Resolve a colour spec, degrading to the model's default on unknown ids."
+  },
+  "deviceScreenLocal": {
+    "kind": "function",
+    "summary": "deviceScreenLocal(model, u, v, lift?, hinge?): a screen point in the device's frame.",
+    "signature": "function deviceScreenLocal(model: string, u: number, v: number, lift?: number, hinge?: DeviceScreenHinge): V3;",
+    "doc": "A point on a display, `lift` off the glass, in the device's local fitted frame (placement scale 1)."
+  },
+  "deviceScreenPoint": {
+    "kind": "function",
+    "summary": "deviceScreenPoint(model, u, v, pose, lift?): a screen point in world space.",
+    "signature": "function deviceScreenPoint(model: string, u: number, v: number, pose: DeviceScreenPose, lift?: number): V3;",
+    "doc": "A point on a display in world space, for a device standing at `pose`."
+  },
+  "deviceScreenRect": {
+    "kind": "function",
+    "summary": "deviceScreenRect(model, display?): the measured screen rect this build renders.",
+    "signature": "function deviceScreenRect(model: string, display?: DeviceScreenDisplay): DeviceScreenRect;",
+    "doc": "The display rect a model renders with here. A device without a cover display answers `\"cover\"` with its one screen, which is where the Android fallback shows a foldable's cover media."
+  },
+  "ease": {
+    "kind": "function",
+    "summary": "ease(name, t, { overshoot }?): the curve at t clamped to 0..1; unknown names use \"inOutQuad\".",
+    "signature": "function ease(name: string, t: number, opts?: EaseOptions): number;",
+    "doc": "Evaluates the named ease at progress `t`, clamped to [0, 1]; unknown names fall back to `DEFAULT_EASE` (a scene document edited by hand must degrade, not crash)."
+  },
+  "easeFn": {
+    "kind": "function",
+    "summary": "easeFn(name, { overshoot }?): the raw curve as a function (no clamping).",
+    "signature": "function easeFn(name: string, opts?: EaseOptions): EaseFn;",
+    "doc": "The named curve as a function of raw progress (no clamping; `ease` and `ramp` clamp); unknown names fall back to `DEFAULT_EASE`. Without `overshoot` the table function itself is returned."
+  },
+  "fade": {
+    "kind": "function",
+    "summary": "fade(time, [startMs, endMs]) returns { opacity } 0..1.",
+    "signature": "function fade(t: SceneTime, range: [number, number]): { opacity: number };",
+    "doc": "Group fade over a time range. Apply the returned opacity to a `<group>` (or a material); a pure function of the timeline, safe for deterministic export."
+  },
+  "fitFontSize": {
+    "kind": "function",
+    "summary": "fitFontSize(metrics, fontSize, maxWidth): the size that fits a measured block.",
+    "signature": "function fitFontSize(metrics: TextMetrics, fontSize: number, maxWidth: number): number;",
+    "doc": "The size that fits a block measured at `fontSize` inside `maxWidth`: never above `fontSize` itself, and `fontSize` untouched when there is nothing to fit."
+  },
+  "frameAtDepth": {
+    "kind": "function",
+    "summary": "frameAtDepth(format, z): the base camera's visible { width, height } at depth z.",
+    "signature": "function frameAtDepth(format: FormatInfo, z: number): { width: number; height: number };",
+    "doc": "The visible frame's world size at depth `z` under the base camera: `format.frame` scaled by the frustum's growth from the content plane (exactly `format.frame` at z = 0, zero at or behind the camera). Scenes place backdrops behind their text with it."
+  },
+  "glowColour": {
+    "kind": "function",
+    "summary": "glowColour(hex, glow): full channels raised to luminance glow, so bloom (threshold above 1) catches it and it still clamps to hex.",
+    "signature": "function glowColour(hex: string, glow: number): Color;",
+    "doc": "`hex` brightened in linear light to luminance `glow` by raising only its full (255) channels: past a bloom threshold above 1 it glows, and once clamped (tone mapping off, or `linear`) it lands exactly on `hex`. A colour with no full channel scales whole, which is not exact; a `glow` at or under its own luminance returns it unchanged."
+  },
+  "isDeviceAvailable": {
+    "kind": "function",
+    "summary": "Whether this build renders a device id with its own model.",
+    "signature": "function isDeviceAvailable(id: string): id is DeviceId;"
+  },
+  "isDeviceId": {
+    "kind": "function",
+    "summary": "Whether a string is a catalogue device id.",
+    "signature": "function isDeviceId(id: string): id is DeviceId;"
+  },
+  "isEaseName": {
+    "kind": "function",
+    "summary": "Whether a value is an ease name.",
+    "signature": "function isEaseName(name: unknown): name is EaseName;"
+  },
+  "isTextPresetName": {
+    "kind": "function",
+    "summary": "Whether a string is a text motion preset.",
+    "signature": "function isTextPresetName(name: string): name is TextPresetName;"
+  },
+  "lerp": {
+    "kind": "function",
+    "summary": "lerp(a, b, t): a + (b - a) * t.",
+    "signature": "const lerp: (a: number, b: number, t: number) => number;"
+  },
+  "liftColour": {
+    "kind": "function",
+    "summary": "liftColour(from, to, amount): sRGB blend toward another colour, as hex.",
+    "signature": "function liftColour(from: string, to: string, amount: number): string;",
+    "doc": "Blends `from` toward `to` by `amount` in DISPLAY (sRGB) space, returning a hex string. Perceptually even and symmetric between light and dark themes (the overlay panel's surface-lift maths, shared so scenes can derive secondary surfaces from theme tokens). Pure and deterministic."
+  },
+  "measureText": {
+    "kind": "function",
+    "summary": "measureText(text, { font, fontSize, letterSpacing?, lineHeight? }): { width, height, ascent, descent, lines } in world units, or null.",
+    "signature": "function measureText(text: string, opts: MeasureTextOptions): TextMetrics | null;",
+    "doc": "Metrics for one string; null until its face has been parsed."
+  },
+  "mediaPixelToScreenUv": {
+    "kind": "function",
+    "summary": "mediaPixelToScreenUv(model, [x, y], { width, height }): media pixel to screen UV.",
+    "signature": "function mediaPixelToScreenUv(model: string, pixel: [number, number], media: { width: number; height: number }, display?: DeviceScreenDisplay): [number, number];",
+    "doc": "Media pixel coordinates (top-left origin) to screen UV under the display's cover fit; pixels cropped off the screen land outside 0..1."
+  },
+  "pulse": {
+    "kind": "function",
+    "summary": "pulse(time, times, { attackMs, holdMs, releaseMs, ease }) returns 0..1 at each time; overlaps take the max.",
+    "signature": "function pulse(time: SceneTime | number, times: number | readonly number[], opts: PulseOptions): number;",
+    "doc": "A level 0..1 that fires at each of `times` (scene-local ms, e.g. `useBeatGrid()` bars or `useCues()` values) and falls back to exactly 0 between them; where pulses overlap the strongest wins. `time` is `useTimeline()` or scene-local ms. A pure function of time, so scale, glow or opacity driven by it exports deterministically. Object motion blur shifts `useTimeline()`, so a pulse blurs with its scene: give it an attack of at least one frame (17 ms) so the rise smears rather than ghosting."
+  },
+  "ramp": {
+    "kind": "function",
+    "summary": "ramp(localMs, startMs, endMs, ease?, opts?): eased 0..1 progress through a window.",
+    "signature": "function ramp(localMs: number, startMs: number, endMs: number, easeName?: string, opts?: EaseOptions): number;",
+    "doc": "Eased progress of `localMs` through [startMs, endMs] (the time is clamped, a Back ease may still overshoot); a zero or negative span steps from 0 to 1 at `startMs`."
+  },
+  "resolveAvailableDeviceId": {
+    "kind": "function",
+    "summary": "The id a model renders as in this build.",
+    "signature": "function resolveAvailableDeviceId(id: string): DeviceId;",
+    "doc": "Preserves known ids in documents while rendering unknown or unavailable models as Android."
+  },
+  "resolveAvailableDeviceSpec": {
+    "kind": "function",
+    "summary": "The spec a model renders with in this build.",
+    "signature": "function resolveAvailableDeviceSpec(id: string): DeviceSpec;"
+  },
+  "resolveDeviceLayout": {
+    "kind": "function",
+    "summary": "resolveDeviceLayout(devices, layout, format): per-aspect placements.",
+    "signature": "function resolveDeviceLayout(devices: ReadonlyArray<LayoutDeviceLike>, layout: SceneDocDeviceLayout, format: FormatInfo): DevicePlacement[];"
+  },
+  "sampleKeys": {
+    "kind": "function",
+    "summary": "sampleKeys([{ tMs, ease?, ...values }], localMs): keyed values; each key's ease shapes the segment into it.",
+    "signature": "function sampleKeys<K extends MotionKey>(keys: readonly K[], localMs: number, opts?: SampleKeysOptions): SampledKeys<K>;",
+    "doc": "Samples keyed values at `localMs`: holds the first key before it and the last after it; each segment eases by its arriving key's `ease`. Numbers and equal-length number arrays interpolate, anything else holds the earlier key's value. A property missing from a key interpolates across the keys that set it."
+  },
+  "sampleSharedTransform": {
+    "kind": "function",
+    "summary": "Samples a persistent-module keyframe track at globalMs.",
+    "signature": "function sampleSharedTransform(track: SharedKeyframe[], globalMs: number): SharedTransform;",
+    "doc": "Samples the morph track at a global time: linear interpolation between the surrounding keys that define each property, clamped outside the keyed range. Pure: same (track, t) → same transform, so preview and export agree by construction."
+  },
+  "screenUvToMediaPixel": {
+    "kind": "function",
+    "summary": "screenUvToMediaPixel(model, [u, v], { width, height }): screen UV to media pixel.",
+    "signature": "function screenUvToMediaPixel(model: string, uv: [number, number], media: { width: number; height: number }, display?: DeviceScreenDisplay): [number, number];",
+    "doc": "Screen UV to media pixel coordinates (top-left origin), the inverse of `mediaPixelToScreenUv`."
+  },
+  "slide": {
+    "kind": "function",
+    "summary": "slide(time, [startMs, endMs], axis) returns { offset } 1..0; axis is ignored.",
+    "signature": "function slide(t: SceneTime, range: [number, number], _axis: \"x\" | \"y\"): { offset: number };",
+    "doc": "Group slide over a time range. Returns a normalised `offset` (1 → 0) to drive a position on the given axis. Pure function of the timeline; export-safe."
+  },
+  "stampScale": {
+    "kind": "function",
+    "summary": "stampScale({ from, peak, inMs, settleMs }?) returns ms => scale: a pop to 1.12 that settles.",
+    "signature": "function stampScale(props?: StampScaleOptions): (msSinceStart: number) => number;",
+    "doc": "A \"stamped in\" pop: returns the scale for ms since the stamp started (`from` before 0, 1 once settled)."
+  },
+  "useBeatAt": {
+    "kind": "hook",
+    "summary": "useBeatAt()(bar, beat?, sixteenth?): scene ms, or null with one log line when the project has no grid.",
+    "signature": "function useBeatAt(): (bar: number, beat?: number, sixteenth?: number) => number | null;",
+    "doc": "Bar-to-ms that never needs a null check on the hook: `at(bar, beat?, sixteenth?)` is scene-local ms, or null with one log line when the project has no `audio.grid` (`at(13) ?? 4000` keeps the scene's own timing).",
+    "example": "const at = useBeatAt();\nconst hit = at(5, 3) ?? 2000;",
+    "timing": [
+      "Scene-local ms, or null with one log line when the project has no grid, so `?? ms` keeps the scene's own timing."
+    ]
+  },
+  "useBeatGrid": {
+    "kind": "hook",
+    "summary": "The authored audio.grid in scene ms, or null: at(13, 3), at(\"cue:drop\"), bar(13, 3), position(localMs), beatMs.",
+    "signature": "function useBeatGrid(): BeatGrid | null;",
+    "doc": "The beat grid in scene-local time, or null when the project has no `audio.grid` (the scene then falls back to its own timing).",
+    "example": "const grid = useBeatGrid();\nconst hit = grid?.at(5, 3) ?? 2000;",
+    "timing": [
+      "Null without an audio.grid. at(bar, beat?, sixteenth?) and bar(...) are 1-based scene-local ms, negative before the scene; at(position) also takes cue: and section: and throws when it can't resolve."
+    ]
+  },
+  "useCameraFrame": {
+    "kind": "hook",
+    "summary": "useCameraFrame(z): the world { width, height, center } the scene camera sees at z.",
+    "signature": "function useCameraFrame(z?: number): PlaneFrame;",
+    "doc": "The world rectangle the scene camera sees on the plane at depth `z` this frame (its bounding box when the camera is tilted or rolled); zero-sized when the camera looks past the plane."
+  },
+  "useCues": {
+    "kind": "hook",
+    "summary": "audio.cues as { id: scene-local ms }; {} when there are none.",
+    "signature": "function useCues(): Readonly<Record<string, number>>;",
+    "doc": "The project's `audio.cues` as scene-local ms by id; `{}` when it has none, and a cue that can't resolve is left out."
+  },
+  "useDepthBand": {
+    "kind": "hook",
+    "summary": "Inside DepthStage: the slot's { name, z, width, height }.",
+    "signature": "function useDepthBand(): DepthBand | null;",
+    "doc": "The band a component is mounted in, or null outside a DepthStage (mount-anywhere, the SceneStage precedent)."
+  },
+  "useDeviceScreen": {
+    "kind": "hook",
+    "summary": "Inside Device: { rect, coverRect, local(u, v) } for the screen it renders, or null.",
+    "signature": "function useDeviceScreen(): DeviceScreen | null;",
+    "doc": "Inside a `Device`: the screen it renders this frame, else null."
+  },
+  "useFormat": {
+    "kind": "hook",
+    "summary": "{ width, height, aspect, shape, frame, safe }: frame and safe in world units at z=0, shape \"wide\", \"square\" or \"tall\".",
+    "signature": "function useFormat(): FormatInfo;",
+    "doc": "Reactive format info for the currently selected export aspect. Inside a scene rendering through an overlay cutout, `<SceneHost>` supplies a cutout-scoped override (the cutout as its own frame); everywhere else this is null and it falls back to the export format, byte-identical to before overlays. Mirrors the context-first/store-fallback shape of `useTheme()`.",
+    "example": "const format = useFormat();\nconst size = format.shape === \"wide\" ? 0.6 : format.shape === \"square\" ? 0.5 : 0.36;",
+    "timing": [
+      "shape: \"wide\" from aspect 1.2 (16:9, 3:2, 5:4), \"tall\" at 0.85 and below (9:16, 2:3, 4:5, phone), else \"square\" (1:1)."
+    ]
+  },
+  "useGroupAnimation": {
+    "kind": "hook",
+    "summary": "Lets a custom child join an AnimatedGroup's alpha and shine.",
+    "signature": "function useGroupAnimation(): GroupAnimationState | null;",
+    "doc": "The enclosing group's animation state, or null outside groups; the hook custom primitives use to participate (multiply `alpha` into your own opacity CPU-side)."
+  },
+  "useProjectShared": {
+    "kind": "hook",
+    "summary": "useProjectShared(path?, fallback?): project.json shared constants, e.g. \"palette.accent\".",
+    "signature": "function useProjectShared(path?: string, fallback?: unknown): unknown;",
+    "doc": "`project.json` `shared`: the whole block, or the value at a dotted path (`\"palette.accent\"`, `\"beats.0\"`), else `fallback`."
+  },
+  "useRigTrack": {
+    "kind": "hook",
+    "summary": "The scene's normalised camera rig track, or null.",
+    "signature": "function useRigTrack(): SceneRigTrack | null;",
+    "doc": "The scene's normalised rig track, or null when it has no rig. Derived from the scene doc already in context, so preview and export resolve it identically by construction rather than by a plumbing rule."
+  },
+  "useRoom": {
+    "kind": "hook",
+    "summary": "The scene's room now: { colour, key, flood: { colour, origin, progress, radius } | null, pose }, or null.",
+    "signature": "function useRoom(): RoomSample | null;",
+    "doc": "The scene's room at the frame instant (its colour, any flood in progress and the room's lighting pose), or null when the scene has no sidecar `room`."
+  },
+  "useSceneCamera": {
+    "kind": "hook",
+    "summary": "The scene camera's pose this frame: { position, lookAt, fov }.",
+    "signature": "function useSceneCamera(): SceneCamera;",
+    "doc": "The scene camera's current pose: the scene's free-flight rig or orbit track at this scene time, else the project camera track, else the base camera."
+  },
+  "useSceneChart": {
+    "kind": "hook",
+    "summary": "The resolved sidecar chart block, or null.",
+    "signature": "function useSceneChart(): ResolvedChart | null;",
+    "doc": "The scene document's chart block, fully resolved (defaults baked, data track sorted), or null when absent; registers the scene as a consumer so a host-mounted `ChartFallback` stands down (the useSceneMedia pattern)."
+  },
+  "useSceneDevices": {
+    "kind": "hook",
+    "summary": "Sidecar devices as Device props, layout resolved.",
+    "signature": "function useSceneDevices(): SceneDeviceProps[];",
+    "doc": "The scene document's devices array as `Device`-ready props; unknown models pass through since `Device` itself degrades (console error + fallback geometry) rather than crashing the tree. A `deviceLayout` block resolves to per-aspect placements HERE, so every consuming scene (any kind, any scaffold vintage) honours it without template changes; templates that resolve the block themselves recompute the identical values (the resolver is pure and ignores input placements beyond `ground`)."
+  },
+  "useSceneDoc": {
+    "kind": "hook",
+    "summary": "The raw sidecar document, or null.",
+    "signature": "function useSceneDoc(): SceneDoc | null;",
+    "doc": "The mounted scene's document, or null when it has none."
+  },
+  "useSceneLayeredScreenshot": {
+    "kind": "hook",
+    "summary": "The validated layeredScreenshot block, or null.",
+    "signature": "function useSceneLayeredScreenshot(): NormalizedLayeredScreenshot | null;",
+    "doc": "The scene document's layeredScreenshot block, deep-validated, or null when absent; registers the scene as a consumer so `LayeredScreenshotFallback` stands down (the useSceneDevices pattern)."
+  },
+  "useSceneObjects": {
+    "kind": "hook",
+    "summary": "The sidecar objects array.",
+    "signature": "function useSceneObjects(): SceneDocObjectSpec[];",
+    "doc": "The scene document's objects array; registers the scene as a consumer so `ObjectsFallback` stands down (the useSceneDevices pattern)."
+  },
+  "useSceneStaged": {
+    "kind": "hook",
+    "summary": "Whether a SceneStage owns the lighting here.",
+    "signature": "function useSceneStaged(): boolean;",
+    "doc": "True inside an actively-lighting `<SceneStage>`; the staged primitives' bundled lit sets (inline rig + one-shot `<Environment>`) stand down by default, though an explicit `lit` prop still wins."
+  },
+  "useSceneText": {
+    "kind": "hook",
+    "summary": "useSceneText(key, fallback, role?): sidecar copy for a text key.",
+    "signature": "function useSceneText(key: string, fallback?: string, managedTextRole?: ManagedTextRenderRole): string;",
+    "doc": "Resolves code-owned or embedded copy, plus the matching item while a managed scaffold retains its template layout."
+  },
+  "useTextMetrics": {
+    "kind": "hook",
+    "summary": "useTextMetrics(textKey, text, opts?): the block an AnimatedHeadline with those props typesets, sidecar overrides included, plus fitFontSize(maxWidth); null until its face has loaded.",
+    "signature": "function useTextMetrics(key: string | undefined, text: string, opts?: TextMetricsOptions): MeasuredText | null;",
+    "doc": "The world-size block an `AnimatedHeadline` with this `textKey`, text and options typesets (sidecar Font, Size and LineHeight overrides included), or null until its face has loaded and it has measured real ink: never a 0-wide first measure, so a scene can divide by `width` once it has one. Captures wait for it, so exported frames always see the measured layout.",
+    "example": "const metrics = useTextMetrics(\"title\", title, { fontSize: 0.6 });\nconst size = metrics?.fitFontSize(2) ?? 0.6;",
+    "timing": [
+      "Null until the face has loaded, so never divide by a width you haven't checked. Captures wait for the measure."
+    ]
+  },
+  "useTheme": {
+    "kind": "hook",
+    "summary": "The resolved theme tokens for this scene.",
+    "signature": "function useTheme(): Theme;",
+    "doc": "The active theme: inside `<SceneHost>` it's the scene's resolved theme (project theme unless the sidecar overrides `themeId`); elsewhere it falls back to the editor store's theme, since r3f's reconciler doesn't bridge context outside the `<Canvas>` boundary."
+  },
+  "useTimeline": {
+    "kind": "hook",
+    "summary": "{ localMs, globalMs, progress }; progress is PROJECT-wide.",
+    "signature": "function useTimeline(scale?: number): SceneTime;",
+    "doc": "Reactive scene time for the active scrub position. `localMs` is relative to the enclosing scene's start (supplied by `<SceneHost>` via `SceneContext`); with no scene context it falls back to project time so a lone scene anchored at t=0 keeps `localMs === globalMs` (the v0 contract). `progress` stays project-global per the `SceneTime` type; authors derive scene-local progress from `localMs / scene.durationMs`. Inside a motion blur sample the time moves by the scene's shutter offset times `scale` (default: the `MotionBlurContext`); 0 never moves and never re-renders for a sample."
+  }
+}

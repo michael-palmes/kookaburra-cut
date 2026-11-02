@@ -1,0 +1,42 @@
+{
+  "windowMs": 600,
+  "ease": "outCubic",
+  "fps": 60,
+  "motions": {
+    "none": 600,
+    "fade": 450,
+    "fade-up": 450,
+    "blur-in": 433,
+    "slide": 450,
+    "mask-reveal": 417,
+    "fade-scale": 450,
+    "twist-scale": 450,
+    "slam": 500,
+    "dolly": 483,
+    "chromatic": 233,
+    "line-stretch": 467,
+    "highlight-wipe": 583,
+    "rise-mask": 450,
+    "word-cycle": 117,
+    "ribbon": 467,
+    "stand-up": 300,
+    "spring-pop": 150,
+    "spotlight": 517,
+    "underline-draw": 467,
+    "weight-build": 433,
+    "glint-wipe": 417,
+    "stamp": 150,
+    "build": 500,
+    "typewriter": 100,
+    "scatter-scale": 333,
+    "tracking": 450,
+    "orbit": 483,
+    "develop": 450,
+    "flip-cascade": 383,
+    "converge": 517,
+    "vapor": 433
+  },
+  "stamps": {
+    "Stamp": 95
+  }
+}

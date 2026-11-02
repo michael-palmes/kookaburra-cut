@@ -25,6 +25,9 @@ export interface LookText3DProps {
   from?: number;
   to?: number;
   outAt?: number;
+  outDurationMs?: number;
+  /** 0..1 multiplied into the material opacity (default 1). */
+  opacity?: number;
   position?: V3;
   fontSize?: number;
   fontRef?: FontRef;
@@ -96,7 +99,7 @@ export function LookText3D(props: LookText3DProps) {
   );
   useEffect(() => () => material.dispose(), [material]);
 
-  const groupAlpha = group?.alpha ?? 1;
+  const groupAlpha = (group?.alpha ?? 1) * (props.opacity ?? 1);
   let alpha: number;
   let dx = 0;
   let dy = 0;
@@ -108,7 +111,14 @@ export function LookText3D(props: LookText3DProps) {
   let rotY = 0;
   let rotZSample = 0;
   if (anim) {
-    const sample = sampleTextUnit({ anim, from, to, outAt }, 0, localMs, { count: 1 });
+    const sample = sampleTextUnit(
+      { anim, from, to, outAt, outDurationMs: props.outDurationMs },
+      0,
+      localMs,
+      {
+        count: 1,
+      },
+    );
     const sweepCover = Math.max(0, Math.min(1, sample.sweep[1] - sample.sweep[0]));
     alpha = sample.alpha * groupAlpha * sweepCover;
     dx = sample.dxEm * fontSize;

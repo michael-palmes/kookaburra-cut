@@ -79,7 +79,7 @@ jobs:
           { echo "version=$version"; echo "tag=$tag"; echo "publish=$publish"; } >> "$GITHUB_OUTPUT"
           echo "Kookaburra Cut $version (tag: ${tag:-none}, publish: $publish)"
 
-      # Pins the signer to the key in main's .github/allowed_signers (read from main, never from the
+      # Pins the signer to the key in main's .github/allowed_tag_signers (read from main, never from the
       # tagged tree, so a tag cannot vouch for itself), and requires the tag to be on main.
       - name: Verify tag signature and ancestry
         if: steps.meta.outputs.tag != ''
@@ -89,8 +89,8 @@ jobs:
           set -euo pipefail
           git fetch --force --no-tags origin "+refs/tags/${TAG}:refs/tags/${TAG}" "+refs/heads/main:refs/remotes/origin/main"
           [ "$(git cat-file -t "refs/tags/${TAG}")" = tag ] || { echo "::error::${TAG} is not an annotated tag (use scripts/release.sh)"; exit 1; }
-          git show origin/main:.github/allowed_signers > "$RUNNER_TEMP/allowed_signers"
-          git -c gpg.ssh.allowedSignersFile="$RUNNER_TEMP/allowed_signers" -c gpg.minTrustLevel=fully verify-tag --verbose "$TAG"
+          git show origin/main:.github/allowed_tag_signers > "$RUNNER_TEMP/allowed_tag_signers"
+          git -c gpg.ssh.allowedSignersFile="$RUNNER_TEMP/allowed_tag_signers" -c gpg.minTrustLevel=fully verify-tag --verbose "$TAG"
           commit="$(git rev-parse "${TAG}^{commit}")"
           [ "$(git rev-parse HEAD)" = "$commit" ] || { echo "::error::checkout is not the tagged commit"; exit 1; }
           git merge-base --is-ancestor "$commit" origin/main || { echo "::error::${TAG} is not on main"; exit 1; }

@@ -6,6 +6,7 @@ import type { GlCensus } from "./glContexts";
 import type { MemoryCensus } from "./memoryCensus";
 import type { PerfRow } from "./perfProbe";
 import type { LoadedProject } from "./project";
+import type { SceneTextBox } from "./rangeRun";
 import type { RenderStateFingerprint } from "./renderFingerprint";
 import type {
   CameraFrame,
@@ -70,6 +71,15 @@ export interface StageHandle {
     opts: StageExportOptions,
     tMs: number,
   ): Promise<{ rgba: Uint8Array; width: number; height: number }>;
+  /** A ranged render (engine/rangeRun.ts): one preamble over the span, then a frame at a time, buffers ping-ponging as an export's do. */
+  rangeBegin(opts: StageExportOptions, spanMs: [number, number]): Promise<void>;
+  rangeFrame(
+    index: number,
+    tMs: number,
+    buffer: ArrayBuffer | null,
+    texts: boolean,
+  ): Promise<{ rgba: Uint8Array; texts?: SceneTextBox[] }>;
+  rangeEnd(): Promise<void>;
   stillsBegin(
     opts: StageExportOptions,
     settings: StillsSettings,

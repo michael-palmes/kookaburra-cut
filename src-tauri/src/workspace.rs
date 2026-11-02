@@ -1292,9 +1292,11 @@ pub fn duplicate_project(
     Ok(new_slug)
 }
 
-/// Top-level entries a duplicate leaves behind: exports, app state and kb's agent state (leases, events, notes).
+/// Top-level entries a duplicate leaves behind: exports, app state, kb's agent state (leases, events, notes) and what a stamp moved aside.
 fn duplicate_skips(name: &std::ffi::OsStr) -> bool {
-    matches!(name.to_str(), Some("exports" | ".kookaburra" | ".kb"))
+    name.to_str().is_some_and(|name| {
+        matches!(name, "exports" | ".kookaburra" | ".kb") || crate::kit::is_moved_aside(name)
+    })
 }
 
 /// Move a project to the TRASH, never `rm -rf`, so Finder's Put Back works; a matching `last_project` is cleared so the next boot lands on the welcome screen. The decoded frames and previews of its footage leave the caches with it (a project put back decodes again).
@@ -2256,7 +2258,7 @@ enum SessionTrust {
     Ask,
 }
 
-/// The decision behind `check_project_trust`. A grant for another path never counts, and a slug this session has not allowed never re-stamps: the stored grant is only ever written from a session a person or an env-gated autorun allowed.
+/// The decision behind `check_project_trust`. A grant for another path never counts, and a slug this session has not allowed never re-stamps: the stored grant is only ever written from a session a person allowed, or in a debug build an env-gated autorun.
 fn session_trust_decision(
     record: Option<&TrustRecord>,
     dir: &Path,
@@ -2308,14 +2310,21 @@ pub fn check_project_trust(
         SessionTrust::Pass => Ok(true),
         SessionTrust::Ask => Ok(false),
         SessionTrust::Restamp => {
-            update_settings(&app, &state, |settings| {
-                if let Some(record) = settings.trusted_projects.get_mut(&slug) {
-                    record.scenes_fingerprint = fingerprint;
-                }
-            })?;
+            if !grant_lasts_only_this_session(cfg!(debug_assertions), crate::is_autorun()) {
+                update_settings(&app, &state, |settings| {
+                    if let Some(record) = settings.trusted_projects.get_mut(&slug) {
+                        record.scenes_fingerprint = fingerprint;
+                    }
+                })?;
+            }
             Ok(true)
         }
     }
+}
+
+/// No environment variable stands in for a person: a release autorun's Allow ends with its launch, so it never writes or re-stamps `trustedProjects`.
+fn grant_lasts_only_this_session(debug_build: bool, autorun: bool) -> bool {
+    autorun && !debug_build
 }
 
 /// A consent not redeemed within this long is void; the sheet's answer reaches `trust_project` within milliseconds.
@@ -2406,7 +2415,7 @@ fn consent_project_name(dir: &Path, slug: &str) -> String {
     }
 }
 
-/// The main window asks for the F-001 consent. In the app this shows a native sheet the webview cannot answer (Return declines); the person's Allow mints a single-use nonce for `trust_project`. An autorun launch is the user's own consent, so it mints the nonce without a sheet, except under `KOOKABURRA_TRUST=stored-only`, which never grants. Returns None when the person declines.
+/// The main window asks for the F-001 consent. In the app this shows a native sheet the webview cannot answer (Return declines); the person's Allow mints a single-use nonce for `trust_project`. An autorun launch mints the nonce without a sheet, for that launch alone in a release build, except under `KOOKABURRA_TRUST=stored-only`, which never grants. Returns None when the person declines.
 #[tauri::command]
 pub async fn request_project_trust(
     app: AppHandle,
@@ -2455,7 +2464,7 @@ pub async fn request_project_trust(
     )))
 }
 
-/// Record consent for a project's current sources. Only a nonce from `request_project_trust` redeems, once, for its slug, while the sources still match what the sheet described.
+/// Record consent for a project's current sources. Only a nonce from `request_project_trust` redeems, once, for its slug, while the sources still match what the sheet described. A release autorun's consent stays in this session.
 #[tauri::command]
 pub fn trust_project(
     app: AppHandle,
@@ -2478,18 +2487,20 @@ pub fn trust_project(
     if fingerprint != consented_for {
         return Err("the project changed while the consent sheet was open; open it again".into());
     }
-    let allowed_at_ms = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|e| e.to_string())?
-        .as_millis() as u64;
-    let record = TrustRecord {
-        scenes_fingerprint: fingerprint,
-        path: dir.to_string_lossy().into_owned(),
-        allowed_at_ms,
-    };
-    update_settings(&app, &state, |settings| {
-        settings.trusted_projects.insert(slug.clone(), record);
-    })?;
+    if !grant_lasts_only_this_session(cfg!(debug_assertions), crate::is_autorun()) {
+        let allowed_at_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| e.to_string())?
+            .as_millis() as u64;
+        let record = TrustRecord {
+            scenes_fingerprint: fingerprint,
+            path: dir.to_string_lossy().into_owned(),
+            allowed_at_ms,
+        };
+        update_settings(&app, &state, |settings| {
+            settings.trusted_projects.insert(slug.clone(), record);
+        })?;
+    }
     trust
         .session
         .lock()
@@ -2627,6 +2638,8 @@ pub(crate) const MEDIA_EXTENSIONS: &[&str] = &[
 pub(crate) const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mov", "m4v", "webm"];
 /// Project-soundtrack sources, kept small and boring; ffmpeg decodes them all.
 pub(crate) const AUDIO_EXTENSIONS: &[&str] = &["mp3", "wav", "m4a", "aac", "flac", "ogg"];
+/// Video files a soundtrack import takes the audio from; a project's soundtrack is never one of these.
+pub(crate) const SOUNDTRACK_VIDEO_EXTENSIONS: &[&str] = &["mp4"];
 
 /// Relative paths of a project's IMAGE assets (for texture preloading, the workspace equivalent of the bundled projects' eager asset glob).
 #[tauri::command]
@@ -3744,6 +3757,14 @@ mod tests {
         let old = issue_trust_nonce(&mut pending, "demo", "fp-1", now);
         issue_trust_nonce(&mut pending, "demo", "fp-2", later);
         assert!(!pending.contains_key(&old));
+    }
+
+    #[test]
+    fn only_a_release_autorun_grant_stays_out_of_settings() {
+        assert!(grant_lasts_only_this_session(false, true));
+        assert!(!grant_lasts_only_this_session(true, true));
+        assert!(!grant_lasts_only_this_session(false, false));
+        assert!(!grant_lasts_only_this_session(true, false));
     }
 
     #[test]

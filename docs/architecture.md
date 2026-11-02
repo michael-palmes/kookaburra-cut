@@ -98,7 +98,7 @@ frame bodies and the scene trees. The split, and why it is drawn where it is:
 - **Orchestration stays in the window.** `exporter.ts` and `stillsExport.ts`
   own `start_export`, `push_frame`, `push_still` and `finish_*`; the worker
   renders one frame or page per request into a buffer that ping-pongs by
-  transfer. A frame body (`src/engine/exportRun.ts`, `stillsRun.ts`) is the
+  transfer. A frame body (`src/engine/exportRun.ts`, `stillsRun.ts`, `rangeRun.ts`) is the
   same code the main thread ran, moved verbatim.
 - **Fonts preload in the worker, in the window's order.** troika's shared SDF
   atlas is per realm and its cell order is export contract, so the server
@@ -141,6 +141,7 @@ window that has no project IPC of its own.
 | `src/engine/format.ts` | `FormatInfo`, `FORMATS`, `useFormat()`, safe-area maths |
 | `src/engine/exporter.ts` | deterministic frame loop (window side: orchestration and IPC) |
 | `src/engine/exportRun.ts` | the per-frame render body, in the stage worker |
+| `src/engine/rangeRun.ts` | a ranged check's frames, the same body over a span, in the stage worker |
 | `src/engine/stageProtocol.ts` | the versioned window ↔ worker protocol |
 | `src/stage/` | the stage worker: `stageWorker.ts` (realm shims), `stageServer.tsx` (r3f root, trees), `stageClient.ts` (the window's handle), `StageView.tsx` |
 | `src/engine/compositor.ts` | `renderComposited`: single-scene direct render / two-scene transition composite |
@@ -180,14 +181,14 @@ than restating versions.) Pins live in `package.json` and `src-tauri/Cargo.toml`
 | tauri-plugin-window-state | 2.x | Remember window frames between launches | MIT / Apache-2.0 |
 | tauri-plugin-updater | 2.x | Opt-in update check and signed install (`updater.rs`) | MIT / Apache-2.0 |
 | tauri-plugin-log | 2.x | Native log sink | MIT / Apache-2.0 |
-| React + react-dom | 19.2.x | UI and scene component model; react-dom renders the chrome, fiber the canvas | MIT |
+| React + react-dom | 19.3.x | UI and scene component model; react-dom renders the chrome, fiber the canvas | MIT |
 | TypeScript | 7.0.x | Typed toolkit and scene files | Apache-2.0 |
-| Vite | 8.2.x | Dev server, HMR preview, prod bundle (Oxc transform/minify) | MIT |
+| Vite | 8.3.x | Dev server, HMR preview, prod bundle (Oxc transform/minify) | MIT |
 | @vitejs/plugin-react | 6.1.x | React fast-refresh / JSX for Vite | MIT |
 | three | 0.186.x | WebGL renderer and scene graph | MIT |
-| @react-three/fiber | 9.7.x | React renderer for Three.js | MIT |
+| @react-three/fiber | 9.8.x | React renderer for Three.js | MIT |
 | @react-three/drei | 10.7.x | Loaders, controls, `<Text>` helper | MIT |
-| @react-three/postprocessing | 3.1.x | Bloom, vignette, colour grading | MIT |
+| @react-three/postprocessing | 3.2.x | Bloom, vignette, colour grading | MIT |
 | troika-three-text + troika-three-utils | 0.52.5 (exact, one copy, patched) | SDF text in WebGL (the text engine) | MIT |
 | anime.js | 4.5.x | Global seekable timeline / sequencing | MIT |
 | d3-ease | 3.x | Permissive easing primitives | ISC |
@@ -195,8 +196,8 @@ than restating versions.) Pins live in `package.json` and `src-tauri/Cargo.toml`
 | zustand | 5.0.x | Editor / preview / timeline UI state | MIT |
 | esbuild-wasm | exact-pinned | In-webview compile of workspace scene TSX | MIT |
 | ffmpeg + ffprobe (sidecars) | 8.x (pinned source build) | Frame encoding (H.264 / H.265 / ProRes / FFV1) + media probing | LGPL / GPL (see note) |
-| Vitest | 4.x | Tests, incl. the determinism harness | MIT |
-| Biome | 2.5.x | Lint + format | MIT / Apache-2.0 |
+| Vitest | 5.x | Tests, incl. the determinism harness | MIT |
+| Biome | 2.6.x | Lint + format | MIT / Apache-2.0 |
 
 Rust crates (`src-tauri/Cargo.toml`): `tauri 2.12.x` (exact-pinned, `wry` pinned to its runtime's version) with the
 shell, dialog, window-state, updater and log plugins, `serde`/`serde_json`,
@@ -431,7 +432,7 @@ sidecars are signed and stapled together or Gatekeeper blocks them.
 
 The release is cut by `.github/workflows/release.yml` from a signed `v*` tag
 (`pnpm release` only tags). Its build job holds no signing secret: it checks the
-tag against `main`'s `.github/allowed_signers`, builds the ffmpeg sidecar from
+tag against `main`'s `.github/allowed_tag_signers`, builds the ffmpeg sidecar from
 pinned source, fetches the licensed device models and runs `pnpm tauri build
 --no-sign`. A sign job in the protected `release` environment then runs
 `scripts/sign-and-notarize.sh` on that payload: it signs the two sidecars and
@@ -522,12 +523,17 @@ Where the live Tauri-2 setup matters for working in the code:
    and the `Info.plist` (app name) into the dev binary at **compile time** and
    does not re-run when `src-tauri/icons/` changes, so `pnpm tauri dev` keeps
    showing the old icon/name until the shell recompiles. `pnpm setup:icon`
-   regenerates icons from the Icon Composer master and cleans the shell;
-   `pnpm clean:shell` cleans manually (e.g. after identity edits in
+   regenerates the flat icon set from the Icon Composer document and cleans the
+   shell; `pnpm clean:shell` cleans manually (e.g. after identity edits in
    `tauri.conf.json`); the next `pnpm tauri dev` recompiles and re-embeds. If
    the Dock still shows the old icon after that, it's macOS's own icon cache:
-   `killall Dock`. The icon master is the Icon Composer 1024px export, used
-   verbatim: never re-mask it (see `scripts/make-icons.sh`).
+   `killall Dock`. The source is `src-tauri/icons/AppIcon.icon`, which the
+   bundler compiles to `Assets.car`; `pnpm tauri dev` shows only the flat set, so
+   dark, clear and tinted modes need a bundled app. Never re-mask the flat master
+   (see `scripts/make-icons.sh`). Bundle through `pnpm tauri`, never `pnpm exec
+   tauri`: the Node CLI hands `actool` a closed stdin, which poisons a freshly
+   started `ibtoold` (`Bad file descriptor`) for every client until it idles out,
+   so the script puts `scripts/tauri-path/actool` first on `PATH` to open it.
 10. **The stills seam.** The stills export (`src/engine/stillsExport.ts`) shares
     the video loop's per-frame body, `renderFrameInto` in
     `src/engine/exportFrame.ts` (moved verbatim out of `exporter.ts`), but

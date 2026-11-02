@@ -46,7 +46,7 @@ import { getLoadedEnvironment } from "./environments";
 import { isExporting } from "./exportState";
 import { FPS, MSAA_SAMPLES } from "./format";
 import { framesThroughCutout } from "./frameFormat";
-import { comparisonFramePanel, getFramePanels } from "./framePanelRegistry";
+import { type FramePanelHandle, framePanelsFor, getFramePanels } from "./framePanelRegistry";
 import { applyFrameLighting } from "./lightingAnimation";
 import { applyRelativeLights } from "./lightingState";
 import { panelGradientTexture, panelImageTexture } from "./overlayPanelTexture";
@@ -622,12 +622,11 @@ function drawFramePanelOver(
   camera: Camera,
   hosts: SceneHostHandle[],
   persistent: Group[],
-  panel: Group,
+  panels: readonly FramePanelHandle[],
   dest: WebGLRenderTarget | null,
 ): void {
   for (const h of hosts) h.group.visible = false;
   for (const g of persistent) g.visible = false;
-  panel.visible = true;
   const prevAutoClear = gl.autoClear;
   const prevBackground = scene.background;
   scene.background = null;
@@ -638,8 +637,14 @@ function drawFramePanelOver(
   const prevFov = cam.isPerspectiveCamera ? cam.fov : 0;
   applyCameraPose(cam, baseCameraPose());
   gl.setRenderTarget(dest);
-  gl.clear(false, true, false);
-  gl.render(scene, camera);
+  // Painter's order: each draws over the last with its depth cleared, so nothing in one can hide the next.
+  for (const panel of panels) {
+    panel.beforeDraw?.();
+    panel.group.visible = true;
+    gl.clear(false, true, false);
+    gl.render(scene, camera);
+    panel.group.visible = false;
+  }
   cam.position.copy(_camPos);
   cam.quaternion.copy(_camQuat);
   if (cam.isPerspectiveCamera && cam.fov !== prevFov) {
@@ -648,7 +653,6 @@ function drawFramePanelOver(
   }
   scene.background = prevBackground;
   gl.autoClear = prevAutoClear;
-  panel.visible = false;
 }
 
 /** `cameras` is the frame's per-scene camera plan, present only when the project has scene-doc camera tracks (solo/a/b/overlay applied per target, absent means the camera is never touched here); `states` is the analogous per-scene render-state plan (background, environment), whose values are always restored to the shared scene on return so root-scene state never leaks into the next-loaded project. `overlays` is the per-scene resolved overlay plan (panel colour), present only when some scene declares a frame; a scene with a null entry renders full-bleed on the legacy path. */
@@ -750,10 +754,8 @@ export function renderComposited(
   // Overlay panels; empty for every project with no framed scene, so the panel pass is a hard no-op.
   const framePanels = getFramePanels();
   const prevFramePanelVisible = framePanels.map((p) => p.group.visible);
-  const panelFor = (index: number): Group | null =>
-    framePanels.find((p) => p.index === index)?.group ?? null;
-  const comparisonPanelFor = (index: number): Group | null =>
-    comparisonFramePanel(framePanels, index);
+  const panelFor = (index: number) => framePanelsFor(framePanels, index);
+  const comparisonPanelFor = (index: number) => framePanelsFor(framePanels, index, true);
   // Visibility gating is side-aware: without `side`, the plain host shows (a comparison's side-B host stays hidden, so every legacy path renders side A only); `side: "b"` shows exactly the side-B host.
   const showOnly = (idx: number, side?: "b") => {
     for (const h of hosts) {
