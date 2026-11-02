@@ -233,6 +233,11 @@ export function resolveSceneTerminal(
   };
 }
 
+/** The one place a scene's terminal PNG lives; `write_terminal_snapshot` lands it here. */
+export function terminalSnapshotSrc(sceneStem: string): string {
+  return `assets/terminal-${sceneStem}.png`;
+}
+
 /** True when the transcript changed since its snapshot was laid out and baked (or never was). A grid with no transcript is captured content, and never stale. */
 export function terminalSnapshotStale(terminal: SceneDocTerminal | undefined): boolean {
   if (!terminal?.transcript) return false;

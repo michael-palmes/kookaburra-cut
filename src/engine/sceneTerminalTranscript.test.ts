@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { layoutTranscript } from "./sceneTerminalTranscript";
+import { terminalSnapshotStale } from "./sceneTerminal";
+import { landTranscriptSnapshot, layoutTranscript } from "./sceneTerminalTranscript";
 
 const text = (grid: ReturnType<typeof layoutTranscript>["grid"]) =>
   grid.map((row) => row.map((run) => run[0]).join(""));
@@ -113,5 +114,23 @@ describe("layoutTranscript", () => {
   it("gives the same grid for the same text", () => {
     const sample = "\u001b[32m$ pnpm test\u001b[0m\n✓ 42 passed\n";
     expect(layoutTranscript(sample, 80, 24)).toEqual(layoutTranscript(sample, 80, 24));
+  });
+});
+
+describe("landTranscriptSnapshot", () => {
+  it("settles the block, so nothing is stale after an edit's one write", () => {
+    const terminal = { cols: 20, rows: 4, transcript: "$ ls" };
+    landTranscriptSnapshot(terminal, "01-demo");
+    expect(terminalSnapshotStale(terminal)).toBe(false);
+    expect(terminal).toMatchObject({
+      snapshot: { src: "assets/terminal-01-demo.png", transcript: "$ ls" },
+    });
+  });
+
+  it("leaves a captured grid alone", () => {
+    const snapshot = { grid: [], src: "assets/x.png" };
+    const terminal = { snapshot };
+    landTranscriptSnapshot(terminal, "01-demo");
+    expect(terminal.snapshot).toBe(snapshot);
   });
 });

@@ -1,14 +1,17 @@
 import type {
+  SceneDocTerminal,
   SceneDocTerminalSnapshot,
   SceneTerminalColour,
   SceneTerminalRun,
 } from "./sceneTerminal";
 import {
+  resolveSceneTerminal,
   TERMINAL_FLAG_BOLD,
   TERMINAL_FLAG_DIM,
   TERMINAL_FLAG_INVERSE,
   TERMINAL_FLAG_ITALIC,
   TERMINAL_FLAG_UNDERLINE,
+  terminalSnapshotSrc,
 } from "./sceneTerminal";
 import { isWideCodePoint } from "./sceneTerminalWidth";
 
@@ -219,4 +222,15 @@ export function layoutTranscript(
   const grid = screen.map(rowRuns);
   while (grid.length > 0 && grid[grid.length - 1].length === 0) grid.pop();
   return { grid, cursor: { col, row } };
+}
+
+/** Lays a block's transcript out in place, for an edit to land the grid in its own write and history entry; the baker then only draws the PNG. A block with no transcript keeps its captured grid. */
+export function landTranscriptSnapshot(terminal: SceneDocTerminal, sceneStem: string): void {
+  const resolved = resolveSceneTerminal({ terminal });
+  if (!resolved?.transcript) return;
+  terminal.snapshot = {
+    ...layoutTranscript(resolved.transcript, resolved.cols, resolved.rows),
+    src: terminalSnapshotSrc(sceneStem),
+    transcript: resolved.transcript,
+  };
 }

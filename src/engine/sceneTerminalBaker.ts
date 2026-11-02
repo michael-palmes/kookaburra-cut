@@ -6,7 +6,7 @@ import { bakeTerminalSnapshot } from "./sceneTerminalBake";
 import { resolveTerminalColours } from "./sceneTerminalTheme";
 import { layoutTranscript } from "./sceneTerminalTranscript";
 
-/** Keeps each terminal's PNG in step with its sidecar, in the editor only (export and preview never rasterise). A transcript newer than its snapshot lays out and bakes, then lands the grid with no history entry of its own, so an undo can't get stuck re-deriving; a grid, colour or size change that needs no layout (an undo, a re-theme) re-bakes the pixels alone. The first sight of a settled snapshot leaves its PNG untouched. */
+/** Keeps each terminal's PNG in step with its sidecar, in the editor only (export and preview never rasterise). A transcript newer than its snapshot (an agent's write) lays out and bakes, then lands the grid with no history entry of its own; an inspector edit lands its grid in its own write (`landTranscriptSnapshot`), so undo's file hash still matches, and anything else that changes the pixels (that edit, an undo, a re-theme) re-bakes them alone. The first sight of a settled snapshot leaves its PNG untouched. */
 
 interface Job {
   project: LoadedProject;
@@ -83,9 +83,14 @@ export function reconcileTerminalBakes(
   if (!isWorkspaceProjectId(project.id)) return;
   project.sceneDocs.forEach((_, sceneIndex) => {
     const file = project.sceneFiles[sceneIndex];
-    const step = file ? plan({ project, sceneIndex }) : null;
-    if (!step) return;
+    if (!file) return;
     const key = `${project.id}\u0000${file}`;
+    const step = plan({ project, sceneIndex });
+    if (!step) {
+      // Seen with nothing baked, so the first snapshot an edit lands isn't taken for a settled one.
+      if (project.sceneDocs[sceneIndex]?.terminal && !baked.has(key)) baked.set(key, "");
+      return;
+    }
     if (!step.stale && step.snapshot.src) {
       if (!baked.has(key)) baked.set(key, step.print);
       if (baked.get(key) === step.print) return;

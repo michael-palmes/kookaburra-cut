@@ -76,13 +76,13 @@ sidecar. It runs off every project change in the main window, never during an
 export or an autorun, and for workspace projects only:
 
 - **A transcript newer than its snapshot** (`terminalSnapshotStale`:
-  `snapshot.transcript` differs or there is no `src`) lays out, bakes, then writes
-  the grid with no history entry. The edit that changed the transcript holds the
-  one history entry, so undo can't get stuck re-deriving. This one path serves the
-  inspector and agents alike, and a crash between the two just bakes again on the
-  next open.
-- **Anything else that changes the pixels** (an undo restoring an older grid, a
-  theme, font or grid-size edit, a re-theme of `match-theme`) re-bakes the PNG alone.
+  `snapshot.transcript` differs or there is no `src`), which is an agent's write,
+  lays out, bakes, then writes the grid with no history entry.
+- **An inspector edit** lands the transcript and its laid-out grid in one write and
+  one history entry (`landTranscriptSnapshot`). The grid must not follow in a second
+  write: undo refuses a file whose hash moved since its entry.
+- **Anything that changes the pixels** (that edit, an undo restoring an older grid,
+  a theme, font or grid-size edit, a re-theme of `match-theme`) re-bakes the PNG alone.
   The baker remembers each scene's last print per session.
 - **The first sight of a settled snapshot** leaves its PNG alone, so opening a
   project never rewrites one. An old captured grid keeps its PNG until someone

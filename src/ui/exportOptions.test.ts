@@ -275,7 +275,10 @@ describe("terminal snapshot pre-flight", () => {
       files,
     );
     expect(warning).toContain('"Intro"');
-    expect(warning).toContain('The transcript in "Demo" changed');
+    expect(warning).toContain('not baked yet in "Demo"');
+    expect(terminalSnapshotWarning([{ terminal: { transcript: "$ ls" } }], files)).toContain(
+      "not baked yet",
+    );
     expect(
       terminalSnapshotWarning([{ terminal: { transcript: "$ ls", snapshot } }], files),
     ).toBeNull();

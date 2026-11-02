@@ -346,14 +346,12 @@ export function terminalSnapshotWarning(
   sceneFiles: string[],
 ): string | null {
   const empty: string[] = [];
-  const stale: string[] = [];
+  const unbaked: string[] = [];
   sceneDocs.forEach((doc, i) => {
     if (!doc?.terminal) return;
-    const hasPixels = !!doc.terminal.snapshot?.src;
-    const label = () =>
-      `"${doc.name ?? (sceneFiles[i] ?? "").replace(/^scenes\//, "").replace(/\.tsx$/, "")}"`;
-    if (terminalSnapshotStale(doc.terminal) && hasPixels) stale.push(label());
-    else if (!hasPixels) empty.push(label());
+    const label = `"${doc.name ?? (sceneFiles[i] ?? "").replace(/^scenes\//, "").replace(/\.tsx$/, "")}"`;
+    if (terminalSnapshotStale(doc.terminal)) unbaked.push(label);
+    else if (!doc.terminal.snapshot?.src) empty.push(label);
   });
   const notes: string[] = [];
   if (empty.length === 1) {
@@ -365,9 +363,9 @@ export function terminalSnapshotWarning(
       `The terminals in ${empty.join(", ")} have no snapshots, so they export as empty prompts. Give each a transcript in its scene's Terminal panel.`,
     );
   }
-  if (stale.length > 0) {
+  if (unbaked.length > 0) {
     notes.push(
-      `The transcript in ${stale.join(", ")} changed after its snapshot was baked, so the old text exports. Open the project in the editor to re-bake.`,
+      `Terminal text not baked yet in ${unbaked.join(", ")}, so older text or an empty prompt exports. Open the project in the editor to bake it.`,
     );
   }
   return notes.length > 0 ? `Heads up: ${notes.join(" ")}` : null;

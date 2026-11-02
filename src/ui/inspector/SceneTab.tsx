@@ -45,6 +45,7 @@ import { useObjectEditStore } from "../../engine/objectEditStore";
 import { optionPreviewClip, optionPreviewStill } from "../../engine/optionPreviews";
 import {
   assetFileUrl,
+  isWorkspaceProjectId,
   type LoadedProject,
   sceneFileStem,
   workspaceProjectPath,
@@ -89,6 +90,7 @@ import {
   TERMINAL_ROWS_MIN,
 } from "../../engine/sceneTerminal";
 import { resolveTerminalColours, TERMINAL_THEME_PRESETS } from "../../engine/sceneTerminalTheme";
+import { landTranscriptSnapshot } from "../../engine/sceneTerminalTranscript";
 import { useLargestSceneText, useSceneTextRegistry } from "../../engine/sceneTextRegistry";
 import { listCachedSceneThumbs } from "../../engine/sceneThumbs";
 import { sceneTitle as resolveSceneTitle } from "../../engine/sceneTitle";
@@ -7531,16 +7533,12 @@ export function SceneTab({
     const patchTerminal = (mutate: (t: SceneDocTerminal) => void, history: string) =>
       void patchDoc(
         (next) => {
-          if (next.terminal) mutate(next.terminal);
+          if (!next.terminal) return;
+          mutate(next.terminal);
+          if (stem && isWorkspaceProjectId(project.id)) landTranscriptSnapshot(next.terminal, stem);
         },
         { history },
       );
-    const patchTerminalGrid = (mutate: (t: SceneDocTerminal) => void, history: string) =>
-      patchTerminal((t) => {
-        mutate(t);
-        // The grid lays out again from the transcript at the new size.
-        if (t.snapshot) delete t.snapshot.transcript;
-      }, history);
     return (
       <div className="inspector-drill">
         <DrillBack
@@ -7567,24 +7565,28 @@ export function SceneTab({
               <DrillGroup
                 label="Content"
                 hint={
-                  terminal.snapshot && !terminal.transcript
-                    ? "Showing a captured snapshot. A transcript replaces it."
-                    : "Plain text, or ANSI colours such as \\e[32m. It saves into the project and travels with packs, so leave secrets out."
+                  !isWorkspaceProjectId(project.id)
+                    ? "Terminal text is written in a project, not here."
+                    : terminal.snapshot && !terminal.transcript
+                      ? "Showing a captured snapshot. A transcript replaces it."
+                      : "Plain text, or ANSI colours such as \\e[32m. It saves into the project and travels with packs, so leave secrets out."
                 }
               >
-                <TerminalTranscriptField
-                  key={`${project.id}:${stem}`}
-                  value={terminal.transcript ?? ""}
-                  onCommit={(value) =>
-                    patchTerminal((t) => {
-                      if (value) t.transcript = value;
-                      else {
-                        delete t.transcript;
-                        delete t.snapshot;
-                      }
-                    }, "edit terminal transcript")
-                  }
-                />
+                {isWorkspaceProjectId(project.id) && (
+                  <TerminalTranscriptField
+                    key={`${project.id}:${stem}`}
+                    value={terminal.transcript ?? ""}
+                    onCommit={(value) =>
+                      patchTerminal((t) => {
+                        if (value) t.transcript = value;
+                        else {
+                          delete t.transcript;
+                          delete t.snapshot;
+                        }
+                      }, "edit terminal transcript")
+                    }
+                  />
+                )}
               </DrillGroup>
               <DrillGroup label="Theme">
                 {TERMINAL_THEME_PRESETS.map((preset) => {
@@ -7649,7 +7651,7 @@ export function SceneTab({
                     max={TERMINAL_COLS_MAX}
                     step={1}
                     onCommit={(n) =>
-                      patchTerminalGrid((t) => {
+                      patchTerminal((t) => {
                         t.cols = Math.round(n);
                       }, "set terminal columns")
                     }
@@ -7665,7 +7667,7 @@ export function SceneTab({
                     max={TERMINAL_ROWS_MAX}
                     step={1}
                     onCommit={(n) =>
-                      patchTerminalGrid((t) => {
+                      patchTerminal((t) => {
                         t.rows = Math.round(n);
                       }, "set terminal rows")
                     }

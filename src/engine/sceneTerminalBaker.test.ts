@@ -13,6 +13,7 @@ vi.mock("./sceneTerminalTheme", () => ({
 }));
 
 const { reconcileTerminalBakes, settleTerminalBakes } = await import("./sceneTerminalBaker");
+const { landTranscriptSnapshot } = await import("./sceneTerminalTranscript");
 
 const onDocChanged = vi.fn();
 let nextId = 0;
@@ -71,6 +72,18 @@ describe("reconcileTerminalBakes", () => {
       transcript: "$ ls\n",
       src: "assets/terminal-01-demo.png",
     });
+  });
+
+  it("bakes the pixels alone when an edit lands the transcript and its grid together", async () => {
+    await reconcile(project(id, {}));
+    expect(mocks.bake).not.toHaveBeenCalled();
+    const terminal: NonNullable<SceneDoc["terminal"]> = { transcript: "$ ls" };
+    landTranscriptSnapshot(terminal, "01-demo");
+    await reconcile(project(id, terminal));
+    expect(mocks.bake).toHaveBeenCalledTimes(1);
+    expect(mocks.commit).not.toHaveBeenCalled();
+    await reconcile(project(id, terminal));
+    expect(mocks.bake).toHaveBeenCalledTimes(1);
   });
 
   it("stands aside for a transcript edited while the bake ran", async () => {

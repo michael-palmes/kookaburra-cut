@@ -174,7 +174,7 @@ import { commitSceneDocPatch, docPatchMatchesProject } from "./engine/sceneDocPa
 import type { SceneDoc } from "./engine/sceneDocSchema";
 import { sceneErrorRefusal } from "./engine/sceneErrors";
 import { planDeletes, planDuplicates, planMoves } from "./engine/sceneOrder";
-import { reconcileTerminalBakes } from "./engine/sceneTerminalBaker";
+import { reconcileTerminalBakes, settleTerminalBakes } from "./engine/sceneTerminalBaker";
 import { ensureSceneThumbs, listCachedSceneThumbs } from "./engine/sceneThumbs";
 import { activeSceneIndex } from "./engine/sceneTimeline";
 import { SHUTTER_SAMPLES_DEFAULT } from "./engine/shutter";
@@ -2670,6 +2670,7 @@ export default function App() {
   // The Export button's run, shared with Claude's bridge export (useBridgeExport): only the destination, the abort signal and the callbacks differ, and none of them reach the bytes.
   async function runVideoExport(sel: VideoExportSelection, run: VideoRun): Promise<VideoRunResult> {
     if (!project) throw new Error("No project is open.");
+    await settleTerminalBakes();
     setExporting(true);
     setProgress(null);
     setExportPrepStep(0);
