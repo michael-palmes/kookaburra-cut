@@ -114,7 +114,10 @@ class AddTests(AssetsCase):
         self.media_cli()
         res = self.j("add", str(fake_video(self.tmp / "clean.mp4", why=[])))
         self.assertEqual((res["path"], res["conformed"], res["checked"]), ("assets/clean.mp4", False, True))
-        self.assertEqual([c[1] for c in self.calls("media")], ["probe"])
+        probes = self.calls("media")
+        self.assertEqual([c[1] for c in probes], ["probe", "probe"], "a clean static probe is decoded before the conform is skipped")
+        self.assertNotIn("--pts", probes[0])
+        self.assertIn("--pts", probes[1])
 
     def test_no_conform_and_dry_run(self) -> None:
         self.media_cli()

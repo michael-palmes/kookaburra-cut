@@ -200,6 +200,13 @@ guidance, not hard rules. Applying a brand from the terminal
 is `./kb brand use <name>` (or `clear`); building or changing a brand belongs to the
 kookaburra-brand-packs skill. Never hand-edit `brand` or `BRAND.md`.
 
+To find a picture in the brand, `./kb brand icons --search wallet --sheet`: every word must
+hit a name, tag or path, and the printed sheet shows each match on the surface it is made for,
+so Read it and choose by eye. It looks in the icon-like folders; `--all` or `--category logos`
+look further. Rows name `[on-light]` or `[on-dark]` and a logo's `pair`, the same artwork for
+the other background. Bring one in with the printed `./kb assets add "<path>"`, which is the
+brand's size-limited copy when it has one.
+
 ### Workspace themes (brand themes)
 
 User themes live at `~/Kookaburra Cut/themes/<slug>/theme.json`, id `ws:<slug>`,

@@ -1,0 +1,612 @@
+{
+  "version": 1,
+  "description": "Stills on the way in: the app (src-tauri/src/imagefile.rs) and kb (kblib/imagefile.py) read these whole files' headers the same way. hex is the file, generated, never real media; facts are what the header says, reasons what would draw wrong (needs_conform), landsAs the format a conformed copy stays in, and refused the code a file that doesn't come in gets.",
+  "cases": [
+    {
+      "name": "a plain PNG",
+      "hex": "89504e470d0a1a0a0000000d49484452000000040000000308020000003b9639910000003049444154789c636050f5ca9fb2f31e876e50f91c066e83d0aaf9475e0a5bc4362d6710b34e685d75fe8b9c7346ef260015b00f7639119f720000000049454e44ae426082",
+      "facts": {
+        "format": "png",
+        "width": 4,
+        "height": 3,
+        "space": "rgb",
+        "profile": null,
+        "orientation": null,
+        "animated": false
+      },
+      "reasons": [],
+      "landsAs": "png"
+    },
+    {
+      "name": "an interlaced PNG",
+      "hex": "89504e470d0a1a0a0000000d49484452000000040000000308020000014c9109070000003049444154789c636050f5ca9fb2f31e876e50f91c066e83d0aaf9475e0a5bc4362d6710b34e685d75fe8b9c7346ef260015b00f7639119f720000000049454e44ae426082",
+      "facts": {
+        "format": "png",
+        "width": 4,
+        "height": 3,
+        "space": "rgb",
+        "profile": null,
+        "orientation": null,
+        "animated": false
+      },
+      "reasons": [],
+      "landsAs": "png"
+    },
+    {
+      "name": "a PNG with a P3 profile",
+      "hex": "89504e470d0a1a0a0000000d49484452000000040000000308020000003b9639910000002a694343506963630000789c63601870c098925a9c0ca42700b138940d02dc2e99c5053989950a01c60c008453076be27d29550000003049444154789c636050f5ca9fb2f31e876e50f91c066e83d0aaf9475e0a5bc4362d6710b34e685d75fe8b9c7346ef260015b00f7639119f720000000049454e44ae426082",
+      "facts": {
+        "format": "png",
+        "width": 4,
+        "height": 3,
+        "space": "rgb",
+        "profile": "Display P3",
+        "orientation": null,
+        "animated": false
+      },
+      "reasons": [
+        "colour-profile"
+      ],
+      "landsAs": "png"
+    },
+    {
+      "name": "a PNG with an sRGB profile",
+      "hex": "89504e470d0a1a0a0000000d49484452000000040000000308020000003b96399100000031694343506963630000789c63601870c098925a9c0ca42700b11c940d0242c541ee4e0a9eaece6686966666ba467a860c00b5a90809ee9c9e290000003049444154789c636050f5ca9fb2f31e876e50f91c066e83d0aaf9475e0a5bc4362d6710b34e685d75fe8b9c7346ef260015b00f7639119f720000000049454e44ae426082",
+      "facts": {
+        "format": "png",
+        "width": 4,
+        "height": 3,
+        "space": "rgb",
+        "profile": "sRGB IEC61966-2.1",
+        "orientation": null,
+        "animated": false
+      },
+      "reasons": [],
+      "landsAs": "png"
+    },
+    {
+      "name": "a PNG with a v4 profile named in mluc",
+      "hex": "89504e470d0a1a0a0000000d49484452000000040000000308020000003b96399100000041694343506963630000789c63601870c098925a9c0ca42700b1416e4e69324c1c887952f3428381b40810cb30b830643214331430e43024325432283004301803002e5e0943f7b09a710000003049444154789c636050f5ca9fb2f31e876e50f91c066e83d0aaf9475e0a5bc4362d6710b34e685d75fe8b9c7346ef260015b00f7639119f720000000049454e44ae426082",
+      "facts": {
+        "format": "png",
+        "width": 4,
+        "height": 3,
+        "space": "rgb",
+        "profile": "Display P3",
+        "orientation": null,
+        "animated": false
+      },
+      "reasons": [
+        "colour-profile"
+      ],
+      "landsAs": "png"
+    },
+    {
+      "name": "a PNG with a profile that names nothing",
+      "hex": "89504e470d0a1a0a0000000d49484452000000040000000308020000003b96399100000011694343506963630000789c6360181e000000c80001ce41d97e0000003049444154789c636050f5ca9fb2f31e876e50f91c066e83d0aaf9475e0a5bc4362d6710b34e685d75fe8b9c7346ef260015b00f7639119f720000000049454e44ae426082",
+      "facts": {
+        "format": "png",
+        "width": 4,
+        "height": 3,
+        "space": "rgb",
+        "profile": "unnamed profile",
+        "orientation": null,
+        "animated": false
+      },
+      "reasons": [
+        "colour-profile"
+      ],
+      "landsAs": "png"
+    },
+    {
+      "name": "a PNG with an sRGB chunk",
+      "hex": "89504e470d0a1a0a0000000d49484452000000040000000308020000003b963991000000017352474200aece1ce90000003049444154789c636050f5ca9fb2f31e876e50f91c066e83d0aaf9475e0a5bc4362d6710b34e685d75fe8b9c7346ef260015b00f7639119f720000000049454e44ae426082",
+      "facts": {
+        "format": "png",
+        "width": 4,
+        "height": 3,
+        "space": "rgb",
+        "profile": "sRGB",
+        "orientation": null,
+        "animated": false
+      },
+      "reasons": [],
+      "landsAs": "png"
+    },
+    {
+      "name": "a PNG with cICP sRGB",
+      "hex": "89504e470d0a1a0a0000000d49484452000000040000000308020000003b9639910000000463494350010d00019c693b320000003049444154789c636050f5ca9fb2f31e876e50f91c066e83d0aaf9475e0a5bc4362d6710b34e685d75fe8b9c7346ef260015b00f7639119f720000000049454e44ae426082",
+      "facts": {
+        "format": "png",
+        "width": 4,
+        "height": 3,
+        "space": "rgb",
+        "profile": "sRGB",
+        "orientation": null,
+        "animated": false
+      },
+      "reasons": [],
+      "landsAs": "png"
+    },
+    {
+      "name": "a PNG with cICP P3",
+      "hex": "89504e470d0a1a0a0000000d49484452000000040000000308020000003b96399100000004634943500c0d00016e03e3ef0000003049444154789c636050f5ca9fb2f31e876e50f91c066e83d0aaf9475e0a5bc4362d6710b34e685d75fe8b9c7346ef260015b00f7639119f720000000049454e44ae426082",
+      "facts": {
+        "format": "png",
+        "width": 4,
+        "height": 3,
+        "space": "rgb",
+        "profile": "cICP",
+        "orientation": null,
+        "animated": false
+      },
+      "reasons": [
+        "colour-profile"
+      ],
+      "landsAs": "png"
+    },
+    {
+      "name": "a gray PNG whose profile doesn't matter",
+      "hex": "89504e470d0a1a0a0000000d4948445200000004000000030800000000919ff11a0000002c694343506963630000789c63601870c098925a9c0ca42700b124940d02bceea979a94599c90aee4589950c00958b086627dda16a0000001749444154789c636050f5ca67e03608ad6210b34e680500138d031f4ea382620000000049454e44ae426082",
+      "facts": {
+        "format": "png",
+        "width": 4,
+        "height": 3,
+        "space": "gray",
+        "profile": "Generic Gray",
+        "orientation": null,
+        "animated": false
+      },
+      "reasons": [],
+      "landsAs": "png"
+    },
+    {
+      "name": "a PNG turned by eXIf",
+      "hex": "89504e470d0a1a0a0000000d49484452000000040000000308020000003b9639910000001a6558496649492a0008000000010012010300010000000600000000000000b74811290000003049444154789c636050f5ca9fb2f31e876e50f91c066e83d0aaf9475e0a5bc4362d6710b34e685d75fe8b9c7346ef260015b00f7639119f720000000049454e44ae426082",
+      "facts": {
+        "format": "png",
+        "width": 4,
+        "height": 3,
+        "space": "rgb",
+        "profile": null,
+        "orientation": 6,
+        "animated": false
+      },
+      "reasons": [
+        "orientation"
+      ],
+      "landsAs": "png"
+    },
+    {
+      "name": "a big-endian eXIf says upright",
+      "hex": "89504e470d0a1a0a0000000d49484452000000040000000308020000003b9639910000001a655849664d4d002a0000000800010112000300000001000100000000000013c075e70000003049444154789c636050f5ca9fb2f31e876e50f91c066e83d0aaf9475e0a5bc4362d6710b34e685d75fe8b9c7346ef260015b00f7639119f720000000049454e44ae426082",
+      "facts": {
+        "format": "png",
+        "width": 4,
+        "height": 3,
+        "space": "rgb",
+        "profile": null,
+        "orientation": 1,
+        "animated": false
+      },
+      "reasons": [],
+      "landsAs": "png"
+    },
+    {
+      "name": "an out-of-range eXIf says nothing",
+      "hex": "89504e470d0a1a0a0000000d49484452000000040000000308020000003b9639910000001a6558496649492a00080000000100120103000100000009000000000000006e6803850000003049444154789c636050f5ca9fb2f31e876e50f91c066e83d0aaf9475e0a5bc4362d6710b34e685d75fe8b9c7346ef260015b00f7639119f720000000049454e44ae426082",
+      "facts": {
+        "format": "png",
+        "width": 4,
+        "height": 3,
+        "space": "rgb",
+        "profile": null,
+        "orientation": null,
+        "animated": false
+      },
+      "reasons": [],
+      "landsAs": "png"
+    },
+    {
+      "name": "an animated PNG",
+      "hex": "89504e470d0a1a0a0000000d49484452000000040000000308020000003b963991000000086163544c0000000200000000f38d93700000003049444154789c636050f5ca9fb2f31e876e50f91c066e83d0aaf9475e0a5bc4362d6710b34e685d75fe8b9c7346ef260015b00f7639119f720000000049454e44ae426082",
+      "facts": {
+        "format": "png",
+        "width": 4,
+        "height": 3,
+        "space": "rgb",
+        "profile": null,
+        "orientation": null,
+        "animated": true
+      },
+      "reasons": [],
+      "landsAs": "png"
+    },
+    {
+      "name": "a JPEG",
+      "hex": "ffd8ffc00011080008001003011100011100011100ffd9",
+      "facts": {
+        "format": "jpeg",
+        "width": 16,
+        "height": 8,
+        "space": "rgb",
+        "profile": null,
+        "orientation": null,
+        "animated": false
+      },
+      "reasons": [],
+      "landsAs": "jpeg"
+    },
+    {
+      "name": "a progressive JPEG",
+      "hex": "ffd8ffc20011080008001003011100011100011100ffd9",
+      "facts": {
+        "format": "jpeg",
+        "width": 16,
+        "height": 8,
+        "space": "rgb",
+        "profile": null,
+        "orientation": null,
+        "animated": false
+      },
+      "reasons": [],
+      "landsAs": "jpeg"
+    },
+    {
+      "name": "a gray JPEG with a P3 profile",
+      "hex": "ffd8ffe200b74943435f50524f46494c4500010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000164657363000000900000001764657363000000000000000b446973706c617920503300ffc0000b080008001001011100ffd9",
+      "facts": {
+        "format": "jpeg",
+        "width": 16,
+        "height": 8,
+        "space": "gray",
+        "profile": "Display P3",
+        "orientation": null,
+        "animated": false
+      },
+      "reasons": [],
+      "landsAs": "jpeg"
+    },
+    {
+      "name": "a CMYK JPEG",
+      "hex": "ffd8ffc00014080008001004011100011100011100011100ffd9",
+      "facts": {
+        "format": "jpeg",
+        "width": 16,
+        "height": 8,
+        "space": "cmyk",
+        "profile": null,
+        "orientation": null,
+        "animated": false
+      },
+      "reasons": [
+        "cmyk"
+      ],
+      "landsAs": "jpeg"
+    },
+    {
+      "name": "a JPEG with a P3 profile",
+      "hex": "ffd8ffe200b74943435f50524f46494c4500010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000164657363000000900000001764657363000000000000000b446973706c617920503300ffc00011080008001003011100011100011100ffd9",
+      "facts": {
+        "format": "jpeg",
+        "width": 16,
+        "height": 8,
+        "space": "rgb",
+        "profile": "Display P3",
+        "orientation": null,
+        "animated": false
+      },
+      "reasons": [
+        "colour-profile"
+      ],
+      "landsAs": "jpeg"
+    },
+    {
+      "name": "a JPEG with a profile split across segments",
+      "hex": "ffd8ffe200484943435f50524f46494c450001030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffe200484943435f50524f46494c450002030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffe200474943435f50524f46494c45000303000000000000000000000000000000000000000164657363000000900000001764657363000000000000000b446973706c617920503300ffc00011080008001003011100011100011100ffd9",
+      "facts": {
+        "format": "jpeg",
+        "width": 16,
+        "height": 8,
+        "space": "rgb",
+        "profile": "Display P3",
+        "orientation": null,
+        "animated": false
+      },
+      "reasons": [
+        "colour-profile"
+      ],
+      "landsAs": "jpeg"
+    },
+    {
+      "name": "a JPEG turned by EXIF",
+      "hex": "ffd8ffe1002245786966000049492a0008000000010012010300010000000800000000000000ffc00011080008001003011100011100011100ffd9",
+      "facts": {
+        "format": "jpeg",
+        "width": 16,
+        "height": 8,
+        "space": "rgb",
+        "profile": null,
+        "orientation": 8,
+        "animated": false
+      },
+      "reasons": [
+        "orientation"
+      ],
+      "landsAs": "jpeg"
+    },
+    {
+      "name": "a JPEG's first readable orientation wins",
+      "hex": "ffd8ffe1002245786966000049492a0008000000010012010300010000000600000000000000ffe1002245786966000049492a0008000000010012010300010000000100000000000000ffc00011080008001003011100011100011100ffd9",
+      "facts": {
+        "format": "jpeg",
+        "width": 16,
+        "height": 8,
+        "space": "rgb",
+        "profile": null,
+        "orientation": 6,
+        "animated": false
+      },
+      "reasons": [
+        "orientation"
+      ],
+      "landsAs": "jpeg"
+    },
+    {
+      "name": "a JPEG with EXIF after its frame header",
+      "hex": "ffd8ffc00011080008001003011100011100011100ffe1002245786966000049492a0008000000010012010300010000000300000000000000ffd9",
+      "facts": {
+        "format": "jpeg",
+        "width": 16,
+        "height": 8,
+        "space": "rgb",
+        "profile": null,
+        "orientation": 3,
+        "animated": false
+      },
+      "reasons": [
+        "orientation"
+      ],
+      "landsAs": "jpeg"
+    },
+    {
+      "name": "a lossy WebP",
+      "hex": "524946461a00000057454250565038200e0000000000009d012a0500070000000000",
+      "facts": {
+        "format": "webp",
+        "width": 5,
+        "height": 7,
+        "space": "rgb",
+        "profile": null,
+        "orientation": null,
+        "animated": false
+      },
+      "reasons": [],
+      "landsAs": "webp"
+    },
+    {
+      "name": "a lossless WebP",
+      "hex": "5249464614000000574542505650384c080000002f04800100000000",
+      "facts": {
+        "format": "webp",
+        "width": 5,
+        "height": 7,
+        "space": "rgb",
+        "profile": null,
+        "orientation": null,
+        "animated": false
+      },
+      "reasons": [],
+      "landsAs": "webp"
+    },
+    {
+      "name": "an extended WebP with a P3 profile",
+      "hex": "52494646dc00000057454250565038580a0000000000000004000006000049434350a700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000164657363000000900000001764657363000000000000000b446973706c61792050330000565038200e0000000000009d012a0500070000000000",
+      "facts": {
+        "format": "webp",
+        "width": 5,
+        "height": 7,
+        "space": "rgb",
+        "profile": "Display P3",
+        "orientation": null,
+        "animated": false
+      },
+      "reasons": [
+        "colour-profile"
+      ],
+      "landsAs": "png"
+    },
+    {
+      "name": "an extended WebP with EXIF after its frame",
+      "hex": "524946465400000057454250565038580a00000000000000040000060000565038200e0000000000009d012a0500070000000000455849462000000045786966000049492a0008000000010012010300010000000600000000000000",
+      "facts": {
+        "format": "webp",
+        "width": 5,
+        "height": 7,
+        "space": "rgb",
+        "profile": null,
+        "orientation": 6,
+        "animated": false
+      },
+      "reasons": [
+        "orientation"
+      ],
+      "landsAs": "png"
+    },
+    {
+      "name": "an animated WebP",
+      "hex": "524946463c00000057454250565038580a00000002000000040000060000414e494d06000000000000000000414e4d461000000000000000000000000000000000000000",
+      "facts": {
+        "format": "webp",
+        "width": 5,
+        "height": 7,
+        "space": "rgb",
+        "profile": null,
+        "orientation": null,
+        "animated": true
+      },
+      "reasons": [],
+      "landsAs": "webp"
+    },
+    {
+      "name": "a GIF",
+      "hex": "4749463839610900040000000021f90400000000003b",
+      "facts": {
+        "format": "gif",
+        "width": 9,
+        "height": 4,
+        "space": "rgb",
+        "profile": null,
+        "orientation": null,
+        "animated": false
+      },
+      "reasons": [],
+      "landsAs": "gif"
+    },
+    {
+      "name": "a GIF87a",
+      "hex": "474946383761090004000000003b",
+      "facts": {
+        "format": "gif",
+        "width": 9,
+        "height": 4,
+        "space": "rgb",
+        "profile": null,
+        "orientation": null,
+        "animated": false
+      },
+      "reasons": [],
+      "landsAs": "gif"
+    },
+    {
+      "name": "an animated GIF",
+      "hex": "4749463839610900040000000021f904000000000021f904000000000021f90400000000003b",
+      "facts": {
+        "format": "gif",
+        "width": 9,
+        "height": 4,
+        "space": "rgb",
+        "profile": null,
+        "orientation": null,
+        "animated": true
+      },
+      "reasons": [],
+      "landsAs": "gif"
+    },
+    {
+      "name": "an empty file",
+      "hex": "",
+      "refused": "unreadable"
+    },
+    {
+      "name": "text",
+      "hex": "6e6f7420616e20696d61676520617420616c6c",
+      "refused": "unreadable"
+    },
+    {
+      "name": "a page named as an image",
+      "hex": "3c21646f63747970652068746d6c3e3c68746d6c3e3c2f68746d6c3e",
+      "refused": "unreadable"
+    },
+    {
+      "name": "an SVG named as an image",
+      "hex": "3c73766720786d6c6e733d22687474703a2f2f7777772e77332e6f72672f323030302f737667223e3c2f7376673e",
+      "refused": "unreadable"
+    },
+    {
+      "name": "a PDF",
+      "hex": "255044462d312e37206120646f63756d656e74",
+      "refused": "unreadable"
+    },
+    {
+      "name": "a TIFF",
+      "hex": "49492a0000000000000000000000000000000000",
+      "refused": "unreadable"
+    },
+    {
+      "name": "a BMP",
+      "hex": "424d00000000000000000000000000000000",
+      "refused": "unreadable"
+    },
+    {
+      "name": "a HEIC",
+      "hex": "00000018667479706865696300000000000000000000000000000000",
+      "refused": "unreadable"
+    },
+    {
+      "name": "an AVIF",
+      "hex": "00000018667479706176696600000000000000000000000000000000",
+      "refused": "unreadable"
+    },
+    {
+      "name": "a PNG cut off in its header",
+      "hex": "89504e470d0a1a0a0000000d494844520000",
+      "refused": "unreadable"
+    },
+    {
+      "name": "a PNG that ends before any pixels",
+      "hex": "89504e470d0a1a0a0000000d49484452000000040000000308020000003b963991",
+      "refused": "unreadable"
+    },
+    {
+      "name": "a PNG naming a pixel format it doesn't have",
+      "hex": "89504e470d0a1a0a0000000d4948445200000004000000030805000000a64101280000003049444154789c636050f5ca9fb2f31e876e50f91c066e83d0aaf9475e0a5bc4362d6710b34e685d75fe8b9c7346ef260015b00f7639119f72",
+      "refused": "unreadable"
+    },
+    {
+      "name": "a PNG wider than any texture",
+      "hex": "89504e470d0a1a0a0000000d4948445200004001000000010802000000463f4a310000000c49444154789c636050f502000098007050e99386",
+      "refused": "too-large"
+    },
+    {
+      "name": "a PNG past the pixel cap",
+      "hex": "89504e470d0a1a0a0000000d494844520000271100002711080200000011b24deb0000000c49444154789c636050f502000098007050e99386",
+      "refused": "too-large"
+    },
+    {
+      "name": "a JPEG with no frame header",
+      "hex": "ffd8ffe000074a46494600ffd9",
+      "refused": "unreadable"
+    },
+    {
+      "name": "a JPEG with a cut-short frame header",
+      "hex": "ffd8ffc000040800ffd9",
+      "refused": "unreadable"
+    },
+    {
+      "name": "a JPEG with a bad segment length",
+      "hex": "ffd8ffe00001",
+      "refused": "unreadable"
+    },
+    {
+      "name": "a JPEG that says it is empty",
+      "hex": "ffd8ffc00011080000001003011100011100011100ffd9",
+      "refused": "unreadable"
+    },
+    {
+      "name": "a JPEG past the edge cap",
+      "hex": "ffd8ffc000110800089c4003011100011100011100ffd9",
+      "refused": "too-large"
+    },
+    {
+      "name": "a WebP with no frame",
+      "hex": "524946460e0000005745425058585858020000000000",
+      "refused": "unreadable"
+    },
+    {
+      "name": "a WebP with a damaged frame header",
+      "hex": "524946461600000057454250565038200a00000000000000000000000000",
+      "refused": "unreadable"
+    },
+    {
+      "name": "a GIF cut short",
+      "hex": "47494638396101",
+      "refused": "unreadable"
+    },
+    {
+      "name": "a GIF that says it is empty",
+      "hex": "4749463839610000040000000021f90400000000003b",
+      "refused": "unreadable"
+    }
+  ]
+}

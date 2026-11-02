@@ -320,6 +320,34 @@ or gradient in its `themes`, `defaultTheme` and `gradients`. A kept-both project
 template or preset also re-stamps its own `project.json` `id`. Anything not in the
 import is never touched.
 
+A keep-both suffix also passes over every slug the pack names for that kind
+(`conflicts::pack_slugs`), on the conflicts screen and at apply alike: the pack's
+`foo` taking the `foo-2` the same pack fills would back one out of the way and point
+references at the wrong item.
+
+Scene code follows too (`rewrite_scene_sources`), because a scene places an object
+with `<StagedObject objectId="ws:foo" />` and would otherwise render the
+recipient's `foo`. Every `scenes/**/*.tsx` of each landing project, template and
+preset is read as bytes, in staging, after the checklist has verified it, and only
+when a kept-both object, theme or brand moved. The token grammar is `scan_source`'s
+(`deps::ws_tokens`), and code is never parsed or run:
+
+- **Rewritten:** a token that exactly fills its matching `"`, `'` or `` ` `` quotes,
+  whose opening quote is not escaped. One pass, so a new slug is never renamed again.
+  Every other byte stays, so a scene that is not UTF-8 is safe.
+- **Left alone:** a longer id (`ws:foo-gold`), a word ending in `ws` (`aws:foo`),
+  and a slug in another case.
+- **Left alone and named on the summary:** a moved slug anywhere that is not a whole
+  literal (in a longer string, in a comment); a slug that landed in two places, such
+  as a moved object beside a theme that stayed, since scene code gives no kind; and
+  an id built in code (`` `ws:${name}` ``, `"ws:" + name`).
+
+A scene that hides the prefix (`"w" + "s:foo"`) is out of reach, like any other
+untrusted code, and the F-001 gate still applies. The code viewer shows what was
+packed, so it can differ from what lands by these literals. As with a rewritten
+sidecar, the copy no longer hashes equal to its pack and re-import reads as a
+difference. An import that renames nothing leaves scene bytes untouched.
+
 ## Apply order
 
 `ItemKind::APPLY_ORDER`: fonts, gradients, objects, themes, brands, presets,

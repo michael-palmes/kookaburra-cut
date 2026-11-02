@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -251,7 +253,7 @@ def conform_asset(project: Project, ref: str, *, repoint: bool, opts: Any, warn:
         if "/" in rel[len("assets/"):]:
             warn(f"the app's conform writes {target} flat in assets/, not beside {rel}")
     export_guard(project, [rel], wait, "conforming it")
-    probe = conformmod.import_decision(project.root / rel).get("probe")
+    probe = conformmod.import_decision(project.root / rel, deep=False).get("probe")
     if probe and probe.get("refused"):
         raise KbError(f"{rel} can't be conformed: {probe['refused'].get('hint')}", EXIT_PROBLEMS, kind="invalid")
     if probe and not probe.get("recommended"):
@@ -321,9 +323,9 @@ def conform_asset(project: Project, ref: str, *, repoint: bool, opts: Any, warn:
 # ── replace ───────────────────────────────────────────────────────────────────
 
 
-def replace_asset(project: Project, ref: str, file: str, *, keep_old: str, as_new: bool, opts: Any, warn: Warn) -> Dict[str, Any]:
+def replace_asset(project: Project, ref: str, file: str, *, keep_old: str, as_new: bool, opts: Any, warn: Warn, allow_blank: bool = False) -> Dict[str, Any]:
     """Replace an asset's bytes in place (the old file to .kb/archive/, the Trash or nowhere), or with as_new copy the
-    new file in beside it and re-point every literal."""
+    new file in beside it and re-point every literal. A still gets what kb assets add gives it (_still_landing)."""
     dry_run, wait, caller = _opts(opts)
     rel = assetmod.resolve(project, ref)
     src = reach.guard_read(project, file, "the new file")
@@ -338,11 +340,54 @@ def replace_asset(project: Project, ref: str, file: str, *, keep_old: str, as_ne
     if assetmod.ext_of(src.name) != assetmod.ext_of(rel):
         raise KbError(f"{src.name} is a .{assetmod.ext_of(src.name) or '?'} and {rel} a .{assetmod.ext_of(rel)}: a replace keeps the name, so it keeps the type",
                       EXIT_PROBLEMS, kind="invalid", hint=f"./kb assets add {file}, then point the scenes at the path it prints")
-    new_sha = lockmod.file_sha256(src)
+    source_sha = lockmod.file_sha256(src)
     old_sha = lockmod.current_hash(project.root / rel)
-    if new_sha == old_sha:
-        return {"path": rel, "bytes": src.stat().st_size, "old": {"to": None}, "probe": None, "durations": [], "writes": [], "unchanged": True,
-                "note": "identical file, nothing to replace", "dryRun": dry_run}
+    if source_sha == old_sha:
+        return _unchanged(rel, src, dry_run)
+    if assetmod.kind_of(rel) != "image" and assetmod.ext_of(rel) != "svg":
+        return _replace_with(project, rel, src, {"path": src, "name": rel.rsplit("/", 1)[-1], "sha": source_sha, "transforms": []}, keep_old, as_new, opts, warn)
+    with tempfile.TemporaryDirectory(prefix="kb-replace-") as tmp:
+        landing = _still_landing(rel, src, file, Path(tmp), as_new, allow_blank, warn)
+        sha = lockmod.file_sha256(landing["path"])
+        if sha == old_sha or (landing["transforms"] and assetmod.imported_this_way(project, rel, source_sha, landing["transforms"])):
+            return _unchanged(rel, landing["path"], dry_run)
+        landing.update(sha=sha, sourceSha=source_sha if landing["transforms"] else None)
+        return _replace_with(project, rel, src, landing, keep_old, as_new, opts, warn)
+
+
+def _unchanged(rel: str, src: Path, dry_run: bool) -> Dict[str, Any]:
+    return {"path": rel, "bytes": src.stat().st_size, "old": {"to": None}, "probe": None, "durations": [], "writes": [], "unchanged": True,
+            "note": "identical file, nothing to replace", "dryRun": dry_run}
+
+
+def _still_landing(rel: str, src: Path, file: str, stage: Path, as_new: bool, allow_blank: bool, warn: Warn) -> Dict[str, Any]:
+    """The file kb assets add would land, held to the name it replaces: a P3 replacement would quietly change the film, and
+    the old bytes stay in the archive. A file that has to change format takes --as-new."""
+    from . import imagefile
+
+    kept = rel.rsplit("/", 1)[-1]
+    try:
+        f = imagefile.facts(src)
+        lands = imagefile.lands_as(f)
+        same = imagefile.SAME_FORMAT.get(assetmod.ext_of(rel)) == lands
+        if not same and not as_new:
+            why = f"has to become a {lands.upper()} to draw right ({', '.join(imagefile.needs_conform(f))})" if imagefile.needs_conform(f) else f"is really a {lands.upper()}"
+            raise KbError(f"{src.name} {why}, and a replace keeps the name, so it keeps the type", EXIT_PROBLEMS, kind="invalid",
+                          hint=f"./kb assets replace {shlex.quote(rel)} {shlex.quote(file)} --as-new lands it as a .{imagefile.EXT_OF[lands]} and moves the references")
+        done = imagefile.prepare(src, stage)
+        if not allow_blank:
+            imagefile.refuse_blank(Path(done["path"]), done["facts"], src.name)
+    except imagefile.Refused as e:
+        raise assetmod.refusal(e, src.name) from None
+    if done["facts"].get("animated"):
+        warn(f"{src.name} is animated, but only its first frame draws")
+    return {"path": Path(done["path"]), "name": kept if same else f"{kept.rsplit('.', 1)[0]}.{done['ext']}", "transforms": done["transforms"], "conformed": done["conformed"]}
+
+
+def _replace_with(project: Project, rel: str, src: Path, landing: Dict[str, Any], keep_old: str, as_new: bool, opts: Any, warn: Warn) -> Dict[str, Any]:
+    """Land landing["path"] (src itself, or the copy kb made of it) over rel, or beside it with as_new."""
+    dry_run, wait, caller = _opts(opts)
+    landed, new_sha, transforms = Path(landing["path"]), landing["sha"], landing["transforms"]
     if not as_new:
         export_guard(project, [rel], wait, "replacing it")
     used = assetmod.usage(project).get(rel, [])
@@ -350,13 +395,14 @@ def replace_asset(project: Project, ref: str, file: str, *, keep_old: str, as_ne
     if sources:
         warn(f"{rel} is a source of {', '.join(sources)}: its taps, masks and cuts were timed to the old footage")
     was = _basic(project.root / rel)
-    now = _basic(src)
+    now = _basic(landed)
     if was.get("width") and now.get("width") and (was.get("width"), was.get("height")) != (now.get("width"), now.get("height")):
         warn(f"the new file is {now['width']}x{now['height']}, the old one {was['width']}x{was['height']}: check the scenes that frame it")
     probe = {"durationMs": now.get("durationMs"), "was": was.get("durationMs"), "width": now.get("width"), "height": now.get("height"),
              "wasWidth": was.get("width"), "wasHeight": was.get("height")}
+    converted = {"conformed": True, "transforms": transforms, "note": f"converted for the stage ({', '.join(landing['conformed'])})"} if landing.get("conformed") else {}
     if as_new:
-        return _replace_as_new(project, rel, src, probe, opts, warn)
+        return dict(_replace_as_new(project, rel, src, landing, probe, opts, warn), **converted)
     ident = archive.new_id(project.root)
     timing = assetmod.timing_rel_of(rel) if assetmod.timing_record(project, rel) is not None else None
     if timing:
@@ -374,12 +420,15 @@ def replace_asset(project: Project, ref: str, file: str, *, keep_old: str, as_ne
                 moved.append((r, dest, sha))
         elif timing:
             tx.trash(timing, gitmod.trash)
-        tx.copy_over(rel, src, base=base)
+        tx.copy_over(rel, landed, base=base)
         doc, meta_sha = _meta_in(tx)
+        if doc is None and transforms and meta_sha == lockmod.ABSENT:
+            doc = {"version": asset_meta.META_VERSION, "assets": {}}
         record = None
-        if doc is not None and isinstance(doc["assets"].get(rel), dict):
-            record = json.loads(json.dumps(doc["assets"][rel]))
-            fresh = dict(doc["assets"][rel], sha256=new_sha, origin=asset_meta.origin("import", "kb assets replace", source_name=src.name), transforms=[])
+        held = doc["assets"].get(rel) if doc is not None else None
+        if doc is not None and (isinstance(held, dict) or transforms):
+            record = json.loads(json.dumps(held)) if isinstance(held, dict) else None
+            fresh = dict(held if isinstance(held, dict) else {}, sha256=new_sha, origin=asset_meta.origin("import", "kb assets replace", source_name=src.name, source_sha256=landing.get("sourceSha")), transforms=transforms)
             doc["assets"][rel] = fresh
             if timing:
                 doc["assets"].pop(timing, None)
@@ -390,7 +439,7 @@ def replace_asset(project: Project, ref: str, file: str, *, keep_old: str, as_ne
 
     result, tx = lockmod.transact(project, "kb assets replace", fn, dry_run=dry_run, caller=caller, wait=wait)
     old_to: Optional[str] = archive.dest_for(ident, rel) if keep_old == "archive" else None
-    out: Dict[str, Any] = {"path": rel, "bytes": src.stat().st_size, "probe": probe}
+    out: Dict[str, Any] = dict({"path": rel, "bytes": landed.stat().st_size, "probe": probe}, **converted)
     if dry_run:
         return dict(out, old={"to": old_to if keep_old != "trash" else "Trash"}, durations=[], writes=tx.writes, dryRun=True)
     if keep_old == "trash":
@@ -425,23 +474,29 @@ def _trash_archived(project: Project, ident: str, moved: List[Tuple[str, str, st
     return first
 
 
-def _replace_as_new(project: Project, rel: str, src: Path, probe: Dict[str, Any], opts: Any, warn: Warn) -> Dict[str, Any]:
+def _replace_as_new(project: Project, rel: str, src: Path, landing: Dict[str, Any], probe: Dict[str, Any], opts: Any, warn: Warn) -> Dict[str, Any]:
     dry_run, wait, caller = _opts(opts)
+    landed = Path(landing["path"])
     folder = (project.root / rel).parent
-    name = free_sibling_name(folder, rel.rsplit("/", 1)[-1])
+    name = free_sibling_name(folder, landing["name"])
     new_rel = (folder / name).relative_to(project.root).as_posix()
 
     def fn(tx: lockmod.Txn) -> Dict[str, Any]:
-        tx.copy_in(new_rel, src)
+        tx.copy_in(new_rel, landed)
         return plan_repoint(tx, project, rel, new_rel)
 
     found, tx = lockmod.transact(project, "kb assets replace", fn, dry_run=dry_run, caller=caller, wait=wait)
     if found["patterns"] or found["elsewhere"]:
         warn(f"{', '.join(sorted({h['file'] for h in found['patterns'] + found['elsewhere']}))} still name {rel} (not rewritten)")
-    out: Dict[str, Any] = {"path": new_rel, "replaced": rel, "bytes": src.stat().st_size, "old": {"to": None}, "probe": probe,
+    out: Dict[str, Any] = {"path": new_rel, "replaced": rel, "bytes": landed.stat().st_size, "old": {"to": None}, "probe": probe,
                            "rewrites": found["rewrites"], "patterns": found["patterns"], "elsewhere": found["elsewhere"]}
     if dry_run:
         return dict(out, durations=[], writes=tx.writes, dryRun=True)
+    if landing["transforms"]:
+        try:
+            asset_meta.record_origins(project, [{"rel": new_rel, "origin": asset_meta.origin("import", "kb assets replace", source_name=src.name, source_sha256=landing.get("sourceSha")), "transforms": landing["transforms"]}], opts=opts)
+        except KbError as e:
+            warn(f"the provenance record was not written: {e.message}")
     out["durations"] = resync(project, [new_rel], warn)
     notify(project, [new_rel])
     return dict(out, writes=tx.writes, dryRun=False)
