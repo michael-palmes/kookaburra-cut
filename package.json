@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "license": "MIT OR Apache-2.0",
-  "packageManager": "pnpm@11.0.4",
+  "packageManager": "pnpm@11.0.4+sha512.0a397165007a014ed52919a61e5f46c48b9bca88404c303ecaecc63f62def563898d3c6b8a5d5ea5811eb398cfe03ab05da1a5ce963f126d5ead4c02f93b83c3",
   "description": "AI driven, deterministic animated-video studio for macOS (Apple Silicon). Tauri 2 + React 19 + react-three-fiber, exporting via a bundled ffmpeg sidecar.",
   "repository": {
     "type": "git",
@@ -60,7 +60,7 @@
     "tauri": "PATH=\"$PWD/scripts/tauri-path:$PATH\" tauri"
   },
   "engines": {
-    "node": ">=20.19"
+    "node": "24.22.1"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",

@@ -41,7 +41,6 @@ describe("the tag-key path list", () => {
     const mayAdd = new Set([
       ".npmrc",
       "rust-toolchain",
-      "rust-toolchain.toml",
       "src-tauri/.cargo",
       "src-tauri/rust-toolchain",
       "src-tauri/rust-toolchain.toml",

@@ -484,7 +484,13 @@ builds it in separate jobs, each on a fresh runner.
   does not match `src/assets/models/licensed.sha256`, runs
   `pnpm tauri build --no-sign` and uploads the unsigned app with its SHA-256.
   Its only secrets are the read-only token for that private repository and the
-  archive's decryption key; neither can sign anything.
+  archive's decryption key; neither can sign anything. The toolchain is pinned:
+  `rust-toolchain.toml`, an exact Node in `engines`, pnpm through corepack
+  against the hash in `packageManager`, and cmake, nasm and pkgconf from SHA-256
+  pinned releases (`scripts/install-build-tools.sh`). The runner image and its
+  default Xcode still float, so `build-info.txt` records them. The job uploads that
+  file and a digest of every bundle file as its own artefact, which the sign
+  job never touches.
 - **Sign, in the protected `release` environment.** Behind a required reviewer
   and limited to `v*` tags, the sign job checks the payload's digest against the
   build job, imports the Developer ID certificate into a temporary keychain,
@@ -501,18 +507,22 @@ builds it in separate jobs, each on a fresh runner.
   updater tar's app and the DMG; the DMG holds the same bytes as the zip;
   the updater signature verifies against `plugins.updater.pubkey`; `latest.json`
   names the same signature and version; the signed binary runs
-  `edit caps` and `check flashes` on a film its bundled ffmpeg renders; and the
-  sidecars' signature-stripped digests equal the ones the build job recorded.
-- **Publish.** `SHA256SUMS` over the DMG, the zip, the updater tar and
-  `latest.json`; a GitHub build provenance attestation over the DMG, zip and
-  tar; a static notes body naming the Team ID; a draft release a person
-  publishes. The in-app updater sees a release only once it is published.
+  `edit caps` and `check flashes` on a film its bundled ffmpeg renders; and,
+  before that binary runs, every file in the zip's app and the updater tar's
+  app equals the build job's record with signatures stripped, file list
+  included, so a file the sign job adds or changes fails it. Only the seal and
+  the notarisation ticket that signing adds are left out.
+- **Publish.** `SHA256SUMS` over the DMG, the zip, the updater tar,
+  `latest.json` and `build-info.txt`; a GitHub build provenance attestation over
+  the DMG, zip, tar and `build-info.txt`; a static notes body naming the Team
+  ID; a draft release a person publishes. The in-app updater sees a release only once it is published.
 - **Updater.** `plugins.updater.requireSignedVersion` is on: the app refuses a
   signature whose trusted comment does not bind the announced version, so a
   manifest re-pointed at an older signed archive cannot roll an install back.
   The manifest's notes are never rendered.
 - **Repository controls.** `scripts/release.sh` only tags: it refuses unless on
-  `main` equal to `origin/main`, signs the tag and verifies it against
+  `main` equal to `origin/main`, prints the commits and the tag-key files changed
+  since the previous tag, asks y/N, signs the tag and verifies it against
   `.github/allowed_tag_signers` before pushing. Every pull request's head commit
   must be signed by a key in `.github/allowed_signers`, or in the tag list when
   it changes `.github/`, a script the release pipeline runs, a lock file,
@@ -537,6 +547,14 @@ One maintainer holds admin rights on the repository; a hardware security key
 on the account and a Touch ID tag key in the Mac's Secure Enclave are the
 backstop against an account takeover. The tag key can't be copied off the Mac,
 and the promptless commit key, which agents use, can't tag.
+
+Decided on 2026-11-02 and still open: that one maintainer holds the `release`
+environment's only reviewer seat and `main` requires no approving review, so no
+second person checks a release or a merge. An admin-level takeover of the account
+could add a key to the signer lists and approve its own release. Separately, a
+required check matches by name, so a job called `Head commit signed` in another
+workflow could satisfy it; closing that needs the check reported by a dedicated
+GitHub App.
 
 ## Process
 

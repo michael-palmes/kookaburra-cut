@@ -3,13 +3,14 @@
 # Verifies a signed release set on a machine that never held a key: the release workflow's
 # verify job, and the last step of a local rehearsal. Checks the signatures, notarisation and
 # Gatekeeper verdicts, the updater signature against plugins.updater.pubkey, runs the signed
-# binary's headless CLI, and compares the sidecars' signature-stripped digests with the ones the
-# build job recorded.
+# binary's headless CLI, and compares every bundle file, signatures stripped, with what the build
+# job recorded.
 #
-#   verify-release.sh [--adhoc] [--dir release/] [--sidecar-digests <file>]
+#   verify-release.sh [--adhoc] [--dir release/] [--sidecar-digests <file>] [--bundle-digests <file>]
 #     --adhoc             an ad-hoc rehearsal: no notarisation or Gatekeeper checks
 #     --dir DIR           where the zip, DMG, updater tar and latest.json are (default release/)
 #     --sidecar-digests   the build job's `sidecar-digest.sh` output to compare against
+#     --bundle-digests    the build job's `bundle-digest.sh` output to compare against
 #   KOOKABURRA_TEAM_ID    when set, every signature's TeamIdentifier must match it
 #
 set -euo pipefail
@@ -20,12 +21,14 @@ APP_NAME="Kookaburra Cut"
 DIR="$ROOT/release"
 ADHOC=0
 DIGESTS=""
+BUNDLE_DIGESTS=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --adhoc) ADHOC=1; shift ;;
     --dir) DIR="${2:?--dir needs a path}"; shift 2 ;;
     --sidecar-digests) DIGESTS="${2:?--sidecar-digests needs a file}"; shift 2 ;;
-    --help | -h) sed -n '2,15p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    --bundle-digests) BUNDLE_DIGESTS="${2:?--bundle-digests needs a file}"; shift 2 ;;
+    --help | -h) sed -n '2,16p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "ERROR: unknown argument '$1'" >&2; exit 2 ;;
   esac
 done
@@ -141,6 +144,23 @@ hdiutil detach "$MOUNT" >/dev/null 2>&1
 MOUNT=""
 log "The DMG holds the same app as the zip"
 
+# ── provenance: the same files the build job produced, before anything signed runs ──
+log "Sidecar digests (signature stripped)"
+bash "$ROOT/scripts/sidecar-digest.sh" "$APP/Contents/MacOS/ffmpeg" "$APP/Contents/MacOS/ffprobe" | tee "$WORK/digests.txt"
+if [[ -n "$DIGESTS" ]]; then
+  diff <(LC_ALL=C sort "$DIGESTS") <(LC_ALL=C sort "$WORK/digests.txt") || die "the signed sidecars are not the ones the build job produced"
+  log "Sidecars match the build job's record"
+fi
+log "Bundle digests (signatures stripped)"
+bash "$ROOT/scripts/bundle-digest.sh" "$APP" >"$WORK/bundle.txt"
+bash "$ROOT/scripts/bundle-digest.sh" "$WORK/tar/$APP_NAME.app" >"$WORK/bundle-tar.txt"
+diff "$WORK/bundle.txt" "$WORK/bundle-tar.txt" || die "the app in the updater archive differs from the zipped app"
+log "The updater archive holds the same app as the zip ($(wc -l <"$WORK/bundle.txt" | tr -d ' ') files)"
+if [[ -n "$BUNDLE_DIGESTS" ]]; then
+  diff "$BUNDLE_DIGESTS" "$WORK/bundle.txt" || die "the signed bundle is not the one the build job produced"
+  log "Every bundle file matches the build job's record"
+fi
+
 # ── the signed binary's headless CLI ─────────────────────────────────────────
 BIN="$APP/Contents/MacOS/kookaburra-cut"
 log "Running the signed binary: edit caps"
@@ -164,14 +184,6 @@ node -e '
   const r = require(process.argv[1]);
   if (r.ok !== true) throw new Error(`check flashes did not answer ok: ${JSON.stringify(r)}`);
 ' "$WORK/flashes.json"
-
-# ── sidecar provenance: the same code the build job produced ─────────────────
-log "Sidecar digests (signature stripped)"
-bash "$ROOT/scripts/sidecar-digest.sh" "$APP/Contents/MacOS/ffmpeg" "$APP/Contents/MacOS/ffprobe" | tee "$WORK/digests.txt"
-if [[ -n "$DIGESTS" ]]; then
-  diff <(LC_ALL=C sort "$DIGESTS") <(LC_ALL=C sort "$WORK/digests.txt") || die "the signed sidecars are not the ones the build job produced"
-  log "Sidecars match the build job's record"
-fi
 
 echo
 echo "Verified: $ZIP, $UPDATER_TAR and $DMG$([[ "$ADHOC" == 1 ]] && echo " (ad-hoc rehearsal)")"
