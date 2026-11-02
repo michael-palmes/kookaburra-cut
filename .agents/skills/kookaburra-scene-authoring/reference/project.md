@@ -289,6 +289,9 @@ face for all chart text. Use bundled families unless `./kb fonts check` passes
 - It fades out over the last 1000 ms of its audible end unless `fadeOutMs` says
   otherwise (`0` disables). `fadeOutCurve`: `smooth` (default), `linear`, `scurve`,
   `exponential`, `logarithmic`.
+- The person often changes a fade or level in the app. `./kb status` and each prompt tell you
+  what the app changed, so read them before you touch this block. `./kb check` warns when a fade
+  covers more than about 20% of the film, or a cue plays inside it, and says who set it.
 - `startOffsetMs` skips into the track. `markers` holds user beat overrides
   (reference/beats.md).
 - `grid` (the beat grid), `cues` (named times) and `sections` make the music addressable

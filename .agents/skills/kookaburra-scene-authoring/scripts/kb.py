@@ -41,7 +41,7 @@ if sys.pycache_prefix is None:
 sys.path[:] = [p for p in sys.path if os.path.abspath(p or os.curdir) != _HERE] + [_HERE]
 
 if __name__ == "__main__":
-    if sys.argv[1:2] == ["hook"] and sys.argv[2:3] in (["bash-pre"], ["bash-post"]):
+    if sys.argv[1:2] == ["hook"] and sys.argv[2:3] in (["bash-pre"], ["bash-post"], ["user-prompt"]):
         try:
             from kblib import hookfast
         except Exception:  # the app may be swapping the kit in; hooks must fail open

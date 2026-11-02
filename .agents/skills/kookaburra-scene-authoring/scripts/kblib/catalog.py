@@ -21,6 +21,8 @@ TRANSITION_EASES = ["linear", "smooth", "snappy"]
 MANAGED_TEXT_TYPES = ["title", "subtitle", "bullets", "icon"]
 FALLBACK_BULLET_MARKERS = ["dot", "dash", "tick", "number", "none"]
 ANIMATED_TRACKS = ["camera", "layeredScreenshot", "compare", "chart", "lighting"]
+DEFAULT_AUDIO_FADE_OUT_MS = 1000
+AUDIO_FADE_MAX_SHARE = 0.2
 AUDIO_FADE_CURVES = ["smooth", "linear", "scurve", "exponential", "logarithmic"]
 
 FALLBACK_SCENE_DOC_KEYS = [

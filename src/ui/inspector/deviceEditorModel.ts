@@ -28,6 +28,16 @@ import { duplicateCompareDeviceTargets, pruneCompareDeviceTargets } from "./comp
 import { nextNumberedContentId } from "./contentIds";
 
 const DEVICE_STEP_X = 1.4;
+const DEVICE_VIDEO_ONLY_KEYS = [
+  "startMs",
+  "at",
+  "startOn",
+  "inMs",
+  "outMs",
+  "speed",
+  "loop",
+  "posterMs",
+] as const;
 const LAPTOP_STEP_X = 3.6;
 
 export function compatibleDeviceColour(model: DeviceId, colour: string | undefined): string {
@@ -157,6 +167,17 @@ export function deviceSelectionOwnsAction(
   return selected?.sceneIndex === sceneIndex && selected.deviceId === deviceId;
 }
 
+/** What survives on a display when its source becomes a still: every key that only means something for a video goes, so a swap leaves nothing stale for the parser or `kb check` to trip over. */
+function deviceMediaAfterSwap(
+  current: DeviceMediaSpec | undefined,
+  media: Pick<DeviceMediaSpec, "src" | "kind">,
+): DeviceMediaSpec {
+  const next: DeviceMediaSpec = { ...current, ...media };
+  if (media.kind === "video") return next;
+  for (const key of DEVICE_VIDEO_ONLY_KEYS) delete next[key];
+  return next;
+}
+
 /** Replace one display's source while keeping duration ownership coherent before the caller re-syncs. */
 export function replaceDeviceMedia(
   doc: SceneDoc,
@@ -168,7 +189,7 @@ export function replaceDeviceMedia(
   if (!device) return false;
   const current = deviceSlotMedia(device, slot);
   const replacedDrivingVideo = current?.kind === "video" && media.kind !== "video";
-  setDeviceSlotMedia(device, slot, { ...current, ...media });
+  setDeviceSlotMedia(device, slot, deviceMediaAfterSwap(current, media));
 
   const duration = doc.duration;
   if (media.kind === "video" && duration?.mode !== "manual") {

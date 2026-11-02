@@ -348,6 +348,7 @@ fn caps_in(args: &[String], app_data: Option<PathBuf>) -> Result<Value, Fail> {
         },
         // kb checks this before `media …`: an older binary would start the GUI on the unknown verb.
         "media": { "version": crate::conform::MEDIA_CLI_VERSION, "commands": crate::cli_media::CAPS_COMMANDS },
+        "trust": { "commands": crate::cli_trust::COMMANDS },
     }))
 }
 
@@ -922,6 +923,7 @@ mod tests {
             "zoom",
             "limits",
             "media",
+            "trust",
         ];
         expected.sort();
         let mut got = keys.clone();

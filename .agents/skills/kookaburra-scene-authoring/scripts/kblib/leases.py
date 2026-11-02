@@ -488,3 +488,32 @@ class _null:
 
     def __exit__(self, *exc: Any) -> None:
         return None
+
+
+def rename_scene(project: Any, old: str, new: str) -> None:
+    """A renumbered scene keeps its lease under the new stem: the transaction has already refused someone else's."""
+    from .util import KbError
+
+    root = root_of(project)
+    path = lease_path(root, old)
+    try:
+        real_dir(root, *LEASES, make=False)
+        with open(path, "r", encoding="utf-8") as f:
+            lease = json.load(f)
+    except KbError:
+        return
+    except (OSError, ValueError):
+        return
+    if not isinstance(lease, dict):
+        return
+    lease["scene"] = new
+    lease["files"] = [f"scenes/{new}.tsx", f"scenes/{new}.json"]
+    target = lease_path(root, new)
+    tmp = f"{target}.{os.getpid()}.kbtmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(lease, f)
+        os.replace(tmp, target)
+        os.unlink(path)
+    except OSError:
+        pass

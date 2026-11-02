@@ -283,9 +283,61 @@ describe("device editor model", () => {
     expect(doc.devices[0].media).toEqual({
       src: "assets/still.png",
       kind: "image",
-      startMs: 200,
     });
     expect(doc.duration).toEqual({ mode: "manual" });
+  });
+
+  it("drops every video-only key when a display turns into a still, and keeps the rest", () => {
+    const doc = {
+      version: 1,
+      devices: [
+        {
+          id: "d1",
+          model: "iphone-17-pro",
+          media: {
+            src: "assets/clip.mp4",
+            kind: "video" as const,
+            startMs: 200,
+            at: "bar:3",
+            startOn: "open" as const,
+            inMs: 500,
+            outMs: 4000,
+            speed: 2,
+            loop: true,
+            posterMs: 600,
+            rotateDeg: 90 as const,
+            fit: "cover" as const,
+          },
+        },
+      ],
+    } satisfies SceneDoc;
+    replaceDeviceMedia(doc, "d1", { src: "assets/still.png", kind: "image" });
+    expect(doc.devices[0].media).toEqual({
+      src: "assets/still.png",
+      kind: "image",
+      rotateDeg: 90,
+      fit: "cover",
+    });
+  });
+
+  it("keeps a video's timing when the next source is a video too", () => {
+    const doc = {
+      version: 1,
+      devices: [
+        {
+          id: "d1",
+          model: "iphone-17-pro",
+          media: { src: "assets/a.mp4", kind: "video" as const, startMs: 200, loop: true },
+        },
+      ],
+    } satisfies SceneDoc;
+    replaceDeviceMedia(doc, "d1", { src: "assets/b.mp4", kind: "video" });
+    expect(doc.devices[0].media).toEqual({
+      src: "assets/b.mp4",
+      kind: "video",
+      startMs: 200,
+      loop: true,
+    });
   });
 
   it("does not disturb an unrelated device or video-window duration pin", () => {
