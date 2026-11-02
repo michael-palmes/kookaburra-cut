@@ -1647,9 +1647,9 @@ dependencies = [
 
 [[package]]
 name = "http-range"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21dec9db110f5f872ed9699c3ecf50cf16f423502706ba5c72462e28d3157573"
+checksum = "2149c4b4b83390c71fab669730347d578ec6bdf759f2160c581ad8b8819733b4"
 
 [[package]]
 name = "httparse"
@@ -2124,7 +2124,7 @@ dependencies = [
  "url",
  "walkdir",
  "wry",
- "zip 9.0.3",
+ "zip 9.0.5",
 ]
 
 [[package]]
@@ -2159,9 +2159,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.190"
+version = "0.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce5d3ddc6d3fa000eb1536d85e147bfe31aacaba692ed6a876f95cb7c855be78"
+checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
 
 [[package]]
 name = "libdbus-sys"
@@ -4381,9 +4381,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-dialog"
-version = "2.8.2"
+version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3dca325d6e66e9170f2e1b9631722e4e544bcbc51781575d266abdaba697bd51"
+checksum = "b7461aaacf1901915ea7b9f5cd74f8224a351ed96af0a62c07fce934003cb34b"
 dependencies = [
  "log",
  "raw-window-handle",
@@ -4399,9 +4399,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-fs"
-version = "2.7.0"
+version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "213fae2d85d4b76b06de5915d1862db9fa74541171f9d2c15da6ac9bd6e788c6"
+checksum = "5d58eb1d4984e535f47a642ffec09a2da6f5c18a12b5902d12126cb7626d628b"
 dependencies = [
  "anyhow",
  "dunce",
@@ -6030,9 +6030,9 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "9.0.3"
+version = "9.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2d98561b612a84ae525331a7a094429ef8a5772514ed507ff6db5f54badc971"
+checksum = "6e04976da629d3b04204ba8105b396a193af8ad2583b2c79bfb3ab8af580a11e"
 dependencies = [
  "crc32fast",
  "flate2",

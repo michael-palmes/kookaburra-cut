@@ -2,7 +2,7 @@ import { type AspectName, FORMATS, type FormatSpec } from "../engine/format";
 import type { FontIssue, SceneLoadError, SceneLoadPhase } from "../engine/loadDiagnostics";
 import { type LoadedProject, sceneFileStem } from "../engine/project";
 import { collectSceneDocFontRefs } from "../engine/sceneDocSchema";
-import { activeSceneIndex } from "../engine/sceneTimeline";
+import { activeSceneIndex, resolveAt } from "../engine/sceneTimeline";
 import { parseFontString } from "../theme/fontRef";
 
 /** Pure halves of the bridge v2 service (docs/agent-kit.md, "The bridge (v2)"): request shaping, preset lookup and the `check` report. */
@@ -18,6 +18,7 @@ export const BRIDGE_KINDS = [
   "debug",
   "export",
   "cancelExport",
+  "range",
 ] as const;
 export type BridgeKind = (typeof BRIDGE_KINDS)[number];
 
@@ -68,6 +69,16 @@ export interface BridgeRequest {
   op?: string | null;
   window?: string | null;
   n?: number | null;
+  /** A `range` request's span in project ms, `[startMs, endMs)`, and its rate. */
+  startMs?: number | null;
+  endMs?: number | null;
+  fps?: number | null;
+  /** Run the flash detector (`standard`: wcag, itu or both), save the frames as a clip, or both. */
+  flashes?: boolean | null;
+  standard?: string | null;
+  clip?: boolean | null;
+  /** A capture also reports each frame's visible text boxes and the safe area. */
+  texts?: boolean | null;
 }
 
 /** One unit is a 1280x720 frame's pixels (bridge.rs's capture_service mirrors the costs). */
@@ -144,6 +155,104 @@ export function requestCaptureFormat(request: BridgeRequest, native: FormatSpec)
     sheet: Boolean(request.sheet),
     probe: request.probe != null,
   });
+}
+
+/** A ranged render skips the per-frame preamble and PNG save, so this many of its frames cost one capture frame's pixels. */
+export const RANGE_FRAMES_PER_UNIT = 4;
+export const RANGE_SHORT_EDGE = 360;
+export const RANGE_DEFAULT_FPS = 30;
+export const RANGE_MAX_FPS = 60;
+/** Ranged strips: at most this many flagged moments get before, at and after frames. */
+export const RANGE_MAX_STRIPS = 8;
+
+/** A ranged render's size: a literal width, else the 360 px short edge. Mirrored by `range_size` in src-tauri/src/capture_service.rs. */
+export function rangeFormat(native: FormatSpec, width?: number | null): FormatSpec {
+  if (width != null && Number.isFinite(width) && width > 0) return captureFormat(native, { width });
+  return captureFormat(native, {
+    scale: RANGE_SHORT_EDGE / Math.max(1, Math.min(native.width, native.height)),
+  });
+}
+
+/** What a ranged render costs: its pixels, four frames to a capture frame's unit. */
+export function rangeUnits(frames: number, format: Pick<FormatSpec, "width" | "height">): number {
+  return Math.max(
+    1,
+    Math.ceil((frames * format.width * format.height) / (UNIT_PIXELS * RANGE_FRAMES_PER_UNIT)),
+  );
+}
+
+export interface RangePlan {
+  startMs: number;
+  endMs: number;
+  fps: number;
+  /** Export frame indices at `fps` whose time falls in `[startMs, endMs)`, clamped to the film. */
+  frames: number[];
+  times: number[];
+}
+
+/** A `range` request's span and frames on the export's own grid (frame k at k x 1000 / fps), so a ranged check sees exactly the frames a full export at that rate would. */
+export function rangePlan(request: BridgeRequest, totalMs: number): RangePlan {
+  const { startMs, endMs } = request;
+  const fps = request.fps ?? RANGE_DEFAULT_FPS;
+  if (!(Number.isFinite(fps) && fps >= 1 && fps <= RANGE_MAX_FPS)) {
+    throw new Error(`a ranged render takes 1 to ${RANGE_MAX_FPS} fps, got ${fps}`);
+  }
+  if (
+    typeof startMs !== "number" ||
+    typeof endMs !== "number" ||
+    !(endMs > startMs) ||
+    startMs < 0
+  ) {
+    throw new Error(`a ranged render needs 0 <= startMs < endMs, got ${startMs} to ${endMs}`);
+  }
+  const last = Math.max(1, Math.round((totalMs / 1000) * fps));
+  const first = Math.max(0, Math.ceil((startMs * fps) / 1000 - 1e-6));
+  const end = Math.min(last, Math.ceil((endMs * fps) / 1000 - 1e-6));
+  if (end <= first) {
+    throw new Error(
+      `${startMs} to ${endMs} ms holds no frame of the ${Math.round(totalMs)} ms film`,
+    );
+  }
+  const frames = Array.from({ length: end - first }, (_, i) => first + i);
+  return { startMs, endMs, fps, frames, times: frames.map((k) => (k * 1000) / fps) };
+}
+
+/** The frames a strip shows for a flagged moment (project ms): the one before, the flagged one, and the one after, inside the plan. */
+export function stripFrames(plan: RangePlan, atMs: number): number[] {
+  const at = Math.round((atMs * plan.fps) / 1000);
+  const lo = plan.frames[0];
+  const hi = plan.frames[plan.frames.length - 1];
+  return [at - 1, at, at + 1].map((k) => Math.min(hi, Math.max(lo, k)));
+}
+
+interface TimedIssue {
+  startMs?: unknown;
+  endMs?: unknown;
+  tc?: unknown;
+}
+
+/** `MM:SS.mmm`, as flashes.rs writes it. */
+export function flashTimecode(ms: number): string {
+  const whole = Math.max(0, Math.round(ms));
+  const pad = (n: number, w: number) => String(n).padStart(w, "0");
+  return `${pad(Math.floor(whole / 60_000), 2)}:${pad(Math.floor((whole % 60_000) / 1000), 2)}.${pad(whole % 1000, 3)}`;
+}
+
+/** The detector counts from the span's first frame; its issues move to project time. */
+export function shiftFlashReport<T extends { issues?: TimedIssue[] }>(
+  report: T,
+  offsetMs: number,
+): T & { offsetMs: number } {
+  const issues = (report.issues ?? []).map((issue) => {
+    const startMs = Math.round(Number(issue.startMs ?? 0) + offsetMs);
+    return {
+      ...issue,
+      startMs,
+      endMs: Math.round(Number(issue.endMs ?? 0) + offsetMs),
+      tc: flashTimecode(startMs),
+    };
+  });
+  return { ...report, issues, offsetMs: Math.round(offsetMs) };
 }
 
 /** What a capture costs: frames x ceil(pixels / 921600). */
@@ -265,6 +374,23 @@ export function frameScene(
     scene: sceneFileStem(project.sceneFiles[index] ?? ""),
     at: Math.round(tMs - (slot?.startMs ?? 0)) / 1000,
   };
+}
+
+/** A sheet cell's label: the scene and seconds into it, or "A → B (type, 40%)" mid-transition (linear through the overlap, as kb names its copies). */
+export function frameLabel(
+  project: Pick<LoadedProject, "slots" | "sceneFiles">,
+  tMs: number,
+  where: { index: number; scene: string; at: number },
+): string {
+  const transition = resolveAt(project.slots, tMs).transition;
+  const from = transition && project.slots[transition.fromIndex];
+  const to = transition && project.slots[transition.toIndex];
+  if (!transition || !from || !to)
+    return `${where.index}  ${where.scene}  @ ${where.at.toFixed(2)}s`;
+  const span = from.endMs - to.startMs;
+  const pct = span > 0 ? Math.round(((tMs - to.startMs) / span) * 100) : 0;
+  const stem = (i: number) => sceneFileStem(project.sceneFiles[i] ?? "");
+  return `${stem(transition.fromIndex)} → ${stem(transition.toIndex)} (${transition.type}, ${pct}%)`;
 }
 
 /** Project-relative asset paths anywhere in one sidecar (string values only, deduplicated in order). */

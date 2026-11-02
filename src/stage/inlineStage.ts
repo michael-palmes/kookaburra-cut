@@ -15,6 +15,7 @@ import { glContextCensus } from "../engine/glContexts";
 import { memoryCensus } from "../engine/memoryCensus";
 import { perfColdWaits } from "../engine/perfProbe";
 import type { LoadedProject } from "../engine/project";
+import { beginRangeRun, endRangeRun, type RangeRun, renderRangeFrame } from "../engine/rangeRun";
 import { getSceneHosts } from "../engine/sceneHostRegistry";
 import { localSceneModuleProvider } from "../engine/sceneModules";
 import { snapshotRun } from "../engine/snapshots";
@@ -25,6 +26,7 @@ import { beginStillsRun, type StillsRun } from "../engine/stillsRun";
 export function createInlineStage(element?: HTMLCanvasElement): StageHandle {
   let activeExport: ExportRun | null = null;
   let activeStills: StillsRun | null = null;
+  let activeRange: RangeRun | null = null;
   let project: LoadedProject | null = null;
   const noop = () => () => {};
   return {
@@ -72,6 +74,18 @@ export function createInlineStage(element?: HTMLCanvasElement): StageHandle {
       setExporting(on);
     },
     captureFrame: (opts, tMs) => captureFrameRun(opts, tMs),
+    async rangeBegin(opts, spanMs) {
+      activeRange = await beginRangeRun(opts, spanMs);
+    },
+    rangeFrame(index, tMs, buffer, texts) {
+      if (!activeRange) throw new Error("no ranged render is open");
+      return renderRangeFrame(activeRange, index, tMs, buffer, texts);
+    },
+    async rangeEnd() {
+      const run = activeRange;
+      activeRange = null;
+      if (run) endRangeRun(run);
+    },
     async stillsBegin(opts, settings, onPrepareStep) {
       activeStills = await beginStillsRun(opts, settings, onPrepareStep);
       const { total, pageTimesMs, warnings, pageMeta } = activeStills;

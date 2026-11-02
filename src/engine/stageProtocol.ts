@@ -154,6 +154,16 @@ export type WindowRequest =
   | { type: "exportEnd"; id: number }
   | { type: "holdExport"; id: number; on: boolean }
   | { type: "captureFrame"; id: number; opts: StageExportOptions; tMs: number }
+  | { type: "rangeBegin"; id: number; opts: StageExportOptions; spanMs: [number, number] }
+  | {
+      type: "rangeFrame";
+      id: number;
+      index: number;
+      tMs: number;
+      buffer: ArrayBuffer | null;
+      texts: boolean;
+    }
+  | { type: "rangeEnd"; id: number }
   | { type: "stillsBegin"; id: number; opts: StageExportOptions; settings: StillsSettings }
   | { type: "stillsPage"; id: number; page: number }
   | { type: "stillsEnd"; id: number }

@@ -27,13 +27,15 @@ const BUILT_IN: [string, Scene3dFamily][] = [
   ["dust-drift", "grids"],
 ];
 
+const StubComponent = () => null;
+
 const stubLook = (id: string, family: Scene3dFamily, name: string): Scene3dBackgroundDef => ({
   id,
   name,
   family,
   colorSlots: [],
   params: {},
-  Component: () => null,
+  Component: StubComponent,
 });
 
 describe("scene3d registry", () => {
