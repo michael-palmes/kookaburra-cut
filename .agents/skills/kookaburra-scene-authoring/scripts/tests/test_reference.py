@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 from unittest import mock
 
 from kblib import untrusted
+from kblib.beats import cache
 from kblib.reference import beatsheet, compare, frames, words
 from kblib.util import KbError
 
@@ -49,6 +50,26 @@ def four_shots(audio: bool = True) -> Path:
     """Red, blue, moving test card, green: hard cuts at 2, 4 and 6 s."""
     inputs = [colour("red"), colour("blue"), ["testsrc2=s=320x180:r=30:d=2"], colour("green")]
     return film("four-shots" + ("" if audio else "-silent"), "[0:v][1:v][2:v][3:v]concat=n=4:v=1:a=0,format=yuv420p[v]", inputs, audio)
+
+
+def mp4_boxes(data: bytes) -> List[bytes]:
+    out, at = [], 0
+    while at < len(data):
+        size = int.from_bytes(data[at:at + 4], "big")
+        out.append(data[at:at + size])
+        at += size
+    return out
+
+
+def cover_box_first(data: bytes) -> bytes:
+    """An mp4 whose metadata comes before its tracks, so ffmpeg numbers the cover picture stream 0. Chunk offsets are unaffected: moov keeps its size."""
+    out = b""
+    for box in mp4_boxes(data):
+        if box[4:8] == b"moov":
+            kids = sorted(mp4_boxes(box[8:]), key=lambda k: (k[4:8] != b"mvhd", k[4:8] != b"udta"))
+            box = box[:8] + b"".join(kids)
+        out += box
+    return out
 
 
 class ReferenceCase(KbTestCase):
@@ -118,8 +139,9 @@ class ReadingAFilmTests(ReferenceCase):
         out = self.read(four_shots())
         self.assertTrue(out["words"]["available"])
         seg = out["segments"][0]
-        self.assertNotIn("blurred noise", seg["onScreen"])
-        self.assertEqual(seg["onScreen"][0], "Launch <script>alert(1)</script> day")
+        shown = read_json(Path(out["folder"]) / "analysis.json")["segments"][seg["index"]]["onScreen"]
+        self.assertNotIn("blurred noise", shown)
+        self.assertEqual(shown[0], "Launch <script>alert(1)</script> day")
         self.assertGreater(seg["words"], 0)
         self.assertEqual(seg["wordsPerSecond"], round(seg["words"] / 2.0, 2))
         self.assertAlmostEqual(seg["wordsPerBeat"], seg["words"] / 4.0, places=1)
@@ -147,9 +169,9 @@ class ReadingAFilmTests(ReferenceCase):
         tools = video_synth.tools()
         assert tools
         with self.assertRaises(KbError) as caught:
-            frames.decode(tools[0], four_shots(), 500 - frames.DECLARED_MARGIN_MS)
+            frames.decode(tools[0], four_shots(), 0, 500 - frames.DECLARED_MARGIN_MS)
         self.assertIn("runs past", caught.exception.message)
-        self.assertEqual(frames.decode(tools[0], four_shots(), 8000).count, 240)
+        self.assertEqual(frames.decode(tools[0], four_shots(), 0, 8000).count, 240)
 
     def test_a_saved_read_follows_the_projects_scenes(self) -> None:
         small = make_project(self.tmp / "small", scenes=["01-only"])
@@ -238,7 +260,7 @@ class ExtractTests(ReferenceCase):
         tools = video_synth.tools()
         assert tools
         wanted = list(range(0, 240))
-        got = frames.extract(tools[0], four_shots(), wanted, self.tmp / "many", "cell", 64)
+        got = frames.extract(tools[0], four_shots(), 0, wanted, self.tmp / "many", "cell", 64)
         self.assertEqual(sorted(got), wanted)
         red, blue, green = self.rgb_of(got[30]), self.rgb_of(got[90]), self.rgb_of(got[210])
         self.assertGreater(red[0], 200, red)
@@ -250,7 +272,7 @@ class ExtractTests(ReferenceCase):
         tools = video_synth.tools()
         assert tools
         long_film = film("long-shots", "[0:v][1:v]concat=n=2:v=1:a=0,format=yuv420p[v]", [colour("red", 12.0), colour("blue", 12.0)], audio=False)
-        got = frames.extract(tools[0], long_film, [355, 365], self.tmp / "seek", "cell", 64)
+        got = frames.extract(tools[0], long_film, 0, [355, 365], self.tmp / "seek", "cell", 64)
         self.assertGreater(self.rgb_of(got[355])[0], 200)
         self.assertGreater(self.rgb_of(got[365])[2], 200)
 
@@ -444,9 +466,83 @@ class SafetyTests(ReferenceCase):
         self.addCleanup(shutil.rmtree, outside, ignore_errors=True)
         (self.root / ".kb").mkdir(exist_ok=True)
         (self.root / ".kb" / "reference").symlink_to(outside)
-        out = self.read(four_shots(), code=2)
-        self.assertIn("outside the project", out["error"])
+        out = self.read(four_shots(), code=1)
+        self.assertEqual(out["code"], "not-a-folder")
         self.assertEqual(list(outside.iterdir()), [])
+        (self.root / ".kb" / "reference").unlink()
+        digest = cache.file_digest(four_shots())
+        (self.root / ".kb" / "reference").mkdir()
+        (self.root / ".kb" / "reference" / str(digest)).symlink_to(outside)
+        self.assertEqual(self.read(four_shots(), code=1)["code"], "not-a-folder")
+        self.assertEqual(list(outside.iterdir()), [])
+
+    def test_the_checked_stream_is_the_one_decoded_not_an_attached_picture(self) -> None:
+        tools = video_synth.tools()
+        assert tools
+        cover = self.tmp / "cover.png"
+        video_synth._run([tools[0], "-v", "error", "-y", "-f", "lavfi", "-i", "color=red:s=64x64", "-frames:v", "1", str(cover)])
+        blue = film("blue-only", "[0:v]format=yuv420p[v]", [colour("blue", 2.0)], audio=False)
+        plain = self.tmp / "cover-last.mp4"
+        video_synth._run([tools[0], "-v", "error", "-y", "-i", str(cover), "-i", str(blue), "-map", "1:v", "-map", "0:v", "-c:v:0", "copy", "-c:v:1", "png",
+                          "-disposition:v:1", "attached_pic", str(plain)])
+        wrapped = self.tmp / "cover-first.mp4"
+        wrapped.write_bytes(cover_box_first(plain.read_bytes()))
+        from kblib.video.passes import Tools
+
+        facts = untrusted.facts(wrapped, Tools(tools[0], tools[1]))
+        self.assertEqual(facts["video"]["index"], 1)
+        out = self.read(wrapped)
+        self.assertEqual(out["file"]["video"]["index"], 1)
+        self.assertEqual({s["colour"]["hex"] for s in out["segments"]} & {"#ff0000", "#fe0000"}, set())
+        self.assertEqual(out["segments"][0]["colour"]["hex"][1:3], "00")
+
+    def test_a_percent_in_the_path_and_a_bad_saved_grid_are_survived(self) -> None:
+        tools = video_synth.tools()
+        assert tools
+        got = frames.extract(tools[0], four_shots(), 0, [1, 2], self.tmp / "100% launch", "cell", 64)
+        self.assertEqual(sorted(got), [1, 2])
+        self.assertTrue(all(p.is_file() for p in got.values()))
+        saved = Path(self.read(four_shots())["folder"]) / "analysis.json"
+        body = read_json(saved)
+        body["grid"] = {"bpm": 0, "offsetMs": 0, "beatsPerBar": 4}
+        write_json(saved, body)
+        self.assertFalse(self.read(four_shots())["cached"])
+
+    def test_the_conversation_gets_no_words_and_is_told_what_leaves(self) -> None:
+        out = self.read(four_shots(), "--force")
+        self.assertIn("goes to Anthropic", out["offTheMac"])
+        self.assertTrue(all("onScreen" not in s for s in out["segments"]))
+        self.assertIn("Launch day", json.dumps(read_json(Path(out["folder"]) / "analysis.json")["segments"]))
+        proc = self.kb(["reference", "analyse", str(four_shots())], cwd=self.root)
+        self.assertExit(proc, 0)
+        self.assertIn("goes to Anthropic", proc.stdout)
+        self.assertNotIn("stays on this Mac", proc.stdout)
+
+    def test_file_path_is_stored_clean_and_planted_saves_steer_nothing(self) -> None:
+        odd = self.tmp / "film\u202e.mp4"
+        shutil.copy(four_shots(), odd)
+        out = self.read(odd)
+        saved = Path(out["folder"]) / "analysis.json"
+        self.assertNotIn("\u202e", json.dumps(read_json(saved)["file"], ensure_ascii=False))
+        body = read_json(saved)
+        body["sheets"][0]["path"] = "../../../../.ssh/id_rsa"
+        write_json(saved, body)
+        again = self.read(odd)
+        self.assertFalse(again["cached"])
+        self.assertNotIn("id_rsa", json.dumps(again["sheets"]))
+        thumb = Path(again["folder"]) / again["segments"][0]["thumb"]
+        secret = self.tmp / "secret.jpg"
+        secret.write_bytes(b"not for the report")
+        thumb.unlink()
+        thumb.symlink_to(secret)
+        page = Path(self.read(odd, "--compare")["compare"]).read_text(encoding="utf-8")
+        self.assertNotIn(base64.b64encode(secret.read_bytes()).decode("ascii"), page)
+        real = Path(again["folder"]) / "analysis.json"
+        kept = self.tmp / "kept.json"
+        shutil.copy(real, kept)
+        real.unlink()
+        real.symlink_to(kept)
+        self.assertFalse(self.read(odd)["cached"])
 
 
 class DetectionTests(KbTestCase):

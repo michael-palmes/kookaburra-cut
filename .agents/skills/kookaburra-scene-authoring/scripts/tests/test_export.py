@@ -472,3 +472,12 @@ class ProgressTextTests(KbTestCase):
         finally:
             ex.emit = original  # type: ignore[assignment]
         self.assertEqual([p.split(": ", 1)[1].split(" ")[0] for p in printed], ["syncing", "render", "render", "finalising"])
+
+
+class MusicFileTests(KbTestCase):
+    def test_an_audio_file_outside_the_project_is_never_hashed(self) -> None:
+        for rel in ("/etc/hosts", "../secret.mp3"):
+            root = make_project(self.tmp / rel.strip("/.").replace("/", "-"), audio={"file": rel})
+            self.assertIsNone(ex.music_file(Project(root)))
+        root = make_project(self.tmp / "inside", audio={"file": "assets/track.mp3"})
+        self.assertEqual(ex.music_file(Project(root)), Path(root) / "assets" / "track.mp3")

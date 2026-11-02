@@ -191,7 +191,7 @@ under the project lock (`kblib.lock`) and re-validated after writing.
 | `song analyse [--file PATH] [--force] [--tracker nn\|dsp] [--lyrics] [--accept] [--dry-run]` | The app's song analyser through `<exe> song analyse` (works with the app closed): tempo fit, downbeat, sections, form, breaths, audible end, stabs, lyrics on request; cached by the audio's SHA-256 and copied to `.kb/song/<sha12>.json`; `project.json` changes only with `--accept`: the fitted grid (refused past a 33 ms drift) plus the form's parts and moments as `audio.sections` and `audio.cues`, never over an id already there. `--file` reads any audio or video file through kb's reach and `kblib/untrusted.py`, and refuses `--accept`. Code: `kblib/song.py` |
 | `song hits [--bars A-B] [--band low\|mid\|high] [--min-strength N] [--file PATH]` | Strong onsets as `bar:B.beat.16th` with a strength, read from the saved analysis (one fresh pass when it has none), on the project's grid or else the fit (`--json`: `hits`, each with `position`, `bar`, `beat`, `sixteenth`, `offMs`, `trackMs`, `projectMs`, `strength`) |
 | `project fit --to song-end [--hold MS] [--dry-run]` | Sets the last scene's length (unpinning it) so the film ends at the audible end plus the hold, in one transaction with the sidecar caches; warns when the last hit would play inside the soundtrack's fade |
-| `reference analyse FILE [--compare] [--force] [--tracker nn\|dsp] [--dry-run]` | Reads a reference film on this Mac into `.kb/reference/<sha>/` ("Reference films") |
+| `reference analyse FILE [--compare] [--force] [--tracker nn\|dsp] [--dry-run]` | Reads a reference film into `.kb/reference/<sha>/` ("Reference films") |
 | `chart ...` | Delegates to `scripts/chart.py`, arguments untouched |
 
 As built (`scripts/kblib/`):
@@ -659,10 +659,18 @@ so a launch film can be planned bar by bar against it. Code: `scripts/kblib/refe
   at 16 GB, 30 minutes and 8192 px a side. Anything odd is exit 1 `invalid`, before ffmpeg or
   the app decode a byte. `kb song analyse --file` and `kb song hits --file` take the same path.
   A file can lie about its length, so the decodes hold the limit too: the frame pass refuses a
-  film 10 s past what it declared, and the analyser's PCM stops at two hours.
-- **Output stays under the project.** `.kb/reference/<sha>/` is refused if a link would take
-  it outside; it is built in `.work-*` beside it and moved into place whole, so a failed run
-  leaves nothing half written. A whole saved `analysis.json` of the same version and SHA is
+  film 10 s past what it declared, and the analyser's PCM stops at two hours. Every decode maps
+  the stream `facts` checked (`video.index`), never `0:v:0`, which can be an attached picture.
+  `audio.file` takes the same checks before the analyser opens it (`song.own_soundtrack`):
+  project.json is untrusted, so an absolute or `..` path is refused by `beats.soundtrack_path`.
+- **What leaves the Mac.** The reading is local: ffmpeg, the analyser and Vision make no
+  request. What the agent then Reads goes to Anthropic with the conversation, so kb's output
+  (`--json` too) carries no frames or recognised words, and it and the kit ask for a yes before
+  the first Read. A lyrics tag and the file's path are stored cleaned (`clean_text`).
+- **Output stays in real folders.** `.kb/reference` and `<sha>` go through `real_dir`, so a
+  link at either step is exit 1 `not-a-folder`; a film is built in `.work-*` beside it and
+  moved into place whole, so a failed run leaves nothing half written. `load_saved` won't read
+  through a linked `analysis.json` or take a sheet name that isn't `sheet-NN.png`. A whole saved `analysis.json` of the same version and SHA is
   reused, with the beat sheet rewritten against the project's scenes as they are now.
 - **Cuts** (`frames.py`). One decode to 48x27 RGB on a 30 fps grid (every channel: red to blue
   has no green in it). A hard cut is a lone spike over at least 35% of the picture and four

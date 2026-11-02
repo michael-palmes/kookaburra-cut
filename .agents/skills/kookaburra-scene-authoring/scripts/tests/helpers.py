@@ -344,7 +344,7 @@ def make_project(root: Path, scenes: Optional[List[str]] = None, git: bool = Fal
 
 
 # Every path a hostile folder can link for kb. Add a new .kb/ scratch folder here as it lands.
-HOSTILE_KB_FOLDERS = [".kb", ".kb/leases", ".kb/agents", ".kb/captures", ".kb/verify", ".kb/archive", ".kb/song", ".kb/footage", ".kb/flashes", ".kb/previews"]
+HOSTILE_KB_FOLDERS = [".kb", ".kb/leases", ".kb/agents", ".kb/captures", ".kb/verify", ".kb/archive", ".kb/song", ".kb/reference", ".kb/footage", ".kb/flashes", ".kb/previews"]
 HOSTILE_KB_FILES = [".kb/lock", ".kb/events.jsonl", ".kb/notes.md"]
 
 
@@ -490,6 +490,15 @@ class KbTestCase(unittest.TestCase):
             self.env["KB_APP_BIN"] = str(target)
             os.environ["KB_APP_BIN"] = str(target)
         return target
+
+    def fake_media_tools(self, probe: Optional[Dict[str, Any]] = None) -> None:
+        """A stand-in ffprobe, so a test's fake soundtrack passes the media checks without real media."""
+        answer = probe or {"format": {"duration": "2.0", "format_name": "mp3"}, "streams": [{"index": 0, "codec_type": "audio", "codec_name": "mp3"}]}
+        tool = self.tmp / "bin" / "fake-ffprobe"
+        tool.parent.mkdir(parents=True, exist_ok=True)
+        tool.write_text(f"#!/bin/sh\ncat <<'JSON'\n{json.dumps(answer)}\nJSON\n")
+        tool.chmod(0o755)
+        self.env["KB_FFMPEG"], self.env["KB_FFPROBE"] = str(tool), str(tool)
 
     def fake_bundle(self, plist: Dict[str, Any], **behaviour: Any) -> Path:
         """A fake Kookaburra Cut.app whose binary runs the fake CLI; returns the .app folder."""

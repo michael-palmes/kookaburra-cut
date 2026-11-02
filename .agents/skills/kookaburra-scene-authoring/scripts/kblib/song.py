@@ -21,7 +21,7 @@ from .beats import cache, model
 from .beats import commands as beats
 from .film import timeline as tl
 from .project import stem_of
-from .util import EXIT_ENV, EXIT_OK, EXIT_PROBLEMS, KbError, emit, emit_err, fmt_secs, is_number
+from .util import EXIT_ENV, EXIT_OK, EXIT_PROBLEMS, KbError, clean_text, emit, emit_err, fmt_secs, is_number
 from .video import appcli
 
 ANALYSE_TIMEOUT_S = 600.0
@@ -30,6 +30,7 @@ BANDS = ("low", "mid", "high")
 DEFAULT_MIN_STRENGTH = 0.5
 # project.ts DEFAULT_AUDIO_FADE_OUT_MS.
 DEFAULT_FADE_OUT_MS = 1000
+MAX_LYRICS_CHARS = 20000
 _BARS = re.compile(r"(-?\d+)(?:-(-?\d+))?\Z", re.ASCII)
 
 EPILOG = """\
@@ -254,6 +255,11 @@ def print_summary(rel: str, s: Dict[str, Any], resp: Dict[str, Any], copy: Optio
         emit(f"  saved: {copy}")
 
 
+def clean_lyrics(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """A lyrics tag is the file's own text: kept as data, capped, with control and format characters visible."""
+    return {"source": clean_text(raw.get("source")), "lang": clean_text(raw.get("lang")), "text": clean_text(raw.get("text"), MAX_LYRICS_CHARS)}
+
+
 def analyse_file(ctx: Any, info: appcli.CliInfo, path: Path, force: bool, tracker: Optional[str], timeout: float) -> Tuple[Dict[str, Any], Dict[str, Any], Any]:
     """Runs the app's analyser over one file and copies the result to .kb/song/. Returns (analysis, the CLI's answer, the copy's write)."""
     project = ctx.project
@@ -269,6 +275,8 @@ def analyse_file(ctx: Any, info: appcli.CliInfo, path: Path, force: bool, tracke
     analysis = resp.get("analysis")
     if not isinstance(analysis, dict) or not isinstance(analysis.get("sha256"), str):
         raise KbError("the song analysis answered without an analysis", EXIT_ENV, kind="env", hint=UPDATE_HINT)
+    if isinstance(analysis.get("lyrics"), dict):
+        analysis["lyrics"] = clean_lyrics(analysis["lyrics"])
     copy_rel = cache.copy_rel(analysis["sha256"])
     if not ctx.dry_run:
         lockmod.kb_dir(project)
@@ -283,6 +291,20 @@ def named_file(ctx: Any, raw: str) -> Path:
     return path
 
 
+def own_soundtrack(project: Any, manifest: Dict[str, Any]) -> Tuple[str, Path]:
+    """The project's soundtrack, checked as any file named on the command line would be: project.json is just as untrusted."""
+    from .check import AUDIO_EXTS
+
+    rel, path = beats.require_soundtrack(project, manifest)
+    if not path.is_file():
+        raise KbError(f"the soundtrack {rel} is missing on disk", EXIT_PROBLEMS, kind="invalid", hint="restore the file, or set another with ./kb project set audio.file")
+    if rel.rsplit(".", 1)[-1].lower() not in AUDIO_EXTS:
+        raise KbError(f"the soundtrack {rel} is not audio: a project's soundtrack is mp3, wav, m4a, aac, flac or ogg", EXIT_PROBLEMS, kind="invalid",
+                      hint="for a song inside an mp4, ask the user to pick it under Music > Choose track, which keeps only the audio")
+    untrusted.facts(path, need_audio=True)
+    return rel, path
+
+
 def cmd_analyse(ctx: Any) -> int:
     a = ctx.args
     project = ctx.project
@@ -293,10 +315,8 @@ def cmd_analyse(ctx: Any) -> int:
         path = named_file(ctx, a.file)
         rel, offset = str(path), 0
     else:
-        rel, path = beats.require_soundtrack(project, manifest)
+        rel, path = own_soundtrack(project, manifest)
         offset = beats.start_offset(manifest)
-        if not path.is_file():
-            raise KbError(f"the soundtrack {rel} is missing on disk", EXIT_PROBLEMS, kind="invalid", hint="restore the file, or set another with ./kb project set audio.file")
     info = appcli.locate()
     analysis, resp, mut = analyse_file(ctx, info, path, a.force, a.tracker, a.timeout)
     copy_abs = str(project.root / cache.copy_rel(analysis["sha256"]))
@@ -368,9 +388,7 @@ def cmd_hits(ctx: Any) -> int:
         path = named_file(ctx, a.file)
         grid, offset, grid_from = None, 0, "fit"
     else:
-        rel, path = beats.require_soundtrack(project, manifest)
-        if not path.is_file():
-            raise KbError(f"the soundtrack {rel} is missing on disk", EXIT_PROBLEMS, kind="invalid", hint="restore the file, or set another with ./kb project set audio.file")
+        _rel, path = own_soundtrack(project, manifest)
         grid = model.grid_of(model.project_music(manifest))
         offset = beats.start_offset(manifest)
         grid_from = "authored" if grid else "fit"
@@ -411,9 +429,7 @@ def cmd_fit(ctx: Any) -> int:
     project = ctx.project
     if not (math.isfinite(a.hold) and a.hold >= 0):
         raise KbError("--hold is how long the film stays past the music, so it can't be negative", EXIT_ENV, kind="usage")
-    rel, path = beats.require_soundtrack(project, project.manifest())
-    if not path.is_file():
-        raise KbError(f"the soundtrack {rel} is missing on disk", EXIT_PROBLEMS, kind="invalid", hint="restore the file, or set another with ./kb project set audio.file")
+    rel, path = own_soundtrack(project, project.manifest())
     ending = saved_analysis(ctx, path).get("ending")
     end = ending.get("audibleEndMs") if isinstance(ending, dict) else None
     if not is_number(end) or end <= 0:

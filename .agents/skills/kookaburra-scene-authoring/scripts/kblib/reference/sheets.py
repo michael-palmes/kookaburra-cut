@@ -53,13 +53,13 @@ def _labelled(ffmpeg: str, chunk: List[Dict[str, Any]], lay: Dict[str, Any], out
     return final
 
 
-def draw(ffmpeg: str, film: Path, grid: Optional[Dict[str, Any]], duration_ms: float, aspect: float, out_dir: Path, work: Path) -> List[Dict[str, Any]]:
+def draw(ffmpeg: str, film: Path, stream: int, grid: Optional[Dict[str, Any]], duration_ms: float, aspect: float, out_dir: Path, work: Path) -> List[Dict[str, Any]]:
     """The sheets in out_dir: [{ path (name), index, fromBar?, toBar?, fromMs, toMs }]. duration_ms is the picture's own length, which audio can outlast."""
     plan = bar_cells(grid, duration_ms) if grid else strip_cells(duration_ms)
     cells = plan["cells"]
     if not cells:
         return []
-    pngs = fr.extract(ffmpeg, film, [c["frame"] for c in cells], work / "cells", "cell", CELL_WIDTH)
+    pngs = fr.extract(ffmpeg, film, stream, [c["frame"] for c in cells], work / "cells", "cell", CELL_WIDTH)
     cells = [dict(c, png=str(pngs[c["frame"]])) for c in cells if c["frame"] in pngs]
     out_dir.mkdir(parents=True, exist_ok=True)
     sheets: List[Dict[str, Any]] = []

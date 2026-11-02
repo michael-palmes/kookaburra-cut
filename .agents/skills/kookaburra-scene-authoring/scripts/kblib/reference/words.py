@@ -1,4 +1,4 @@
-"""Words on screen, read by macOS Vision through the app's `media ocr`, on this Mac. The text comes from an untrusted film: every string is cleaned and capped here, before anything else sees it."""
+"""Words on screen, read by macOS Vision through the app's `media ocr`, which runs on this Mac. The text comes from an untrusted film: every string is cleaned and capped here, before anything else sees it."""
 
 from __future__ import annotations
 
@@ -50,12 +50,12 @@ def pick_frames(p: fr.Pass, segments: List[Dict[str, Any]]) -> Tuple[List[int], 
     return read, same_as
 
 
-def recognise(ffmpeg: str, film: Path, read: List[int], work: Path) -> Dict[str, Any]:
+def recognise(ffmpeg: str, film: Path, stream: int, read: List[int], work: Path) -> Dict[str, Any]:
     """{ available, reason?, frames: { frame: [lines] } }. An app without OCR, or a failed run, costs the words and nothing else."""
     cli, why = conform.find_media_cli("ocr")
     if cli is None:
         return {"available": False, "reason": why, "frames": {}}
-    stills = fr.extract(ffmpeg, film, read, work / "ocr", "ocr", OCR_WIDTH)
+    stills = fr.extract(ffmpeg, film, stream, read, work / "ocr", "ocr", OCR_WIDTH)
     try:
         answer = conform.media_json(cli, ["ocr", "--dir", str((work / "ocr").resolve())], OCR_TIMEOUT_S)
     except KbError as e:

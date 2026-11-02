@@ -117,7 +117,11 @@ def source_hashes(project: Project) -> Dict[str, str]:
 def music_file(project: Project) -> Optional[Path]:
     audio = project.manifest(reload=True).get("audio")
     rel = audio.get("file") if isinstance(audio, dict) else None
-    return project.root / rel if isinstance(rel, str) and rel else None
+    if not isinstance(rel, str) or not rel:
+        return None
+    from .beats.commands import stays_inside
+
+    return project.root / rel if stays_inside(rel) else None
 
 
 def source_state(project: Project, sources: Optional[Dict[str, str]] = None) -> Dict[str, str]:

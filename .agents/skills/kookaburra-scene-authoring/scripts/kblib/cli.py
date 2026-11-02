@@ -91,7 +91,7 @@ the cwd, or uses $CLAUDE_PROJECT_DIR.
              timeline | timeline apply PLAN [--ripple]   (cuts and transitions in bars and ms)
              song analyse [--file PATH] [--force] [--tracker nn|dsp] [--lyrics] [--accept]
              song hits [--bars A-B] [--band low|mid|high] [--min-strength N] [--file PATH]
-             reference analyse FILE [--compare] [--force]   (read a reference film, on this Mac)
+             reference analyse FILE [--compare] [--force]   (read a film; ask before you Read its frames)
   Helpers    chart ... (chart data) | hook EVENT (Claude Code)
 
 S is a scene index (0-based) or file stem (03-pricing). PATH is dotted

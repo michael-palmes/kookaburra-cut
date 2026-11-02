@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import argparse
 import math
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .. import lock as lockmod
-from .. import music
+from .. import music, reach
 from ..film import timeline as tl
 from ..project import MANIFEST, Project
 from ..util import EXIT_ENV, EXIT_OK, EXIT_PROBLEMS, KbError, emit, emit_err, fmt_secs, is_number, js_json
@@ -37,13 +37,25 @@ optional +Nms or -Nms nudge. Times: 12.5s, 12500ms, or bare seconds. Sidecar key
 # ── reading ───────────────────────────────────────────────────────────────────
 
 
+def stays_inside(rel: str) -> bool:
+    name = PurePosixPath(rel)
+    return not (name.is_absolute() or ".." in name.parts or "\0" in rel)
+
+
+def soundtrack_path(project: Project, rel: str) -> Path:
+    """audio.file as a path. Imported projects write project.json, so it stays inside the project and passes kb's reach like any file kb is named."""
+    if not stays_inside(rel):
+        raise KbError(f"audio.file {rel} points outside the project, so kb won't read it", EXIT_PROBLEMS, kind="invalid", hint=NO_SOUNDTRACK_HINT)
+    return reach.guard_read(project, str(project.root / rel), "audio.file")
+
+
 def soundtrack(project: Project, manifest: Dict[str, Any]) -> Tuple[Optional[str], Optional[Path], Optional[str]]:
     """(audio.file, its path, its SHA-256) with None for whatever is missing."""
     audio = manifest.get("audio")
     rel = audio.get("file") if isinstance(audio, dict) and isinstance(audio.get("file"), str) else None
     if not rel:
         return None, None, None
-    path = project.root / rel
+    path = soundtrack_path(project, rel)
     return rel, path, (cache.file_digest(path) if path.is_file() else None)
 
 

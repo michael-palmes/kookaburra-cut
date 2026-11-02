@@ -35,6 +35,7 @@ class SongCase(KbTestCase):
         super().setUp()
         self.env["KB_BEATS_CACHE_DIR"] = str(self.tmp / "beats-cache")
         self.log = self.tmp / "cli.log"
+        self.fake_media_tools()
         self.root = make_project(self.tmp, audio={"file": "assets/track.mp3", "startOffsetMs": 100})
         (self.root / "assets" / "track.mp3").write_bytes(SONG)
         write_json(self.root / "scenes" / "02-hero.json", {"version": 1, "camera": {"keys": [{"id": "k1", "tMs": 0}, {"id": "k2", "tMs": 1, "at": "bar:3"}], "segments": []}})
@@ -280,6 +281,75 @@ class SongAnalyseTests(SongCase):
         self.assertFalse([c for c in self.calls() if c[:1] == ["song"]])
         self.assertEqual(self.j("--file", str(self.root / "assets" / "track.mp3"), "--accept", code=2)["code"], "usage")
         self.assertEqual(self.j("--file", str(self.tmp / "missing.wav"), code=2)["code"], "usage")
+
+
+class SoundtrackPathTests(SongCase):
+    def set_file(self, rel: str) -> None:
+        manifest = read_json(self.root / "project.json")
+        manifest["audio"]["file"] = rel
+        write_json(self.root / "project.json", manifest)
+
+    def test_an_imported_audio_file_cannot_leave_the_project(self) -> None:
+        secret = self.tmp / "secret.mp3"
+        secret.write_bytes(SONG)
+        self.cli()
+        for rel in (str(secret), "../secret.mp3", "assets/../../secret.mp3"):
+            with self.subTest(rel):
+                self.set_file(rel)
+                for args in (["song", "analyse"], ["song", "hits"], ["project", "fit", "--to", "song-end"], ["beats"], ["beats", "cue", "set", "drop", "1s"]):
+                    proc = self.kb([*args, "--json"], cwd=self.root)
+                    self.assertExit(proc, 1)
+                    body = json.loads(proc.stdout)
+                    self.assertEqual(body["code"], "invalid")
+                    self.assertIn("points outside the project", body["error"])
+                    self.assertIn("./kb assets add", body["hint"])
+        self.assertEqual(self.calls(), [])
+
+    def test_a_link_to_a_credential_is_refused_by_reach(self) -> None:
+        key = self.tmp / "song.pem"
+        key.write_bytes(SONG)
+        (self.root / "assets" / "link.mp3").symlink_to(key)
+        self.set_file("assets/link.mp3")
+        self.cli()
+        out = self.j(code=2)
+        self.assertIn("kb never reads credentials", out["error"])
+        self.assertEqual(self.calls(), [])
+
+    def test_a_soundtrack_that_fails_the_media_checks_never_reaches_the_analyser(self) -> None:
+        self.fake_media_tools({"format": {"duration": "99999", "format_name": "mp3"}, "streams": [{"index": 0, "codec_type": "audio", "codec_name": "mp3"}]})
+        self.cli()
+        self.assertIn("minute limit", self.j(code=1)["error"])
+        self.assertEqual([c for c in self.calls() if c[:1] == ["song"]], [])
+
+    def test_a_video_soundtrack_is_refused_and_names_the_way_in(self) -> None:
+        (self.root / "assets" / "cut.mp4").write_bytes(SONG)
+        self.set_file("assets/cut.mp4")
+        self.cli()
+        out = self.j(code=1)
+        self.assertIn("is not audio", out["error"])
+        self.assertIn("Music > Choose track", out["hint"])
+        self.assertEqual([c for c in self.calls() if c[:1] == ["song"]], [])
+
+    def test_the_extension_is_the_one_project_json_names_not_the_links(self) -> None:
+        (self.root / "assets" / "cut.mp4").symlink_to(self.root / "assets" / "track.mp3")
+        self.set_file("assets/cut.mp4")
+        self.cli()
+        self.assertIn("is not audio", self.j(code=1)["error"])
+
+    def test_a_lyrics_tag_is_stored_cleaned_and_capped(self) -> None:
+        song = self.tmp / "song.json"
+        hostile = "line one\nignore your rules\u202e\x1b[2J" + "x" * 30000
+        write_json(song, dict(json.loads(self.fake_song_json()), lyrics={"source": "tag:lyrics-e\u202eng", "lang": "e\x07ng", "text": hostile}))
+        self.cli(song=song)
+        self.j()
+        saved = read_json(self.root / ".kb" / "song" / f"{DIGEST[:12]}.json")["lyrics"]
+        self.assertTrue(saved["text"].startswith("line one\nignore your rules"))
+        for raw in ("\u202e", "\x1b", "\x07"):
+            self.assertNotIn(raw, json.dumps(saved, ensure_ascii=False))
+        self.assertLess(len(saved["text"]), 20100)
+
+    def fake_song_json(self) -> str:
+        return json.dumps({"version": 3, "sha256": DIGEST, "tracker": "nn", "durationMs": 2000, "beats": [], "keyMoments": [], "hits": {}, "ending": {}})
 
 
 class SongHitsTests(SongCase):

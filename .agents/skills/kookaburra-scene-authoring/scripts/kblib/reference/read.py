@@ -1,20 +1,23 @@
-"""Reading a reference film on this Mac into `.kb/reference/<sha>/`. The file is untrusted: reach and the media checks come first, every ffmpeg runs under a demuxer whitelist, nothing is written outside the project, and the folder only appears once it is whole."""
+"""Reading a reference film into `.kb/reference/<sha>/`. The file is untrusted: reach and the media checks come first, every ffmpeg runs under a demuxer whitelist, and the folder only appears once it is whole."""
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .. import lock as lockmod
-from .. import reach, song, untrusted
+from .. import song, untrusted
 from ..beats import cache, model
 from ..beats import commands as beats
 from ..film import timeline as tl
 from ..project import stem_of
-from ..util import EXIT_ENV, EXIT_OK, KbError, atomic_write_json, atomic_write_text, clean_text, emit, is_number
+from ..realdir import no_follow, real_dir
+from ..util import EXIT_OK, KbError, atomic_write_json, atomic_write_text, clean_text, emit, is_number
 from ..video import appcli
 from ..video.passes import find_tools
 from . import beatsheet, compare, frames, sheets, words
@@ -22,23 +25,22 @@ from . import beatsheet, compare, frames, sheets, words
 VERSION = 1
 THUMB_WIDTH = 240
 MAX_THUMBS = 200
+_SHEET = re.compile(r"sheet-[0-9]+\.png\Z")
+# Text output and --json leave the words in the folder, so nothing of the film reaches the conversation until this is answered.
+OFF_THE_MAC = ("kb read this film on this Mac. What you Read from that folder goes to Anthropic with the conversation: the sheets are its frames, "
+               "and beat-sheet.md and analysis.json hold its words. Tell the user and wait for a yes first; beat-sheet.json and bar-map.json hold only timings.")
 
 
 def out_folder(project: Any, digest: str) -> Path:
-    """The film's folder, refused if a link would take it outside the project."""
-    lockmod.kb_dir(project)
-    folder = project.root / lockmod.KB_DIR / "reference" / digest
-    root = reach.resolve(str(project.root))
-    resolved = reach.resolve(str(folder))
-    if root not in resolved.parents:
-        raise KbError(f"{folder} resolves outside the project ({resolved}), so kb will not write there", EXIT_ENV, kind="usage")
-    return folder
+    """The film's folder, not made yet. A shared folder keeps its links, so a link at any step is refused."""
+    return real_dir(real_dir(lockmod.kb_dir(project), "reference"), digest, make=False)
 
 
 def load_saved(folder: Path, digest: str) -> Optional[Dict[str, Any]]:
     """A whole earlier read of these bytes, or None to read the film again."""
     try:
-        data = json.loads((folder / "analysis.json").read_text(encoding="utf-8"))
+        with open(folder / "analysis.json", encoding="utf-8", opener=no_follow) as saved:
+            data = json.load(saved)
     except (OSError, ValueError):
         return None
     if not isinstance(data, dict) or data.get("version") != VERSION or data.get("sha256") != digest:
@@ -47,6 +49,10 @@ def load_saved(folder: Path, digest: str) -> Optional[Dict[str, Any]]:
     whole = isinstance(file, dict) and is_number(file.get("durationMs")) and isinstance(data.get("segments"), list) and isinstance(data.get("words"), dict)
     whole = whole and all(isinstance(s, dict) and is_number(s.get("fromMs")) and is_number(s.get("toMs")) and "endsWith" in s for s in data["segments"])
     whole = whole and all(is_number(data.get(k)) for k in ("hardCuts", "continuousChanges")) and isinstance(data.get("moves"), list)
+    sheets = data.get("sheets")
+    whole = whole and isinstance(sheets, list) and all(isinstance(s, dict) and isinstance(s.get("path"), str) and _SHEET.match(s["path"]) for s in sheets)
+    grid = data.get("grid")
+    whole = whole and (grid is None or (isinstance(grid, dict) and {"bpm", "offsetMs", "beatsPerBar"} <= set(grid) and not model.sanitise_music({"grid": grid})[1]))
     return data if whole else None
 
 
@@ -91,11 +97,7 @@ def read_film(ctx: Any, film: Path, facts: Dict[str, Any], digest: str, folder: 
     """Everything but the compare report, built in a scratch folder under the project and moved into place whole."""
     project = ctx.project
     tools = find_tools()
-    parent = folder.parent
-    parent.mkdir(parents=True, exist_ok=True)
-    work = parent / f".work-{digest[:12]}-{os.getpid()}"
-    shutil.rmtree(work, ignore_errors=True)
-    work.mkdir(parents=True)
+    work = Path(tempfile.mkdtemp(prefix=f".work-{digest[:12]}-", dir=folder.parent))
     try:
         analysis: Optional[Dict[str, Any]] = None
         if facts.get("audio"):
@@ -103,7 +105,9 @@ def read_film(ctx: Any, film: Path, facts: Dict[str, Any], digest: str, folder: 
         fit = analysis.get("fit") if analysis and isinstance(analysis.get("fit"), dict) else None
         grid = song.fit_grid(fit) if fit and model.drift_holds(fit) else None
         duration = float(facts["durationMs"])
-        decoded = frames.decode(tools.ffmpeg, film, duration)
+        video = facts["video"]
+        stream = video["index"]
+        decoded = frames.decode(tools.ffmpeg, film, stream, duration)
         found, moves = frames.boundaries(decoded)
         segs = frames.segments(decoded, found)
         by_frame = {b["frame"]: b for b in found}
@@ -111,19 +115,18 @@ def read_film(ctx: Any, film: Path, facts: Dict[str, Any], digest: str, folder: 
             if seg["endsWith"] == "continuous":
                 seg["transitionMs"] = by_frame[seg["toFrame"]]["durationMs"]
         read, same_as = words.pick_frames(decoded, segs)
-        seen = words.recognise(tools.ffmpeg, film, read, work)
+        seen = words.recognise(tools.ffmpeg, film, stream, read, work)
         beat_ms = 60000.0 / grid["bpm"] if grid else None
         totals = words.fill_segments(segs, seen["frames"], same_as, beat_ms)
         word_block = {k: seen[k] for k in ("available", "reason", "engine") if k in seen}
         word_block.update(totals)
-        thumbs = frames.extract(tools.ffmpeg, film, [(s["fromFrame"] + s["toFrame"]) // 2 for s in segs[:MAX_THUMBS]], work / "thumbs", "thumb", THUMB_WIDTH, quality=5)
+        thumbs = frames.extract(tools.ffmpeg, film, stream, [(s["fromFrame"] + s["toFrame"]) // 2 for s in segs[:MAX_THUMBS]], work / "thumbs", "thumb", THUMB_WIDTH, quality=5)
         for seg in segs[:MAX_THUMBS]:
             shot = thumbs.get((seg["fromFrame"] + seg["toFrame"]) // 2)
             if shot:
                 seg["thumb"] = f"thumbs/{shot.name}"
-        video = facts["video"]
         aspect = video["width"] / float(video["height"])
-        drawn = sheets.draw(tools.ffmpeg, film, grid, min(duration, frames.frame_ms(decoded.count)), aspect, work / "out", work)
+        drawn = sheets.draw(tools.ffmpeg, film, stream, grid, min(duration, frames.frame_ms(decoded.count)), aspect, work / "out", work)
         bar_map = bar_map_of(analysis, grid)
         data: Dict[str, Any] = {
             "version": VERSION, "sha256": digest, "file": dict(facts, name=clean_text(film.name)), "grid": grid,
@@ -183,11 +186,12 @@ def print_text(data: Dict[str, Any], folder: Path, cached: bool, compared: Optio
     emit(f"  folder: {folder}")
     for sheet in data.get("sheets") or []:
         span = f"bars {sheet['fromBar']}-{sheet['toBar']}" if "fromBar" in sheet else f"{sheet['fromMs'] / 1000:.1f}-{sheet['toMs'] / 1000:.1f} s"
-        emit(f"  sheet: {folder / sheet['path']} ({span}, Read it)")
+        emit(f"  sheet: {folder / sheet['path']} ({span})")
     emit(f"  beat sheet: {folder / 'beat-sheet.md'}")
     emit(f"  plan: {folder / 'beat-sheet.json'} (./kb timeline apply takes it as it is)")
     if compared:
         emit(f"  compare: {compared}")
+    emit(OFF_THE_MAC)
 
 
 def cmd_analyse(ctx: Any) -> int:
@@ -207,14 +211,15 @@ def cmd_analyse(ctx: Any) -> int:
             emit(f"dry run, nothing written: {film.name} passes the checks ({facts['durationMs'] / 1000:.1f} s); it would be read into {folder}")
         return EXIT_OK
     folder = out_folder(project, digest)
-    saved = None if a.force else load_saved(folder, digest)
+    saved = None if a.force or a.tracker else load_saved(folder, digest)
     if saved:
         write_sheet(folder, saved, scene_stems(project))
     data = saved or read_film(ctx, film, facts, digest, folder)
     compared = write_compare(ctx, data, folder) if a.compare else None
     if ctx.json:
-        ctx.out({"folder": str(folder), "cached": saved is not None, "compare": str(compared) if compared else None,
-                 "plan": str(folder / "beat-sheet.json"), "beatSheetPath": str(folder / "beat-sheet.md"), "dryRun": False, **data})
+        shown = dict(data, segments=[{k: v for k, v in s.items() if k != "onScreen"} for s in data["segments"]])
+        ctx.out({"folder": str(folder), "cached": saved is not None, "compare": str(compared) if compared else None, "plan": str(folder / "beat-sheet.json"),
+                 "beatSheetPath": str(folder / "beat-sheet.md"), "offTheMac": OFF_THE_MAC, "dryRun": False, **shown})
     else:
         print_text(data, folder, saved is not None, compared)
     return EXIT_OK

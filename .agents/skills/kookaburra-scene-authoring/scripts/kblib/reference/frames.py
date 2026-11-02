@@ -73,14 +73,14 @@ def mean_abs(a: bytes, b: bytes) -> float:
     return sum(map(abs, map(sub, a, b))) / len(a) if a else 0.0
 
 
-def decode(ffmpeg: str, path: Path, declared_ms: float, timeout: float = DECODE_TIMEOUT_S) -> Pass:
-    """Every frame of the first video stream on a 30 fps grid, small. A file that runs past the length it declared is refused, so the length cap can't be lied around."""
+def decode(ffmpeg: str, path: Path, stream: int, declared_ms: float, timeout: float = DECODE_TIMEOUT_S) -> Pass:
+    """Every frame of the checked stream on a 30 fps grid, small. A file that runs past the length it declared is refused, so the length cap can't be lied around."""
     most = int((declared_ms + DECLARED_MARGIN_MS) * FPS / 1000.0)
     width, height = SMALL
     size = width * height * 3
     graph = f"fps={FPS}:start_time=0,scale={width}:{height}:flags=area,format=rgb24"
     args = [ffmpeg, "-hide_banner", "-v", "error", "-nostdin", *untrusted.INPUT_ARGS, "-i", str(path),
-            "-map", "0:v:0", "-an", "-sn", "-dn", "-vf", graph, "-f", "rawvideo", "-"]
+            "-map", f"0:{stream}", "-an", "-sn", "-dn", "-vf", graph, "-f", "rawvideo", "-"]
     out = Pass()
     with tempfile.TemporaryFile() as errors:
         try:
@@ -233,7 +233,7 @@ def segments(p: Pass, found: List[Dict[str, Any]], colour_samples: int = 8) -> L
     return out
 
 
-def extract(ffmpeg: str, path: Path, frames: List[int], out_dir: Path, stem: str, width: int, quality: int = 3, timeout: float = DECODE_TIMEOUT_S) -> Dict[int, Path]:
+def extract(ffmpeg: str, path: Path, stream: int, frames: List[int], out_dir: Path, stem: str, width: int, quality: int = 3, timeout: float = DECODE_TIMEOUT_S) -> Dict[int, Path]:
     """JPEGs of frames on the 30 fps grid: { frame: path }. ffmpeg's expressions stop parsing at about 100 terms, so frames go in batches, each seeking near its first."""
     order = sorted(set(frames))
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -243,8 +243,8 @@ def extract(ffmpeg: str, path: Path, frames: List[int], out_dir: Path, stem: str
         graph = f"fps={FPS}:start_time=0,select='{expr}',scale={width}:-2:flags=lanczos"
         seek = frame_ms(batch[0]) / 1000.0 - SEEK_MARGIN_S
         head = ["-noaccurate_seek", "-ss", f"{seek:.3f}", "-copyts", "-start_at_zero"] if seek > 0 else []
-        args = [ffmpeg, "-hide_banner", "-v", "error", "-nostdin", "-y", *untrusted.INPUT_ARGS, *head, "-i", str(path), "-map", "0:v:0", "-an", "-sn", "-dn",
-                "-vf", graph, "-fps_mode", "passthrough", "-q:v", str(quality), "-frames:v", str(len(batch)), "-start_number", str(start + 1), str(out_dir / f"{stem}-%05d.jpg")]
+        args = [ffmpeg, "-hide_banner", "-v", "error", "-nostdin", "-y", *untrusted.INPUT_ARGS, *head, "-i", str(path), "-map", f"0:{stream}", "-an", "-sn", "-dn",
+                "-vf", graph, "-fps_mode", "passthrough", "-q:v", str(quality), "-frames:v", str(len(batch)), "-start_number", str(start + 1), str(out_dir).replace("%", "%%") + f"/{stem}-%05d.jpg"]
         try:
             proc = subprocess.run(args, capture_output=True, text=True, errors="replace", timeout=timeout, stdin=subprocess.DEVNULL)
         except OSError as e:

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from . import reach
-from .util import EXIT_ENV, EXIT_PROBLEMS, KbError
+from .util import EXIT_ENV, EXIT_PROBLEMS, KbError, clean_text
 from .video.passes import Tools, find_tools
 
 MAX_BYTES = 16 * 1024 ** 3
@@ -48,7 +48,7 @@ def _finite(value: Any) -> Optional[float]:
 
 
 def facts(path: Path, tools: Optional[Tools] = None, *, need_video: bool = False, need_audio: bool = False) -> Dict[str, Any]:
-    """{ path, bytes, durationMs, container, video?: {codec, width, height, fps}, audio?: {codec} }, or a refusal."""
+    """{ path, bytes, durationMs, container, video?: {index, codec, width, height}, audio?: {codec} }, or a refusal. video.index is the stream these checks passed, the one to map."""
     tools = tools or find_tools()
     try:
         size = path.stat().st_size
@@ -81,7 +81,7 @@ def facts(path: Path, tools: Optional[Tools] = None, *, need_video: bool = False
     if seconds * 1000 > MAX_DURATION_MS:
         raise invalid(f"{path.name} runs {seconds / 60:.1f} minutes, over the {MAX_DURATION_MS // 60000} minute limit for a file kb reads",
                       hint="trim it to the part you want to study")
-    out: Dict[str, Any] = {"path": str(path), "bytes": size, "durationMs": int(round(seconds * 1000)), "container": fmt.get("format_name"),
+    out: Dict[str, Any] = {"path": clean_text(str(path)), "bytes": size, "durationMs": int(round(seconds * 1000)), "container": fmt.get("format_name"),
                            "video": None, "audio": None}
     video = next((s for s in streams if s.get("codec_type") == "video" and not (s.get("disposition") or {}).get("attached_pic")), None)
     if video:
@@ -91,7 +91,10 @@ def facts(path: Path, tools: Optional[Tools] = None, *, need_video: bool = False
         width, height = _finite(video.get("width")), _finite(video.get("height"))
         if not width or not height or width <= 0 or height <= 0 or width > MAX_EDGE or height > MAX_EDGE:
             raise invalid(f"{path.name} says its picture is {video.get('width')}x{video.get('height')}; kb reads up to {MAX_EDGE} px a side")
-        out["video"] = {"codec": codec, "width": int(width), "height": int(height)}
+        index = video.get("index")
+        if not isinstance(index, int) or isinstance(index, bool) or index < 0:
+            raise invalid(f"ffprobe gave no stream number for the video in {path.name}")
+        out["video"] = {"index": index, "codec": codec, "width": int(width), "height": int(height)}
     audio = next((s for s in streams if s.get("codec_type") == "audio"), None)
     if audio:
         codec = audio.get("codec_name")
