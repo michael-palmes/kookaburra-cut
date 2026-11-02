@@ -461,7 +461,9 @@ Every kb command, including new ones, follows these rules. Code: `scripts/kblib/
   envelope's `code`: `usage`, `env`, `no-app`, `needs-trust`, `invalid`, `leased`,
   `others-changed`, `conflict`, `locked`, `index-locked`, `app-busy`, `bridge-timeout`,
   `gpu-stalled`, `gpu-wedged`, `throttled`, `too-large`, `flashes`, `not-a-folder` (a link or
-  file where kb keeps its own folder or file; exit 1), `no-grid` (a musical
+  file where kb keeps its own folder or file; exit 1), `git-config` (a `.git` that reaches
+  elsewhere, or a `.git/config` key outside what `git init` and `git remote add` write; exit 1),
+  `no-grid` (a musical
   position, `--duration-bars` or `--cut-at` with no `audio.grid`; exit 1). Each kind has a
   default hint (`DEFAULT_HINTS`). Never print a traceback.
 - **Writes.** Every write to `project.json`, `scenes/**` or `.kb/**` goes through
