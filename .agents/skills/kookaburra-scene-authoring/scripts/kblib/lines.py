@@ -6,7 +6,7 @@ import re
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 TAG_RE = re.compile(r"<AnimatedHeadline\b([^<]*?)/?>", re.S)
-STRING_ATTR = r"""\b{name}\s*=\s*(?:\{{\s*)?(["'`])((?:\\.|(?!\1).)*)\1"""
+STRING_ATTR = r"""\b{name}\s*=\s*(?:\{{\s*)?(["'`])((?:\\.|(?!\1)[^\\])*)\1"""
 ATTR_RE = r"\b{name}\s*="
 
 

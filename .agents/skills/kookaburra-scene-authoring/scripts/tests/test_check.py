@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import List
 
-from kblib import check
+from kblib import check, lines
 from kblib.project import Project
 
 from .helpers import SCENE_TSX, KbTestCase, make_project, read_json, write, write_json
@@ -46,6 +46,11 @@ class CheckTests(KbTestCase):
     def test_single_line_motion_that_can_wrap(self) -> None:
         self.assertTrue(self.single_line_tsx('<AnimatedHeadline text="copy" preset="word-cycle" maxWidth={2} />'))
         self.assertFalse(self.single_line_tsx('<AnimatedHeadline text="copy" preset="word-cycle" maxWidth={2} fit="width" />'))
+
+    def test_an_unclosed_run_of_backslashes_cannot_hang_the_check(self) -> None:
+        attrs = 'preset="rise-mask" text="' + "\\" * 5000
+        self.assertIsNone(lines.string_attr(attrs, "text"))
+        self.assertEqual(lines.string_attr('text="a\\"b"', "text"), 'a\\"b')
 
     def test_commented_out_jsx_stays_quiet(self) -> None:
         tag = '{/* <AnimatedHeadline text="copy" preset="word-cycle" maxWidth={2} /> */}<TitleBlock title={title} />'
