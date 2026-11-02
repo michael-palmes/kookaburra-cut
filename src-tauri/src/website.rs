@@ -1273,28 +1273,24 @@ pub async fn website_import_image(
     let filter = format!(
         "scale={width}:{height}:force_original_aspect_ratio=decrease:flags=lanczos,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=0x{colour}"
     );
-    let result = media::run_sidecar(
-        &app,
-        "ffmpeg",
-        vec![
-            "-y".into(),
-            "-nostdin".into(),
-            "-hide_banner".into(),
-            "-loglevel".into(),
-            "error".into(),
-            "-i".into(),
-            source.to_string_lossy().into_owned(),
-            "-vf".into(),
-            filter,
-            "-frames:v".into(),
-            "1".into(),
-            "-map_metadata".into(),
-            "-1".into(),
-            temporary.to_string_lossy().into_owned(),
-        ],
-        media::SidecarPriority::Foreground,
-    )
-    .await;
+    let mut args: Vec<String> = vec![
+        "-y".into(),
+        "-nostdin".into(),
+        "-hide_banner".into(),
+        "-loglevel".into(),
+        "error".into(),
+    ];
+    args.extend(crate::media_input::untrusted_input(&source));
+    args.extend([
+        "-vf".into(),
+        filter,
+        "-frames:v".into(),
+        "1".into(),
+        "-map_metadata".into(),
+        "-1".into(),
+        temporary.to_string_lossy().into_owned(),
+    ]);
+    let result = media::run_sidecar(&app, "ffmpeg", args, media::SidecarPriority::Foreground).await;
     if let Err(error) = result {
         let _ = std::fs::remove_file(&temporary);
         return Err(format!("normalising Website image: {error}"));

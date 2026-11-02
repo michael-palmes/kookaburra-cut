@@ -18,7 +18,11 @@ import { ColourPicker } from "../colour/ColourPicker";
 import { DebouncedRange } from "../TextAnimationPicker";
 import { MediaSourceGroup } from "./MediaSourceGroup";
 import { MotionBlurOverrideRow } from "./MotionBlurFields";
-import { duplicateSceneMedia, removeSceneMedia } from "./mediaEditorModel";
+import {
+  duplicateSceneMedia,
+  removeSceneMedia,
+  SCENE_MEDIA_KIND_MOTIONS,
+} from "./mediaEditorModel";
 import {
   DrillBack,
   DrillGroup,
@@ -252,14 +256,8 @@ const MOTION_LABELS: Record<SceneMediaMotionPreset, { label: string; title: stri
   "push-in": { label: "Push", title: "Eases up from 90% to full size" },
 };
 
-/** The presets each kind ever had: a still turns, a clip drifts. Offering the other one would fake motion the sampler leaves inert. */
-const MOTION_PRESETS: Record<SceneMediaKind, SceneMediaMotionPreset[]> = {
-  image: ["none", "turntable", "float", "tilt-reveal", "push-in"],
-  video: ["none", "float", "drift", "tilt-reveal", "push-in"],
-};
-
 function motionOptions(kind: SceneMediaKind): SegmentedOption<SceneMediaMotionPreset>[] {
-  return MOTION_PRESETS[kind].map((preset) => ({
+  return SCENE_MEDIA_KIND_MOTIONS[kind].map((preset) => ({
     value: preset,
     label: MOTION_LABELS[preset].label,
     title: MOTION_LABELS[preset].title,

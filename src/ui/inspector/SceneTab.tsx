@@ -275,6 +275,7 @@ import {
   setManagedTextIcon,
 } from "./managedTextEditorModel";
 import {
+  changeSceneMediaKind,
   defaultSceneMediaHost,
   duplicateSceneMedia,
   isMediaDrillRoute,
@@ -2420,14 +2421,12 @@ function applyPickedMediaSource(
   const entry = media.find((candidate) => candidate.id === entryId);
   if (!entry) return;
   entry.src = src;
-  entry.kind = kind;
+  changeSceneMediaKind(entry, kind);
   if (kind === "video") {
     const video = { ...entry.video };
     if (meta && meta.width > 0 && meta.height > 0) video.aspect = meta.width / meta.height;
     else delete video.aspect;
     entry.video = video;
-  } else {
-    delete entry.video;
   }
   // A detected macOS capture gets the window chrome that carries the crop, whichever kind it is; a negative verdict only clears an existing flag.
   if (recording === true) {

@@ -315,7 +315,9 @@ def cmd_events(ctx: Any) -> int:
     caller = leasemod.resolve(root, ctx.caller)
     name = str(ctx.caller.name)
     kinds = eventsmod.split_kinds(a.kinds)
-    saved = eventsmod.load_seen(root, name).get("eventsCursor")
+    sources = eventsmod.split_sources(a.source)
+    seen = eventsmod.load_seen(root, name)
+    saved = seen.get("eventsCursor")
     if a.since is not None:
         since = eventsmod.parse_since(a.since)
     elif isinstance(saved, str):
@@ -324,17 +326,21 @@ def cmd_events(ctx: Any) -> int:
         since = eventsmod.parse_since(None if a.follow else "10m")
 
     def remember(cursor: str) -> None:
+        from . import appedits
+
+        inode, offset = appedits.end_mark(root)
         try:
-            eventsmod.save_seen(project, name, eventsCursor=cursor)
+            eventsmod.save_seen(project, name, eventsCursor=cursor, eventsAppInode=inode, eventsAppOffset=offset)
         except Exception:
             pass
 
     if a.follow:
         exit_after = eventsmod.EXIT_AFTER_S if a.exit_after is None else max(0.0, a.exit_after)
-        eventsmod.follow(project, caller, since, kinds, a.all_agents, exit_after, sys.stdout, on_cursor=remember)
+        eventsmod.follow(project, caller, since, kinds, a.all_agents, exit_after, sys.stdout, on_cursor=remember, sources=sources, seen=seen)
         return EXIT_OK
     found, cursor = eventsmod.read_since(root, since)
-    shown = eventsmod.iter_wanted(root, found, caller, kinds, a.all_agents)
+    found = sorted(found + eventsmod.app_edits_since(root, since, seen), key=lambda e: e.get("atMs") or 0)
+    shown = eventsmod.iter_wanted(root, found, caller, kinds, a.all_agents, sources)
     remember(cursor)
     if ctx.json:
         ctx.out({"events": shown, "cursor": cursor})
@@ -351,6 +357,10 @@ def cmd_events(ctx: Any) -> int:
 def cmd_hook(ctx: Any) -> int:
     event = ctx.args.event
     if event in ("bash-pre", "bash-post"):
+        from . import hookfast
+
+        return hookfast.main(event)
+    if event == "user-prompt":
         from . import hookfast
 
         return hookfast.main(event)
@@ -476,13 +486,16 @@ def register(sub: Any, common: argparse.ArgumentParser, Formatter: Any) -> None:
         "  kb events --follow                 stream until --exit-after (1740 s, under the Monitor's 30 min)\n"
         "  kb events --follow --since CURSOR  resume from the last follow.end\n"
         "  kb events --kinds lease,note,load  only these kinds (a prefix like lease matches lease.*)\n"
-        "By default your own events and files.changed are left out. --follow adds app events from the\n"
+        "  kb events --source app             only what the app did (app, kb, edit or bash; comma or space separated)\n"
+        "By default your own events and files.changed are left out; --source shows files.changed too. Every\n"
+        "event carries its source. Edits made in the app appear as app.edit. --follow adds app events from the\n"
         "running app's heartbeat: load, export.started/progress/done, render.stalled/recovered,\n"
         "app.opened/closed. A follow ends with { \"kind\": \"follow.end\", \"cursor\" }.",
     )
     s.add_argument("--follow", action="store_true", help="keep streaming new events")
     s.add_argument("--since", metavar="WHEN", help="10m, 2h, all, now or a cursor (INODE:OFFSET)")
     s.add_argument("--kinds", nargs="+", metavar="KIND", help="only these kinds (comma or space separated)")
+    s.add_argument("--source", nargs="+", metavar="SOURCE", help="only events from these: app, kb, edit, bash")
     s.add_argument("--all-agents", action="store_true", help="include your own events")
     s.add_argument("--exit-after", type=float, default=None, metavar="SECONDS", help="with --follow: stop after this long (default 1740)")
     s.set_defaults(fn=cmd_events)

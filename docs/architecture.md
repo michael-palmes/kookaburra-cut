@@ -64,6 +64,13 @@ frame bodies and the scene trees. The split, and why it is drawn where it is:
   that can only make canvases, an image that decodes through
   `createImageBitmap`, in-memory storage, `setImmediate` for anime.js) and
   nothing that reaches the Mac.
+- **The network is shut.** Tauri only sets the policy header on HTML, and a
+  worker served without one runs with no policy, so built apps start the worker
+  from a `blob:` bootstrap that inherits the window's. `realmGuard.ts` runs
+  first: it limits `fetch`, sockets, XHR, `EventSource`, `importScripts` and
+  nested workers to the app's own files, `asset:`, `blob:` and `data:`, and
+  refuses to load the server if a `data:` module proves the policy is missing.
+  Dev builds have no window policy, so only the guard applies there.
 - **The window resolves, the worker consumes.** Asset URLs for the open
   project are resolved in the window and shipped with the project
   (`StageAssets`); clip frames, conform jobs, emoji rasters, PNG decodes and

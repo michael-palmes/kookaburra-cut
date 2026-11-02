@@ -1,14 +1,4 @@
 {
   "version": 1,
-  "name": "Blank",
-  "managedText": {
-    "layout": "template",
-    "items": [
-      {
-        "key": "title",
-        "type": "title",
-        "text": ""
-      }
-    ]
-  }
+  "name": "Blank"
 }

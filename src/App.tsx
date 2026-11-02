@@ -2065,9 +2065,8 @@ export default function App() {
         if (cancelled) return;
         setReloadLanded(reloadTicket);
         if (!isAutoRun) {
+          // No stamp: a load can fail before the Allow sheet, and the stamp runs git.
           reportLastLoad(lastLoadReport(projectId, { error: e }, Date.now()));
-          // Declining trust means zero writes, the kit included.
-          if (!(e instanceof TrustDeniedError)) stampProjectKit(projectId);
         }
         // Declining the trust gate is a choice, not a failure: back to the welcome screen, and don't reopen the project next boot.
         if (e instanceof TrustDeniedError) {

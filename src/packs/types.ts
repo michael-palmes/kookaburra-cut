@@ -256,9 +256,16 @@ export interface UnreferencedGroup {
   files: { rel: string; bytes: number }[];
 }
 
+export interface AgentNotesGroup {
+  kind: ItemKind;
+  slug: string;
+  files: { rel: string; bytes: number }[];
+}
+
 export interface PackPlan {
   items: SelectableItem[];
   unreferenced: UnreferencedGroup[];
+  agentNotes: AgentNotesGroup[];
   warnings: string[];
   totalBytes: number;
   fileCount: number;

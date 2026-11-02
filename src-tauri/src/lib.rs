@@ -17,6 +17,7 @@ pub mod cli;
 pub mod cli_check;
 pub mod cli_media;
 pub mod cli_song;
+pub mod cli_trust;
 mod clip_cache;
 mod concurrency;
 mod conform;
@@ -32,6 +33,7 @@ mod fonts;
 mod global_screenshots;
 mod gradients;
 mod history;
+mod app_edits;
 mod imagefile;
 mod kit;
 mod library;
@@ -40,6 +42,7 @@ mod live_edits;
 mod loudness;
 mod managed;
 mod media;
+mod media_input;
 mod mp4box;
 mod native_alert;
 mod objects;
@@ -1428,6 +1431,7 @@ macro_rules! kookaburra_handler {
             workspace::is_project_trusted,
             workspace::check_project_trust,
             workspace::request_project_trust,
+            workspace::review_agent_files,
             workspace::trust_project,
             workspace::list_project_assets,
             workspace::list_project_environments,
@@ -1447,6 +1451,7 @@ macro_rules! kookaburra_handler {
             workspace::delete_project,
             workspace::write_snapshot,
             workspace::provision_project,
+            workspace::heal_project_kit,
             workspace::ensure_sample_assets,
             workspace::list_scene_thumbs,
             workspace::write_scene_thumb,

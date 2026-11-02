@@ -101,6 +101,15 @@ jobs:
           min_os="$(node -p "require('./src-tauri/tauri.conf.json').bundle.macOS.minimumSystemVersion")"
           grep -q "macOS ${min_os}+" README.md || { echo "::error::README.md does not state the macOS ${min_os}+ floor"; exit 1; }
 
+      - name: Check SECURITY.md names this version
+        if: steps.meta.outputs.tag != ''
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          as_of="$(sed -nE '1,5s/^\*\*As of version ([^ ]+)\.\*\*.*/\1/p' SECURITY.md)"
+          [ "$as_of" = "$VERSION" ] || { echo "::error::SECURITY.md describes version '${as_of:-none}', not ${VERSION}"; exit 1; }
+
       - name: Set up pnpm
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
@@ -451,7 +460,8 @@ jobs:
           for f in "KookaburraCut-${VERSION}.dmg" "KookaburraCut-${VERSION}.zip" "KookaburraCut-${VERSION}-updater.app.tar.gz" latest.json; do
             [ -f "$f" ] || { echo "::error::missing $f"; exit 1; }
           done
-          sha256sum "KookaburraCut-${VERSION}.dmg" "KookaburraCut-${VERSION}.zip" "KookaburraCut-${VERSION}-updater.app.tar.gz" latest.json > SHA256SUMS
+          cp ../SECURITY.md SECURITY.md
+          sha256sum "KookaburraCut-${VERSION}.dmg" "KookaburraCut-${VERSION}.zip" "KookaburraCut-${VERSION}-updater.app.tar.gz" latest.json SECURITY.md > SHA256SUMS
           cat SHA256SUMS
 
       - name: Attest build provenance
@@ -489,5 +499,5 @@ jobs:
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
             --title "Kookaburra Cut ${VERSION}" --notes-file "$notes" --generate-notes \
             "release/KookaburraCut-${VERSION}.dmg" "release/KookaburraCut-${VERSION}.zip" \
-            "release/KookaburraCut-${VERSION}-updater.app.tar.gz" release/latest.json release/SHA256SUMS
+            "release/KookaburraCut-${VERSION}-updater.app.tar.gz" release/latest.json release/SHA256SUMS release/SECURITY.md
           echo "Draft release ${TAG} created; publish it on GitHub." >> "$GITHUB_STEP_SUMMARY"

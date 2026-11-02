@@ -25,6 +25,7 @@
           "delete_project",
           "write_snapshot",
           "provision_project",
+          "heal_project_kit",
           "ensure_sample_assets",
           "set_last_project",
           "set_last_export_preset",
@@ -44,7 +45,12 @@
       "identifier": "trust",
       "description": "The F-001 consent: the main window's gate check (which re-stamps a project this session allowed), the native sheet, and the grant recorded with the nonce the sheet issued.",
       "commands": {
-        "allow": ["check_project_trust", "request_project_trust", "trust_project"]
+        "allow": [
+          "check_project_trust",
+          "request_project_trust",
+          "trust_project",
+          "review_agent_files"
+        ]
       }
     }
   ]

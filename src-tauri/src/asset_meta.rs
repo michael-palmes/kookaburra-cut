@@ -1,4 +1,4 @@
-//! Asset provenance: `assets/_meta.json` v1, one record per asset, `{ version, assets: { rel: { sha256, origin { kind, from, sourceName, tool, atMs }, licence?, transforms[] } } }`. An underscore name, not a dot file, so packs carry and hash it like any project file; the media library never lists it. Project-relative paths only, and a record whose `sha256` no longer matches its file reads as stale. Fields this build doesn't write (`licence`, anything newer) survive a rewrite.
+//! Asset provenance: `assets/_meta.json` v1, one record per asset, `{ version, assets: { rel: { sha256, origin { kind, from, sourceName, tool, atMs }, licence?, transforms[] } } }`. An underscore name, not a dot file; it stays home on export (it names what a person imported) and the media library never lists it. Project-relative paths only, and a record whose `sha256` no longer matches its file reads as stale. Fields this build doesn't write (`licence`, anything newer) survive a rewrite.
 
 use std::path::Path;
 use std::sync::Mutex;

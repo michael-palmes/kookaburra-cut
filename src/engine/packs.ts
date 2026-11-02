@@ -26,6 +26,8 @@ export interface PackSelection {
   screenshots: string[];
   /** Project-relative asset paths the user chose to drop, keyed by project slug. */
   dropAssets?: Record<string, string[]>;
+  /** `<kind>:<slug>` of each item whose notes (CLAUDE.md, NOTES.md) the person ticked to include. */
+  includeAgentNotes?: string[];
 }
 
 export const EMPTY_SELECTION: PackSelection = {

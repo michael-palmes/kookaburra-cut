@@ -82,6 +82,7 @@ export function toBuildSelection(
   state: SelectionState,
   items: SelectableItem[],
   dropAssets?: Record<string, string[]>,
+  includeAgentNotes?: string[],
 ): PackSelection {
   const selection = toPlanSelection({ chosen: {}, excluded: {} });
   for (const item of items) {
@@ -89,6 +90,9 @@ export function toBuildSelection(
     (selection[selectionKey(item.kind)] as string[]).push(item.slug);
   }
   if (dropAssets && Object.keys(dropAssets).length > 0) selection.dropAssets = dropAssets;
+  if (includeAgentNotes && includeAgentNotes.length > 0) {
+    selection.includeAgentNotes = includeAgentNotes;
+  }
   return selection;
 }
 

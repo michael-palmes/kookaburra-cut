@@ -17,6 +17,7 @@ from . import catalog as catmod
 from . import music, queue, reach
 from .film import timeline as tl
 from .realdir import real_dir
+from .media_input import input_args
 from .util import EXIT_ENV, EXIT_OK, EXIT_PROBLEMS, KbError, emit, emit_err, now_ms
 
 CAPTURES = "captures"
@@ -281,7 +282,7 @@ def _ffmpeg(args: List[str], what: str, binary: bool = False) -> subprocess.Comp
 def crop_png(ffmpeg: str, path: Path, box: Dict[str, int]) -> None:
     """Crop a PNG in place."""
     tmp = path.with_name(f".{path.name}.crop.png")
-    _ffmpeg([ffmpeg, "-v", "error", "-nostdin", "-y", "-i", str(path), "-vf", f"crop={box['width']}:{box['height']}:{box['x']}:{box['y']}",
+    _ffmpeg([ffmpeg, "-v", "error", "-nostdin", "-y", *input_args(path), "-i", str(path), "-vf", f"crop={box['width']}:{box['height']}:{box['x']}:{box['y']}",
              "-frames:v", "1", str(tmp)], "crop the capture")
     os.replace(tmp, path)
 
@@ -303,14 +304,14 @@ def diff_stats(diff: bytes, threshold: int = DIFF_THRESHOLD) -> Dict[str, float]
 def diff_frames(ffmpeg: str, a: Path, b: Path, out: Path) -> Dict[str, Any]:
     """[A | B | the difference x4] as one PNG, plus the stats of the exact difference."""
     graph = "[0:v]format=gbrp[a];[1:v]format=gbrp[b];[a][b]blend=all_mode=difference,format=rgb24[out]"
-    raw = _ffmpeg([ffmpeg, "-v", "error", "-nostdin", "-i", str(a), "-i", str(b), "-filter_complex", graph, "-map", "[out]",
+    raw = _ffmpeg([ffmpeg, "-v", "error", "-nostdin", *input_args(a), "-i", str(a), *input_args(b), "-i", str(b), "-filter_complex", graph, "-map", "[out]",
                    "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], "compare the two frames").stdout
     gain = f"'min(val*{DIFF_GAIN},255)'"
     sheet = ("[0:v]format=gbrp,split[a1][a2];[1:v]format=gbrp,split[b1][b2];"
              f"[a2][b2]blend=all_mode=difference,lutrgb=r={gain}:g={gain}:b={gain}[d];"
              "[a1]pad=iw+8:ih:0:0:color=0x808080[ap];[b1]pad=iw+8:ih:0:0:color=0x808080[bp];"
              "[ap][bp][d]hstack=inputs=3,format=rgb24[out]")
-    _ffmpeg([ffmpeg, "-v", "error", "-nostdin", "-y", "-i", str(a), "-i", str(b), "-filter_complex", sheet, "-map", "[out]",
+    _ffmpeg([ffmpeg, "-v", "error", "-nostdin", "-y", *input_args(a), "-i", str(a), *input_args(b), "-i", str(b), "-filter_complex", sheet, "-map", "[out]",
              "-frames:v", "1", str(out)], "draw the difference")
     return dict(diff_stats(raw), path=str(out))
 

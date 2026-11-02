@@ -83,11 +83,21 @@ pub struct UnreferencedFile {
     bytes: u64,
 }
 
+/// One item's notes, listed for the tick that includes them.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentNotesGroup {
+    kind: ItemKind,
+    slug: String,
+    files: Vec<UnreferencedFile>,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PackPlanView {
     items: Vec<SelectableItem>,
     unreferenced: Vec<UnreferencedGroup>,
+    agent_notes: Vec<AgentNotesGroup>,
     warnings: Vec<String>,
     total_bytes: u64,
     file_count: usize,
@@ -292,10 +302,29 @@ fn closure_to_view(closure: &deps::Closure, root: &Path) -> PackPlanView {
 
     // Reviewed, never silently dropped: the picker shows these with their size.
     let mut groups: Vec<UnreferencedGroup> = Vec::new();
+    let mut agent_notes: Vec<AgentNotesGroup> = Vec::new();
     for asset in &closure.reviewed_assets {
         let label = match asset.group {
             AssetGroup::Unreferenced => "Unused files",
             AssetGroup::FlattenedRender => "Flattened edit renders",
+            AssetGroup::AgentNote => {
+                let file = UnreferencedFile {
+                    rel: asset.rel.clone(),
+                    bytes: asset.bytes,
+                };
+                match agent_notes
+                    .iter_mut()
+                    .find(|g| g.kind == asset.kind && g.slug == asset.project)
+                {
+                    Some(group) => group.files.push(file),
+                    None => agent_notes.push(AgentNotesGroup {
+                        kind: asset.kind,
+                        slug: asset.project.clone(),
+                        files: vec![file],
+                    }),
+                }
+                continue;
+            }
         };
         match groups
             .iter_mut()
@@ -319,6 +348,7 @@ fn closure_to_view(closure: &deps::Closure, root: &Path) -> PackPlanView {
     PackPlanView {
         items,
         unreferenced: groups,
+        agent_notes,
         warnings: closure.warnings.iter().map(|w| w.message()).collect(),
         total_bytes: closure.totals.bytes,
         file_count: closure.totals.files,
@@ -391,6 +421,7 @@ fn enumerate_all(root: &Path) -> PackSelection {
         exclude: Vec::new(),
         include_flattened_renders: true,
         include_unreferenced_assets: true,
+        include_agent_notes: Vec::new(),
     }
 }
 

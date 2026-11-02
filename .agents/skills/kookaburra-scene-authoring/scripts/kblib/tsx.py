@@ -392,3 +392,9 @@ def defined_duration(text: str) -> Optional[float]:
     """The durationMs literal of the defineScene call, or None when it isn't a plain number before the Scene body."""
     m = _DEFINED_DURATION.search(text)
     return float(m.group(1)) if m else None
+
+
+def rewrite_defined_duration(text: str, ms: int) -> str:
+    """The same literal set to ms; a scene without a plain literal stays as it is."""
+    m = _DEFINED_DURATION.search(text)
+    return text[: m.start(1)] + str(ms) + text[m.end(1):] if m else text

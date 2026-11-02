@@ -4,13 +4,15 @@
  * The stage worker's entry: the realm shims three, troika and the toolkit need in a worker
  * (a document that can make canvases, an image that can decode, storage, an OffscreenCanvas
  * that answers like a canvas element), then the server. Nothing here grants reach: there is
- * no `window`, no `__TAURI_INTERNALS__` and no IPC in this realm; a scene that asks for either
- * fails. See docs/architecture.md ("The stage worker").
+ * no `window`, no `__TAURI_INTERNALS__` and no IPC in this realm, and the network is shut; a
+ * scene that asks for any of them fails. See docs/architecture.md ("The stage worker").
  */
 
+import { installRealmGuard, provePolicy } from "./realmGuard";
 import { installWorkerInbox } from "./workerInbox";
 
 const scope = self as unknown as DedicatedWorkerGlobalScope & Record<string, unknown>;
+installRealmGuard(scope, import.meta.url, import.meta.env.DEV);
 installWorkerInbox(scope);
 
 const forward = (level: "warn" | "error") => {
@@ -246,11 +248,13 @@ if (import.meta.hot) {
 
 // The server imports the engine, which must see the shims above at evaluation time.
 scope.postMessage({ type: "log", level: "info", text: "stage worker entry evaluated" });
-import("./stageServer").then(
-  () => scope.postMessage({ type: "log", level: "info", text: "stage server module loaded" }),
-  (e) =>
-    scope.postMessage({
-      type: "fatal",
-      text: `server import failed: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`,
-    }),
-);
+(import.meta.env.DEV ? Promise.resolve() : provePolicy((url) => import(/* @vite-ignore */ url)))
+  .then(() => import("./stageServer"))
+  .then(
+    () => scope.postMessage({ type: "log", level: "info", text: "stage server module loaded" }),
+    (e) =>
+      scope.postMessage({
+        type: "fatal",
+        text: `server import failed: ${e instanceof Error ? `${e.message}\n${e.stack}` : String(e)}`,
+      }),
+  );
