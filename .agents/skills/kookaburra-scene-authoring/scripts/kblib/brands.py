@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import re
+import shlex
 import shutil
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
@@ -188,7 +189,7 @@ def cmd_icons(ctx: Any) -> int:
     if a.sheet and len(shown) > payload.get("shownOnSheets", len(shown)):
         emit(f"the sheets show the first {payload['shownOnSheets']}; narrow it with --search")
     first = shown[0]["path"]
-    emit(f'bring one in: ./kb assets add "{first}"')
+    emit(f"bring one in: ./kb assets add {shlex.quote(first)}")
     return EXIT_OK
 
 

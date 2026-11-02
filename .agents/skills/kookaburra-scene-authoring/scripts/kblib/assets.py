@@ -5,6 +5,7 @@ from __future__ import annotations
 import filecmp
 import json
 import os
+import shlex
 import shutil
 import struct
 import subprocess
@@ -405,7 +406,7 @@ def add_file(
             checked, probe_block = decision["checked"], decision["probe"]
             _remember_decision(project, result["path"], decision, dry_run)
             if decision["conform"]:
-                warnings.append(f"{result['path']} is already in assets/, but it only looks conformed ({', '.join(decision['probe']['why'])}): ./kb assets conform {result['path']}")
+                warnings.append(f"{result['path']} is already in assets/, but it only looks conformed ({', '.join(decision['probe']['why'])}): ./kb assets conform {shlex.quote(result['path'])}")
         result.update({"conformed": False, "checked": checked, "probe": probe_block, "warnings": warnings})
         return result
     base = final_name.rsplit(".", 1)[0]

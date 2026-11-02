@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 import unittest
@@ -288,7 +289,13 @@ class IconsCommandTests(LibraryCase):
         self.assertIsNone(imagefile.look(Path(sheets[0]))["blank"])
         proc = self.kb(["brand", "icons", "--search", "wallet", "--sheet"], cwd=self.root)
         self.assertIn("sheet to Read:", proc.stdout)
-        self.assertIn('./kb assets add "', proc.stdout)
+        self.assertIn("./kb assets add ", proc.stdout)
+
+    def test_the_bring_in_command_quotes_a_hostile_name(self) -> None:
+        self.image("icons/a$(touch pwned).png", png_bytes(4, 4))
+        proc = self.kb(["brand", "icons", "--search", "pwned"], cwd=self.root)
+        line = next(x for x in proc.stdout.splitlines() if x.startswith("bring one in:"))
+        self.assertEqual(shlex.split(line.split(": ", 1)[1])[-1].rsplit("/", 1)[-1], "a$(touch pwned).png")
 
     def test_a_large_set_spills_to_more_sheets_and_stops_at_the_cap(self) -> None:
         for i in range(60):

@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from . import imagefile
 from .conform import UNTRUSTED_INPUT
+from .realdir import real_dir
 from .video import labels
 
 THUMBS = "thumbs"
@@ -32,7 +33,7 @@ VIDEO_TIMEOUT_S = 60
 def thumbs_root(project: Any) -> Path:
     from . import lock as lockmod
 
-    return lockmod.kb_dir(project) / THUMBS
+    return real_dir(lockmod.kb_dir(project), THUMBS)
 
 
 def new_folder(project: Any, tag: str) -> Path:

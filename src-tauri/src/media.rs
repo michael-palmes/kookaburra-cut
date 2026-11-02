@@ -3634,6 +3634,19 @@ mod tests {
     }
 
     #[test]
+    fn a_linked_staging_folder_refuses_the_still_and_its_old_files_survive() {
+        use crate::real_dir::hostile;
+        let (project, victim) = hostile::folder("still-staging");
+        hostile::plant(&project, "assets/.kc-render", &victim);
+        let report = land(&project, Incoming::Bytes(checker_png()), "shot.png", "png");
+        assert!(report.rels.is_empty());
+        assert!(report.refused[0].contains(".kc-render is a link or a file"), "{:?}", report.refused);
+        hostile::assert_untouched(&victim);
+        assert!(!project.join("assets/shot.png").exists());
+        hostile::clean_up(&project);
+    }
+
+    #[test]
     fn a_still_named_for_another_format_lands_under_its_own() {
         let project = scratch_assets("still-name");
         let report = land(

@@ -236,6 +236,10 @@ def add_folder(
     folder = guard_folder(project, raw)
     assetmod.clean_subdir(project, subdir)
     assetmod.check_max_size(max_size)
+    if thumbs is not None and not dry_run:
+        from . import contact
+
+        contact.thumbs_root(project)
     if limit is not None and not 1 <= limit <= MAX_LIMIT:
         raise KbError(f"--limit is 1 to {MAX_LIMIT} files", EXIT_ENV, kind="usage")
     found = scan(folder)

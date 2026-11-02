@@ -357,8 +357,11 @@ fn walk_images(base: &Path, dir: &Path, out: &mut Vec<BrandImage>) {
 fn scene_copy(images: &Path, rel: &Path) -> Option<PathBuf> {
     let brand = images.parent()?;
     let same = brand.join(SCENE_DIR).join(rel);
-    let png = same.with_extension("png");
-    [same, png].into_iter().find(|copy| {
+    let changes_format = rel.extension().is_some_and(|ext| {
+        ["webp", "gif"].iter().any(|kind| ext.eq_ignore_ascii_case(kind))
+    });
+    let png = changes_format.then(|| same.with_extension("png"));
+    std::iter::once(same).chain(png).find(|copy| {
         std::fs::symlink_metadata(copy).is_ok_and(|meta| meta.is_file())
             && workspace::confine_to_roots(&copy.to_string_lossy(), &[brand.to_path_buf()]).is_ok()
     })
@@ -719,9 +722,14 @@ mod tests {
         std::fs::write(dir.join("images/webp/hero.webp"), b"img").unwrap();
         std::fs::create_dir_all(dir.join("scene/webp")).unwrap();
         std::fs::write(dir.join("scene/webp/hero.png"), b"as png").unwrap();
+        std::fs::write(dir.join("images/logos/acme.jpg"), b"another picture").unwrap();
         let images = list_images_in(&dir);
         let find = |rel: &str| images.iter().find(|i| i.rel == rel).unwrap();
-        assert_eq!(images.len(), 5, "copies are never listed on their own");
+        assert_eq!(images.len(), 6, "copies are never listed on their own");
+        assert_eq!(
+            Path::new(&find("logos/acme.jpg").path),
+            dir.join("images/logos/acme.jpg")
+        );
         let ink = find("backgrounds/ink.jpg");
         assert_eq!(Path::new(&ink.path), dir.join("scene/backgrounds/ink.jpg"));
         assert_eq!(ink.bytes, 5);

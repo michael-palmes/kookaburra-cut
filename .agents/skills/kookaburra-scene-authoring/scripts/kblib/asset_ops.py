@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import tempfile
 import time
 from pathlib import Path
@@ -372,7 +373,7 @@ def _still_landing(rel: str, src: Path, file: str, stage: Path, as_new: bool, al
         if not same and not as_new:
             why = f"has to become a {lands.upper()} to draw right ({', '.join(imagefile.needs_conform(f))})" if imagefile.needs_conform(f) else f"is really a {lands.upper()}"
             raise KbError(f"{src.name} {why}, and a replace keeps the name, so it keeps the type", EXIT_PROBLEMS, kind="invalid",
-                          hint=f"./kb assets replace {rel} {file} --as-new lands it as a .{imagefile.EXT_OF[lands]} and moves the references")
+                          hint=f"./kb assets replace {shlex.quote(rel)} {shlex.quote(file)} --as-new lands it as a .{imagefile.EXT_OF[lands]} and moves the references")
         done = imagefile.prepare(src, stage)
         if not allow_blank:
             imagefile.refuse_blank(Path(done["path"]), done["facts"], src.name)
