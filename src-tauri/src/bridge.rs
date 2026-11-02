@@ -368,7 +368,7 @@ fn too_broad_to_pick(dir: &Path, home: Option<&Path>) -> bool {
 }
 
 /// Folders whose contents are credentials (the same set kb refuses to read).
-const NEVER_PICKED: [&str; 5] = [".ssh", ".aws", ".config", ".gnupg", "Library/Keychains"];
+const NEVER_PICKED: [&str; crate::kit::CREDENTIAL_DIRS.len()] = crate::kit::CREDENTIAL_DIRS;
 
 /// A folder the person just chose in a native dialog (a Save dialog's parent counts). Only an existing directory is kept, and never one broad enough to make the confinement moot or one that holds credentials; the command comes from the webview, so it trusts the path no further than that.
 #[tauri::command]

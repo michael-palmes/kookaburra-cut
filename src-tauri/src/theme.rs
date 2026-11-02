@@ -360,6 +360,9 @@ pub fn write_theme_preview(app: AppHandle, request: tauri::ipc::Request) -> Resu
             .ok_or_else(|| format!("missing {name} header"))
     };
     let kind = header("x-kookaburra-kind")?;
+    if kind != "cache" && !crate::is_autorun() {
+        return Err("bundled previews are only written during an auto-run".into());
+    }
     let key = header("x-kookaburra-key")?;
     validate_slug(&key)?;
     let index: u32 = header("x-kookaburra-index")?
@@ -404,6 +407,9 @@ pub fn write_theme_preview(app: AppHandle, request: tauri::ipc::Request) -> Resu
 /// Persist one option-preview frame (the picker preview generator); bytes arrive as the raw invoke body, `x-kookaburra-set` names the option set (e.g. `textanim-fade-scale`), `x-kookaburra-index` is the 1-based frame number (stills = 1; clips = the whole zero-padded sequence the wrapper encodes). Frames land at `<run result dir>/option-previews/<set>/NNN.jpg`; the `kookaburra:run` wrapper promotes them into `src/assets/option-previews/` for commit.
 #[tauri::command]
 pub fn write_option_preview(app: AppHandle, request: tauri::ipc::Request) -> Result<(), String> {
+    if !crate::is_autorun() {
+        return Err("option previews are only written during an auto-run".into());
+    }
     let header = |name: &str| -> Result<String, String> {
         request
             .headers()

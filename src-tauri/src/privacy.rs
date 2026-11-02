@@ -20,6 +20,27 @@ pub(crate) fn private_file(path: &Path) -> std::io::Result<()> {
     set_mode(path, FILE_MODE).map(|_| ())
 }
 
+/// Atomic text write of a file that is 0600 from its first byte, so no reader catches the temporary under the umask. A leftover temporary, or a link planted in its place, is removed and never written through.
+pub(crate) fn atomic_write_private(path: &Path, text: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = PathBuf::from(tmp);
+    match std::fs::remove_file(&tmp) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
+        _ => {}
+    }
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(FILE_MODE)
+        .open(&tmp)?;
+    file.write_all(text.as_bytes())?;
+    drop(file);
+    std::fs::rename(&tmp, path)
+}
+
 /// Drop the Spotlight opt-out marker in `dir`, which must already exist.
 pub(crate) fn never_index(dir: &Path) -> std::io::Result<()> {
     let marker = dir.join(NEVER_INDEX_MARKER);
@@ -208,6 +229,69 @@ mod tests {
         never_index(&nested).unwrap();
         assert_eq!(mode(&nested.join(NEVER_INDEX_MARKER)), 0o600);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_private_write_is_owner_only_whatever_it_finds() {
+        let root = temp("write");
+        private_dir(&root).unwrap();
+        let file = root.join("settings.json");
+        let tmp = root.join("settings.json.tmp");
+        let outside = temp("write-outside");
+        std::fs::write(&outside, b"keep").unwrap();
+        std::os::unix::fs::symlink(&outside, &tmp).unwrap();
+        atomic_write_private(&file, "{}").unwrap();
+        assert_eq!(mode(&file), 0o600);
+        assert_eq!(
+            std::fs::read(&outside).unwrap(),
+            b"keep",
+            "a planted link is never written through"
+        );
+        assert!(!tmp.exists(), "the temporary is renamed away");
+
+        std::fs::write(&tmp, b"stale").unwrap();
+        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o644)).unwrap();
+        atomic_write_private(&file, "{\"a\":1}").unwrap();
+        assert_eq!(
+            mode(&file),
+            0o600,
+            "a stale 0644 temporary lends the file nothing"
+        );
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "{\"a\":1}");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_file(&outside);
+    }
+
+    #[test]
+    fn an_existing_install_ends_up_owner_only() {
+        let app_data = temp("existing");
+        let cache = app_data.join("cache").join("clips");
+        std::fs::create_dir_all(&cache).unwrap();
+        let settings = app_data.join("settings.json");
+        let frame = cache.join("frame.png");
+        for file in [&settings, &frame] {
+            std::fs::write(file, b"x").unwrap();
+            std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o644)).unwrap();
+        }
+        for dir in [&app_data, &app_data.join("cache"), &cache] {
+            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        seal_at_startup(app_data.clone(), Vec::new());
+        assert_eq!(
+            mode(&app_data),
+            0o700,
+            "the root is sealed before startup goes on"
+        );
+        for _ in 0..200 {
+            if mode(&settings) == 0o600 && mode(&frame) == 0o600 {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_eq!(mode(&settings), 0o600);
+        assert_eq!(mode(&frame), 0o600);
+        assert_eq!(mode(&cache), 0o700);
+        let _ = std::fs::remove_dir_all(&app_data);
     }
 
     #[cfg(target_os = "macos")]

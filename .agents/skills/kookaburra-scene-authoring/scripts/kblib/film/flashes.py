@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from ..media_input import input_args
 from ..realdir import real_dir
 from ..util import EXIT_ENV, KbError, atomic_write_json, now_ms
 from ..video import appcli
@@ -29,7 +30,7 @@ _BADNESS_RE = re.compile(r"^\[metadata@ps @ 0x[0-9a-f]+\] lavfi\.photosensitivit
 def precheck_args(ffmpeg: str, path: Path, fps: float) -> List[str]:
     frames = max(1, int(round(fps)))
     vf = f"scale=1024:-2:flags=area,photosensitivity=frames={frames}:bypass=1,metadata@ps=mode=print"
-    return [ffmpeg, "-hide_banner", "-nostdin", "-v", "repeat+info", "-i", str(path), "-an", "-sn", "-dn", "-vf", vf, "-f", "null", "-"]
+    return [ffmpeg, "-hide_banner", "-nostdin", "-v", "repeat+info", *input_args(path), "-i", str(path), "-an", "-sn", "-dn", "-vf", vf, "-f", "null", "-"]
 
 
 def parse_precheck(stderr: str) -> Dict[str, Any]:

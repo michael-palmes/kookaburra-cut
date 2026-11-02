@@ -17,6 +17,7 @@ from . import lock as lockmod
 from . import reach
 from . import tsx as tsxmod
 from .check import SUPPORTED_ASSET_EXTS
+from .media_input import input_args
 from .project import Project
 from .scenes import collect_json_asset_refs, free_sibling_name
 from .util import EXIT_ENV, EXIT_PROBLEMS, KbError, read_text
@@ -658,7 +659,7 @@ def probe(project: Project, ref: str, deep: bool = False) -> Dict[str, Any]:
     if exe:
         try:
             proc = subprocess.run(
-                [exe, "-v", "error", "-print_format", "json", "-show_format", "-show_streams", str(path)],
+                [exe, "-v", "error", *input_args(path), "-print_format", "json", "-show_format", "-show_streams", str(path)],
                 capture_output=True, text=True, timeout=30,
             )
         except (OSError, subprocess.TimeoutExpired) as e:
