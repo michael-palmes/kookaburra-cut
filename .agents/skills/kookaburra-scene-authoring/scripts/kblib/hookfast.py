@@ -1,4 +1,4 @@
-"""The Bash hooks (`hook bash-pre`, `hook bash-post`): kb.py runs this before importing kblib.cli.
+"""The Bash hooks (`hook bash-pre`, `hook bash-post`) and `hook user-prompt`: kb.py runs this before importing kblib.cli.
 
 Standard library only, and nothing heavy until a command actually changed a project file: the pre-hook stamps
 project.json, scenes/** and edits/*.json, binds `--agent NAME` to the hook's agent id, denies a visible write to a
@@ -36,7 +36,7 @@ ASSET_TOKEN = re.compile(r"(?<![\w.-])(?:[^\s\"'=;&|<>()]*/)?(?:a(?:ss|ß)ets/|\
 RECORD_WORDS = ("assets", ".originals", "_meta.json", ".timing.json")
 KB_WRITE = re.compile(
     r"\bkb(?:\.py)?[\"']?\s+(?:--?[\w-]+(?:[= ][^\s-][^\s]*)?\s+)*"
-    r"(?:scene\s+(?:add|duplicate|move|remove|set)|doc\s+\S+\s+(?:set|unset|merge)|project\s+(?:set|unset|fit)|theme\s+set|assets\s+(?:add|conform|replace)|"
+    r"(?:scene\s+(?:add|duplicate|move|remove|set|split|renumber|import)|doc\s+\S+\s+(?:set|unset|merge)|project\s+(?:set|unset|fit)|theme\s+set|assets\s+(?:add|conform|replace)|"
     r"beats\s+(?:set-grid|set-downbeat|clear-grid|cue\s+(?:set|rm)|section\s+(?:set|rm))|song\s+analyse\b[^;&|\n]*--accept|"
     r"video\s+(?!list|show|map|usages|validate|caps|frames|sheet|analyse|durations|open)\w+)"
 )
@@ -236,6 +236,20 @@ def asset_record_write(root: str, command: str, cwd: Any) -> Optional[Tuple[str,
     for token in tokens:
         for rel in _project_rels(root, cwd, token.strip("\"'")):
             reason = asset_record_reason(rel)
+            if reason:
+                return rel, reason
+    return None
+
+
+def kit_write(root: str, command: str, cwd: Any) -> Optional[Tuple[str, str]]:
+    """(rel, reason) when the command visibly writes the shim or a managed skill: only the app restores those."""
+    if "kb" not in command and ".claude" not in command:
+        return None
+    from . import kitstate
+
+    for token in write_targets(command):
+        for rel in _project_rels(root, cwd, token.strip("\"'")):
+            reason = kitstate.write_reason(root, rel)
             if reason:
                 return rel, reason
     return None
@@ -557,6 +571,9 @@ def bash_pre(payload: Dict[str, Any]) -> Tuple[int, str, str]:
     record = asset_record_write(root, command, payload.get("cwd"))
     if record:
         return deny(f"{record[1]} (kb denied this command: it writes {record[0]} by hand.)")
+    rebuilt = kit_write(root, command, payload.get("cwd"))
+    if rebuilt:
+        return deny(f"{rebuilt[1]} (kb denied this command: it writes {rebuilt[0]} by hand.)")
     call = payload.get("tool_use_id")
     if isinstance(call, str) and call and not ti.get("run_in_background") and not kb_only(command):
         body: Dict[str, Any] = {"v": 1, "root": root, "atMs": now_ms(), "stamps": stamps(root)}
@@ -736,6 +753,35 @@ def bash_post(payload: Dict[str, Any]) -> Tuple[int, str, str]:
     return 0, "", ""
 
 
+# ── user-prompt ───────────────────────────────────────────────────────────────
+
+
+def agent_name(root: str, caller: Dict[str, Any]) -> str:
+    """The name kb itself would use for this caller, so the hook and kb status share one read mark."""
+    session = caller.get("session")
+    bound = leases.bound_name(root, session, caller.get("agentId"))
+    return bound or (f"session-{SAFE_SESSION.sub('_', session[:8])}" if session else "user")
+
+
+def user_prompt(payload: Dict[str, Any]) -> Tuple[int, str, str]:
+    """Each prompt: what the app changed since this agent last looked, and a missing ./kb. Silent otherwise."""
+    root = project_root(payload)
+    if root is None:
+        return 0, "", ""
+    lines: List[str] = []
+    from . import kitstate
+
+    lines += kitstate.missing_shim_lines(root)
+    if os.path.isfile(os.path.join(root, ".kookaburra", "app-edits.jsonl")):
+        from . import appedits
+
+        found = appedits.unseen(root, agent_name(root, hook_caller(payload)))
+        lines += appedits.summary_text(found)
+    if not lines:
+        return 0, "", ""
+    return 0, context("UserPromptSubmit", "\n".join(lines)), ""
+
+
 # ── entry ─────────────────────────────────────────────────────────────────────
 
 
@@ -746,6 +792,8 @@ def run(event: str, payload: Any) -> Tuple[int, str, str]:
         return ask_before_send_off(payload, bash_pre(payload))
     if event == "bash-post":
         return bash_post(payload)
+    if event == "user-prompt":
+        return user_prompt(payload)
     return 0, "", ""
 
 

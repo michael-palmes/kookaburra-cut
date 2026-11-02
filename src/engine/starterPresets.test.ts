@@ -108,10 +108,7 @@ describe("canonical scene starters", () => {
           { key: "subtitle", type: "title", text: "3.1.5" },
         ],
       },
-      blank: {
-        layout: "template",
-        items: [{ key: "title", type: "title", text: "" }],
-      },
+      blank: null,
       chart: {
         layout: "template",
         items: [{ key: "title", type: "title", text: "Revenue by quarter" }],
