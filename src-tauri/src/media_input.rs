@@ -188,10 +188,19 @@ mod tests {
         assert!(refusal("x.mp4: Invalid data found when processing input").is_none());
     }
 
+    /// The real sidecar, not CI's stub that exits 0 and would open anything.
     fn tool(name: &str) -> Option<PathBuf> {
-        let bin = Path::new(env!("CARGO_MANIFEST_DIR")).join("bin");
-        let path = bin.join(format!("{name}-aarch64-apple-darwin"));
-        path.is_file().then_some(path)
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
+            "bin/{name}-{}-apple-darwin",
+            std::env::consts::ARCH
+        ));
+        let out = Command::new(&path)
+            .args(["-hide_banner", "-version"])
+            .output()
+            .ok()?;
+        String::from_utf8_lossy(&out.stdout)
+            .contains("version")
+            .then_some(path)
     }
 
     fn make(ffmpeg: &Path, args: &[&str], out: &Path) {
