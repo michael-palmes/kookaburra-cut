@@ -46,8 +46,8 @@ App and scene code changes retain normal Vite hot reload. Restart the dev comman
 once after changing the Vite configuration.
 
 Templates and presets use the same project loader, media editor and scene
-inspector as ordinary projects. Website and terminal content retain their
-existing live-preview, capture and export boundaries. Imported scene code needs
+inspector as ordinary projects. Website content retains its live-preview, capture
+and export boundaries, and a terminal bakes only in a workspace project. Imported scene code needs
 the same trust consent as an imported project.
 
 ## Preset contract

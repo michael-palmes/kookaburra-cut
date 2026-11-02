@@ -213,17 +213,14 @@ moments as warnings. A project keeps its own file: export never touches it, it d
 not count towards `contentHash` (so the project still reads `identical` to its
 own pack), and a `replace` moves it to the backup with the rest of the old film.
 
-Terminal and Website scene content get their review before Continue, on the
-trust screen: `read_pack_scene_docs` reads every scene sidecar beside a staged
-scene source straight from the pack, checks each against its signed hash (one
-mismatch refuses the pack) and hands the parsed documents to
-`src/packs/packReview.ts`, which lists every terminal block that pre-types a
-command or sets a custom start path (`terminalReview.ts`) and every requested
-Website origin (`websiteReview.ts`). Never the author's manifest, which is
-self-declared, and never after the files land. Nothing runs on its own either
-way: pre-typed commands are sanitised to a single line and only run on the
-presenter's Enter (`docs/scene-terminal.md`), and no origin is approved by an
-import (`docs/scene-website.md`).
+Website scene content gets its review before Continue, on the trust screen:
+`read_pack_scene_docs` reads every scene sidecar beside a staged scene source
+straight from the pack, checks each against its signed hash (one mismatch refuses
+the pack) and hands the parsed documents to `src/packs/packReview.ts`, which lists
+every requested Website origin (`websiteReview.ts`). Never the author's manifest,
+which is self-declared, and never after the files land. No origin is approved by
+an import (`docs/scene-website.md`). Terminal scene content needs no review: it is
+text and a PNG, and nothing runs (`docs/scene-terminal.md`).
 
 ## Extraction checklist
 
@@ -264,7 +261,7 @@ test per item in `pack::tests`. Limits live in `pack::limits`.
    names and any malformed path.
 9. Skip `__MACOSX/`, `.DS_Store`, `._*` rather than refusing.
 10. Anything read from the pack before staging (a scene source for the code
-    viewer, a scene sidecar for the terminal and Website review) goes through
+    viewer, a scene sidecar for the Website review) goes through
     `read_verified_entry`: listed in `files`, capped, and refused when its bytes
     do not hash to the signed value.
 11. Sum the signed sizes in `files` (agent config excluded). Each entry streams

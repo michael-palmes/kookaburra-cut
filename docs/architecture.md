@@ -100,8 +100,7 @@ frame bodies and the scene trees. The split, and why it is drawn where it is:
   (`src/stage/storeMirror.ts`); the export path reads none of them.
 - **Gizmo chrome stays in the DOM.** The worker projects every 2D gizmo target
   per frame (world points, NDC and matrices) and posts them; hit tests against
-  the 3D handles are async requests. Terminal and website overlays stay DOM in
-  the window. See [gizmos.md](./gizmos.md).
+  the 3D handles are async requests. Website overlays stay DOM in the window. See [gizmos.md](./gizmos.md).
 - **Orchestration stays in the window.** `exporter.ts` and `stillsExport.ts`
   own `start_export`, `push_frame`, `push_still` and `finish_*`; the worker
   renders one frame or page per request into a buffer that ping-pongs by
@@ -208,8 +207,7 @@ than restating versions.) Pins live in `package.json` and `src-tauri/Cargo.toml`
 
 Rust crates (`src-tauri/Cargo.toml`): `tauri 2.12.x` (exact-pinned, `wry` pinned to its runtime's version) with the
 shell, dialog, window-state, updater and log plugins, `serde`/`serde_json`,
-`tokio`, `sha2` (the `hash_file` Verify command), `portable-pty` (embedded
-terminal), `allsorts` and `png` (both exact-pinned: instancer output and PNG
+`tokio`, `sha2` (the `hash_file` Verify command), `allsorts` and `png` (both exact-pinned: instancer output and PNG
 encoding participate in export baselines), `zip` and `ed25519-dalek` (`.kbpack`
 archives and signatures), `trash` (recoverable deletes), `objc2` (native
 menu/window touches). There is no `tauri-plugin-fs`: every filesystem touch is
@@ -505,8 +503,7 @@ Where the live Tauri-2 setup matters for working in the code:
    `pnpm setup:ffmpeg` first.
 3. **Raw frames use `InvokeBody::Raw`,** not a `Channel`. `push_frame(request:
    tauri::ipc::Request)` reads `request.body()` as `InvokeBody::Raw(bytes)`
-   (zero-copy). A `tauri::ipc::Channel<&[u8]>` is for Rust→JS streaming (the
-   embedded terminal uses one for PTY bytes).
+   (zero-copy). A `tauri::ipc::Channel<&[u8]>` is for Rust→JS streaming.
 4. **argv is built in Rust** from a typed `ExportOptions`; the frontend never
    controls it. `shell().sidecar(...).spawn()` does not consult the capability
    scope, which also resolves the permissive-allowlist concern.
@@ -577,8 +574,8 @@ block; the permission is handled Rust-side per note 1):
 
 Development was staged to de-risk the hardest path (deterministic 4K export)
 first: text-only export, then multi-scene sequencing and transitions, embedded
-video, 3D and postprocessing, packaging, the studio workspace (embedded
-terminal, media library, video editor), devices and per-scene cameras, themes
+video, 3D and postprocessing, packaging, the studio workspace (media library,
+video editor), devices and per-scene cameras, themes
 and staging, runtime scene compilation for the packaged app, the transition and
 audio pack, backgrounds and text motion, export presets, and the main-window
 redesign and identity. Every stage landed behind the same gate: byte-identical

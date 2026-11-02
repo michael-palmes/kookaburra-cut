@@ -323,15 +323,25 @@ mount `<LayeredScreenshot title={...} />`). Preset: `layeredscreenshot`.
 
 ```json
 "terminal": { "theme": "match-theme", "chrome": { "style": "mac", "title": "zsh" },
-  "cols": 80, "rows": 24, "fontPx": 13, "startCommand": "npm test", "position": [0, 0], "size": 0.55 }
+  "cols": 80, "rows": 24, "fontPx": 13, "position": [0, 0], "size": 0.55,
+  "transcript": "\u001b[32m$\u001b[0m pnpm test\n42 passed\n\u001b[32m$\u001b[0m " }
 ```
 
-Live and interactive in preview and Present; exports show the captured `snapshot` (a
-raster under `assets/` that the app records). Themes: `match-theme`, `graphite`,
-`abyss`, `phosphor`, `amber`, `paper`. `chrome.style` `mac` or `bare`.
-`startCommand` is typed into the prompt but never run. `position` -1..1 frame-relative;
-`size` a fraction of frame width. After changing the setup, ask the user to capture a
-fresh snapshot in the app.
+Write what the terminal shows in `transcript`: plain text with optional ANSI SGR colours
+and attributes (`\u001b[32m`, `\u001b[1m`, 256-colour and truecolour forms). It lays out
+like a terminal: wraps at `cols`, keeps the last `rows`, and the cursor sits after the
+last character, so end on a prompt to show one. Other escape sequences and control
+characters are dropped. Nothing ever runs: a terminal scene is a picture of a terminal.
+
+Preview, Present and export all show the baked `snapshot` (a grid and a PNG under
+`assets/`). Never write `snapshot` yourself. The app bakes it from `transcript` when the
+project is open, then `./kb check` stops warning; until then the film shows the old text
+or an empty prompt. After changing `theme`, `cols`, `rows` or `fontPx` with the app closed,
+`./kb doc S unset terminal.snapshot`, so it bakes again. A snapshot with no `transcript`
+was captured in an older version: leave it, or replace it by writing a `transcript`.
+
+Themes: `match-theme`, `graphite`, `abyss`, `phosphor`, `amber`, `paper`. `chrome.style`
+`mac` or `bare`. `position` -1..1 frame-relative; `size` a fraction of frame width.
 
 ## Website panel
 

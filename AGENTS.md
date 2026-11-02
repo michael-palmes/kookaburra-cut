@@ -216,12 +216,12 @@ The app is feature-complete through its planned pre-release phases: deterministi
 multi-scene export in four aspects (16:9 / 9:16 / 1:1 / 4:5) with transitions,
 effects, bundled and workspace user themes, devices with on-screen
 media, camera rigging (orbit plus free-flight poses, depth bands),
-fixed/video backgrounds, a text-motion pack, terminal scene content (live in
-preview and Present, captured snapshot in export: `docs/scene-terminal.md`), one
+fixed/video backgrounds, a text-motion pack, terminal scene content (a text
+transcript baked to a PNG, shown everywhere: `docs/scene-terminal.md`), one
 soundtrack per project, platform export presets, stills export (a PDF handout
 or PNG images, one page per still: `docs/stills.md`), the studio workspace
-(`~/Kookaburra Cut`: welcome screen, media library, video editor, embedded
-Claude Code terminal), a packaged signed/notarised `.app`, the night-studio
+(`~/Kookaburra Cut`: welcome screen, media library, video editor, the Edit with
+Claude handoff), a packaged signed/notarised `.app`, the night-studio
 chrome (⌘K palette, right inspector, camera lane, playback bar), the
 template and scene-preset library with the theme editor window (dev builds
 edit the bundled sets in place), and `.kbpack`

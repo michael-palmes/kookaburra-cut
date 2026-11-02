@@ -12,16 +12,13 @@ and presenting never touch the network. There is no account, no telemetry, no
 crash reporting, and nothing phones home. The app's own window can only talk to
 itself: the browser rules it ships with name no outside host.
 
-Seven things can reach the internet, and each one starts with you:
+Four things can reach the internet, and each one starts with you:
 
 | What | When | Where it goes | What goes | Off switch |
 | --- | --- | --- | --- | --- |
 | Update check | At launch, if you left the first-run switch on, or when you choose Check for Updates | GitHub, the app's release page | One request for the latest release file. No identifiers, nothing about your usage or your Mac | The switch on the first-run welcome, or Settings ▸ Updates |
 | Update install | Only when you press Install and relaunch | GitHub, the release download | Nothing; the new build comes down, is checked against a key built into the app, and replaces itself | Press Later |
-| Claude Code version check | While the built-in terminal is running Claude, at most once a day, and only when the update check is on | Anthropic's download site | One request for the current Claude Code version. No identifiers | The same update switch |
-| Built-in Claude terminal | Only when you press Start Claude Code in the built-in terminal | Anthropic, through your own Claude Code install | Your project's files and your conversation, as you work, under your Anthropic account | Do not start it; Settings ▸ Claude ▸ Edit with chooses the Claude app instead |
-| Claude Code installer | Only when you press Install Claude Code or Update in the built-in terminal | Anthropic's install script, typed visibly into the terminal | Whatever Anthropic's installer needs | Do not press it; install Claude Code yourself |
-| Edit with Claude | Only when you press Edit with Claude and the Claude desktop app is installed | The Claude desktop app on this Mac, which then talks to Anthropic under your account | The project folder's path and a starter prompt, typed in for you, never sent until you press Enter there | Settings ▸ Claude ▸ Edit with |
+| Edit with Claude | Only when you press Edit with Claude and the Claude desktop app is installed | The Claude desktop app on this Mac, which then talks to Anthropic under your account | The project folder's path and a starter prompt, typed in for you, never sent until you press Enter there | Do not press it; a configuration profile can turn it off |
 | Live websites in a scene | Only after you press Allow for that website in the editor; a presentation then loads it again on each hold | The website you approved | The page loads like a browser tab, cookies and all, in a profile separate from Safari | Revoke the website in the scene's inspector; Settings ▸ Website data clears what it stored |
 
 Two buttons open a web page in your browser: Get Claude (the Claude download
@@ -30,17 +27,13 @@ app; nothing about you is added to it.
 
 ## What the Claude integration sends
 
-Both Claude paths use your own Claude Code install and your own Anthropic
-account. The app never holds a key for you.
+Claude uses your own Claude Code install and your own Anthropic account. The app
+never holds a key for you, and it never starts Claude Code or a shell itself.
 
-- **The built-in terminal** starts Claude Code in the project's folder with a
-  fixed set of options. Claude reads the project's files and sends what it needs
-  to Anthropic as you work, as it would in any terminal. Scene edits and the
-  project's own `kb` commands run without asking; other commands ask you first,
-  with Claude Code's own judgement deciding which. The terminal says this before
-  you start.
 - **Edit with Claude** hands the project to the Claude desktop app and types a
-  starter prompt in. Nothing is sent until you press Enter in that app.
+  starter prompt in. Nothing is sent until you press Enter in that app. From
+  there, Claude Code sends the project's files to Anthropic as you work, under
+  your own account and settings.
 - **What the agent is allowed** comes from the app, not from the project. Every
   time a project opens, the app rewrites the project's Claude settings: only the
   app's own permission rules and hooks stay, and anything a shared folder or a

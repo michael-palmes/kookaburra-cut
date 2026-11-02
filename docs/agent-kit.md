@@ -2,8 +2,7 @@
 
 Claude Code is the primary way projects get edited. It runs inside one workspace
 project folder (`~/Kookaburra Cut/<slug>`), from the Claude desktop app (the titlebar's
-Edit with Claude), the app's legacy embedded terminal or the user's own, with no app
-source on disk. Everything it knows and every tool it uses
+Edit with Claude) or the user's own terminal, with no app source on disk. Everything it knows and every tool it uses
 arrives through the kit the app stamps into that folder. This document is the
 contract for the kit, the bridge it talks to and the app behaviour it relies on.
 
@@ -67,8 +66,8 @@ scripts/
 ## Stamping
 
 - Runs on the first load of each workspace project per app session (best effort, never
-  blocks the load; live reloads skip it), when Edit with Claude opens the project in the
-  Claude app, and when the embedded terminal starts Claude.
+  blocks the load; live reloads skip it), and when Edit with Claude opens the project in
+  the Claude app.
 - Every shipped skill (`SHIPPED_SKILLS` in `kit.rs`: `kookaburra-scene-authoring`, then
   `kookaburra-video-editing` and `kookaburra-brand-packs`) is stamped into `.claude/skills/<name>/` with its own
   `kit.json` and stale-sibling prefixes; a failing skill never stops the others, and
@@ -103,11 +102,10 @@ scripts/
   folder; after that it is the person's.
 - **The review** (`src-tauri/src/workspace.rs`). `AppSettings.agentFiles`, by absolute folder
   and outside it so a folder can't mark itself reviewed, records the first sweep, the app
-  version and what moved. `review_agent_files` shows that on a native sheet (Return is Not
-  now), run when the terminal starts Claude and by Edit with Claude. `pty_spawn` then refuses
-  a Claude session while the sweep hasn't finished, anything is unreviewed, or a file is
-  still present (`foreign_agent_files`, read-only, also catches what landed after the stamp),
-  naming the files and what to do. Stripping a person's own "don't ask again" rule from
+  version and what moved. `review_agent_files_for` shows that on a native sheet (Return is Not
+  now) when Edit with Claude runs, and refuses the handoff while the sweep hasn't finished,
+  anything is unreviewed, or a file is still present (`foreign_agent_files`, read-only, also
+  catches what landed after the stamp), naming the files and what to do. Stripping a person's own "don't ask again" rule from
   `settings.local.json` shows here once too: the app can't tell it from a planted one.
 - `./kb`: the shim (`stamp_shim`), written from `src-tauri/templates/project-kb.sh` with mode
   0755 when missing, and rewritten (content or mode) while it carries the marker. Any other
@@ -410,7 +408,8 @@ notes.
 
 Static checks: `project.json` (valid JSON, version, required fields, files exist, no
 duplicate entries, transitions and options, formats, theme id, audio file); sidecars
-(JSON, version, unknown top-level keys, enum values, font refs, asset paths exist with
+(JSON, version, unknown top-level keys, enum values, font refs, a terminal transcript
+newer than its snapshot, asset paths exist with
 exact case and a supported extension; a missing `assets/<stem>.mp4` whose original sits in
 `assets/.originals/` with no `<stem>.timing.json` yet is a conform still landing, so `info`,
 not an error; a text spec's `staggerMs: 0` without `staggerExact` warns where a granularity
@@ -1035,8 +1034,8 @@ finish and check its own work. Code: `scripts/kblib/exporting.py`, `src-tauri/sr
 
 - **Only the open project.** The editor must show this project; on the Welcome screen or another
   project the app answers `notOpen` or `wrongProject` (exit 2, kinds `not-open`, `wrong-project`).
-  While the person is mid-edit (a pointer down, or a focused text field outside the embedded
-  terminal that they typed in or changed in the last 10 s; a field left focused while idle does
+  While the person is mid-edit (a pointer down, or a focused text field that they
+  typed in or changed in the last 10 s; a field left focused while idle does
   not count), the Export window is open, or an export, Verify, stills export or theme preview
   runs, it answers busy; kb retries for 30 s (never past `--timeout`), then exits 3 (`app-busy`).
 - **Sync first.** Once accepted the editor stops playback, settles its own sidecar writes, and
@@ -1492,8 +1491,7 @@ is `kblib/queue.py` and `kblib/capture.py`. Bridge captures are never baselines.
 - **The editor.** A loss on the editor's stage canvas shows a persistent banner ("The GPU
   reset. The preview may be missing reflections, and exports stay paused until the
   preview reloads.") with Reload preview: pending edits settle, then the main webview
-  reloads (the only fresh realm); live terminal sessions are named in a confirm, since they
-  keep running but detach from the panel. Exports still refuse on a canvas that lost its
+  reloads (the only fresh realm). Exports still refuse on a canvas that lost its
   context. A wedged GPU shows Retry captures. Rust emits `kookaburra://bridge-activity {
   active, id, kind, client, frames, queued }` on each claim and answer, and the playback
   bar shows "Claude capturing · N queued"; the preview is never throttled or paused.
