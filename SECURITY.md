@@ -305,7 +305,10 @@ and install. The app holds no API key and sends nothing to Anthropic itself.
   paths and credential folders); reads outside the workspace print the resolved
   path and size to stderr and refuse `~/.ssh`, `~/.aws`, `~/.config`,
   `~/.gnupg`, `~/Library/Keychains`, `.env*`, `.netrc`, `*.pem`, `*.p12`,
-  `*.key` and shell histories. Bridge captures, checks, preset inserts and
+  `*.key` and shell histories. The kit denies the agent's own Read tool the
+  credential paths kb refuses (of `~/.claude`, only the secrets), which binds
+  Claude Code's file tools and not a script the agent runs. Bridge captures,
+  checks, preset inserts and
   `openEdit` for a workspace project other than the one open ask once per
   project per session through a native dialog (`bridge_confirm_project`,
   decline held 60 s); `openEdit` is enforced in Rust, the other three in the
