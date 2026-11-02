@@ -600,7 +600,7 @@ fn force_dir_modes(root: &Path, dir: &Path) {
 }
 
 #[cfg(unix)]
-fn set_file_mode(path: &Path) {
+pub(super) fn set_file_mode(path: &Path) {
     use std::os::unix::fs::PermissionsExt;
     let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644));
 }
@@ -612,7 +612,7 @@ fn set_dir_mode(path: &Path) {
 }
 
 #[cfg(not(unix))]
-fn set_file_mode(_path: &Path) {}
+pub(super) fn set_file_mode(_path: &Path) {}
 #[cfg(not(unix))]
 fn set_dir_mode(_path: &Path) {}
 

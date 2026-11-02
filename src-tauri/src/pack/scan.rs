@@ -18,8 +18,7 @@ pub struct ScannedItem {
 /// A person's accepted flash warnings, their decision about their own film: it never travels and never lands (docs/packs.md).
 pub const ACCEPTED_FLASHES_FILE: &str = "flashes.accepted.json";
 
-/// What an author keeps for themselves or for Claude. It travels only when ticked (`PackSelection::include_agent_notes`)
-/// and never counts towards an item's identity, so a project still reads `identical` to its own pack either way.
+/// An author's notes: they travel only when ticked and never count towards an item's identity, so a project reads `identical` to its own pack either way.
 pub fn is_agent_note(rel: &str) -> bool {
     let name = rel.rsplit('/').next().unwrap_or(rel);
     ["CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", "NOTES.md"]
@@ -85,7 +84,7 @@ fn walk(dir: &Path, prefix: &str, out: &mut Vec<(String, PathBuf)>) -> Result<()
         } else {
             format!("{prefix}/{name}")
         };
-        if is_excluded(&rel) || is_agent_note(&rel) {
+        if is_excluded(&rel) {
             continue;
         }
         let meta = entry.metadata()?;
@@ -95,7 +94,7 @@ fn walk(dir: &Path, prefix: &str, out: &mut Vec<(String, PathBuf)>) -> Result<()
         }
         if meta.is_dir() {
             walk(&entry.path(), &rel, out)?;
-        } else if meta.is_file() {
+        } else if meta.is_file() && !is_agent_note(&rel) {
             out.push((rel, entry.path()));
         }
     }

@@ -1372,8 +1372,10 @@ fn build_project(
         .contains(&item_key(kind, slug));
     for (rel, path) in candidates.iter().filter(|(rel, _)| is_agent_note(rel)) {
         // An unedited default holds nothing of the person's, and the app stamps its own on the other side.
-        let unedited = std::fs::read(path)
-            .is_ok_and(|bytes| crate::kit::is_default_claude_md(&String::from_utf8_lossy(&bytes)));
+        let unedited = rel.eq_ignore_ascii_case("CLAUDE.md")
+            && std::fs::read(path).is_ok_and(|bytes| {
+                crate::kit::is_default_claude_md(&String::from_utf8_lossy(&bytes))
+            });
         if unedited || !notes_included {
             dropped.insert(rel.clone());
         }
@@ -1396,7 +1398,7 @@ fn build_project(
         .collect();
     for (rel, path) in &candidates {
         // The unused-file review is a project feature: a template or preset carries only what it was saved with.
-        if kind != ItemKind::Project || !rel.starts_with("assets/") {
+        if kind != ItemKind::Project || !rel.starts_with("assets/") || is_agent_note(rel) {
             continue;
         }
         let flattened = rel.ends_with(FLATTENED_SUFFIX);
@@ -2355,6 +2357,7 @@ mod tests {
         let root = fixture("agent-notes");
         write(&root, "acme/CLAUDE.md", "# Acme\n\nThe launch is on Friday.\n");
         write(&root, "acme/NOTES.md", "Shot list.\n");
+        write(&root, "acme/assets/NOTES.md", "Beside the footage.\n");
         write(&root, "acme/assets/_meta.json", r#"{"version":1,"assets":{}}"#);
         write(&root, "other/project.json", r#"{"id":"other","name":"Other","version":1}"#);
         write(&root, "other/CLAUDE.md", &crate::kit::render_claude_md("Other"));
@@ -2370,7 +2373,19 @@ mod tests {
             .filter(|a| a.group == AssetGroup::AgentNote)
             .map(|a| (a.project.as_str(), a.rel.as_str(), a.included))
             .collect();
-        assert_eq!(notes, vec![("acme", "CLAUDE.md", false), ("acme", "NOTES.md", false)]);
+        assert_eq!(
+            notes,
+            vec![
+                ("acme", "CLAUDE.md", false),
+                ("acme", "NOTES.md", false),
+                ("acme", "assets/NOTES.md", false),
+            ]
+        );
+        assert_eq!(
+            left_out.reviewed_assets.iter().filter(|a| a.rel == "assets/NOTES.md").count(),
+            1,
+            "a note is listed once, never as an unused file too"
+        );
 
         picked.include_agent_notes = vec![item_key(ItemKind::Project, "acme")];
         let ticked = resolve_closure(&root, &picked).unwrap();

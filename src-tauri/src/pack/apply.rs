@@ -12,7 +12,7 @@ use super::fonts::{apply_font_merge, FontApplySummary};
 use super::hash::sha256_bytes;
 use super::limits::{BACKUP_DIR, PAYLOAD_PREFIX};
 use super::model::{ItemKind, PackFont, PackManifest, PackProject, Resolution, BRAND_MANIFEST};
-use super::read::StagedPack;
+use super::read::{set_file_mode, StagedPack};
 use super::scan::ACCEPTED_FLASHES_FILE;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -547,9 +547,7 @@ fn stamp_pack_source(staging: &Path, work: &[Work]) -> Result<(), PackError> {
     Ok(())
 }
 
-/// Swap every file an agent would read as instructions, at any depth, in each landing item that can carry one. The
-/// author's text moves to the item's `NOTES.md`, a project-shaped item's root keeps the app's default `CLAUDE.md`, and a
-/// file that is still a default goes quietly. A file that will not delete stops the import.
+/// Move every agent file's text in a landing item to its `NOTES.md`; a project-shaped root keeps the app's default `CLAUDE.md`, and one that will not delete stops the import.
 fn replace_agent_instructions(staging: &Path, work: &[Work]) -> Result<Vec<AgentNote>, PackError> {
     let mut notes = Vec::new();
     for item in work.iter().filter(|w| {
@@ -561,7 +559,9 @@ fn replace_agent_instructions(staging: &Path, work: &[Work]) -> Result<Vec<Agent
         take_agent_files(&dir, "", &mut authored, &mut had_root_file)?;
         if had_root_file && is_project_shaped(item.kind) {
             let name = project_display_name(&dir, &item.name);
-            std::fs::write(dir.join(ROOT_AGENT_FILE), crate::kit::render_claude_md(&name))?;
+            let claude = dir.join(ROOT_AGENT_FILE);
+            std::fs::write(&claude, crate::kit::render_claude_md(&name))?;
+            set_file_mode(&claude);
         }
         if authored.is_empty() {
             continue;
@@ -585,6 +585,7 @@ fn replace_agent_instructions(staging: &Path, work: &[Work]) -> Result<Vec<Agent
             format!("{}\n\n{sections}", existing.trim_end())
         };
         std::fs::write(&notes_path, ensure_newline(&combined))?;
+        set_file_mode(&notes_path);
         notes.push(AgentNote {
             kind: item.kind,
             slug: item.target_slug.clone(),
@@ -595,8 +596,7 @@ fn replace_agent_instructions(staging: &Path, work: &[Work]) -> Result<Vec<Agent
     Ok(notes)
 }
 
-/// Remove the agent files under `dir`, collecting the author's text. Each is found by path, never by matching a name: the
-/// volume decides what reads as the file (APFS folds `claude.md` and `AGENTſ.md` onto them).
+/// Remove the agent files under `dir`, collecting the author's text. By path, never by matching the name: APFS folds `claude.md` and `AGENTſ.md` onto them.
 fn take_agent_files(
     dir: &Path,
     prefix: &str,
@@ -2074,6 +2074,28 @@ mod tests {
         assert!(notes.contains("Lower case rule."));
         assert!(notes.contains("Long s rule."));
         assert_eq!(outcome.agent_notes.len(), 1);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Item 17 holds for what the swap writes, whatever the umask.
+    #[cfg(unix)]
+    #[test]
+    fn swapped_files_keep_the_forced_mode() {
+        use std::os::unix::fs::PermissionsExt;
+        let (root, _) = land_project(
+            "agent-mode",
+            &[
+                ("project.json", r#"{"id":"acme","name":"Acme"}"#),
+                ("CLAUDE.md", "Rule.\n"),
+            ],
+        );
+        for name in ["CLAUDE.md", "NOTES.md"] {
+            let mode = std::fs::metadata(root.join("acme").join(name))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o644, "{name}");
+        }
         let _ = std::fs::remove_dir_all(&root);
     }
 

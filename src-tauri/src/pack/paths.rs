@@ -31,8 +31,7 @@ fn kind_for_dir(dir: &str) -> Option<ItemKind> {
         .find(|k| k.payload_dir() == dir)
 }
 
-/// An entry dropped at staging and reported, never written: anything under an item's `.claude/` folder (older packs
-/// shipped `settings.json`) or a hidden file inside an item (`.mcp.json`). A malformed path is not dropped, so it refuses.
+/// Dropped at staging and named, never written: an item's `.claude/` entries and hidden files (`.mcp.json`). A malformed path is not dropped, so it refuses.
 pub fn is_dropped_entry(raw: &str) -> bool {
     if validate_shape(raw).is_err() {
         return false;
