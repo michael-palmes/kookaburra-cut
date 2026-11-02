@@ -248,7 +248,7 @@ class Checker:
                 self.asset(file, "audio.file", rel)
                 ext = rel.rsplit(".", 1)[-1].lower()
                 if ext not in AUDIO_EXTS:
-                    rep.error(file, "audio.file", f'"{rel}" is not audio; use mp3, wav, m4a, aac, flac or ogg')
+                    rep.error(file, "audio.file", f'"{rel}" is not audio; use mp3, wav, m4a, aac, flac or ogg (Music > Choose track takes the audio from an mp4)')
                 curve = audio.get("fadeOutCurve")
                 if curve is not None and curve not in catmod.AUDIO_FADE_CURVES:
                     warn(file, "audio.fadeOutCurve", f'unknown curve "{curve}" (renders as smooth); one of {", ".join(catmod.AUDIO_FADE_CURVES)}')

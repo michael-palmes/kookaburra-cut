@@ -2594,6 +2594,8 @@ pub(crate) const MEDIA_EXTENSIONS: &[&str] = &[
 pub(crate) const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mov", "m4v", "webm"];
 /// Project-soundtrack sources, kept small and boring; ffmpeg decodes them all.
 pub(crate) const AUDIO_EXTENSIONS: &[&str] = &["mp3", "wav", "m4a", "aac", "flac", "ogg"];
+/// Video files a soundtrack import takes the audio from; a project's soundtrack is never one of these.
+pub(crate) const SOUNDTRACK_VIDEO_EXTENSIONS: &[&str] = &["mp4"];
 
 /// Relative paths of a project's IMAGE assets (for texture preloading, the workspace equivalent of the bundled projects' eager asset glob).
 #[tauri::command]
