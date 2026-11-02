@@ -27,6 +27,7 @@ WORKSPACE_DIR_NAME = "Kookaburra Cut"
 
 CLEAN_CAP = 500
 _UNSAFE = re.compile(
+    "[\u2028\u2029]|"
     "[\x00-\x08\x0b-\x1f\x7f-\x9f­؀-؅؜۝܏࢐࢑࣢᠎"
     "​-‏‪-‮⁠-⁤⁦-⁯﻿￹-￻"
     "\U000110bd\U000110cd\U00013430-\U0001343f\U0001bca0-\U0001bca3\U0001d173-\U0001d17a"
@@ -34,9 +35,23 @@ _UNSAFE = re.compile(
 )
 
 
+_SELECTOR_RUN = re.compile("[\ufe00-\ufe0f\U000e0100-\U000e01ef]+")
+
+
 def _escape(match: "re.Match[str]") -> str:
     code = ord(match.group())
     return f"\\u{code:04X}" if code <= 0xFFFF else f"\\U{code:08X}"
+
+
+def _selectors(text: str) -> str:
+    """Variation selector runs hide text and line separators split it: escaped, but for the lone U+FE0F an emoji needs."""
+    def fix(match: "re.Match[str]") -> str:
+        before = text[match.start() - 1] if match.start() else ""
+        if match.group() == "\ufe0f" and before and not before.isspace() and not _UNSAFE.match(before):
+            return match.group()
+        return "".join(_escape(m) for m in re.finditer(".", match.group()))
+
+    return _SELECTOR_RUN.sub(fix, text)
 
 
 def clean_text(text: Any, cap: Optional[int] = CLEAN_CAP) -> Any:
@@ -44,10 +59,18 @@ def clean_text(text: Any, cap: Optional[int] = CLEAN_CAP) -> Any:
     cap the string with a marker saying how much was dropped. Anything that is not a string passes through."""
     if not isinstance(text, str):
         return text
-    clean = _UNSAFE.sub(_escape, text) if _UNSAFE.search(text) else text
+    clean = _selectors(text)
+    clean = _UNSAFE.sub(_escape, clean) if _UNSAFE.search(clean) else clean
     if cap is not None and len(clean) > cap:
         clean = f"{clean[:cap]} …[+{len(clean) - cap} chars]"
     return clean
+
+
+def clean_name(text: Any) -> Any:
+    """A name stays on one line, so project text can't pass as a line of instructions."""
+    if not isinstance(text, str):
+        return text
+    return clean_text(text).replace("\n", "\\u000A").replace("\t", "\\u0009")
 
 
 def clean_lines(text: str) -> str:
