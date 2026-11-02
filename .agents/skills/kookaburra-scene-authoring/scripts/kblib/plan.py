@@ -23,7 +23,7 @@ REFUSAL_FIELDS = ("holder", "untilMs", "scene", "file", "issues", "files", "by")
 
 EPILOG = """\
 Runs the command with --dry-run --json and reports what it would do; nothing is written,
-committed or leased. Covers scene add, duplicate, move, remove and set; doc set, unset and
+committed or leased. Covers scene add, duplicate, move, remove, set, split, renumber and import; doc set, unset and
 merge; project set, unset and fit; theme set; assets add, conform, replace, unused, restore and
 meta; checkpoint; undo; lease.
 

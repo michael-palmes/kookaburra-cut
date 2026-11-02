@@ -463,6 +463,7 @@ def cmd_scene_import(ctx: Ctx) -> int:
     project = ctx.project
     if a.scene is None:
         root = scene_ops.resolve_source(project, a.source)
+        scene_ops.confirm_source(project, root)
         rows = scene_ops.roster_of(root)
         if ctx.json:
             ctx.out({"source": str(root), "scenes": rows})

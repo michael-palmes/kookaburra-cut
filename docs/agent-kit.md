@@ -316,17 +316,23 @@ any text or chart build-in restart at its first frame, so the reply says to capt
 refuses with nothing written:
 
 - **Reach.** `PROJECT` (a folder, or a name or `ws:<slug>` in this workspace) goes through
-  `reach.guard_read_at`: credentials refused, a read outside the workspace announced.
+  `reach.guard_read_at`: credentials refused.
 - **Trust.** `<exe> trust check --dir ABS` (`cli_trust.rs`) answers from the person's stored
   grants, the F-001 rule `copy_scene_to_project` applies: this exact folder and content, never a
   re-stamp. kb asks only a binary whose `edit caps` lists `trust`, and no answer is a refusal
   (exit 2, `needs-trust`: open that project once in the app).
-- **Only plain files.** The manifest, the scene's `.tsx` and `.json` and the assets they name, with
-  no symlink anywhere on the way (`regular_file`), under size caps, media extensions only; records
+- **The person.** Listing or copying asks the app (`confirmImport`, a native bridge kind) to show
+  the same "Allow Claude to use another project?" dialog as every other reach into another project,
+  once per project per app session, so injected text can't pull one client's scene into another's
+  film. Unlike the others it also asks when that project is the one open, since it is read for a
+  different project. No app, an older app, a source outside this workspace or "Don't allow" refuses
+  (exit 2, `declined`). Its wording is fixed by the kind, never by the request.
+- **Only plain files.** The manifest, the scene's `.tsx` and `.json` (under size caps) and the assets
+  they name, with no symlink anywhere on the way (`regular_file`), media extensions only; records
   like `assets/_meta.json` and timing files stay behind. Nothing under `.claude/`, no `CLAUDE.md`,
   no hooks, permissions or commands is ever read.
 - **Code.** The source project's static check must pass, and code that reaches outside a scene
-  (`fetch`, `globalThis`, `import()`, `eval`, `__TAURI__`, ...), names an absolute path or loads a
+  (`fetch`, `window`, `document`, `globalThis`, `import()`, `eval`, `__TAURI__`, ...), names an absolute path or loads a
   file from the web refuses.
 - **Sidecar.** `terminal.startCommand`, `terminal.startPath`, `website.url`,
   `website.requestedOrigins` and `website.capture.sourceOrigin` are left out, each named in the
@@ -1340,7 +1346,7 @@ unclaimed or unanswered request exits 3 (`bridge-timeout`); `needsTrust` exits 2
   ids re-minted). `position` is a 0-based manifest index (absent appends); `name` also
   drives the minted stem and scene id.
 
-Native kinds. `mediaChanged`, `openEdit`, `export` and `cancelExport` are claimed by a Rust loop
+Native kinds. `mediaChanged`, `openEdit`, `export`, `cancelExport` and `confirmImport` are claimed by a Rust loop
 (`spawn_native_bridge`, 300 ms poll, serving instances only) rather than the render
 window, which never claims them and never spawns for them. Both take
 `project: "ws:<slug>"` and the optional `projectPath`. The loop claims through the same
@@ -1386,6 +1392,7 @@ waits until it times out.
   (`export_health::on_main_page_load`, from Tauri's `on_page_load`) fails the export in the slot
   (`interrupted`, with `restartRecommended`) and stops its encode; `bridge_export_reset`, which the
   main window calls on mount, stays as the backstop.
+- `confirmImport` (`project`, `projectPath`): the "Allow Claude to use another project?" dialog for `kb scene import`: `{ ok, allowed: true }`, or `{ ok: false, error }` on "Don't allow".
 - `cancelExport` (`target`: the export's id, absent = the running one): `{ ok, cancelled, state:
   idle | cancelled | cancelling, target? }`. An export the editor has not taken yet is answered
   `cancelled` at once; a running one is told through `kookaburra://bridge-export-cancel` (the
@@ -1643,7 +1650,7 @@ Trust: every load is stored-only, since this window cannot show the consent shee
 editor's own writes keep the open project's grant current natively. When a project's
 content changed since the user allowed it, the response is `ok: false, needsTrust: true`
 with a sentence telling the user to open it once. Before that, a `capture`, `check`,
-`insertPreset` or `openEdit` for a workspace project other than the editor's open one
+`insertPreset`, `openEdit` or `confirmImport` for a workspace project other than the editor's open one
 asks the person in a native dialog ("Allow Claude to use another project?", naming the
 project and the client), once per project per app session (`bridge_confirm_project`,
 `BridgeGrants`); "Don't allow" answers `{ ok: false, declined: true }` and holds for a

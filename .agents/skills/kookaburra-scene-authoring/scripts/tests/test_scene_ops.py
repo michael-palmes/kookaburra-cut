@@ -9,7 +9,7 @@ from typing import Any, Dict, List
 
 from kblib import scene_ops
 
-from .helpers import PNG_1x1, SCENE_TSX, KbTestCase, make_project, read_json, write, write_json
+from .helpers import PNG_1x1, SCENE_TSX, FakeApp, KbTestCase, make_project, read_json, write, write_json
 
 TRUST_CAPS = json.dumps({"trust": {"commands": ["check"]}})
 
@@ -364,6 +364,10 @@ class ImportTests(KbTestCase):
         self.source = make_project(self.tmp / "elsewhere", ["01-teaser", "02-hero"])
         self.source = self.source.rename(self.tmp / "teaser")
         self.allow()
+        self.person_says: Dict[str, Any] = {"ok": True, "allowed": True}
+        self.app = FakeApp(self.bridge, lambda req: self.person_says, ["confirmImport"])
+        self.app.__enter__()
+        self.addCleanup(self.app.__exit__)
 
     def allow(self, folder: Any = None) -> None:
         self.fake_cli(caps=TRUST_CAPS, trust_allow=str(folder or self.source))
@@ -412,6 +416,54 @@ class ImportTests(KbTestCase):
         self.assertIn("not allowed", proc.stderr)
         self.assertIn("open teaser once", proc.stderr)
         self.assertEqual(self.manifest(), before)
+
+    def test_code_reaching_through_window_or_the_bridge_refuses(self) -> None:
+        for code in ("window.fetch(u)", "document.cookie", "x.__TAURI_INTERNALS__.invoke(u)"):
+            write(self.source / "scenes/02-hero.tsx", SCENE_TSX.format(id="hero") + f"\nconst r = () => {code};\n")
+            self.allow()
+            self.do_import("02-hero", code=1)
+
+    def test_a_person_who_says_no_stops_the_import_and_the_list(self) -> None:
+        self.person_says = {"ok": False, "error": "the person did not allow Claude to copy a scene from it"}
+        before = self.manifest()
+        proc = self.do_import("02-hero", code=2)
+        self.assertIn("did not allow", proc.stderr)
+        self.assertEqual(self.manifest(), before)
+        listing = self.do_import(code=2)
+        self.assertNotIn("01-teaser", listing.stdout)
+
+    def test_the_dialog_is_asked_about_the_source_by_name(self) -> None:
+        self.do_import("02-hero")
+        asked = [r for r in self.app.requests if r["kind"] == "confirmImport"]
+        self.assertEqual(asked[0]["project"], "ws:teaser")
+        self.assertEqual(asked[0]["projectPath"], str(self.source))
+
+    def test_an_answer_without_a_clear_yes_refuses(self) -> None:
+        self.person_says = {"ok": True}
+        self.do_import("02-hero", code=2)
+
+    def test_no_app_to_ask_refuses(self) -> None:
+        self.app.__exit__()
+        (self.bridge / "app.json").unlink(missing_ok=True)
+        shutil.rmtree(self.bridge / "apps", ignore_errors=True)
+        before = self.manifest()
+        self.do_import("02-hero", code=2)
+        self.assertEqual(self.manifest(), before)
+
+    def test_an_app_too_old_to_ask_refuses(self) -> None:
+        self.app.__exit__()
+        with FakeApp(self.bridge, lambda req: {"ok": True, "allowed": True}, ["capture"]):
+            before = self.manifest()
+            self.assertNotEqual(self.kb(["scene", "import", str(self.source), "02-hero"], cwd=self.root).returncode, 0)
+            self.assertEqual(self.manifest(), before)
+
+    def test_a_source_outside_this_workspace_refuses(self) -> None:
+        moved = self.tmp / "away"
+        moved.mkdir()
+        self.source = self.source.rename(moved / "teaser")
+        self.allow()
+        proc = self.do_import("02-hero", code=2)
+        self.assertIn("outside this workspace", proc.stderr)
 
     def test_no_way_to_ask_refuses_too(self) -> None:
         self.fake_cli()
@@ -515,20 +567,12 @@ class ImportTests(KbTestCase):
         write_json(self.source / "project.json", manifest)
         self.assertExit(self.kb(["scene", "import", str(self.source), "1"], cwd=self.root), 1)
 
-    def test_kb_reach_refuses_a_credentials_folder_and_announces_outside_the_workspace(self) -> None:
+    def test_kb_reach_refuses_a_credentials_folder(self) -> None:
         home = self.tmp / "home"
         (home / ".ssh" / "p").mkdir(parents=True)
         proc = self.kb(["scene", "import", str(home / ".ssh" / "p"), "0"], cwd=self.root, env={"HOME": str(home)})
         self.assertExit(proc, 2)
         self.assertIn("credentials", proc.stderr)
-        away = Path(tempfile.mkdtemp(prefix="kbtest-away-")).resolve()
-        self.addCleanup(shutil.rmtree, str(away), True)
-        outside = away / "teaser"
-        self.source.rename(outside)
-        self.source = outside
-        self.allow()
-        proc = self.do_import("02-hero")
-        self.assertIn("from outside the workspace", proc.stderr)
 
     def test_with_no_scene_it_lists_them(self) -> None:
         proc = self.kb(["scene", "import", "teaser"], cwd=self.root)

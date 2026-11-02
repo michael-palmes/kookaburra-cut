@@ -434,12 +434,13 @@ def renumber(project: Project, start: int = 1, step: int = 1, opts: Optional[loc
 TSX_MAX_BYTES = 512 * 1024
 DOC_MAX_BYTES = 4 * 1024 * 1024
 MANIFEST_MAX_BYTES = 4 * 1024 * 1024
+CONFIRM_TIMEOUT_S = 300
 ABS_PATH = re.compile(r"^(?:~/|file:|/(?:Users|home|private|tmp|var|etc|Volumes|Applications|Library|System|opt|usr|bin)(?:/|$)|[A-Za-z]:[\\/])", re.I)
 REMOTE_SRC = re.compile(r"\b(?:src|href|url|map|texture|file|image|path)\s*[=:]\s*\{?\s*[\"'`]https?:", re.I)
 REMOTE = re.compile(r"^https?:", re.I)
 HOST_REACH = re.compile(
-    r"(?<![\w$.])(?:fetch|XMLHttpRequest|WebSocket|EventSource|importScripts|eval|Function|globalThis|self|navigator|localStorage|sessionStorage|indexedDB|postMessage|require|__TAURI__|__TAURI_INTERNALS__)(?![\w$])"
-    r"|(?<![\w$.])import\s*\("
+    r"(?<![\w$.])(?:fetch|XMLHttpRequest|WebSocket|EventSource|importScripts|eval|Function|globalThis|window|document|self|navigator|localStorage|sessionStorage|indexedDB|postMessage|require)(?![\w$])"
+    r"|__TAURI|(?<![\w$.])import\s*\("
 )
 COPY_FIELDS = ("text", "managedText", "name", "textStyle")
 COPY_PATHS = ("terminal.snapshot.grid", "chart.data")
@@ -478,6 +479,19 @@ def require_allowed(source: Path) -> None:
         raise KbError(f"kb can't tell whether {source.name} is allowed: {e.message}", EXIT_ENV, kind="needs-trust", hint=hint) from None
     if not allowed:
         raise KbError(f"{source.name} has code the person has not allowed (it is new to Kookaburra Cut, or changed since it was last opened), so kb won't copy from it", EXIT_ENV, kind="needs-trust", hint=hint)
+
+
+def confirm_source(project: Project, source: Path) -> None:
+    """The person's own yes, the dialog every other reach into another project shows: injected text must not pull one
+    client's scene into another's film. It lives in the app, so no app or no answer refuses."""
+    from . import bridge
+
+    hint = "ask the person to open Kookaburra Cut and allow it, or to copy what they want themselves"
+    if source.parent != reach.resolve(str(project.workspace_root)):
+        raise KbError(f"{source.name} is outside this workspace, so the app can't ask the person about it", EXIT_ENV, kind="declined", hint=hint)
+    resp = bridge.request("confirmImport", {"project": f"ws:{source.name}", "projectPath": str(source)}, CONFIRM_TIMEOUT_S, "kb scene import")
+    if resp.get("ok") is not True or resp.get("allowed") is not True:
+        raise KbError(str(resp.get("error") or f"the person did not allow copying from {source.name}"), EXIT_ENV, kind="declined", hint=hint)
 
 
 def regular_file(root: Path, rel: str, what: str) -> Path:
@@ -635,6 +649,7 @@ def import_scene(project: Project, source: str, selector: str, name: Optional[st
     code free of host reach and the sidecar free of commands and absolute paths."""
     root = resolve_source(project, source)
     require_allowed(root)
+    confirm_source(project, root)
     other = load_source(root)
     idx, stem = other.resolve(selector)
     entry = other.scene_entries()[idx]
