@@ -3,7 +3,7 @@
 # never a real project, product, client or person's name. Add a shape, not a name.
 
 # A real home folder in a path; docs and tests write /Users/x instead.
-/Users/(?!x/)[A-Za-z0-9._-]+/
+/Users/(?!x\b)[A-Za-z0-9._-]+
 
 # A concrete project folder under the workspace; write a placeholder such as <slug> or product-tour.
 ~/Kookaburra Cut/(?!(_autorun|_bridge|brands|themes|fonts|gradients|export-presets|presets|screenshots|objects|templates|product-tour|launch-2026|<)\b)[A-Za-z0-9][A-Za-z0-9._-]*[0-9][A-Za-z0-9._-]*

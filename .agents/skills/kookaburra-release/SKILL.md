@@ -9,7 +9,7 @@ Ship a signed, notarised, stapled `.app` and DMG that opens on any Mac with no G
 
 ## The shape, in one paragraph
 
-A release is a **signed `v*` tag on `main`**, pushed by `pnpm release`. `.github/workflows/release.yml` then runs four jobs on fresh runners: **build** (no signing secret in reach) verifies the tag against `main`'s `.github/allowed_tag_signers`, builds the ffmpeg sidecar from pinned source, fetches the beat-this model and the licensed device models, runs `pnpm tauri build --no-sign` and uploads the unsigned app with its SHA-256; **sign**, in the protected `release` environment (one reviewer approves), checks that digest, imports the Developer ID into a temporary keychain, signs inside-out with the hardened runtime, notarises and staples the app and a plain DMG, tars the stapled app for the updater and signs it bound to the version, then deletes every key; **verify**, with no environment, checks signatures, notarisation and Gatekeeper, runs the signed binary's `edit caps` and `check flashes`, and compares the sidecars' signature-stripped digests with the build job's; **publish** writes `SHA256SUMS`, attests provenance and drafts the GitHub release for you to publish. Budget **about an hour**, plus the approval click.
+A release is a **signed `v*` tag on `main`**, pushed by `pnpm release`. `.github/workflows/release.yml` then runs four jobs on fresh runners: **build** (no signing secret in reach) verifies the tag against `main`'s `.github/allowed_tag_signers`, builds the ffmpeg sidecar from pinned source, fetches the beat-this model and the licensed device models, runs `pnpm tauri build --no-sign` and uploads the unsigned app with its SHA-256; **sign**, in the protected `release` environment (one reviewer approves), checks that digest, imports the Developer ID into a temporary keychain, signs inside-out with the hardened runtime, notarises and staples the app and a plain DMG, tars the stapled app for the updater and signs it bound to the version, then deletes every key; **verify**, with no environment, checks signatures, notarisation, Gatekeeper and the updater signature against `plugins.updater.pubkey`, runs the signed binary's `edit caps` and `check flashes`, and compares the sidecars' signature-stripped digests with the build job's; **publish** writes `SHA256SUMS`, attests provenance and drafts the GitHub release for you to publish. Budget **about an hour**, plus the approval click.
 
 ## Cutting a release
 
@@ -43,7 +43,7 @@ Everything here is done by hand, once. Nothing in the repository works until it 
    | `NOTARY_KEY_ID`, `NOTARY_ISSUER_ID` | that key's ID and issuer |
    | `TAURI_SIGNING_PRIVATE_KEY` | the updater (minisign) private key file's contents |
    | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | its password |
-   Repository **variables**: `APPLE_TEAM_ID` (the Team ID every signature is checked against), optionally `MACOS_RUNNER` (default `macos-26`) and `LICENSED_ASSETS_REPO`.
+   Repository **variables**: `APPLE_TEAM_ID` (the Team ID every signature is checked against), optionally `LICENSED_ASSETS_REPO`. The runner image is `macos-26`, hard-coded so a variable can't redirect the sign job.
 4. **Updater key.** Keep the key the published apps trust (`plugins.updater.pubkey`) if existing installs are to update themselves; rotating it means every install at or below the last laptop-signed release needs one manual download, since their bundled public key will not verify the new signature. Either way, generate any new key with `pnpm tauri signer generate -w <file>` and paste the public key into `tauri.conf.json` in the same PR that rotates the secret.
 5. **Licensed device models** (`src/assets/models/README.md`). Create a private repository (default `michael-palmes/kookaburra-cut-assets`) holding one file, `licensed-models.tar.age`: a flat tar of the licensed glbs encrypted to an age recipient. Repository secrets (not in the environment: the build job reads them, and they hold no signing power): `LICENSED_ASSETS_TOKEN`, a fine-grained token with read-only Contents on that one repository, and `LICENSED_ASSETS_AGE_KEY`, the matching age identity. The build job unpacks the archive and refuses any glb that does not match `src/assets/models/licensed.sha256`.
    ```bash
@@ -57,10 +57,10 @@ Everything here is done by hand, once. Nothing in the repository works until it 
 
 | Key | Protection | Listed in | Signs | Can't |
 | --- | --- | --- | --- | --- |
-| Tag (`kookaburra-tag`) | Touch ID | `.github/allowed_tag_signers` | release tags, PR heads that change a signer list, `signers.yml` or `release.yml` | run without a person |
-| Commit (`kookaburra-commit`) | none, no prompt | `.github/allowed_signers` | every other PR head, including an agent's while you're away | tag a release, change a signer list, `signers.yml` or `release.yml` |
+| Tag (`kookaburra-tag`) | Touch ID | `.github/allowed_tag_signers` | release tags, PR heads that change what the release pipeline runs or pins | run without a person |
+| Commit (`kookaburra-commit`) | none, no prompt | `.github/allowed_signers` | every other PR head, including an agent's while you're away | tag a release, change what the release pipeline runs or pins |
 
-`release.yml` and `release.sh` read only the tag list. `signers.yml` requires the tag key when either list, `signers.yml` or `release.yml` differs between the PR head and its merge base with the base branch, so a stolen commit key can't point `release.yml` at the commit list. GitHub runs that check from the default branch's copy, whatever the PR's base.
+`release.yml` and `release.sh` read only the tag list. `signers.yml` requires the tag key when anything in its `tag_paths` differs between the PR head and its merge base with the base branch: `.github/`, every script the pipeline reaches, both lock files, `package.json`, `patches/`, `tauri.conf.json` and the pin files. A stolen commit key can't point `release.yml` at the commit list or swap what the sign job runs, but it can still change `src/` and `build.rs`, so read the diff before tagging. `scripts/signers-paths.test.mjs` fails when a new pipeline script is missing from the list. GitHub runs that check from the default branch's copy, whatever the PR's base.
 
 Set up a Mac (the files `ssh-keygen -K` writes are references to the Secure Enclave, useless on another machine):
 
@@ -75,7 +75,7 @@ git config gpg.format ssh && git config commit.gpgsign true && git config tag.gp
 git config user.signingkey ~/.ssh/kookaburra/id_ecdsa_sk_rk_kookaburra-commit.pub   # only once main lists this key
 ```
 
-A head signed by an unlisted key fails Signers on every PR, so set `user.signingkey` last. Without `SSH_SK_PROVIDER`, signing stops with `No FIDO SecurityKeyProvider specified`; `release.sh` sets it itself. A list line is `<GitHub noreply address> namespaces="git" <first two fields of the .pub>`. Check a key with `ssh-keygen -lf <file>.pub` against `sc_auth list-ctk-identities -t ssh`. Dependabot's branches are re-signed by hand, with the tag key (one Touch ID) when the bump changes `signers.yml` or `release.yml`.
+A head signed by an unlisted key fails Signers on every PR, so set `user.signingkey` last. Without `SSH_SK_PROVIDER`, signing stops with `No FIDO SecurityKeyProvider specified`; `release.sh` sets it itself. A list line is `<GitHub noreply address> namespaces="git" <first two fields of the .pub>`. Check a key with `ssh-keygen -lf <file>.pub` against `sc_auth list-ctk-identities -t ssh`. Dependabot's branches are re-signed by hand, each with the tag key (one Touch ID), because every bump touches a lock file or `.github/`. About half of all PRs touch the list too, and an agent working alone stops there until you can sign.
 
 **Rotating a key.** Change the list in a PR with the head signed by the current tag key: `git -c user.signingkey="$(git config --path kookaburra.tagkey)" commit --amend --no-edit -S`. Remove the old key once no open PR's head still carries it.
 

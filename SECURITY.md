@@ -598,12 +598,13 @@ builds it in separate jobs, each on a fresh runner.
 
 - **Build, with no signing secret in reach.** The build job checks that the tag
   is signed by a key in `main`'s `.github/allowed_tag_signers` (read from `main`,
-  never from the tagged tree) and sits on `main`, builds the ffmpeg sidecar from
-  sources pinned by SHA-256 and commit (`scripts/build-ffmpeg-sidecar.sh`),
-  fetches the beat model against its pins, unpacks the licensed device models
-  from a private repository's `age`-encrypted archive and refuses any glb that
-  does not match `src/assets/models/licensed.sha256`, runs
-  `pnpm tauri build --no-sign` and uploads the unsigned app with its SHA-256.
+  never from the tagged tree) and sits on `main`. Before any dependency or
+  repository script runs, it unpacks the licensed device models from a private
+  repository's `age`-encrypted archive. It then refuses any glb that does not match
+  `src/assets/models/licensed.sha256`, builds the ffmpeg sidecar from sources
+  pinned by SHA-256 and commit (`scripts/build-ffmpeg-sidecar.sh`), fetches the
+  beat model against its pins, runs `pnpm tauri build --no-sign` and uploads the
+  unsigned app with its SHA-256.
   Its only secrets are the read-only token for that private repository and the
   archive's decryption key; neither can sign anything.
 - **Sign, in the protected `release` environment.** Behind a required reviewer
@@ -621,7 +622,8 @@ builds it in separate jobs, each on a fresh runner.
   runner: `codesign --verify --deep --strict`, the Developer ID chain, the Team
   ID, no entitlements, `stapler validate` and `spctl` on the zip's app, the
   updater tar's app and the DMG; the DMG holds the same bytes as the zip;
-  `latest.json` names the same signature and version; the signed binary runs
+  the updater signature verifies against `plugins.updater.pubkey`; `latest.json`
+  names the same signature and version; the signed binary runs
   `edit caps` and `check flashes` on a film its bundled ffmpeg renders; and the
   sidecars' signature-stripped digests equal the build job's record, which
   reaches verify through the sign job's artefact.
@@ -640,13 +642,16 @@ builds it in separate jobs, each on a fresh runner.
   `.github/allowed_tag_signers` before pushing; the build job checks the same
   line. Every pull request's head commit
   must be signed by a key in `.github/allowed_signers`, or in the tag list when
-  it changes either list, `signers.yml` or `release.yml`
+  it changes `.github/`, a script the release pipeline runs, a lock file,
+  `package.json`, `patches/`, `tauri.conf.json` or a build config or pin file
   (`.github/workflows/signers.yml`, run from the default branch's copy). Only the
   head commit is checked, `main` requires no approving review, and everything
-  else the sign job runs (its scripts, the lock files, the source pins,
-  `tauri.conf.json`) changes under the commit key.
+  else, including `src/`, `build.rs` and `vite.config.ts`, changes under the
+  commit key and is built into what the sign job signs. A job a pull request adds
+  can report under this check's name, and GitHub doesn't say which result counts,
+  so a stolen commit key may get past the rule.
   `CODEOWNERS` names the maintainer; `audit.yml` runs
-  `pnpm audit --prod` and `cargo deny check advisories` on every pull request
+  `pnpm audit` and `cargo deny check advisories` on every pull request
   and weekly. Every workflow but `scorecard.yml` starts from `permissions: {}` or
   `contents: read` (`scorecard.yml` starts from `read-all`, and its one job
   narrows to `security-events` and `id-token`). Every workflow
@@ -714,3 +719,5 @@ Deliberately deferred, recorded so nobody mistakes them for done:
   Claude Code's own managed settings outrank that flag today.
 - A second reviewer on the `release` environment, a required review on `main` and
   a pinned build toolchain.
+- A signature check only a GitHub App can post, with its key limited to `main`, so
+  a pull request's own workflow can't answer for it.

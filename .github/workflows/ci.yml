@@ -37,7 +37,8 @@ jobs:
   frontend:
     needs: changes
     if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
+    # setup-python has no 3.9 for a newer image, and the kit check below needs it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -77,6 +78,21 @@ jobs:
         run: |
           git fetch --no-tags --depth=1 origin "$BASE"
           node scripts/workspace-names.mjs --base "$BASE"
+
+      - name: Set up the Python stock macOS ships
+        id: python39
+        if: ${{ needs.changes.outputs.kit != 'false' }}
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.9"
+          update-environment: false
+
+      - name: Kit Python compiles on 3.9
+        if: ${{ needs.changes.outputs.kit != 'false' }}
+        env:
+          PYTHON39: ${{ steps.python39.outputs.python-path }}
+          PYTHONPYCACHEPREFIX: ${{ runner.temp }}/pycache39
+        run: '"$PYTHON39" -m compileall -q .agents/skills'
 
       # Mostly waiting on fake apps and retries, so modules run well past the core count.
       - name: kb tests
