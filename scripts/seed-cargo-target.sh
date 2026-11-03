@@ -8,7 +8,7 @@ clone_profile() {
   set -euo pipefail
   local src=$1 dst=$2 part
   shift 2
-  for part in deps build .fingerprint; do
+  for part in deps .fingerprint; do
     [[ -d "$src/$part" ]] || continue
     mkdir -p "$dst/$part"
     find "$src/$part" -mindepth 1 -maxdepth 1 "$@" -print0 | xargs -0 -J % cp -c -p -R % "$dst/$part/"

@@ -28,6 +28,14 @@ src/assets/models/licensed/
 .env.*
 .claude/scheduled_tasks.lock
 
+# Signing keys and certificates
+*.p12
+*.pfx
+*.p8
+*.pem
+*.key
+*.keychain-db
+
 # Logs & caches
 *.log
 .pnpm-store/

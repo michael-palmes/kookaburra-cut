@@ -18,7 +18,7 @@
           "init_default_workspace",
           "default_workspace_root",
           "user_home_dir",
-          "note_picked_folder"
+          "pick_folder"
         ]
       }
     },

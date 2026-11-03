@@ -30,27 +30,60 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          git fetch --no-tags origin "+refs/pull/${PR}/head:refs/remotes/pr/head"
+          # A just-opened pull request can fire this before GitHub has created its ref.
+          for attempt in 1 2 3 4 5; do
+            git fetch --no-tags origin "+refs/pull/${PR}/head:refs/remotes/pr/head" && break
+            [ "$attempt" -lt 5 ] || { echo "::error::refs/pull/${PR}/head never appeared"; exit 1; }
+            sleep 5
+          done
           [ "$(git rev-parse refs/remotes/pr/head)" = "$HEAD_SHA" ] || { echo "::error::the fetched head is not the event's head"; exit 1; }
 
-      # The head's signature covers the whole tree; a change to either list or the workflows that read them needs the tag key, so a stolen commit key can't add a key or point a release at the commit list.
+      # The head's signature covers the whole tree; a change to what the release pipeline runs or pins needs the tag key, so a stolen commit key can't add a key, point a release at the commit list or swap what the sign job runs.
       - name: Require an allowed signature on the head commit
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
+          tag_paths=(
+            .cargo
+            .github
+            .npmrc
+            package.json
+            patches
+            pnpm-lock.yaml
+            pnpm-workspace.yaml
+            rust-toolchain
+            rust-toolchain.toml
+            scripts/build-ffmpeg-sidecar.sh
+            scripts/check-licensed-models.sh
+            scripts/make-dmg.sh
+            scripts/release.sh
+            scripts/seed-cargo-target.sh
+            scripts/setup-models.sh
+            scripts/sidecar-digest.sh
+            scripts/sign-and-notarize.sh
+            scripts/tauri-path
+            scripts/verify-release.sh
+            scripts/verify-updater-sig.mjs
+            src-tauri/.cargo
+            src-tauri/Cargo.lock
+            src-tauri/rust-toolchain
+            src-tauri/rust-toolchain.toml
+            src-tauri/tauri.conf.json
+            src/assets/models/licensed.sha256
+          )
           signers=allowed_signers
           fix="git commit --amend --no-edit -S with that key, then push (for Dependabot, check out its branch, re-sign the head the same way and push)"
           changed=false
           bases="$(git merge-base --all "$BASE_SHA" "$HEAD_SHA")" || changed=true
           for merge_base in $bases; do
-            git diff --quiet "$merge_base" "$HEAD_SHA" -- .github/allowed_signers .github/allowed_tag_signers .github/workflows/signers.yml .github/workflows/release.yml || changed=true
+            git diff --quiet "$merge_base" "$HEAD_SHA" -- "${tag_paths[@]}" || changed=true
           done
           if [ "$changed" = true ]; then
             signers=allowed_tag_signers
             fix="git -c user.signingkey=\"\$(git config --path kookaburra.tagkey)\" commit --amend --no-edit -S, then push (for Dependabot, check out its branch first)"
-            echo "This pull request changes a signer list, signers.yml or release.yml, so the head must carry the tag key"
+            echo "This pull request changes what the release pipeline runs or pins, so the head must carry the tag key"
           fi
           git show "${BASE_SHA}:.github/${signers}" > "$RUNNER_TEMP/signers"
           if git -c gpg.ssh.allowedSignersFile="$RUNNER_TEMP/signers" -c gpg.minTrustLevel=fully verify-commit --verbose "$HEAD_SHA"; then

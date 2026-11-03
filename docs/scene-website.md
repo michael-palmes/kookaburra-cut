@@ -16,7 +16,7 @@ contract and the threat model for the native child WKWebView boundary.
 | Live scope | Explicit activation in the paused editor and the holding phase of a slideshow | Native content cannot participate in deterministic WebGL composition or slide transitions |
 | Export truth | A manually captured viewport PNG; an imported image is the fallback | Export remains a pure function of project bytes |
 | URL policy | HTTPS, plus opt-in HTTP on exact loopback hosts with an explicit port | Remote cleartext transport is never needed; local development remains practical |
-| Consent | Every top-level origin needs a local project-and-origin grant before its first request | Opening, importing and selecting a project must remain offline |
+| Consent | Every top-level origin needs a local project-and-origin grant before its first request, asked on a native sheet (`website_grant_origin`, Return declines) once per origin per project, and only for a request the scene raised this session | Opening, importing and selecting a project must remain offline, and a webview must not be able to answer for the person |
 | Browser profile | One app-wide persistent Website profile, separate from Safari and the app webview | Logins work across projects without giving packs cookies or grants |
 | Focus | Click to focus; Shift+Esc or the first outside click releases | Matches Terminal without stealing deck navigation |
 | Permissions | Deny device access, uploads, downloads and autofill | A presentation is not a general-purpose browser |
@@ -88,8 +88,12 @@ activates the panel and grants that origin locally.
 Persistent HTTPS grants are keyed by canonical project path and normalised
 origin. Loopback grants, including loopback HTTPS, last only for the current app
 session because port ownership can change. A top-level navigation to another
-origin pauses before its request. The editor may approve it, adding both the
-authored request and local grant. Present never prompts or mutates a project;
+origin pauses before its request. The stage then shows the blocked origin with one
+Allow button, and the consent is a native sheet from Rust (`website_grant_origin`):
+it names the origin and the project, Return declines, and only a request the scene
+raised this session can reach it. Allowing adds both the authored request and the
+local grant, once per origin per project; declining adds nothing, and the page
+stays blocked until the scene opens it again. Present never prompts or mutates a project;
 it denies unapproved navigation and leaves the capture visible.
 
 New-window requests are converted to same-panel navigation. HTTP

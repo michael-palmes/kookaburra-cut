@@ -121,8 +121,9 @@ reuses the other checkout's app binary as fresh, with its baked-in
 `CARGO_MANIFEST_DIR` and the resources tauri-build copies beside it.
 Instead, `pnpm install` in a new worktree runs `scripts/seed-cargo-target.sh`,
 which APFS-clones the primary checkout's third-party artefacts (seconds,
-near-zero disk until either side rebuilds) and drops kookaburra-cut's own, so
-the first build compiles only the app crate. `pnpm setup:target` does the same
+near-zero disk until either side rebuilds), leaving out kookaburra-cut's own and
+every build script's output, so the first build recompiles only the crates that
+depend on a build script (240 of 573, about 3 minutes). `pnpm setup:target` does the same
 for a Rust-only session; it never touches an existing target. `du` counts
 clones in full, so judge real usage with `df`.
 

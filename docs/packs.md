@@ -124,6 +124,12 @@ export asks for a name in the packs window and saves it; nothing is ever
 guessed from the macOS account. The `device` field is always `Mac`: a
 computer name is usually a person's name, and nobody chose to send it.
 
+`build_pack` runs the Save dialog itself, as a sheet on the packs window: the
+webview suggests a file name and never a path. `validate_destination` then checks
+the answer before a byte is written, and the folder counts as picked for kb
+(`docs/agent-kit.md`, "kb reach"). A debug autorun has nobody to ask, so the round
+trip lands in its throwaway root's `_autorun/roundtrip`.
+
 What this proves, and what it does not. The import copy has to be honest about
 the second column:
 
