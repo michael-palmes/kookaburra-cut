@@ -112,8 +112,9 @@ Tauri and the updater plugin); the bridge is a file queue, not a socket
 exporting and presenting make no request, and allowed scene code can't make one:
 a release build's worker refuses to start unless the policy is live
 (`provePolicy`), and before any scene loads `src/stage/realmGuard.ts` limits
-`fetch`, `WebSocket`, `XMLHttpRequest`, `EventSource`, `importScripts` and nested
-workers to `asset:`, `blob:`, `data:` and the app's own files.
+`fetch`, `WebSocket`, `XMLHttpRequest`, `EventSource` and `importScripts` to the
+`asset:` paths its window handed over, `blob:`, `data:` and the app's own files,
+and refuses every nested worker.
 
 | Path | Trigger | Destination | Data | Consent and off switch | Control |
 | --- | --- | --- | --- | --- | --- |
@@ -176,11 +177,13 @@ backup. Everything else is backed up like any document: projects with their own
   thumbs per project, pack import staging, and `import-backup/` holding what an
   import replaced, hard-deleted after 24 h). Files reach the webview as
   `asset://` URLs served by the app's own handler (`src-tauri/src/asset_reach.rs`,
-  registered in place of Tauri's): a window may read `$APPDATA/cache`, the
-  shared libraries (`templates/`, `presets/`, `fonts/`, `objects/`, `brands/`,
-  `screenshots/`, the snapshots and scene thumbs under `.kookaburra/`) and the
-  one project it loaded last (`read_project_manifest`), which it loses on
-  the welcome screen (`release_project`) or when the window closes. Paths are
+  registered in place of Tauri's): an app window may read `$APPDATA/cache`,
+  `fonts/`, `objects/` and the one project it loaded last
+  (`read_project_manifest`), which it loses on the welcome screen
+  (`release_project`) or when the window closes; only the main window also reads
+  `templates/`, `presets/`, `brands/`, `screenshots/` and the snapshots and scene
+  thumbs under `.kookaburra/`; a child webview (a live website) is served
+  nothing. The stage worker holds a narrower list still: see `realmGuard.ts`. Paths are
   canonicalised before the check, so a link inside a project that leads out of
   it is refused, and no hidden folder below a root is served (`.emoji-cache`
   reads through a command). Native reads of a project asset go through
@@ -450,8 +453,9 @@ drop a request, which is the out-of-scope case above.
   an OffscreenCanvas with no `window`, `document` or `__TAURI_INTERNALS__`, so
   scene code can't reach IPC even from the main window, and the network is shut
   ("What leaves the Mac"); its native port refuses any project the window did not
-  hand it (`stageClient.ts`). A scene can still read its project, the shared
-  libraries and the app's caches over `asset://`, and the Allow sheet says so.
+  hand it (`stageClient.ts`). Over `asset://` the guard admits its project, pinned
+  fonts and the objects it read, and it refuses nested workers, which would start
+  without it.
 - **Stills on the way in** (`src-tauri/src/imagefile.rs`, `kblib/imagefile.py`,
   `kblib/svgsafe.py`): an imported still is untrusted. Its header is read with no
   decoder and capped first (256 MB, 16384 px a side, 100 MP), and its first bytes,
@@ -672,8 +676,6 @@ Deliberately deferred, recorded so nobody mistakes them for done:
   `knownPublishers` are plain JSON under the 0600 file mode. An HMAC under a
   Keychain secret can't serve headless exports, and after the stage worker a forged
   grant buys only a sandboxed render; native consent closes the webview path.
-- A narrower `asset://`: any window can read every project's welcome snapshot and
-  scene thumbs, plus `screenshots/` and `brands/`.
 - A token on the autorun launch variables: `KOOKABURRA_ACTION` and its set are
   honoured in release builds, which is the same-user case above.
 - A sandbox for the agent. Its allow and deny rules, hooks and reach checks bound

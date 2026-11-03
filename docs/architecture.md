@@ -67,10 +67,14 @@ frame bodies and the scene trees. The split, and why it is drawn where it is:
 - **The network is shut.** Tauri only sets the policy header on HTML, and a
   worker served without one runs with no policy, so built apps start the worker
   from a `blob:` bootstrap that inherits the window's. `realmGuard.ts` runs
-  first: it limits `fetch`, sockets, XHR, `EventSource`, `importScripts` and
-  nested workers to the app's own files, `asset:`, `blob:` and `data:`, and
-  refuses to load the server if a `data:` module proves the policy is missing.
-  Dev builds have no window policy, so only the guard applies there.
+  first: it limits `fetch`, sockets, XHR, `EventSource` and `importScripts` to the
+  app's own files, `blob:`, `data:` and the `asset:` paths the window handed over
+  (the project's folder, its pinned fonts and the objects it read; never
+  `$APPDATA/cache`), refuses every nested worker, and refuses to load the server
+  if a `data:` module proves the policy is missing. The stage spawns no workers
+  of its own (esbuild and troika run in place), and a nested one would inherit the
+  policy but start without the guard. Dev builds have no window policy, so only
+  the guard applies there.
 - **The window resolves, the worker consumes.** Asset URLs for the open
   project are resolved in the window and shipped with the project
   (`StageAssets`); clip frames, conform jobs, emoji rasters, PNG decodes and

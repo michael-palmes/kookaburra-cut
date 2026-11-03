@@ -1,6 +1,12 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it, vi } from "vitest";
-import { installRealmGuard, provePolicy } from "./realmGuard";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  assetUrlPath,
+  grantReach,
+  installRealmGuard,
+  provePolicy,
+  revokeReach,
+} from "./realmGuard";
 
 // biome-ignore lint/suspicious/noExplicitAny: a fake realm of whatever the guard wraps
 type Realm = Record<string, any>;
@@ -30,6 +36,7 @@ function realm(dev = false) {
     WebSocket: class extends Sink {},
     EventSource: class extends Sink {},
     Worker: class extends Sink {},
+    SharedWorker: class extends Sink {},
     XMLHttpRequest: Xhr,
     importScripts: vi.fn(),
   };
@@ -38,12 +45,12 @@ function realm(dev = false) {
 }
 
 const ALLOWED = [
-  "asset://localhost/project/a.png",
   "blob:tauri://localhost/1234",
   "data:image/webp;base64,AAAA",
   "tauri://localhost/assets/model.glb",
 ];
 const REFUSED = [
+  "asset://localhost/%2Fproject%2Fa.png",
   "https://example.com/x",
   "http://127.0.0.1:9000/x",
   "http://localhost/x",
@@ -74,15 +81,20 @@ describe("installRealmGuard", () => {
   it("checks one string, however the input answers", () => {
     const { scope } = realm();
     let reads = 0;
-    const shifty = { toString: () => (reads++ ? "https://example.com/x" : "asset://localhost/a") };
+    const shifty = { toString: () => (reads++ ? "https://example.com/x" : "data:,a") };
     const socket = new scope.EventSource(shifty) as Sink;
-    expect(socket.args[0]).toBe("asset://localhost/a");
+    expect(socket.args[0]).toBe("data:,a");
   });
 
-  it("starts nested workers from blobs only, which inherit the policy", () => {
+  it("refuses nested workers", () => {
     const { scope } = realm();
-    expect(() => new scope.Worker("blob:tauri://localhost/1")).not.toThrow();
-    expect(() => new scope.Worker("tauri://localhost/assets/x.js")).toThrow(TypeError);
+    for (const url of ["blob:tauri://localhost/1", "tauri://localhost/assets/x.js"]) {
+      expect(() => new scope.Worker(url)).toThrow(TypeError);
+      expect(() => new scope.SharedWorker(url)).toThrow(TypeError);
+      expect(() => new (scope.Worker.prototype.constructor as typeof scope.Worker)(url)).toThrow(
+        TypeError,
+      );
+    }
   });
 
   it("opens the dev socket in dev only", () => {
@@ -111,6 +123,89 @@ describe("installRealmGuard", () => {
     const { scope } = realm();
     const Reached = scope.WebSocket.prototype.constructor;
     expect(() => new Reached("https://example.com/x")).toThrow(TypeError);
+  });
+});
+
+describe("asset reach", () => {
+  const asset = (path: string, query = "") =>
+    `asset://localhost/${encodeURIComponent(path)}${query}`;
+  const reaches = async (url: string) => {
+    const { scope } = realm();
+    return (scope.fetch(url) as Promise<Response>).then(
+      () => true,
+      () => false,
+    );
+  };
+
+  afterEach(() => {
+    revokeReach("project");
+    revokeReach("object:cube");
+    vi.restoreAllMocks();
+  });
+
+  it("refuses asset: until something grants it, and says so", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const url = asset("/w/alpha/assets/a.png");
+    expect(await reaches(url)).toBe(false);
+    expect(warn).toHaveBeenCalledWith(`reach refused ${url}`);
+    grantReach("project", ["/w/alpha"]);
+    expect(await reaches(url)).toBe(true);
+  });
+
+  it("admits a granted folder's files, the folder itself, and no sibling sharing its prefix", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    grantReach("project", ["/w/alpha/"]);
+    expect(await reaches(asset("/w/alpha/assets/a b#ü.png"))).toBe(true);
+    expect(await reaches(asset("/w/alpha"))).toBe(true);
+    expect(await reaches(asset("/w/alpha-evil/a.png"))).toBe(false);
+    expect(await reaches(asset("/w/beta/a.png"))).toBe(false);
+  });
+
+  it("is not widened by a query or percent-encoding", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    grantReach("project", ["/w/alpha"]);
+    expect(await reaches(asset("/w/alpha/a.png", "?v=3&r=1"))).toBe(true);
+    for (const url of [
+      asset("/w/beta/a.png", "?/w/alpha/a.png"),
+      asset("/w/alpha/../beta/a.png"),
+      asset("/w/alpha/..").replace("..", "%2E%2E"),
+      `asset://localhost/${encodeURIComponent(encodeURIComponent("/w/alpha/a.png"))}`,
+      "asset://localhost/%2Fw%2Falpha%2F%E0%A4%A",
+      "asset://localhost/w/alpha/a.png",
+      "asset://localhost",
+    ]) {
+      expect(await reaches(url), url).toBe(false);
+    }
+  });
+
+  it("matches a granted file exactly", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    grantReach("project", [assetUrlPath(asset("/w/fonts/x.woff"))]);
+    expect(await reaches(asset("/w/fonts/x.woff"))).toBe(true);
+    expect(await reaches(asset("/w/fonts/x.woff2"))).toBe(false);
+    expect(await reaches(asset("/w/fonts/y.woff"))).toBe(false);
+  });
+
+  it("grants nothing for a path that is not one, least of all the whole disk", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(assetUrlPath("/projects/_samples/a.png")).toBeNull();
+    expect(assetUrlPath("tauri://localhost/assets/a.woff")).toBeNull();
+    expect(assetUrlPath(asset("/w/../a.woff"))).toBeNull();
+    grantReach("project", ["/", "relative/path", null, ""]);
+    expect(await reaches(asset("/w/alpha/a.png"))).toBe(false);
+  });
+
+  it("closes on revoke, one owner at a time, and a new grant replaces the owner's last", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    grantReach("project", ["/w/alpha"]);
+    grantReach("object:cube", ["/w/objects/cube/cube.glb"]);
+    revokeReach("project");
+    expect(await reaches(asset("/w/alpha/a.png"))).toBe(false);
+    expect(await reaches(asset("/w/objects/cube/cube.glb"))).toBe(true);
+    grantReach("project", ["/w/alpha"]);
+    grantReach("project", ["/w/beta"]);
+    expect(await reaches(asset("/w/alpha/a.png"))).toBe(false);
+    expect(await reaches(asset("/w/beta/a.png"))).toBe(true);
   });
 });
 
@@ -157,10 +252,9 @@ describe("the policy the worker inherits", () => {
       ?.slice(1) ?? [];
 
   it("reaches no remote host from a shipped build", () => {
-    expect(directive(csp, "connect-src").filter((v) => /^(https?:|wss?:|\*)/.test(v))).toEqual([
-      "http://ipc.localhost",
-      "http://asset.localhost",
-    ]);
+    expect(directive(csp, "connect-src").filter((v) => /^(https?:|wss?:|\*)/.test(v))).toEqual([]);
+    expect(csp).not.toMatch(/\.localhost/);
+    expect(devCsp).not.toMatch(/\.localhost/);
     expect(directive(csp, "script-src")).toEqual(["'self'", "blob:", "'wasm-unsafe-eval'"]);
     expect(directive(csp, "worker-src")).toEqual(["'self'", "blob:"]);
   });

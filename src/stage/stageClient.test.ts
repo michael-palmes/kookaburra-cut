@@ -1,8 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { reportAutoRunError } from "../engine/autorun";
+import type { LoadedProject } from "../engine/project";
 import { STAGE_PROTOCOL_VERSION, type WindowNotice } from "../engine/stageProtocol";
-import { StageClient, stageWorkerUrl } from "./stageClient";
+import { StageClient, stageWorkerUrl, toStageProject } from "./stageClient";
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => {}) }));
+vi.mock("../engine/project", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../engine/project")>()),
+  // Every scope resolves here, as a bundled template's does once the resource root is known.
+  projectFolderPath: (id: string) => `/x/${id}`,
+}));
 vi.mock("../engine/autorun", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../engine/autorun")>()),
   reportAutoRunError: vi.fn(),
@@ -76,6 +83,23 @@ describe("stageWorkerUrl", () => {
   });
 });
 
+describe("toStageProject", () => {
+  const root = (id: string) =>
+    toStageProject({ id, scenes: [], sceneFiles: [] } as unknown as LoadedProject).root;
+
+  it("names the folder of anything the workspace holds", () => {
+    expect(root("ws:alpha")).toBe("/x/ws:alpha");
+    expect(root("ws-template:launch")).toBe("/x/ws-template:launch");
+    expect(root("ws-preset:hero")).toBe("/x/ws-preset:hero");
+  });
+
+  it("names no folder for a bundled item, which loads from the app's origin", () => {
+    expect(root("showcase-tour")).toBeNull();
+    expect(root("template:launch")).toBeNull();
+    expect(root("preset:hero")).toBeNull();
+  });
+});
+
 describe("StageClient boot", () => {
   const clients: StageClient[] = [];
   const start = (canvas = fakeCanvas().canvas) => {
@@ -131,6 +155,17 @@ describe("StageClient boot", () => {
     worker.emit(READY);
     expect(client.boot()).toMatchObject({ status: "failed" });
     await expect(client.configure(size, "demand")).rejects.toThrow("server import failed");
+  });
+
+  it("fails an autorun when the worker's reach refuses a file, and on nothing else it logs", () => {
+    const { worker } = start();
+    vi.mocked(reportAutoRunError).mockClear();
+    worker.emit({ type: "log", level: "warn", text: "THREE.Clock: deprecated" });
+    expect(reportAutoRunError).not.toHaveBeenCalled();
+    worker.emit({ type: "log", level: "warn", text: "reach refused asset://localhost/%2Fa.png" });
+    expect(reportAutoRunError).toHaveBeenCalledWith(
+      "stage reach refused asset://localhost/%2Fa.png",
+    );
   });
 
   it("retries with a fresh worker, a fresh canvas and a fresh window", async () => {

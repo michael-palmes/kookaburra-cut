@@ -1,5 +1,6 @@
 import type { PortMethod } from "../engine/stageProtocol";
 import type { ConformProgressPayload, NativePort } from "../engine/stageRealm";
+import { assetUrlPath, grantReach } from "./realmGuard";
 
 /** The stage worker's native port: every method is one request to the window, which resolves names and handles against the open project and performs the native call. Conform events arrive as notices the server feeds back through `deliverConform*`. */
 export function createWorkerNativePort(
@@ -38,7 +39,18 @@ export function createWorkerNativePort(
       call("emojiRead", [projectId, file]) as Promise<ArrayBuffer | null>,
     emojiWrite: (projectId, key, bytes) =>
       call("emojiWrite", [projectId, key, bytes]) as Promise<void>,
-    readObject: (slug) => call("readObject", [slug]) as Promise<never>,
+    async readObject(slug) {
+      const read = (await call("readObject", [slug])) as {
+        json: string;
+        glbUrl: string;
+        thumbnailUrl?: string;
+      };
+      grantReach(`object:${slug}`, [
+        assetUrlPath(read.glbUrl),
+        read.thumbnailUrl ? assetUrlPath(read.thumbnailUrl) : null,
+      ]);
+      return read;
+    },
     decodePng: (bytes) => call("decodePng", [bytes]) as Promise<ArrayBuffer>,
     deliverConformProgress(payload) {
       for (const h of conformHandlers) h.progress(payload);
