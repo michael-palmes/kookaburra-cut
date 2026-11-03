@@ -265,7 +265,8 @@ export const SCENE_DOC_KEYS: Record<
     ref: "charts",
   },
   terminal: {
-    summary: "Terminal panel content; exports its captured snapshot.",
+    summary:
+      "Terminal panel content, written as a transcript; every surface shows its baked snapshot.",
     type: "object",
     ref: "media",
   },

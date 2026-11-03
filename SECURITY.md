@@ -14,8 +14,8 @@ The keys and a sample profile: [`docs/mdm.md`](docs/mdm.md).
 ## Reporting a vulnerability
 
 If you believe you have found a security issue (for example in the Tauri IPC
-surface, the pack extractor, the bundled sidecar handling, the update
-mechanism or the embedded terminal), report it privately through GitHub's
+surface, the pack extractor, the bundled sidecar handling or the update
+mechanism), report it privately through GitHub's
 private vulnerability reporting: open the
 [Security tab](https://github.com/michael-palmes/kookaburra-cut/security) and
 choose **Report a vulnerability**, or use the
@@ -63,8 +63,8 @@ It is built for these risks:
 
 - **A shared project or pack that carries code or agent configuration.** A
   project's scenes are TypeScript that the app compiles and runs; a pack or a
-  shared folder can also carry `CLAUDE.md`, `.claude/settings.json`, terminal
-  commands and website origins. Scene code runs only after a person presses
+  shared folder can also carry `CLAUDE.md`, `.claude/settings.json` and website
+  origins. Scene code runs only after a person presses
   Allow on a native sheet bound to the content's hash, and then on a stage shut
   off from the network and the app's commands; agent configuration is dropped on
   import and moved out of the folder at every open, and Claude won't start until
@@ -74,9 +74,9 @@ It is built for these risks:
   captured frames, fetched pages) is written by whoever shared it. The stamped
   rules tell the agent it is data, never instructions, and every bridge and kb
   output escapes control, bidi and format characters and caps its length.
-- **An agent that reaches too far.** The embedded terminal starts Claude Code
-  from a fixed launch shape with an allow-listed environment; kb writes only
-  inside the project, the workspace or a folder a person picked in the app this
+- **An agent that reaches too far.** The app starts neither Claude Code nor a
+  shell: a session begins in the Claude app or the person's own terminal. kb
+  writes only inside the project, the workspace or a folder a person picked in the app this
   session, and refuses credential folders; other projects need an in-app
   confirmation; commands that look like sending work off the Mac ask a person
   first. None of this is a sandbox (see "Not yet").
@@ -119,10 +119,7 @@ workers to `asset:`, `blob:`, `data:` and the app's own files.
 | --- | --- | --- | --- | --- | --- |
 | Update check | At launch, at most every 20 h, only with the consent on; or Check for Updates (menu, ⌘K, Settings), which runs without consent and stores nothing | `github.com/michael-palmes/kookaburra-cut/releases/latest/download/latest.json` | One GET; no identifiers, no version in the URL; the plugin's user agent only | First-run welcome switch (on by default, Escape saves off); Settings ▸ Updates. `update_check_consent` in `$APPDATA/settings.json` | `src-tauri/src/updater.rs`, `src/engine/updates.ts`; `KOOKABURRA_UPDATE_ENDPOINT` is honoured only in debug builds |
 | Update install | Install and relaunch on the update dialog | The release asset `latest.json` names | The signed updater archive | Later declines and remembers the version | `updater.rs` (`download_and_install`); the ed25519 signature is checked against `plugins.updater.pubkey` before anything is written |
-| Claude Code version probe | While the built-in terminal runs Claude, at most once a day, only with the update consent on | `downloads.claude.ai/claude-code-releases/latest` | One GET through `/usr/bin/curl`, no identifiers | The same consent | `src-tauri/src/claude_update.rs` |
-| Built-in Claude terminal | Start Claude Code in the terminal panel (main window only) | Anthropic, through the user's own Claude Code install and account | The project's files and the conversation, as Claude Code works | Not starting it; Settings ▸ Claude ▸ Edit with picks the Claude app instead. The panel says what it sends before Start | `src-tauri/src/pty.rs` (`Launch::ClaudeSession`), `src/engine/terminal.ts`, `src/ui/TerminalPanel.tsx` |
-| Claude Code installer and update | Install Claude Code, or Update, in the terminal panel | `claude.ai/install.sh`, piped to bash | Whatever Anthropic's installer needs | Not pressing it; the command is typed visibly into the shell and runs only there | `src/engine/terminal.ts`, `TerminalPanel.tsx` (`pty_write`) |
-| Edit with Claude (`claude://` handoff) | Edit with Claude, with the Claude desktop app installed | The Claude desktop app on this Mac, which talks to Anthropic under the user's account | The project folder path and a starter prompt, typed in, never sent | Settings ▸ Claude ▸ Edit with | `src-tauri/src/claude_app.rs` (`code_session_link`, `open_in_claude`) |
+| Edit with Claude (`claude://` handoff) | Edit with Claude, with the Claude desktop app installed | The Claude desktop app on this Mac, which talks to Anthropic under the user's account | The project folder path and a starter prompt, typed in, never sent | Not pressing it; `DisableClaude` turns it off for a fleet | `src-tauri/src/claude_app.rs` (`code_session_link`, `open_in_claude`) |
 | Live scene websites | Open live website in the paused editor after Allow for that origin; Present reloads an allowed origin on each hold | The approved origin, with the reach of a browser tab (subresources, subframes and scripts are not filtered) | Whatever the page loads; cookies and storage in a profile separate from Safari | Allow per origin per project (main window only); revoke in the inspector; Settings ▸ Website data clears storage | `src-tauri/src/website.rs` (`website_open` refuses without a grant, HTTPS or loopback only, downloads and new windows denied, no Tauri capability for the child) |
 | Fixed pages in the browser | Get Claude, or What leaves your Mac | `claude.ai/download`; `github.com/.../docs/privacy.md` | The constant URL, nothing appended | Not pressing it | `claude_app.rs` (`open_claude_download`, `open_privacy_page`) |
 
@@ -250,10 +247,9 @@ backup. Everything else is backed up like any document: projects with their own
   dialog `build_pack` runs from Rust points, never a webview path
   (`pack::commands::validate_destination` refuses system folders, `$APPDATA`
   and the app bundle). Control: `resolve_export_output` in `lib.rs`.
-- **`~/.claude`**: Claude Code's own history, sessions and login. The app only
-  reads `~/.claude/projects/<project>/` to offer "Continue last conversation"
-  (`pty.rs`) and never writes there; the only agent files it writes are inside
-  the project (`kit.rs`).
+- **`~/.claude`**: Claude Code's own history, sessions and login. The app never
+  reads or writes it; the only agent files it writes are inside the project
+  (`kit.rs`).
 - **Temporary files**: hidden siblings beside their target (`*.tmp`,
   `.staging-*`, `.part`, `.kit-tmp`, `.kc-render/`); the app has no
   `std::env::temp_dir` outside tests. The updater plugin unpacks an update in
@@ -298,51 +294,31 @@ Also:
   `kblib/imagefile.py`): one file, a 60 s limit in the app, no shell, and the
   app's own environment, not the sidecars' allow-list. kb and the brand skill also
   run `osascript` to rasterise an SVG they have rewritten first (`kblib/svgsafe.py`).
-- `/usr/bin/curl` (the version probe above); `open` for Finder and the `claude://`
-  handoff; the person's login shell, once to find `claude` (`pty.rs`,
-  `detect_claude`) and in each terminal session.
+- `open` for Finder, the `claude://` handoff and the fixed pages (`claude_app.rs`).
+
+The app never starts a shell or Claude Code.
 
 ## What reaches your agent
 
-Two paths hand a project to Claude Code; both run under the user's own account
-and install. The app holds no API key and sends nothing to Anthropic itself.
+Claude Code runs outside the app, in the Claude desktop app or the person's own
+terminal, under their own account, install and settings. The app holds no API
+key, sends nothing to Anthropic itself and starts no Claude Code or shell process,
+so no credential passes through it and no window can type into a session.
 
-- **The embedded terminal** (`pty.rs`): `pty_spawn` takes a `Launch` enum,
-  `claudeSession { continueLast, grounding }` or `interactiveShell`, never a
-  command string. Rust execs the binary `detect_claude` stored (absolute,
-  regular file) behind the fixed script `exec "$0" "$@"` with
-  `--permission-mode auto --model claude-opus-5-5 --effort high` and the
-  grounding as one argv element (`CLAUDE_FIXED_ARGS`); the cwd is confined to
-  the workspace (`confine_terminal_cwd`); the child environment is
-  `env_clear()` plus `HOME`, `USER`, `LOGNAME`, `SHELL`, `PATH`, `LANG`,
-  `TMPDIR`, `TERM`, `COLORTERM` and the prefixes `LC_` and
-  `TERM_` (`ENV_ALLOW`, `ENV_ALLOW_PREFIX`); `Launch::ClaudeSession` alone also
-  keeps `SSH_AUTH_SOCK` and the prefixes `CLAUDE_` and `ANTHROPIC_`
-  (`ENV_CLAUDE_ALLOW`, `ENV_CLAUDE_PREFIX`), so the ssh agent,
-  `CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_API_KEY` reach Claude Code but never
-  a scene's interactive shell. Only the main window holds the
-  `terminal` permission set, and `Launch::ClaudeSession` is refused from any
-  other (`CLAUDE_LAUNCH_WINDOWS`). Every session command checks the owning
-  window (`owned_session`). The panel's copy says "Sends this project's files
-  to Anthropic as you work. Scene edits and kb commands run without asking;
-  Claude Code decides which other commands are safe to run and asks about the
-  rest." (`TerminalPanel.tsx`, `CLAUDE_DISCLOSURE` in `ClaudeLauncher.tsx`):
-  under `--permission-mode auto` Claude Code's own classifier approves the
-  commands it judges safe outside the allow rules, so that judgement is
-  Anthropic's, not the app's, and the copy says so. "Continue last conversation" reads
-  `~/.claude/projects/<project>/` for an earlier session. The terminal's
-  clipboard addon is write-only (`src/engine/terminalClipboard.ts`): a program
-  may put text on the clipboard through OSC 52, never read it, in the panel
-  and in scene terminals alike.
 - **The `claude://` handoff** (`claude_app.rs`): `open claude://code/new?folder=<project>&q=<prompt>`,
   the prompt capped at the Claude app's limit, opened only when LaunchServices
   reports a handler; the prompt is typed into the app, not sent, until the
-  person presses Enter there. The kit is stamped first, as the terminal does.
+  person presses Enter there. The kit is stamped first, and if the stamp moved
+  files aside a native sheet lists them before the handoff
+  (`review_agent_files_for`). The launcher's copy says "Claude Code sends this
+  project's files to Anthropic under your own account and settings."
+  (`CLAUDE_DISCLOSURE`, `ClaudeLauncher.tsx`). Claude Code's permission mode is
+  the person's: the app sets none.
 - **What the kit auto-allows** (`kit.rs`, `managed_allow_rules`): `Bash(./kb *)`,
   the two `kb.py` spellings, the template's `git status/diff/log/add/commit`,
   and `Read` of `~/Kookaburra Cut/_bridge/**`, `themes/**`, `brands/**` and
   the app bundle's `Resources/**`. Every stamp (first load per session, before
-  each Claude launch, before each handoff) rewrites `.claude/settings.json`:
+  each handoff) rewrites `.claude/settings.json`:
   only `$schema`, `model`, the managed `allow`, `ask` and `deny` rules and the
   hooks with the kb marker stay, `.claude/settings.local.json` is cut to `$schema`
   and `model`, and `.claude/commands/`, `.claude/agents/` and unshipped
@@ -362,12 +338,11 @@ and install. The app holds no API key and sends nothing to Anthropic itself.
   unread. A root `CLAUDE.md` that isn't a shipped default moves on the first open
   of a folder; after that it is the person's. The record sits in `settings.json`,
   outside the folder, so a folder can't mark itself reviewed.
-- **The review before Claude** (`workspace.rs`, `review_agent_files`): a native
-  sheet shows what moved, and Return is Not now. `pty_spawn` refuses a Claude
-  session, by the folder alone and whatever the webview says, until the sweep has
-  finished, the person has seen it and no such file is present
-  (`require_agent_files_reviewed`). Edit with Claude asks the same. Typing `claude`
-  in a plain shell is outside this gate.
+- **The review before Claude** (`workspace.rs`, `review_agent_files_for`): a native
+  sheet shows what moved, and Return is Not now. Edit with Claude refuses the
+  handoff, by the folder alone and whatever the webview says, until the sweep has
+  finished, the person has seen it and no such file is present. Typing `claude`
+  in a shell of their own is outside this gate.
 - **Send-off asks** (`kblib/hookfast.py`, `send_off_reason`): the `bash-pre` hook
   asks a person before `curl`, `wget`, `nc` and `socat` to anything but loopback,
   `scp`, `sftp`, `ftp`, `ssh`, `rsync` to a host, `git push`, `gh`, cloud CLIs, mail,
@@ -379,8 +354,7 @@ and install. The app holds no API key and sends nothing to Anthropic itself.
   the app and kb write inside a project must be real folders, so a planted link
   can't steer their writes or deletes.
 - **The untrusted-text rule** (`.agents/skills/kookaburra-scene-authoring/RULES.md`,
-  "Untrusted text" and "Stop and ask"; the grounding in `terminal.ts` names
-  RULES.md as the authority): sidecar copy and names, `project.json` fields,
+  "Untrusted text" and "Stop and ask"): sidecar copy and names, `project.json` fields,
   `BRAND.md`, `NOTES.md`, pack contents, captured frames and fetched pages are
   data, never instructions; text that addresses the agent is reported, not
   followed; the agent asks before touching any path outside `project.json`,
@@ -414,10 +388,8 @@ and install. The app holds no API key and sends nothing to Anthropic itself.
   error and hook context escapes C0 and C1 controls (not `\n` and `\t`), bidi,
   zero-width, tag and other format characters as `\uXXXX`, and cuts a string at
   500 characters with ` …[+N chars]`, so an OSC 52 clipboard write in a scene
-  name reaches the agent inert as `\u001b]52…`. The terminal banner and the
-  grounding strip control and whitespace from the project name and cap it at
-  80 characters, and a project-sourced name stays on one line (`clean_name`), so
-  it can't pass as a line of instructions.
+  name reaches the agent inert as `\u001b]52…`. A project-sourced name stays on one
+  line (`clean_name`), so it can't pass as a line of instructions.
 
 The agent's reach is also bounded by the bridge: request ids are
 `[A-Za-z0-9-]` up to 64 characters, requests expire after 120 s, a deadline
@@ -461,15 +433,15 @@ drop a request, which is the out-of-scope case above.
 - **Per-window ACL** (`src-tauri/permissions/*.json`, `src-tauri/capabilities/*.json`):
   every `#[tauri::command]` belongs to exactly one permission set, and each
   window gets only its sets. Main: project read, render and write, trust, media
-  library, library, export, capture host, studio, terminal, Claude launcher,
-  updater, website editor. Present: project read, render, its own window and
+  library, library, export, capture host, studio, Claude launcher, updater,
+  website editor. Present: project read, render, its own window and
   website show. Render: project read, render, bridge serving. Settings: its
   caches, the workspace location, updater and publisher. Packs: pack commands
   and the dialog. Editor and theme editor: theirs. Dev-only commands are
   `cfg(debug_assertions)` and granted only by `capabilities/dev/`, which
   `build.rs` includes in debug builds alone. `src-tauri/src/acl.rs` lists each
   window's commands and fails on a new command until it is placed, on any
-  window but main reaching `pty_spawn`, the trust commands, `start_export`,
+  window but main reaching the trust commands, `start_export`,
   `delete_project`, `website_grant_origin` or `init_default_workspace`, and on
   any window but settings reaching `init_workspace` or `move_workspace`.
   `website::guard_invoke` is the second layer: any label outside the seven app
@@ -485,9 +457,9 @@ drop a request, which is the out-of-scope case above.
   decoder and capped first (256 MB, 16384 px a side, 100 MP), and its first bytes,
   not its name, decide the format. An SVG is rewritten from an allow-list of drawing
   elements before it is rasterised.
-- **Scene terminals and websites**: a scene's terminal block pre-types its
-  command and never submits it (`sanitizeStartCommand`); Present shows the
-  captured snapshot and has no PTY command. A scene's website block loads
+- **Scene terminals and websites**: a scene's terminal block is text and a baked
+  PNG; no process ever runs for it, and its transcript parser drops every escape
+  sequence but colours (`sceneTerminalTranscript.ts`). A scene's website block loads
   nothing until the person grants its origin in the editor; the child
   WKWebView has no Tauri capability, no file, media or sensor access, no
   downloads and no new windows; an approved origin reloads in Present on each
@@ -532,9 +504,8 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
   Continue is the primary button only for a publisher this Mac already knows
   under this key; a first-time, renamed or re-keyed publisher gets Cancel as
   the primary button.
-- **Review before Continue.** The trust screen lists every pre-typed terminal
-  command, custom start path and requested Website origin a pack carries,
-  read from its scene sidecars and hash-checked (`read_pack_scene_docs`,
+- **Review before Continue.** The trust screen lists every requested Website
+  origin a pack carries, read from its scene sidecars and hash-checked (`read_pack_scene_docs`,
   `src/packs/packReview.ts`), so nothing is reviewed after the files land. A
   project, template or preset a pack adds or replaces loses that slug's F-001
   grant and its place in this session's allow set
@@ -568,17 +539,15 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
   directory before consent and against the stream while staging; an
   `object.json` `glb` or `thumbnail` path must sit beside the manifest
   (`objects::validate_object_rel`, `isObjectRel`).
-- **Review before apply.** The trust screen shows the scene code; the summary
-  shows pre-typed terminal commands, custom start paths, website origins
-  (loopback flagged as session-only) and the author's notes, read from the
-  landed sidecars, never the manifest.
+- **Review before apply.** The trust screen shows the scene code and website
+  origins (loopback flagged as session-only), read from the pack's signed
+  sidecars, never the manifest; the summary shows the author's notes.
 
 ## Saved secrets
 
 The app keeps one secret: the pack signing key, in the login Keychain and
 never synchronised, with the 0600 file fallback described above. Everything else is the
-user's: Claude Code's login lives in `~/.claude` and the `CLAUDE_*` and
-`ANTHROPIC_*` variables pass through to the Claude session only, as described above;
+user's: Claude Code's login lives in `~/.claude`, which the app never touches;
 website logins live in the Website data store. No password, token or key is
 printed by the app or written to its logs.
 
@@ -588,8 +557,7 @@ Five keys in the domain `com.mpalmes.kookaburracut`, honoured only when a
 configuration profile forces them (`src-tauri/src/managed.rs`): `DisableClaude`,
 `DisableLiveWebsites`, `AllowedPublisherKeyIds`, `DisableUpdateCheck` and
 `WorkspaceRoot`. Settings marks each affected row "Managed by your organisation".
-`DisableClaude` stops the app's Claude launchers, not the built-in terminal's
-plain shell. The key table and a sample profile are in `docs/mdm.md`.
+The key table and a sample profile are in `docs/mdm.md`.
 
 ## Release integrity
 
@@ -700,9 +668,6 @@ Deliberately deferred, recorded so nobody mistakes them for done:
   today (`docs/scene-website.md`, "Accepted residual risk").
 - Bridge request signing: the queue is 0700 and same-user processes are out of
   scope, so it has no authentication beyond the user account.
-- A native consent for the first interactive shell of a session. Today that takes
-  the main window's word; the Allow gate, website origin grants, picked folders,
-  cross-project bridge access and a workspace move are answered natively.
 - Sealing the trust state: `trustedProjects`, `websiteOriginGrants` and
   `knownPublishers` are plain JSON under the 0600 file mode. An HMAC under a
   Keychain secret can't serve headless exports, and after the stage worker a forged

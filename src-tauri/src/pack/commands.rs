@@ -148,7 +148,7 @@ pub struct PackInspectionView {
 }
 
 /// One scene sidecar as the pack carries it, read before staging and checked against its signed hash, so the trust
-/// screen reviews terminal commands and website origins from the bytes that would land.
+/// screen reviews website origins from the bytes that would land.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PackSceneDoc {
@@ -833,7 +833,7 @@ pub async fn read_pack_scene_source(
     )?)
 }
 
-/// Every scene sidecar the pack carries beside a staged scene source, parsed, for the trust screen's terminal and
+/// Every scene sidecar the pack carries beside a staged scene source, parsed, for the trust screen's
 /// website review. Each is checked against its signed hash on the way in; one mismatch refuses the pack.
 #[tauri::command]
 pub async fn read_pack_scene_docs(path: String) -> Result<Vec<PackSceneDoc>, String> {

@@ -260,8 +260,28 @@ describe("terminal snapshot pre-flight", () => {
     const one = terminalSnapshotWarning([{ name: "Intro", terminal: {} }, undefined], files);
     expect(one).toContain('"Intro"');
     expect(one).toContain("empty prompt");
+    expect(one).toContain("transcript");
     const stem = terminalSnapshotWarning([undefined, { terminal: {} }], files);
     expect(stem).toContain('"02-demo"');
+  });
+
+  it("names a transcript newer than its snapshot, beside any empty terminal", () => {
+    const snapshot = { grid: [], src: "assets/terminal-02-demo.png", transcript: "$ ls" };
+    const warning = terminalSnapshotWarning(
+      [
+        { name: "Intro", terminal: {} },
+        { name: "Demo", terminal: { transcript: "$ pwd", snapshot } },
+      ],
+      files,
+    );
+    expect(warning).toContain('"Intro"');
+    expect(warning).toContain('not baked yet in "Demo"');
+    expect(terminalSnapshotWarning([{ terminal: { transcript: "$ ls" } }], files)).toContain(
+      "not baked yet",
+    );
+    expect(
+      terminalSnapshotWarning([{ terminal: { transcript: "$ ls", snapshot } }], files),
+    ).toBeNull();
   });
 
   it("treats a grid without a baked src as uncaptured and lists every scene", () => {

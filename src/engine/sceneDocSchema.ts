@@ -674,7 +674,7 @@ export interface SceneDoc {
   compare?: SceneDocCompare;
   /** The chart block (one per scene): data, appearance, axes, labels and the keyframed data track. Defaults and sampling live in `sceneChart.ts`. */
   chart?: SceneDocChart;
-  /** The terminal block (one per scene): screen-locked panel content, interactive in preview and Present, exporting its captured snapshot. Defaults and layout live in `sceneTerminal.ts`. */
+  /** The terminal block (one per scene): screen-locked panel content, rendering its baked snapshot everywhere. Defaults and layout live in `sceneTerminal.ts`. */
   terminal?: SceneDocTerminal;
   /** The Website block (one per scene): a consent-gated native page while paused or presenting, with a captured PNG as deterministic render truth. */
   website?: SceneDocWebsite;

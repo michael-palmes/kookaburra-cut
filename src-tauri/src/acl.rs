@@ -209,7 +209,7 @@ fn every_window_has_a_capability() {
 }
 
 #[test]
-fn only_the_main_window_reaches_the_terminal_trust_and_the_rest_of_the_studio() {
+fn only_the_main_window_reaches_trust_and_the_rest_of_the_studio() {
     for label in [
         "present",
         "render",
@@ -220,8 +220,6 @@ fn only_the_main_window_reaches_the_terminal_trust_and_the_rest_of_the_studio() 
     ] {
         let commands = allowed(label);
         for denied in [
-            "pty_spawn",
-            "pty_write",
             "check_project_trust",
             "request_project_trust",
             "trust_project",

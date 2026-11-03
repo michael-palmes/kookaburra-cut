@@ -214,8 +214,7 @@ expectation.
 
 Edit with Claude hands the project to the Claude desktop app, so its surfaces borrow Claude's own
 look: that recognition is the point. The `--claude-*` tokens (§15) apply **only** to the titlebar
-Edit with Claude button, its launcher popover, the legacy rail's Use Claude app button and the
-Settings Claude section. Nothing else in the chrome may use them, and they never reach a rendered
+Edit with Claude button, its launcher popover and the Settings Claude section. Nothing else in the chrome may use them, and they never reach a rendered
 frame (§14).
 
 | Token | Hex | Role |
@@ -295,16 +294,16 @@ superseded by the built layout below.)*
 ```
 ┌─────────────────────────────────────────────────────────┐
 │ ●●●  ⌂ name / path [✳ Edit with Claude]  [Find ⌘K] [⤓] │ ← custom titlebar (46px)
-├────────────┬───────────────────────────────┬────────────┤
-│ Claude     │   Preview stage               │ Inspector  │
-│ Code rail  │   (letterboxed canvas)        │ (342px,    │
-│ (collapsib │                               │  Project / │
-│  le, 300px │   ◖camera pill◗  ← bottom-left│  Scene     │
-│  clamp)    │                               │  tabs +    │
-│            ├───────────────────────────────┤  drill-ins)│
-│            │  Animation lane (collapsible) │            │
-│            │  Playback bar (scene cells)   │            │
-├────────────┴───────────────────────────────┴────────────┤
+├────────────────────────────────────────────┬────────────┤
+│   Preview stage                             │ Inspector  │
+│   (letterboxed canvas)                      │ (342px,    │
+│                                             │  Project / │
+│   ◖camera pill◗  ← bottom-left              │  Scene     │
+│                                             │  tabs +    │
+├─────────────────────────────────────────────┤  drill-ins)│
+│  Animation lane (collapsible)               │            │
+│  Playback bar (scene cells)                 │            │
+├─────────────────────────────────────────────┴────────────┤
 ```
 
 - **Titlebar (46px, §13):** folder icon-button (projects) · name-over-path identity · the
@@ -314,9 +313,6 @@ superseded by the built layout below.)*
   desktop app session in the project folder (`claude://code/new`). It greets only a project created
   in the app, on its first open (turning the greeting back on in Settings adds one more, on the next
   project opened), so the stage normally runs the full width.
-- **Claude Code rail (left, legacy):** the embedded terminal, shown only when Settings ▸ Claude
-  picks the built-in terminal; collapsible; width `clamp(320px, 30vw, 460px)`. The scene wizards
-  live outside it, so Add a scene and Edit scene work in either mode.
 - **Preview stage:** the light; the camera pill floats bottom-left (idle "Animate scene" ↔
   active orbit/pan/zoom controller, z-7 over the tool overlay).
 - **Timeline dock (bottom):** the collapsible animation lane (camera keys/segments; open =
@@ -359,9 +355,9 @@ panels, cards, or buttons at rest.
 
 Each surface and what it must specify. *(v13 note: items 1–6, 9 and 12 are SHIPPED in the
 main-window redesign: titlebar, stage + camera pill, playback bar, timeline dock with the
-animation lane, the Claude rail as the left column, the 342px inspector, the ⌘K palette, and
+animation lane, the 342px inspector, the ⌘K palette, and
 right-click context menus (theme cards, animation segments). The aspect switcher lives on the
-inspector's Project tab; scene management rides the rail wizards + the playback bar's New
+inspector's Project tab; scene management rides the scene wizards + the playback bar's New
 scene.)*
 
 1. **Window titlebar**: traffic-light inset, draggable region, project name, global
@@ -491,7 +487,7 @@ Resolution (e.g. 4K) sits in an adjacent dropdown. Changing aspect re-letterboxe
 
 *Implemented:* the palette is `ui/CommandPalette.tsx` over the full command registry
 (`ui/commandRegistry.ts`), reached via the NATIVE menu accelerator (Project ▸ Find an Action…,
-the reliable channel over xterm) with a capture-phase DOM fallback. It mounts on
+the reliable channel) with a capture-phase DOM fallback. It mounts on
 `.modal-overlay` DELIBERATELY: the transport and lane-nudge key guards key off that class
 (load-bearing; see the phase doc's keyboard-arbitration table). Right-click context menus are
 the reusable `ui/ContextMenu.tsx` (viewport-clamped, Esc/outside dismiss, in-menu two-step

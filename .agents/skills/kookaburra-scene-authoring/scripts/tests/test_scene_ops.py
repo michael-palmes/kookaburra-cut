@@ -491,6 +491,15 @@ class ImportTests(KbTestCase):
         self.assertEqual(doc["website"], {"size": 0.5})
         self.assertIn("left out terminal.startCommand", proc.stdout)
 
+    def test_a_terminal_transcript_is_copy_not_a_path(self) -> None:
+        write_json(self.source / "scenes/02-hero.json", {
+            "version": 1, "name": "Hero",
+            "terminal": {"transcript": "/Users/x/repo", "snapshot": {"grid": [], "transcript": "/Users/x/repo"}},
+        })
+        self.do_import("02-hero")
+        doc = read_json(self.root / "scenes/04-hero.json")
+        self.assertEqual(doc["terminal"]["transcript"], "/Users/x/repo")
+
     def test_absolute_paths_refuse_the_import(self) -> None:
         for value in ("/Users/x/secret.png", "~/secret.png", "file:///etc/hosts", "https://example.invalid/a.png"):
             write_json(self.source / "scenes/02-hero.json", {"version": 1, "name": "Hero", "media": [{"id": "i", "kind": "image", "host": "stage", "src": value}]})

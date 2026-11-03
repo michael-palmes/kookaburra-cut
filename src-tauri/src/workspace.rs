@@ -96,18 +96,6 @@ pub struct AppSettings {
     /// Last version offered and declined ("Later"), so the same version isn't re-offered every launch.
     #[serde(default)]
     pub last_offered_version: Option<String>,
-    /// Unix-ms of the last Claude Code version check (the daily throttle marker; stamped on attempt).
-    #[serde(default)]
-    pub last_claude_check_ms: Option<u64>,
-    /// Cached latest Claude Code version from the last successful check.
-    #[serde(default)]
-    pub last_claude_latest: Option<String>,
-    /// Last Claude Code version offered and dismissed, so the banner isn't re-shown for it.
-    #[serde(default)]
-    pub last_offered_claude_version: Option<String>,
-    /// Edit with Claude opens the legacy built-in terminal rail instead of handing the project to the Claude app.
-    #[serde(default)]
-    pub claude_builtin_terminal: bool,
     /// Inverted so the serde/Default false means the Claude launcher shows on a new project's first open.
     #[serde(default)]
     pub disable_claude_first_open: bool,
@@ -1117,18 +1105,14 @@ pub fn set_hardware_video(
     Ok(())
 }
 
-/// Choose what Edit with Claude opens and whether its launcher greets a new project's first open; the main window follows live.
+/// Choose whether the Claude launcher greets a new project's first open; the main window follows live.
 #[tauri::command]
 pub fn set_claude_preferences(
     app: AppHandle,
     state: State<'_, SettingsState>,
-    builtin_terminal: Option<bool>,
     first_open: Option<bool>,
 ) -> Result<(), String> {
     update_settings(&app, &state, |settings| {
-        if let Some(on) = builtin_terminal {
-            settings.claude_builtin_terminal = on;
-        }
         if let Some(on) = first_open {
             settings.disable_claude_first_open = !on;
         }
@@ -1864,7 +1848,7 @@ pub fn create_project(
     })
 }
 
-/// Claude Code provisioning for a project folder (docs/agent-kit.md, "Stamping"; see `kit.rs`). `false` = a shipped skill is missing (a packaging defect the terminal warns about); the skills that are there and the rest of the kit are still stamped.
+/// Claude Code provisioning for a project folder (docs/agent-kit.md, "Stamping"; see `kit.rs`). `false` = a shipped skill is missing (a packaging defect); the skills that are there and the rest of the kit are still stamped.
 pub(crate) fn stamp_claude_provisioning(app: &AppHandle, dir: &Path) -> Result<bool, String> {
     let root = skills_root(app);
     let (found, missing) = crate::kit::shipped_skills_in(&root);
@@ -1942,28 +1926,6 @@ fn agent_files_block(record: Option<&AgentFilesRecord>, present: &[String]) -> O
     }
 }
 
-/// The last check before a Claude session starts, by the folder alone: no webview says it's clean. `cwd` is canonical and already confined to the workspace.
-pub(crate) fn require_agent_files_reviewed(
-    app: &AppHandle,
-    state: &State<'_, SettingsState>,
-    cwd: &Path,
-) -> Result<(), String> {
-    let root = require_root(app, state)?;
-    let canonical = root.canonicalize().map_err(|e| e.to_string())?;
-    let slug = cwd
-        .strip_prefix(&canonical)
-        .ok()
-        .and_then(|rest| rest.components().next())
-        .ok_or("Claude starts inside a project folder")?;
-    let dir = root.join(slug);
-    let settings = load_settings(app, state)?;
-    let record = settings.agent_files.get(&*dir.to_string_lossy());
-    match agent_files_block(record, &crate::kit::foreign_agent_files(&dir)) {
-        Some(why) => Err(why),
-        None => Ok(()),
-    }
-}
-
 /// Show the person what moved out of the folder on a native sheet a webview can't answer. `true` starts the session; Return and Not now leave it off.
 pub(crate) async fn review_agent_files_for(
     app: &AppHandle,
@@ -2012,20 +1974,7 @@ pub(crate) async fn review_agent_files_for(
     Ok(true)
 }
 
-/// The main window's question before starting Claude; see `review_agent_files_for`.
-#[tauri::command]
-pub async fn review_agent_files(
-    app: AppHandle,
-    window: tauri::Window,
-    state: State<'_, SettingsState>,
-    slug: String,
-) -> Result<bool, String> {
-    require_window(&window, "main")?;
-    let dir = project_dir(&app, &state, &slug)?;
-    review_agent_files_for(&app, &state, &slug, &dir).await
-}
-
-/// Re-stamp a project's kit: on every workspace project load and when the terminal starts Claude, off the main thread so it never blocks either.
+/// Re-stamp a project's kit on every workspace project load, off the main thread so it never blocks it.
 #[tauri::command]
 pub async fn provision_project(
     app: AppHandle,
@@ -2038,7 +1987,7 @@ pub async fn provision_project(
     }
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<SettingsState>();
-        // The terminal stamps too, so git waits for Allow here rather than at each caller.
+        // Git waits for Allow here rather than at each caller.
         let allowed = stored_trust_matches(&app, &state, &slug, &dir).unwrap_or(false);
         let stamped = restamping_trust(&app, &state, &slug, || {
             stamp_claude_provisioning(&app, &dir)

@@ -23,24 +23,6 @@
       }
     },
     {
-      "identifier": "terminal",
-      "description": "The embedded Claude Code terminal: a PTY whose launch shape Rust builds (never a free command string).",
-      "commands": {
-        "allow": [
-          "pty_spawn",
-          "pty_write",
-          "pty_resize",
-          "pty_kill",
-          "pty_pause",
-          "pty_resume",
-          "detect_claude",
-          "has_claude_session",
-          "claude_version_info",
-          "dismiss_claude_update"
-        ]
-      }
-    },
-    {
       "identifier": "claude-launcher",
       "description": "The Claude desktop app handoff, its preferences and the two fixed pages the app opens in the browser (the Claude download and the privacy page).",
       "commands": {

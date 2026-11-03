@@ -2,20 +2,18 @@
 
 A **terminal** is singleton scene content (sidecar `terminal` block): a styled
 terminal window drawn as a screen-locked panel over the composited slide. It is
-live and typeable in the editor preview, while Present slideshows and video
-export render a captured snapshot, so the deterministic pipeline never sees a
-process or the DOM (Present lost its live shell with the per-window ACL on
-2026-10-28; see docs/decisions.md).
+a picture of a terminal, not a terminal: the author writes a text transcript, the
+editor lays it out and bakes a PNG, and preview, Present and export all show that
+PNG. The app starts no shell (docs/decisions.md, "Embedded terminal removed").
 
 ## Locked decisions
 
 | Decision | Choice | Why |
 | --- | --- | --- |
 | Placement | Screen-space panel (frame-panel pass, base pose) | Overlay/frame family: always camera-facing, transitions slide it with the scene. A future `mount` field keeps room for world-space. |
-| Snapshot | Styled cell grid in the sidecar + baked PNG in `assets/terminal-<stem>.png` | The PNG is the export truth (the emoji raster-cache philosophy); theme, font or grid edits re-bake from the stored grid without recapturing. |
-| Start command | Pre-typed only, never auto-run | A `.kbpack` auto-running shell on slide view would be arbitrary code execution (docs/decisions.md). |
-| Focus | Click to focus, blur = outside click or Shift+Esc | Plain Esc belongs to the shell (vim, Claude Code), and Present's Escape closes the window. |
-| Uncaptured export | Themed empty frame (block cursor at home) with a pre-export warning | Never a hard block: an empty prompt is a legitimate slide. |
+| Authoring source | `transcript`: plain text with ANSI SGR colours | Nothing runs, so nothing on the Mac is exposed; a person or an agent can write it directly, and it stays diffable. |
+| Snapshot | Styled cell grid in the sidecar + baked PNG in `assets/terminal-<stem>.png` | The PNG is the export truth (the emoji raster-cache philosophy); theme, font or grid edits re-bake from the stored grid. |
+| Unbaked export | Themed empty frame (block cursor at home), or the old PNG for a stale transcript, with a pre-export warning | Never a hard block: an empty prompt is a legitimate slide. |
 
 Confirmed defaults: one terminal per scene, theme preset catalogue
 (`match-theme` + graphite/abyss/phosphor/amber/paper, each a full ANSI 16),
@@ -28,15 +26,15 @@ Confirmed defaults: one terminal per scene, theme preset catalogue
   "theme": "phosphor",             // preset id, default "match-theme"
   "chrome": { "style": "mac", "title": "deploy" },
   "cols": 80, "rows": 24,          // logical grid, NEVER derived from the projected rect
-  "fontPx": 13,                    // raster density + overlay type size, never panel geometry
-  "startPath": "~/repo",           // session cwd; default: the workspace project folder
-  "startCommand": "pnpm test",     // pre-typed onto the prompt, never run
+  "fontPx": 13,                    // raster density, never panel geometry
+  "transcript": "$ pnpm test\n",    // the authoring source; the app derives snapshot from it
   "position": [0, 0],              // frame-relative centre, -1..1 (decoration convention)
   "size": 0.55,                    // window width as a fraction of the frame width
   "snapshot": {
     "grid": [[["$ pnpm test", 2]]], // rows of styled runs [text, fg?, bg?, flags]
     "cursor": { "col": 0, "row": 1 },
-    "src": "assets/terminal-01-intro.png"
+    "src": "assets/terminal-01-intro.png",
+    "transcript": "$ pnpm test\n"   // what this grid came from; absent on an old captured grid
   }
 }
 ```
@@ -44,7 +42,7 @@ Confirmed defaults: one terminal per scene, theme preset catalogue
 Parse/resolve/layout live in `src/engine/sceneTerminal.ts` (degrade-not-throw
 per field, the chart pattern). `sceneTerminalLayout` is the single geometry
 source (window, title bar, screen, grid rect, cell metrics) shared by the
-renderer, the gizmo, the DOM overlays and the raster, so they cannot drift. The
+renderer, the gizmo and the raster, so they cannot drift. The
 cell contract is 0.6/1.35 em of `fontPx`. Grid colours are ANSI index (0-255)
 or `#rrggbb`; flags are a bitfield (bold 1, italic 2, underline 4, dim 8,
 inverse 16).
@@ -62,89 +60,58 @@ pass; unframed scenes draw through three explicit no-plan panel draws (solo +
 transition A/B). Colour presets resolve in `src/engine/sceneTerminalTheme.ts`;
 `match-theme` derives the surface + ANSI 16 from the scene theme's tokens.
 
-## Capture and bake
+## Transcript and bake
 
-Capture (`sceneTerminalCapture.ts`) serialises the live xterm viewport into
-the styled-run grid, colours stored mode-faithful (palette index, hex, or null
-for the theme default) so a later re-theme re-colours rather than stales.
+`layoutTranscript` (`sceneTerminalTranscript.ts`, pure) lays the transcript out
+with terminal semantics: wrap at `cols` (deferred, so a line of exactly `cols`
+does not wrap), keep the last `rows`, the cursor after the last character. `\r`,
+`\b` and tab stops behave as in a terminal. ANSI SGR is honoured: the 16, 256 and
+truecolour forms, bold, dim, italic, underline and inverse. The text forms `\e[`,
+`\x1b[`, `\033[` and `\u001b[` count as ESC, so a colour can be typed by hand.
+Every other escape sequence and control, format and combining character is
+dropped, so a transcript can't move the cursor or reach past the grid.
+
+`reconcileTerminalBakes` (`sceneTerminalBaker.ts`) keeps the PNG in step with the
+sidecar. It runs off every project change in the main window, never during an
+export or an autorun, and for workspace projects only:
+
+- **A transcript newer than its snapshot** (`terminalSnapshotStale`:
+  `snapshot.transcript` differs or there is no `src`), which is an agent's write,
+  lays out, bakes, then writes the grid with no history entry.
+- **An inspector edit** lands the transcript and its laid-out grid in one write and
+  one history entry (`landTranscriptSnapshot`). The grid must not follow in a second
+  write: undo refuses a file whose hash moved since its entry.
+- **Anything that changes the pixels** (that edit, an undo restoring an older grid,
+  a theme, font or grid-size edit, a re-theme of `match-theme`) re-bakes the PNG alone.
+  The baker remembers each scene's last print per session.
+- **The first sight of a settled snapshot** leaves its PNG alone, so opening a
+  project never rewrites one. An old captured grid keeps its PNG until someone
+  changes it. With the app closed, an agent that changes `theme`, `cols`, `rows` or
+  `fontPx` removes `snapshot` so the next open bakes.
+
 Bake (`sceneTerminalRaster.ts` + `sceneTerminalBake.ts`) draws the grid on an
 offscreen 2D canvas at 2x and lands the PNG via the Rust
 `write_terminal_snapshot` command: fixed-name overwrite at
 `assets/terminal-<stem>.png`, temp-then-rename (the app-icon rule, because
-`import_media_bytes` collision-suffixes). Recaptures re-read the asset
-revisions (`noteAssetWritten`), so mounted textures re-fetch at a new URL. Capture happens only at author time: export and
-preview never rasterise.
+`import_media_bytes` collision-suffixes). Re-bakes re-read the asset revisions
+(`noteAssetWritten`), so mounted textures re-fetch at a new URL. Baking happens
+only at author time: export and preview never rasterise.
 
-## Sessions: the three realms
-
-One PTY registry idiom, three hosts. Sessions are keyed `${slug}#${sceneStem}`
-(`src/engine/sceneTerminalSession.ts`), survive component unmount like the
-rail's, run at the LOGICAL cols x rows (no fit addon, the overlay scales
-visually), and pre-type `startCommand` onto the prompt. That command is reduced
-to a single line with control chars stripped (`sanitizeStartCommand`, at parse
-and again at the paste boundary), so an imported pack's newline can never reach
-the shell as Enter and auto-run: the "never auto-runs" guarantee does not rest
-on bracketed-paste timing. Every session command (`pty_write`, `pty_resize`,
-`pty_kill`, `pty_pause`, `pty_resume`) also refuses a session another window
-spawned; that is hygiene against a cross-window write, not the boundary. The
-boundary is the F-001 trust gate: scene code runs in the webview with IPC
-reach, so a hostile scene in the main window would be writing to its own
-session, and only trust decides whether it runs at all.
-
-1. **Export**: no sessions, no DOM. The panel renders the baked PNG or the
-   empty frame.
-2. **Editor** (`src/ui/SceneTerminalOverlay.tsx`): a DOM xterm positioned over
-   the panel's grid rect, paused-playback only, with a Start/Restart chip.
-   Click focuses; blur (outside click or Shift+Esc) and scene-leave
-   auto-capture through the baker into one history entry. Sidecar edits
-   re-theme and resize the running session. `pty_spawn` takes
-   `allowExternalCwd` for scene terminals (F-006 opt-out: `~` expands
-   Rust-side, the path must resolve to a real directory).
-3. **Present** (`src/present/PresentTerminalOverlay.tsx`): a separate webview
-   whose capability carries no PTY commands since 2026-10-28 (docs/decisions.md,
-   "Per-window ACL"), so its spawn attempts are refused and the overlay leaves
-   the baked snapshot showing, the same path a missing `startPath` always took.
-   The overlay keeps its session plumbing (spawn on `entering`, click-to-start
-   for a custom path, re-adoption on revisited slides) for the day scene code
-   leaves the webview and the present window can carry a live shell again. Rust
-   tags each PTY with its owner window and kills present-owned sessions on the
-   window's Destroyed event; the editor's follow the rail's live-until-app-exit
-   posture.
-
-## Present focus contract
-
-`presentStore.terminalFocused` stands the deck down while typing:
-
-- Click on the terminal focuses and never advances (stopPropagation).
-- While focused every deck key stands down (Escape included: shells need it)
-  and the cursor auto-hide is suppressed; Space types instead of advancing.
-- Shift+Esc hands the keyboard back; an outside click blurs in the capture
-  phase so it cannot double as an advance (the next outside click advances).
-- A failed spawn (a pack-imported `startPath` missing on this machine) leaves
-  the baked snapshot showing, never an error card.
+`startCommand` and `startPath`, from when a terminal scene ran a shell, are ignored:
+the parser notes them and drops them, so the next sidecar write loses them.
 
 ## Shared projects
 
-A terminal block travels in `.kbpack` projects like any sidecar data, so the
-author of a shared file chooses the command and the start path. Four layers
-keep that safe: the command is sanitised to one line at parse and at the paste
-boundary (above); no session exists until the user opens the project through
-the F-001 trust gate; the pack trust screen lists every pre-typed command and
-custom start path before Continue, read from the pack's sidecars and checked
-against the signed hash (`src/packs/packReview.ts`); and a custom start path never
-auto-spawns in Present, the first click on the terminal starts that session
-(project-folder decks keep the spawn-on-entry magic). A start path runs
-nothing of the pack's, but a login shell still runs the user's own init files
-and cwd hooks (direnv-style), which is why the click gate exists. In Rust the
-F-006 opt-out covers interactive shells only, never a `-c` command, and
-refuses system directories. A spawn at a missing path surfaces on the Start
-chip in the editor and silently leaves the snapshot in Present.
+A terminal block travels in `.kbpack` projects like any sidecar data, its text no
+different from scene copy: drawing it runs nothing. The export picker warns that
+terminal content travels with the pack, since a transcript or an old captured
+snapshot can hold whatever was on someone's screen.
 
 ## Editing
 
-The inspector's `terminal.edit` drill owns theme, chrome + title, grid fields,
-start path/command, Start/Restart and Capture snapshot. `TerminalGizmo`
+The inspector's `terminal.edit` drill owns the transcript, theme, chrome + title
+and grid fields. `TerminalGizmo`
 (panel-space `Gizmo2D`) moves and resizes the window, writing
 `position`/`size`. UI selection lives in `terminalEditStore`, which the export
-preamble clears (the gizmo-guard rule). Export pre-flight warns per scene when
-a terminal has no captured snapshot.
+preamble clears (the gizmo-guard rule). Export pre-flight warns per scene when a
+terminal has no snapshot or its transcript is newer, and so does `kb check`.

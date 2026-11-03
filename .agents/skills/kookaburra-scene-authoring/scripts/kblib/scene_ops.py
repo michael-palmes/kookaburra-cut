@@ -443,7 +443,7 @@ HOST_REACH = re.compile(
     r"|__TAURI|(?<![\w$.])import\s*\("
 )
 COPY_FIELDS = ("text", "managedText", "name", "textStyle")
-COPY_PATHS = ("terminal.snapshot.grid", "chart.data")
+COPY_PATHS = ("terminal.transcript", "terminal.snapshot.transcript", "terminal.snapshot.grid", "chart.data")
 COPY_LEAVES = ("text", "label", "title", "subtitle")
 STRIPPED = (("terminal", "startCommand"), ("terminal", "startPath"), ("website", "url"), ("website", "requestedOrigins"), ("website", "capture", "sourceOrigin"))
 

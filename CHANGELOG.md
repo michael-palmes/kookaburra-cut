@@ -10,6 +10,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - A new app icon with dark, clear and tinted modes, and new printed art for the
   README, update dialogs and installer.
+- Terminal scenes are written, not recorded: type or paste a transcript (ANSI
+  colours work) and the app bakes it. Existing snapshots stay as they are.
+
+### Removed
+
+- The built-in Claude Code terminal and every shell the app could start. Edit
+  with Claude opens your project in the Claude app, and Claude Code in your own
+  terminal keeps working with the kit. This drops the daily Claude Code version
+  check, and Present and the editor no longer run live terminal sessions.
 
 ## [0.21.1] - 2026-10-29
 

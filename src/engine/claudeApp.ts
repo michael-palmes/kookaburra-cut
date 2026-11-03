@@ -31,15 +31,9 @@ export function openSettingsWindow(): Promise<void> {
   return invoke<void>("open_settings");
 }
 
-/** Either field alone updates just that preference; emits `kookaburra://claude-preferences-changed`. */
-export function setClaudePreferences(prefs: {
-  builtinTerminal?: boolean;
-  firstOpen?: boolean;
-}): Promise<void> {
-  return invoke<void>("set_claude_preferences", {
-    builtinTerminal: prefs.builtinTerminal ?? null,
-    firstOpen: prefs.firstOpen ?? null,
-  });
+/** Emits `kookaburra://claude-preferences-changed`. */
+export function setClaudePreferences(prefs: { firstOpen: boolean }): Promise<void> {
+  return invoke<void>("set_claude_preferences", { firstOpen: prefs.firstOpen });
 }
 
 export type ClaudeStarter = "scene" | "look" | "pacing" | "media";

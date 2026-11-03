@@ -72,7 +72,7 @@ pub fn claude_app_status() -> bool {
     claude_app_installed()
 }
 
-/// Start a Claude Code session in the project's folder, re-stamping the kit first exactly as the built-in terminal does; `Err("claude-app-missing")` lets the launcher fall back to its install steps.
+/// Start a Claude Code session in the project's folder, re-stamping the kit first; `Err("claude-app-missing")` lets the launcher fall back to its install steps.
 #[tauri::command]
 pub async fn open_in_claude(
     app: AppHandle,

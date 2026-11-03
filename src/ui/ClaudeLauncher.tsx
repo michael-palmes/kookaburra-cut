@@ -11,7 +11,7 @@ import {
 } from "../engine/claudeApp";
 import { useEscapeClose } from "./useEscapeClose";
 
-/** Edit with Claude (docs/design.md §4.7): the titlebar button and its launcher popover, which hands the project to the Claude desktop app. The Claude guest palette lives only here and in the legacy rail's switch-back button. */
+/** Edit with Claude (docs/design.md §4.7): the titlebar button and its launcher popover, which hands the project to the Claude desktop app. The Claude guest palette lives only here. */
 
 /** Stand-in Claude mark until the official asset is supplied. */
 export function ClaudeSpark({
@@ -58,15 +58,6 @@ function Glyph({ size = 15, children }: { size?: number; children: ReactNode }) 
 const FOLDER_PATH =
   "M3 6.5A1.5 1.5 0 014.5 5h3l1.5 2h6.5A1.5 1.5 0 0117 8.5v6A1.5 1.5 0 0115.5 16h-11A1.5 1.5 0 013 14.5z";
 
-export function TerminalGlyph({ size = 15 }: { size?: number }) {
-  return (
-    <Glyph size={size}>
-      <rect x="2.5" y="3.5" width="15" height="13" rx="2" />
-      <path d="M6 8l2.5 2L6 12M10.5 12.5H14" />
-    </Glyph>
-  );
-}
-
 export function CloseGlyph({ size = 13 }: { size?: number }) {
   return (
     <svg
@@ -84,16 +75,14 @@ export function CloseGlyph({ size = 13 }: { size?: number }) {
   );
 }
 
-/** The titlebar entry beside the project name; in legacy mode it toggles the terminal rail instead. `children` is the launcher, anchored under the button. */
+/** The titlebar entry beside the project name. `children` is the launcher, anchored under the button. */
 export function EditWithClaudeButton({
   open,
-  legacy,
   onToggle,
   buttonRef,
   children,
 }: {
   open: boolean;
-  legacy: boolean;
   onToggle: () => void;
   buttonRef: RefObject<HTMLButtonElement | null>;
   children?: ReactNode;
@@ -105,27 +94,26 @@ export function EditWithClaudeButton({
         type="button"
         className={`titlebar-claude${open ? " open" : ""}`}
         title="Edit with Claude (⌥⌘E)"
-        aria-haspopup={legacy ? undefined : "dialog"}
-        aria-expanded={legacy ? undefined : open}
-        aria-pressed={legacy ? open : undefined}
+        aria-haspopup="dialog"
+        aria-expanded={open}
         onClick={onToggle}
       >
-        <span className="titlebar-claude-mark">{legacy ? <TerminalGlyph /> : <ClaudeSpark />}</span>
+        <span className="titlebar-claude-mark">
+          <ClaudeSpark />
+        </span>
         Edit with Claude
-        {!legacy && (
-          <Glyph size={11}>
-            <path d="M5 8l5 5 5-5" />
-          </Glyph>
-        )}
+        <Glyph size={11}>
+          <path d="M5 8l5 5 5-5" />
+        </Glyph>
       </button>
       {children}
     </span>
   );
 }
 
-/** What starting a session means for a confidential project, in one line (docs/agent-kit.md, "Stamping"). */
+/** What starting a session means for a confidential project, in one line. */
 const CLAUDE_DISCLOSURE =
-  "Sends this project’s files to Anthropic as you work. Scene edits and kb commands run without asking; Claude Code decides which other commands are safe to run and asks about the rest.";
+  "Claude Code sends this project’s files to Anthropic under your own account and settings.";
 
 const STARTERS: { kind: ClaudeStarter; label: string; icon: ReactNode }[] = [
   { kind: "scene", label: "Scene", icon: <path d="M10 4v12M4 10h12" /> },
@@ -165,7 +153,6 @@ export function ClaudeLauncher({
   sceneName,
   firstRun,
   onClose,
-  onUseTerminal,
 }: {
   anchorRef: RefObject<HTMLButtonElement | null>;
   /** Native project slug the session opens in. */
@@ -174,8 +161,6 @@ export function ClaudeLauncher({
   sceneName: string | null;
   firstRun: boolean;
   onClose: () => void;
-  /** Switch to the legacy built-in terminal. */
-  onUseTerminal: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [installed, setInstalled] = useState<boolean | null>(null);
@@ -383,11 +368,6 @@ export function ClaudeLauncher({
           </button>
           {menuOpen && (
             <div className="claude-launcher-menu" role="menu">
-              <button type="button" role="menuitem" onClick={onUseTerminal}>
-                <TerminalGlyph />
-                <span>Built-in terminal</span>
-                <span className="claude-launcher-menu-hint">Legacy</span>
-              </button>
               <button
                 type="button"
                 role="menuitem"

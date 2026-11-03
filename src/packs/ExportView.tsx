@@ -111,7 +111,7 @@ export function ExportView({ onClose }: { onClose: () => void }) {
   const included = useMemo(() => items.filter((i) => isIncluded(state, i)), [state, items]);
   const hasFonts = included.some((i) => i.kind === "font");
 
-  // Author-side terminal review: snapshots and pre-typed commands travel with the pack, so say so before the sign (docs/scene-terminal.md, Shared projects).
+  // Author-side terminal review: transcripts and snapshots travel with the pack, so say so before the sign (docs/scene-terminal.md, Shared projects).
   const [terminalRows, setTerminalRows] = useState<TerminalReviewRow[]>([]);
   const includedProjects = useMemo(() => packProjectItems(included), [included]);
   useEffect(() => {
@@ -392,15 +392,11 @@ export function ExportView({ onClose }: { onClose: () => void }) {
           {terminalRows.length > 0 && (
             <div className="packs-warning" style={{ marginLeft: 0, marginTop: 14 }}>
               <div>
-                Terminal content travels with this pack: snapshots show whatever was on that screen
-                when captured, and pre-typed commands ride in the sidecars.
+                Terminal content travels with this pack, so check its text carries no secrets.
               </div>
               {terminalRows.map((row) => (
                 <div key={`${row.project}:${row.file}`}>
                   {row.project} · {row.scene}
-                  {row.hasSnapshot ? " · snapshot" : ""}
-                  {row.startPath ? ` · opens at ${row.startPath}` : ""}
-                  {row.command ? ` · ${row.command}` : ""}
                 </div>
               ))}
             </div>

@@ -1196,7 +1196,7 @@ declare module "@kookaburra/toolkit" {
     compare?: SceneDocCompare;
     /** The chart block (one per scene): data, appearance, axes, labels and the keyframed data track. Defaults and sampling live in `sceneChart.ts`. */
     chart?: SceneDocChart;
-    /** The terminal block (one per scene): screen-locked panel content, interactive in preview and Present, exporting its captured snapshot. Defaults and layout live in `sceneTerminal.ts`. */
+    /** The terminal block (one per scene): screen-locked panel content, rendering its baked snapshot everywhere. Defaults and layout live in `sceneTerminal.ts`. */
     terminal?: SceneDocTerminal;
     /** The Website block (one per scene): a consent-gated native page while paused or presenting, with a captured PNG as deterministic render truth. */
     website?: SceneDocWebsite;
@@ -3225,12 +3225,10 @@ declare module "@kookaburra/toolkit" {
     chrome?: { style?: SceneTerminalChromeStyle; title?: string };
     cols?: number;
     rows?: number;
-    /** Logical cell font size in px: raster density and the live overlay's type size, never panel geometry. */
+    /** Logical cell font size in px: raster density, never panel geometry. */
     fontPx?: number;
-    /** Session working directory (absolute or `~` path); absent is the workspace project folder. */
-    startPath?: string;
-    /** Pre-typed into the prompt, never auto-run (docs/decisions.md). */
-    startCommand?: string;
+    /** What the terminal shows, as text with optional ANSI colours: the authoring source of `snapshot`. */
+    transcript?: string;
     /** Frame-relative centre, -1..1 on both axes (the decoration convention). */
     position?: [number, number];
     /** Window width as a fraction of the frame width. */
@@ -3244,6 +3242,8 @@ declare module "@kookaburra/toolkit" {
     cursor?: SceneTerminalCursor;
     /** Baked raster under `assets/` (grid pixels only, chrome renders live): the export truth. */
     src?: string;
+    /** The transcript this grid was laid out from; absent on a grid captured from a live session. */
+    transcript?: string;
   }
 
   /** A time in a sidecar: scene-local ms, or a musical position (`"bar:13.3"`, `"cue:drop"`) resolved at load by `engine/musicTime.ts`. */

@@ -18,7 +18,7 @@ contract and the threat model for the native child WKWebView boundary.
 | URL policy | HTTPS, plus opt-in HTTP on exact loopback hosts with an explicit port | Remote cleartext transport is never needed; local development remains practical |
 | Consent | Every top-level origin needs a local project-and-origin grant before its first request, asked on a native sheet (`website_grant_origin`, Return declines) once per origin per project, and only for a request the scene raised this session | Opening, importing and selecting a project must remain offline, and a webview must not be able to answer for the person |
 | Browser profile | One app-wide persistent Website profile, separate from Safari and the app webview | Logins work across projects without giving packs cookies or grants |
-| Focus | Click to focus; Shift+Esc or the first outside click releases | Matches Terminal without stealing deck navigation |
+| Focus | Click to focus; Shift+Esc or the first outside click releases | Input stays with the panel without stealing deck navigation |
 | Permissions | Deny device access, uploads, downloads and autofill | A presentation is not a general-purpose browser |
 | Popup handling | Navigate the same panel through the same origin gate | Prevents unowned native windows and keeps the trust display authoritative |
 | View lifetime | Lazy views, eight process-wide, inactive least-recently-used eviction | Bounds WebContent memory while preserving active state where possible |
@@ -151,9 +151,9 @@ rule. Restoration remains conditional on the same scene still requesting live
 mode and the view still being ready. Hiding preserves page state, but does not
 pause page scripts or network activity.
 
-One Website and one Terminal may coexist. Website is the top interactive layer
-and only one block owns input. While Website is focused, deck keys stand down.
-Shift+Esc releases focus; the first outside click releases without advancing.
+Website is the one interactive layer on a scene, so only one block owns input.
+While Website is focused, deck keys stand down. Shift+Esc releases focus; the
+first outside click releases without advancing.
 
 Views are lazy and capped at eight across the process. Inactive views are
 evicted least-recently-used. A surviving view preserves navigation, scroll and

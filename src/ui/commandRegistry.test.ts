@@ -65,7 +65,7 @@ describe("buildCommands (the vocabulary pin)", () => {
     // The old center strip's actions (Projects · Claude · Media · Theme · New project · project/aspect select · Verify ×2); Export stays a titlebar CTA too but must be reachable here.
     for (const required of [
       "project.browse",
-      "view.rail",
+      "view.claude",
       "project.media",
       "project.theme",
       "project.new",
@@ -168,27 +168,27 @@ describe("buildCommands (the vocabulary pin)", () => {
     expect(byId["project.media"]).toBe(false);
     expect(byId["project.theme"]).toBe(false);
     expect(byId["project.soundtrack.set"]).toBe(false);
-    expect(byId["view.rail"]).toBe(false);
+    expect(byId["view.claude"]).toBe(false);
     // Aspect/verify/export stay available on bundled projects (dev surface).
     expect(byId["view.aspect:1:1"]).toBe(true);
     expect(byId["export.verify"]).toBe(true);
   });
 
-  it("exporting disables everything that would fight the run (rail/mute/help stay)", () => {
+  it("exporting disables everything that would fight the run (Claude/mute/help stay)", () => {
     // The survivors mirror today's titlebar/scrubber: the Claude button and mute toggle carry no disabled={exporting}, and the shortcuts sheet is inert.
     const cmds = buildCommands(ctx({ exporting: true }));
     const enabled = cmds.filter((c) => c.enabled).map((c) => c.id);
-    expect(enabled.sort()).toEqual(["help.shortcuts", "playback.mute", "view.rail"].sort());
+    expect(enabled.sort()).toEqual(["help.shortcuts", "playback.mute", "view.claude"].sort());
   });
 
   it("drops Edit with Claude where a configuration profile turns Claude off", () => {
-    const rail = (allowed: boolean) =>
-      buildCommands(ctx({ claudeAllowed: allowed })).find((c) => c.id === "view.rail");
-    expect(rail(false)?.enabled).toBe(false);
-    expect(rail(true)?.enabled).toBe(true);
+    const claude = (allowed: boolean) =>
+      buildCommands(ctx({ claudeAllowed: allowed })).find((c) => c.id === "view.claude");
+    expect(claude(false)?.enabled).toBe(false);
+    expect(claude(true)?.enabled).toBe(true);
   });
 
-  it("titles flip with state (play/pause, mute/unmute, rail, soundtrack)", () => {
+  it("titles flip with state (play/pause, mute/unmute, Claude, soundtrack)", () => {
     const on = Object.fromEntries(
       buildCommands(ctx({ playing: true, audioMuted: true, claudeOpen: true })).map((c) => [
         c.id,
@@ -197,7 +197,7 @@ describe("buildCommands (the vocabulary pin)", () => {
     );
     expect(on["playback.toggle"]).toBe("Pause");
     expect(on["playback.mute"]).toBe("Unmute soundtrack");
-    expect(on["view.rail"]).toBe("Close Edit with Claude");
+    expect(on["view.claude"]).toBe("Close Edit with Claude");
     expect(on["project.soundtrack.set"]).toBe("Replace soundtrack…");
     const off = Object.fromEntries(
       buildCommands(ctx({ hasAudio: false })).map((c) => [c.id, c.title]),

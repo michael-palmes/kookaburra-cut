@@ -15,11 +15,7 @@ import { FIELD_EDIT_IDLE_MS, FieldActivity, isEditingFocus } from "./useBridgeEx
 const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
 
-const el = (tagName: string, extra: Record<string, unknown> = {}, inTerminal = false) => ({
-  tagName,
-  closest: (selector: string) => (inTerminal && selector.includes(".xterm") ? {} : null),
-  ...extra,
-});
+const el = (tagName: string, extra: Record<string, unknown> = {}) => ({ tagName, ...extra });
 
 describe("isEditingFocus", () => {
   it("counts text fields, selects and editable regions as mid-edit", () => {
@@ -30,13 +26,12 @@ describe("isEditingFocus", () => {
     expect(isEditingFocus(el("DIV", { isContentEditable: true }))).toBe(true);
   });
 
-  it("ignores buttons, toggles, the page itself and the embedded Claude terminal", () => {
+  it("ignores buttons, toggles and the page itself", () => {
     expect(isEditingFocus(el("INPUT", { type: "checkbox" }))).toBe(false);
     expect(isEditingFocus(el("INPUT", { type: "range" }))).toBe(false);
     expect(isEditingFocus(el("BUTTON"))).toBe(false);
     expect(isEditingFocus(el("BODY"))).toBe(false);
     expect(isEditingFocus(null)).toBe(false);
-    expect(isEditingFocus(el("TEXTAREA", {}, true))).toBe(false);
   });
 });
 
@@ -59,12 +54,10 @@ describe("FieldActivity (a focused field blocks kb export only while the person 
     expect(fields.editing(null, 6_000)).toBe(false);
   });
 
-  it("never counts the embedded Claude terminal or a toggle", () => {
+  it("never counts a toggle", () => {
     const fields = new FieldActivity();
-    fields.note(el("TEXTAREA", {}, true), 1_000);
     fields.note(el("INPUT", { type: "checkbox" }), 1_000);
     expect(fields.editing(field, 2_000)).toBe(false);
-    expect(fields.editing(el("TEXTAREA", {}, true), 2_000)).toBe(false);
   });
 });
 

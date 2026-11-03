@@ -406,14 +406,12 @@ pub(crate) fn note_chosen_folder(app: &AppHandle, dir: &Path) {
 #[serde(rename_all = "camelCase")]
 pub enum PickPurpose {
     WorkspaceLocation,
-    TerminalStartFolder,
 }
 
 impl PickPurpose {
     fn title(self) -> &'static str {
         match self {
             Self::WorkspaceLocation => "Choose where Kookaburra Cut keeps your projects",
-            Self::TerminalStartFolder => "Choose the session's start folder",
         }
     }
 }

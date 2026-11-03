@@ -646,12 +646,6 @@ mod tests {
                 "deny_claude",
             ),
             (
-                include_str!("claude_update.rs"),
-                "claude_version_info",
-                "deny_claude",
-            ),
-            (include_str!("pty.rs"), "pty_spawn", "deny_claude"),
-            (
                 include_str!("website.rs"),
                 "website_open",
                 "deny_live_websites",

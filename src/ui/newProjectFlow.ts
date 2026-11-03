@@ -1,7 +1,7 @@
 import { nameCollision } from "../engine/nameCollision";
 import type { ThemeChoice } from "./ThemePicker";
 
-/** The wizard's first card: creates from the blank template, with the Claude Code panel open as it is for every editable project. */
+/** The wizard's first card: creates from the blank template. */
 export const CLAUDE_START_ID = "create-with-claude";
 
 export const DEFAULT_THEME_ID = "kookaburra-studio-white";
