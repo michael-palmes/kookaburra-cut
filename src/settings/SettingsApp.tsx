@@ -1,7 +1,7 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { ask, open as openFolderPicker } from "@tauri-apps/plugin-dialog";
+import { ask } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useState } from "react";
 import {
   type CacheStats,
@@ -25,7 +25,7 @@ import {
 } from "../engine/claudeApp";
 import { useManagedPolicy } from "../engine/managed";
 import { setConformNewVideosSetting } from "../engine/media";
-import { notePickedFolder } from "../engine/pickedFolders";
+import { pickFolder } from "../engine/pickedFolders";
 import { revealApp } from "../engine/reveal";
 import {
   clearWebsiteData,
@@ -328,15 +328,8 @@ export function SettingsApp() {
 
   const chooseLocation = useCallback(async () => {
     try {
-      const picked = await openFolderPicker({
-        directory: true,
-        multiple: false,
-        title: "Choose where Kookaburra Cut keeps your projects",
-      });
-      if (typeof picked === "string") {
-        void notePickedFolder(picked);
-        relocate(picked);
-      }
+      const picked = await pickFolder("workspaceLocation");
+      if (picked) relocate(picked);
     } catch (e) {
       setError(String(e));
     }

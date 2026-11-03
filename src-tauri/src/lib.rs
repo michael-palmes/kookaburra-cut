@@ -1476,7 +1476,7 @@ macro_rules! kookaburra_handler {
             bridge::bridge_claim_request,
             bridge::bridge_write_response,
             bridge::bridge_confirm_project,
-            bridge::note_picked_folder,
+            bridge::pick_folder,
             bridge::begin_bridge_screenshot,
             bridge::save_bridge_screenshot,
             bridge::bridge_pending_count,

@@ -38,9 +38,6 @@ function importedSlugFor(plan: ImportPlan, slug: string): string | null {
 
 export async function runPackRoundTrip(projectId: string): Promise<RoundTripResult> {
   const slug = nativeProjectSlug(projectId);
-  const root = await invoke<string>("workspace_root_path");
-  const packPath = `${root}/_autorun/roundtrip/${slug}.kbpack`;
-
   const plan = await invoke<{ items: { kind: ItemKind; slug: string; requiredBy: string[] }[] }>(
     "plan_pack",
     { selection: { ...EMPTY_SELECTION, projects: [slug] } },
@@ -66,7 +63,7 @@ export async function runPackRoundTrip(projectId: string): Promise<RoundTripResu
 
   const built = await invoke<{ path: string; bytes: number }>("build_pack", {
     selection: full,
-    destination: packPath,
+    suggestedName: slug,
     // A throwaway root has no profile, so the trip names itself; nothing is saved.
     meta: { name: `Round trip ${slug}`, publisherName: "Pack round trip" },
     onProgress: new Channel(),

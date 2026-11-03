@@ -2573,6 +2573,15 @@ fn display_path(app: &AppHandle, path: &Path) -> String {
 }
 
 /// The manifest's display name, flattened and capped so a crafted name cannot forge the sheet's lines; the slug when there is none.
+/// The name a consent sheet shows for a project at `dir`, falling back to its folder name.
+pub(crate) fn consent_project_name_at(dir: &Path) -> String {
+    let slug = dir
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    consent_project_name(dir, &slug)
+}
+
 fn consent_project_name(dir: &Path, slug: &str) -> String {
     let name = std::fs::read_to_string(dir.join(MANIFEST_FILENAME))
         .ok()
