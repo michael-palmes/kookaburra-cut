@@ -483,13 +483,18 @@ body {
 }
 
 .claude-launcher-disclosure {
-  font-size: var(--text-sm);
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin: 10px var(--space-2) 0;
+  font-size: var(--text-xs);
   line-height: 1.4;
   color: var(--claude-text-tertiary);
 }
 
-.claude-launcher-title .claude-launcher-disclosure {
-  margin-top: var(--space-1);
+.claude-launcher-disclosure svg {
+  flex: none;
+  margin-top: 1px;
 }
 
 .claude-launcher-cta {
