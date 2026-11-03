@@ -5,6 +5,7 @@ import {
   countByKind,
   defaultPackName,
   EMPTY_STATE,
+  exportBlocker,
   isIncluded,
   slugifyFileName,
   toBuildSelection,
@@ -112,6 +113,17 @@ describe("selection", () => {
     expect(defaultPackName(undefined, "Michael")).toBe("Michael");
     expect(defaultPackName(undefined, undefined)).toBe("Kookaburra Pack");
     expect(defaultPackName("   ", "Michael")).toBe("Michael");
+  });
+
+  it("says why Export is unavailable once something is ticked", () => {
+    const fresh = { profile: null };
+    const saved = { profile: { name: "Acme" } };
+    expect(exportBlocker(0, "", fresh, "")).toBeNull();
+    expect(exportBlocker(1, "Pack", null, "")).toBeNull();
+    expect(exportBlocker(1, "  ", saved, "")).toContain("Name the pack");
+    expect(exportBlocker(1, "Pack", fresh, "  ")).toContain("your name or studio");
+    expect(exportBlocker(1, "Pack", fresh, "Acme")).toBeNull();
+    expect(exportBlocker(1, "Pack", saved, "")).toBeNull();
   });
 
   it("slugifies a file name safely", () => {

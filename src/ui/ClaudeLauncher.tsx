@@ -236,7 +236,6 @@ export function ClaudeLauncher({
           <div className="claude-launcher-title">
             <h2>Edit with Claude</h2>
             <p>Ask there. See it here.</p>
-            <p className="claude-launcher-disclosure">{CLAUDE_DISCLOSURE}</p>
           </div>
         </>
       ) : (
@@ -245,9 +244,6 @@ export function ClaudeLauncher({
           <div>
             <h2>Edit with Claude</h2>
             <p>{installed === false ? "Get the Claude app to start" : "Ask there, see it here"}</p>
-            {installed !== false && (
-              <p className="claude-launcher-disclosure">{CLAUDE_DISCLOSURE}</p>
-            )}
           </div>
         </div>
       )}
@@ -309,6 +305,13 @@ export function ClaudeLauncher({
               <ClaudeSpark size={17} strokeWidth={2.6} />
               {busy ? "Opening…" : "Open in Claude"}
             </button>
+            <p className="claude-launcher-disclosure">
+              <Glyph size={13}>
+                <rect x="4.5" y="9" width="11" height="8" rx="1.5" />
+                <path d="M7 9V6.5a3 3 0 016 0V9" />
+              </Glyph>
+              {CLAUDE_DISCLOSURE}
+            </p>
           </div>
           <div className="claude-launcher-starters">
             <span className="claude-launcher-label">Or start with</span>
