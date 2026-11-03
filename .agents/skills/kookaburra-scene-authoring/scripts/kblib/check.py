@@ -17,7 +17,7 @@ from . import themes as thememod
 from . import tsx as tsxmod
 from .catalog import Catalog
 from .project import MANIFEST, Project, stem_of
-from .util import KbError, Report, exact_case_exists, is_int, is_number, js_json, read_text
+from .util import KbError, Report, ago, exact_case_exists, fmt_secs, is_int, is_number, js_json, read_text
 
 SUPPORTED_ASSET_EXTS = {
     "png", "jpg", "jpeg", "webp", "gif",
@@ -257,6 +257,8 @@ class Checker:
                     if key in audio and not is_number(audio[key]):
                         rep.error(file, f"audio.{key}", "must be a number")
                 self.music_manifest(audio, warn, include_warnings)
+                if include_warnings:
+                    self.audio_fades(m, audio, warn)
         if "shared" in m and not isinstance(m["shared"], dict):
             rep.error(file, "shared", 'must be an object of constants, e.g. {"palette": {"accent": "#ff6a3d"}}; the app ignores anything else')
         persistent = m.get("persistent")
@@ -266,6 +268,51 @@ class Checker:
             elif exact_case_exists(self.project.root, persistent):
                 rep.error(file, "persistent", f'"{persistent}" does not exist; the whole project fails to load')
         return m
+
+    def audio_fades(self, m: Dict[str, Any], audio: Dict[str, Any], warn: Any) -> None:
+        """A fade over more than about a fifth of the film, or one a cue plays inside: the music has gone quiet where the
+        edit counts on it. The warning says who set the fade, since an agent rarely did."""
+        from .beats import model as beatmodel
+        from .film import timeline as tl
+
+        try:
+            slots = tl.manifest_slots(self.project, m, beatmodel.project_music(m))
+        except (KbError, OSError, KeyError, TypeError, ValueError, AttributeError):
+            return
+        total = tl.timeline_total_ms(slots)
+        if total <= 0:
+            return
+        track = self.probed_duration_ms(audio.get("file"))
+        offset = audio.get("startOffsetMs") if is_number(audio.get("startOffsetMs")) else 0
+        end = min(total, track - offset) if track else total
+        fade_out = audio["fadeOutMs"] if is_number(audio.get("fadeOutMs")) else catmod.DEFAULT_AUDIO_FADE_OUT_MS
+        fade_in = audio["fadeInMs"] if is_number(audio.get("fadeInMs")) else 0
+        windows = (("fadeOutMs", "fade out", fade_out, end - fade_out, end), ("fadeInMs", "fade in", fade_in, 0, fade_in))
+        music = beatmodel.project_music(m)
+        cues = music.get("cues") if isinstance(music, dict) else None
+        for key, label, ms, lo, hi in windows:
+            if ms <= 0:
+                continue
+            fix = f"./kb project set audio.{key} <ms>"
+            share = ms / total
+            if share > catmod.AUDIO_FADE_MAX_SHARE:
+                warn(MANIFEST, f"audio.{key}", f"the {fmt_secs(ms)} {label} covers {round(share * 100)}% of the {fmt_secs(total)} film ({self.fade_provenance(key, audio)}), so the music is quiet for much of it; shorten it with {fix}")
+            for cue in sorted(cues or {}):
+                r = beatmodel.resolve(f"cue:{cue}", music)
+                at = r.get("projectMs") if r.get("ok") else None
+                if is_number(at) and lo < at < hi:
+                    warn(MANIFEST, f"audio.{key}", f'cue "{cue}" at {fmt_secs(at)} plays inside the {fmt_secs(ms)} {label} ({self.fade_provenance(key, audio)}), so it lands quieter than it should; shorten the fade with {fix}, or move the cue')
+
+    def fade_provenance(self, key: str, audio: Dict[str, Any]) -> str:
+        """Who set this fade, as far as the project can say."""
+        if key not in audio:
+            return "the default, not set in project.json"
+        from . import appedits
+
+        change = appedits.latest_field(str(self.project.root), f"audio.{key}")
+        if change is not None and change.get("after") == audio[key]:
+            return f"set in the app {ago(change['atMs'])}"
+        return "set in project.json"
 
     def manifest_scenes(self, m: Dict[str, Any], warn: Any) -> None:
         file = MANIFEST
@@ -416,6 +463,24 @@ class Checker:
             return
         self.sidecar_doc(file, doc)
 
+    def terminal(self, file: str, doc: Dict[str, Any]) -> None:
+        """A transcript the app has not baked yet, and the retired session fields."""
+        block = doc.get("terminal")
+        if not isinstance(block, dict):
+            return
+        for key in ("startCommand", "startPath"):
+            if key in block:
+                self.report.warn(file, f"terminal.{key}", "ignored: nothing runs in a terminal scene, and the app drops it on its next save. Write terminal.transcript instead")
+        transcript = block.get("transcript")
+        if transcript is None:
+            return
+        if not isinstance(transcript, str) or not transcript:
+            self.report.warn(file, "terminal.transcript", "must be a non-empty string (the app ignores it)")
+            return
+        snapshot = block.get("snapshot")
+        if not isinstance(snapshot, dict) or snapshot.get("transcript") != transcript or not snapshot.get("src"):
+            self.report.warn(file, "terminal.snapshot", "older than terminal.transcript, so the film shows the old text. Open this project in the app, which bakes it")
+
     def sidecar_doc(self, file: str, doc: Any) -> None:
         rep = self.report
         if not isinstance(doc, dict):
@@ -431,6 +496,7 @@ class Checker:
         for key in doc:
             if key not in known:
                 rep.warn(file, key, f"unknown key (the app ignores it).{did_you_mean(key, known)}")
+        self.terminal(file, doc)
         if "name" in doc and not isinstance(doc["name"], str):
             rep.error(file, "name", "must be a string")
         text = doc.get("text")

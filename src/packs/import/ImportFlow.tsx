@@ -44,7 +44,7 @@ export function ImportFlow({
 }) {
   const [path, setPath] = useState<string | null>(initialPath);
   const [inspection, setInspection] = useState<PackInspection | null>(null);
-  const [review, setReview] = useState<PackReview>({ terminals: [], websites: [] });
+  const [review, setReview] = useState<PackReview>({ websites: [] });
   const [step, setStep] = useState<Step>(initialPath ? { name: "inspecting" } : { name: "choose" });
 
   useEffect(() => {

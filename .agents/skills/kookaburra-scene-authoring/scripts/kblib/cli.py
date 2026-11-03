@@ -57,13 +57,16 @@ kb: the one tool for editing a Kookaburra Cut project safely. Run it from the pr
 folder as ./kb <command> (never through a shell variable or alias); it also walks up from
 the cwd, or uses $CLAUDE_PROJECT_DIR.
 
-  Look       status | context | scenes | check [--app] [--render] [FILE...]
+  Look       status | context [--md] | scenes | check [--app] [--render] [FILE...]
              capture [--scene S] [--at SEC] [--aspect A] [--frames S@SEC,...] [--sheet]
                      [--width N | --scale F] [--probe X,Y[,X,Y...]] [--out DIR | --no-copy]
              verify [--scene S]... [--aspect A] [--no-render] [--film]
              debug contexts | debug lose-context [--window render|editor]
   Scenes     scene add NAME [--preset P | --copy S] [--after S | --at N] [--duration MS] [--name N]
-             scene duplicate S | scene move S --to N | scene remove S
+                       [--transition TYPE[:MS]|none]
+             scene duplicate S [--name N] | scene move S --to N | scene remove S [S...]
+             scene split S --at POS [--name N] | scene renumber [--start N] [--step N]
+             scene import PROJECT [S] [--after S | --at N] [--name N] [--duration MS]
              scene set S [--duration MS | --duration-bars N | --cut-at POS [--align end|mid]]
                          [--transition TYPE[:MS]|none] [--ease E] [--name N]
   Documents  doc S get [PATH] | doc S set PATH VALUE | doc S unset PATH | doc S merge JSON
@@ -88,7 +91,7 @@ the cwd, or uses $CLAUDE_PROJECT_DIR.
              undo [REV] [--scene S | --all] | diff [REV] [--scene S] | plan COMMAND ...
   Agents     lease S [--ttl 2h] [--note T] [--for NAME] | lease S --release [--force] | leases [--all]
              note TEXT [--scene S] | notes [--all]
-             events [--follow] [--since 10m|CURSOR|all] [--kinds ...] [--all-agents] [--exit-after S]
+             events [--follow] [--since 10m|CURSOR|all] [--kinds ...] [--source ...] [--all-agents] [--exit-after S]
   Music      beats [--scene S] | beats set-grid|set-downbeat|clear-grid|cue|section|resolve ...
              timeline | timeline apply PLAN [--ripple]   (cuts and transitions in bars and ms)
              song analyse [--file PATH] [--force] [--tracker nn|dsp] [--lyrics] [--accept]
@@ -177,7 +180,7 @@ def cmd_status(ctx: Ctx) -> int:
 
 
 def cmd_context(ctx: Ctx) -> int:
-    code, out, _err = hookmod.session_start({}, ctx.project)
+    code, out, _err = hookmod.session_start({"source": "compact"} if ctx.args.md else {}, ctx.project)
     if ctx.json:
         ctx.out({"text": out}, ok=code == EXIT_OK)
     else:
@@ -348,12 +351,22 @@ def report_result(ctx: Ctx, verb: str, result: scenemod.Result) -> int:
     return EXIT_PROBLEMS if report.errors else EXIT_OK
 
 
+def check_transition_arg(text: Optional[str]) -> None:
+    if text and text not in ("none", "cut"):
+        kind = text.split(":", 1)[0]
+        known = catmod.load_catalog().ids("transitions", catmod.FALLBACK_TRANSITIONS) or []
+        if kind not in known:
+            raise KbError(f'unknown transition "{kind}".{checkmod.did_you_mean(kind, known)} See kb catalog transitions', 2, kind="usage")
+
+
 def cmd_scene_add(ctx: Ctx) -> int:
     a = ctx.args
     project = ctx.project
     if a.preset and a.copy:
         raise KbError("pass --preset or --copy, not both", 2, kind="usage")
-    place = scenemod.Place(a.after, a.at)
+    check_transition_arg(a.transition)
+    choice = scenemod.parse_transition(a.transition) if a.transition is not None else scenemod.NO_CHOICE
+    place = scenemod.Place(a.after, a.at, choice)
     if a.duration is not None and a.duration <= 0:
         raise KbError("--duration must be a positive number of milliseconds", 2, kind="usage")
     if a.preset:
@@ -368,6 +381,13 @@ def cmd_scene_add(ctx: Ctx) -> int:
             if a.duration is not None:
                 scenemod.set_scene(project, stem_of(result.file), a.duration, None, None, None, ctx.opts)
                 result.notes.append(f"durationMs set to {a.duration}")
+            if a.transition is not None:
+                # The app seeded the default at this boundary, so kb replaces it: into an appended scene, else out of the new one.
+                entries = project.manifest(reload=True)["scenes"]
+                target = result.index - 1 if result.index + 1 >= len(entries) else result.index
+                if target >= 0:
+                    scenemod.set_scene(project, stem_of(entries[target]["file"]), None, a.transition, None, None, ctx.opts, ripple=True)
+                    result.notes.append(f"{stem_of(entries[target]['file'])} transition set to {a.transition}")
             return report_result(ctx, "added", result)
         result = presetmod.insert_offline(project, preset, a.stem, name, place, ctx.opts, a.duration)
         if ctx.dry_run:
@@ -396,7 +416,70 @@ def overview_name(stem: str) -> str:
 def cmd_scene_duplicate(ctx: Ctx) -> int:
     a = ctx.args
     place = scenemod.Place(a.after, a.at)
-    return report_result(ctx, "duplicated as", scenemod.duplicate(ctx.project, a.scene, place, ctx.opts))
+    return report_result(ctx, "duplicated as", scenemod.duplicate(ctx.project, a.scene, place, ctx.opts, a.name))
+
+
+def cmd_scene_split(ctx: Ctx) -> int:
+    from . import scene_ops
+
+    a = ctx.args
+    project = ctx.project
+    saved = None
+    if not ctx.dry_run and gitmod.git_available() and gitmod.repo_state(project) != "foreign" and gitmod.dirty_files(project):
+        saved = gitmod.checkpoint(project, "before kb scene split")
+    result = scene_ops.split(project, a.scene, a.at_pos, a.name, ctx.opts)
+    if saved:
+        result.notes.append(f"checkpoint {saved} holds the state before the split (kb undo {saved})")
+    return report_result(ctx, "split off", result)
+
+
+def cmd_scene_renumber(ctx: Ctx) -> int:
+    from . import scene_ops
+
+    a = ctx.args
+    project = ctx.project
+    saved = None
+    if not ctx.dry_run and gitmod.git_available() and gitmod.repo_state(project) != "foreign" and gitmod.dirty_files(project):
+        saved = gitmod.checkpoint(project, "before kb scene renumber")
+    res = scene_ops.renumber(project, a.start, a.step, ctx.opts)
+    if ctx.json:
+        ctx.out(dict(res, checkpoint=saved))
+        return EXIT_OK
+    if ctx.dry_run:
+        emit("dry run, nothing written:" if res["renamed"] else "dry run, nothing written: the scenes are already in order")
+    elif not res["renamed"]:
+        emit("the scenes are already in order; nothing to do")
+    for row in res["renamed"]:
+        emit(f"{row['from']} -> {row['to']}")
+    if ctx.dry_run:
+        emit_writes(res["writes"])
+    return EXIT_OK
+
+
+def cmd_scene_import(ctx: Ctx) -> int:
+    from . import scene_ops
+
+    from .util import clean_name
+
+    a = ctx.args
+    project = ctx.project
+    if a.scene is None:
+        root = scene_ops.resolve_source(project, a.source)
+        scene_ops.confirm_source(project, root)
+        rows = scene_ops.roster_of(root)
+        if ctx.json:
+            ctx.out({"source": str(root), "scenes": rows})
+            return EXIT_OK
+        for row in rows:
+            emit(f"{row['index']:>3}  {clean_name(row['stem'])}  {fmt_secs(row['durationMs'])}  \"{clean_name(row['name'])}\"")
+        emit(f"bring one in: ./kb scene import {a.source} <stem>")
+        return EXIT_OK
+    if a.duration is not None and a.duration <= 0:
+        raise KbError("--duration must be a positive number of milliseconds", 2, kind="usage")
+    check_transition_arg(a.transition)
+    choice = scenemod.parse_transition(a.transition) if a.transition is not None else scenemod.NO_CHOICE
+    place = scenemod.Place(a.after, a.at, choice)
+    return report_result(ctx, "imported as", scene_ops.import_scene(project, a.source, a.scene, a.name, place, a.duration, ctx.opts))
 
 
 def cmd_scene_move(ctx: Ctx) -> int:
@@ -420,15 +503,16 @@ def cmd_scene_remove(ctx: Ctx) -> int:
     saved = None
     if not ctx.dry_run and gitmod.git_available() and gitmod.repo_state(project) != "foreign" and gitmod.dirty_files(project):
         saved = gitmod.checkpoint(project, "before kb scene remove")
-    idx, trashed, writes = scenemod.remove(project, ctx.args.scene, gitmod.trash, ctx.opts)
+    indexes, trashed, writes = scenemod.remove_many(project, ctx.args.scene, gitmod.trash, ctx.opts)
+    which = f"scene {indexes[0]}" if len(indexes) == 1 else f"scenes {', '.join(str(i) for i in indexes)}"
     if ctx.json:
-        ctx.out({"index": idx, "trashed": trashed, "checkpoint": saved, "writes": writes, "dryRun": ctx.dry_run})
+        ctx.out({"index": indexes[0], "indexes": indexes, "trashed": trashed, "checkpoint": saved, "writes": writes, "dryRun": ctx.dry_run})
         return EXIT_OK
     if ctx.dry_run:
-        emit(f"dry run, nothing written: would remove scene {idx} from project.json" + (f"; would move {', '.join(trashed)} to the Trash" if trashed else ""))
+        emit(f"dry run, nothing written: would remove {which} from project.json" + (f"; would move {', '.join(trashed)} to the Trash" if trashed else ""))
         emit_writes(writes)
         return EXIT_OK
-    emit(f"removed scene {idx} from project.json" + (f"; moved {', '.join(trashed)} to the Trash" if trashed else ""))
+    emit(f"removed {which} from project.json" + (f"; moved {', '.join(trashed)} to the Trash" if trashed else ""))
     if saved:
         emit(f"checkpoint {saved} holds the state before the removal (kb undo {saved})")
     return EXIT_OK
@@ -449,11 +533,7 @@ def cmd_scene_set(ctx: Ctx) -> int:
         raise KbError("scene set needs at least one of --duration, --duration-bars, --cut-at, --transition, --ease, --name", 2, kind="usage")
     if a.ease is not None and a.ease not in catmod.TRANSITION_EASES:
         raise KbError(f'--ease must be one of {", ".join(catmod.TRANSITION_EASES)}', 2, kind="usage")
-    if a.transition and a.transition not in ("none", "cut"):
-        kind = a.transition.split(":", 1)[0]
-        known = catmod.load_catalog().ids("transitions", catmod.FALLBACK_TRANSITIONS) or []
-        if kind not in known:
-            raise KbError(f'unknown transition "{kind}".{checkmod.did_you_mean(kind, known)} See kb catalog transitions', 2, kind="usage")
+    check_transition_arg(a.transition)
     if a.ripple and a.transition is None:
         raise KbError("--ripple goes with --transition", 2, kind="usage")
     before = copy.deepcopy(ctx.project.manifest())
@@ -1034,6 +1114,7 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     s = add("status", "app state, this project's last load, kit and checkpoint state")
     s.set_defaults(fn=cmd_status)
     s = add("context", "the session-start briefing: status, scene roster, load errors, key rules (under 4 KB)")
+    s.add_argument("--md", action="store_true", help="headed markdown with recent history, what a compacted session gets (under 7 KB)")
     s.set_defaults(fn=cmd_context)
     s = add("scenes", "scene roster: index, stem, duration, name, transition, text and overrides")
     s.set_defaults(fn=cmd_scenes)
@@ -1072,6 +1153,7 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
         "  kb scene add recap --copy 03-pricing                    copy a scene in this project\n"
         "  kb scene add outro --duration 4000                      blank title scene\n"
         "  kb scene add 07-custom                                  registers scenes/07-custom.tsx if it exists\n"
+        "  kb scene add sting --transition none                    a hard cut where the default would go\n"
         "With --preset the app inserts it when running (else kb copies from the app bundle): assets\n"
         "come along, the project's applied background and default transition apply, and NAME becomes\n"
         "the scene name, stem and id (the app picks the number).",
@@ -1083,6 +1165,7 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     x.add_argument("--at", type=int, metavar="N", help="insert at this index (default: the end)")
     x.add_argument("--duration", type=int, metavar="MS", help="durationMs")
     x.add_argument("--name", metavar="N", help="display name (sidecar name)")
+    x.add_argument("--transition", metavar="TYPE[:MS]", help="instead of the project's default: the cut into a scene added last, else this scene's cut out; none is a hard cut")
     x.add_argument("--offline", action="store_true", help="copy the preset from the bundle even when the app runs")
     x.add_argument("--timeout", type=float, default=120, help="seconds to wait for the app (default 120)")
     x.set_defaults(fn=cmd_scene_add)
@@ -1090,15 +1173,58 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     x.add_argument("scene", metavar="S")
     x.add_argument("--after", metavar="S2", help="put the copy after this scene instead")
     x.add_argument("--at", type=int, metavar="N", help="put the copy at this index instead")
+    x.add_argument("--name", metavar="N", help="name the copy (the stem and id follow); default: the source's name plus copy")
     x.set_defaults(fn=cmd_scene_duplicate)
     x = scene_op("move", "reorder a scene; its outgoing transition moves with it")
     x.add_argument("scene", metavar="S")
     x.add_argument("--to", type=int, metavar="N", help="new index (0-based)")
     x.add_argument("--after", metavar="S2", help="place it right after this scene")
     x.set_defaults(fn=cmd_scene_move)
-    x = scene_op("remove", "drop a scene from project.json and move its files to the macOS Trash")
-    x.add_argument("scene", metavar="S")
+    x = scene_op("remove", "drop scenes from project.json and move their files to the macOS Trash")
+    x.add_argument("scene", metavar="S", nargs="+", help="one or more scenes, all resolved before any goes")
     x.set_defaults(fn=cmd_scene_remove)
+    x = scene_op(
+        "split",
+        "two scenes from one, meeting on a hard cut; later scenes stay exactly where they are",
+        epilog="  ./kb scene split 03-hero --at 2.5           scene time: seconds, 2500ms or 2.5s\n"
+        "  ./kb scene split 03-hero --at bar:9         a musical position pins the new cut there\n"
+        "  ./kb scene split 03-hero --at 2.5 --name \"Hero close\"\n"
+        "The first part keeps the stem and id. The second gets a fresh stem and id, the outgoing transition\n"
+        "and any pinned cut. Sidecar tracks, kicks, stills and screen videos move to their own clock; a move\n"
+        "across the cut becomes two that meet on its pose. The scene's own code and any text or chart build-in\n"
+        "restart at the second part's first frame, so capture it after.",
+    )
+    x.add_argument("scene", metavar="S")
+    x.add_argument("--at", dest="at_pos", required=True, metavar="POS", help="where to cut: scene time (2.5, 2500ms, 2.5s) or a position (bar:9, cue:drop)")
+    x.add_argument("--name", metavar="N", help="the second part's name (the stem and id follow); default: the scene's name plus part 2")
+    x.set_defaults(fn=cmd_scene_split)
+    x = scene_op(
+        "renumber",
+        "number the scene files in film order (01-, 02-, ...); the scene ids and the film don't change",
+        epilog="Renames scenes/<stem>.tsx and .json and their project.json entries; your own leases follow.\nA file already at a new name that is not one of these scenes refuses the whole run.",
+    )
+    x.add_argument("--start", type=int, default=1, metavar="N", help="the first number (default 1)")
+    x.add_argument("--step", type=int, default=1, metavar="N", help="the gap between numbers (default 1)")
+    x.set_defaults(fn=cmd_scene_renumber)
+    x = scene_op(
+        "import",
+        "bring a scene in from another project: its code, sidecar and the assets they name, nothing else",
+        epilog="  ./kb scene import launch-teaser                 list that project's scenes\n"
+        "  ./kb scene import launch-teaser 03-hero --after 02-intro\n"
+        "  ./kb scene import ~/Desktop/old-project 1 --name \"Old hero\"\n"
+        "PROJECT is a folder, or a project's name in this workspace. The person must have allowed its current\n"
+        "content in Kookaburra Cut, else exit 2 (open it once in the app). Every file must be plain and inside\n"
+        "that project. Commands, folders and web origins stay behind, and code that reaches outside a scene or\n"
+        "names an absolute path refuses the import.",
+    )
+    x.add_argument("source", metavar="PROJECT", help="the other project: a folder, or a name in this workspace")
+    x.add_argument("scene", metavar="S", nargs="?", help="its scene (index or stem); left out, lists them")
+    x.add_argument("--after", metavar="S2", help="insert after this scene of this project")
+    x.add_argument("--at", type=int, metavar="N", help="insert at this index (default: the end)")
+    x.add_argument("--name", metavar="N", help="display name (the stem and id follow)")
+    x.add_argument("--duration", type=int, metavar="MS", help="durationMs (default: the source's)")
+    x.add_argument("--transition", metavar="TYPE[:MS]", help="set this boundary instead of leaving it: the cut into a scene added last, else this scene's cut out; none is a hard cut")
+    x.set_defaults(fn=cmd_scene_import)
     x = scene_op(
         "set",
         "change a scene's duration, outgoing transition or name",

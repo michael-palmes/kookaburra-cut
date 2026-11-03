@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import type { Theme } from "../theme/tokens";
-import { isWideCodePoint } from "./sceneTerminalRaster";
 import {
   ansi256,
   mixHex,
@@ -8,6 +7,7 @@ import {
   TERMINAL_THEME_PRESETS,
   terminalRunColour,
 } from "./sceneTerminalTheme";
+import { isWideCodePoint } from "./sceneTerminalWidth";
 
 const dark = {
   colors: { background: "#0b0e14", text: "#f0efeb", accent: "#6f93a8", muted: "#8a8f98" },

@@ -36,6 +36,7 @@ const HEARTBEAT_MIN_INTERVAL_MS: u64 = 2_000;
 const HEARTBEAT_FRESH_MS: u64 = 30_000;
 /// Another instance's heartbeat this old is pruned even when its pid is alive (pid reuse after a crash).
 const INSTANCE_PRUNE_MS: u64 = 600_000;
+const CONFIRM_IMPORT: &str = "confirmImport";
 /// The request kinds this build serves; a request without `kind` is a v1 capture.
 pub const BRIDGE_KINDS: &[&str] = &[
     "capture",
@@ -48,9 +49,16 @@ pub const BRIDGE_KINDS: &[&str] = &[
     "export",
     "cancelExport",
     "range",
+    "confirmImport",
 ];
 /// The kinds `spawn_native_bridge` serves from Rust; the render window never claims them (a `debug` request routes by its op, `RoutePeek::native`).
-pub const NATIVE_KINDS: &[&str] = &["mediaChanged", "openEdit", "export", "cancelExport"];
+pub const NATIVE_KINDS: &[&str] = &[
+    "mediaChanged",
+    "openEdit",
+    "export",
+    "cancelExport",
+    "confirmImport",
+];
 /// The headless edit CLI contract this binary answers (`<exe> edit caps` reports the same `cli`).
 pub const CLI_VERSION: u32 = 1;
 /// Where kb finds this binary's CLI while the app is closed (docs/agent-kit.md, "Heartbeat").
@@ -339,7 +347,7 @@ pub struct Heartbeat {
 
 // ── Picked folders ─────────────────────────────────────────────────────────
 
-/// Folders a person chose in one of the app's native dialogs this session (`note_picked_folder`); published in the heartbeat so kb and the headless CLI can honour them, forgotten when the app quits.
+/// Folders a person chose in one of the app's native dialogs this session (`pick_folder`, the pack Save dialog); published in the heartbeat so kb and the headless CLI can honour them, forgotten when the app quits.
 #[derive(Default)]
 pub struct PickedFolders(Mutex<Vec<PathBuf>>);
 
@@ -368,44 +376,73 @@ fn too_broad_to_pick(dir: &Path, home: Option<&Path>) -> bool {
 }
 
 /// Folders whose contents are credentials (the same set kb refuses to read).
-const NEVER_PICKED: [&str; 5] = [".ssh", ".aws", ".config", ".gnupg", "Library/Keychains"];
+const NEVER_PICKED: [&str; crate::kit::CREDENTIAL_DIRS.len()] = crate::kit::CREDENTIAL_DIRS;
 
-/// A folder the person just chose in a native dialog (a Save dialog's parent counts). Only an existing directory is kept, and never one broad enough to make the confinement moot or one that holds credentials; the command comes from the webview, so it trusts the path no further than that.
-#[tauri::command]
-pub fn note_picked_folder(
-    app: AppHandle,
-    state: State<'_, PickedFolders>,
-    path: String,
-) -> Result<(), String> {
-    let path = PathBuf::from(path);
-    if !path.is_absolute() {
-        return Err("a picked folder must be an absolute path".into());
+/// Why a chosen folder stays off kb's write roots: never one broad enough to make the confinement moot or one that holds credentials.
+fn pick_refusal(dir: &Path, home: Option<&Path>) -> Option<&'static str> {
+    if too_broad_to_pick(dir, home) {
+        return Some("that folder is too broad to hand to Claude");
     }
-    let dir = if path.is_dir() {
-        path
-    } else {
-        path.parent()
-            .filter(|p| p.is_dir())
-            .map(Path::to_path_buf)
-            .ok_or("that path is not inside an existing folder")?
-    };
-    let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
+    home.is_some_and(|home| NEVER_PICKED.iter().any(|rel| dir.starts_with(home.join(rel))))
+        .then_some("that folder holds credentials and is never handed to Claude")
+}
+
+/// Record a folder a Rust-run dialog just returned (a Save dialog's parent counts), unless the rules keep it off kb's write roots.
+pub(crate) fn note_chosen_folder(app: &AppHandle, dir: &Path) {
+    let dir = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
     let home = app
         .path()
         .home_dir()
         .ok()
         .map(|h| std::fs::canonicalize(&h).unwrap_or(h));
-    if too_broad_to_pick(&dir, home.as_deref()) {
-        return Err("that folder is too broad to hand to Claude; pick a folder inside it".into());
+    match pick_refusal(&dir, home.as_deref()) {
+        Some(reason) => log::info!("[bridge] not offering a chosen folder to kb: {reason}"),
+        None => app.state::<PickedFolders>().note(&dir),
     }
-    if home
-        .as_deref()
-        .is_some_and(|home| NEVER_PICKED.iter().any(|rel| dir.starts_with(home.join(rel))))
-    {
-        return Err("that folder holds credentials and is never handed to Claude".into());
+}
+
+/// What a folder dialog is for; Rust owns its wording.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PickPurpose {
+    WorkspaceLocation,
+}
+
+impl PickPurpose {
+    fn title(self) -> &'static str {
+        match self {
+            Self::WorkspaceLocation => "Choose where Kookaburra Cut keeps your projects",
+        }
     }
-    state.note(&dir);
-    Ok(())
+}
+
+/// Runs the folder dialog from Rust as a sheet on the calling window, so the path is the person's and never the webview's. The rules only decide kb's reach: the person's own choice still comes back (the workspace's default parent is the home folder), and the command that uses it validates it.
+#[tauri::command]
+pub async fn pick_folder(
+    app: AppHandle,
+    window: tauri::Window,
+    purpose: PickPurpose,
+) -> Result<Option<String>, String> {
+    if !matches!(window.label(), "main" | "settings") {
+        return Err("this window cannot pick folders".into());
+    }
+    let dialog_app = app.clone();
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        dialog_app
+            .dialog()
+            .file()
+            .set_parent(&window)
+            .set_title(purpose.title())
+            .blocking_pick_folder()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    let Some(picked) = picked else {
+        return Ok(None);
+    };
+    let path = picked.into_path().map_err(|e| e.to_string())?;
+    note_chosen_folder(&app, &path);
+    Ok(Some(path.to_string_lossy().into_owned()))
 }
 
 /// `pickedDirs` of every live heartbeat under `bridge`, for a process with no app handle (the headless CLI).
@@ -473,6 +510,7 @@ fn access_verb(kind: &str) -> &'static str {
         "check" => "load and check",
         "insertPreset" => "add a scene to",
         "openEdit" => "open the video editor for",
+        CONFIRM_IMPORT => "copy a scene from",
         _ => "use",
     }
 }
@@ -485,7 +523,9 @@ pub(crate) fn confirm_project_access(
     client: Option<&str>,
 ) -> bool {
     let project_id = format!("ws:{slug}");
-    if editor_context(app).and_then(|c| c.project_id) == Some(project_id.clone()) {
+    // An import reads this project for another one, so having it open says nothing about that.
+    let importing = kind == CONFIRM_IMPORT;
+    if !importing && editor_context(app).and_then(|c| c.project_id) == Some(project_id.clone()) {
         return true;
     }
     let grants = app.state::<BridgeGrants>();
@@ -516,8 +556,13 @@ pub(crate) fn confirm_project_access(
         .filter(|c| !c.is_empty())
         .map(|c| format!(" (request from {c})"))
         .unwrap_or_default();
+    let reason = if importing {
+        "into the project it is working on"
+    } else {
+        "which is not the project open in Kookaburra Cut"
+    };
     let message = format!(
-        "Claude asked to {} \"{name}\", which is not the project open in Kookaburra Cut{who}.\n\nAllow it for the rest of this session?",
+        "Claude asked to {} \"{name}\", {reason}{who}.\n\nAllow it for the rest of this session?",
         access_verb(kind)
     );
     let allowed = app
@@ -1345,7 +1390,7 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-/// `KOOKABURRA_BRIDGE_DIR` (tests only): an absolute path, else an error naming the value.
+/// `KOOKABURRA_BRIDGE_DIR` (debug builds only): an absolute path, else an error naming the value.
 pub(crate) fn bridge_dir_override(raw: Option<&str>) -> Result<Option<PathBuf>, String> {
     let Some(raw) = raw.map(str::trim).filter(|raw| !raw.is_empty()) else {
         return Ok(None);
@@ -1361,6 +1406,9 @@ pub(crate) fn bridge_dir_override(raw: Option<&str>) -> Result<Option<PathBuf>, 
 }
 
 fn bridge_dir_env() -> Option<&'static PathBuf> {
+    if !cfg!(debug_assertions) {
+        return None;
+    }
     static DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
     DIR.get_or_init(|| {
         bridge_dir_override(std::env::var("KOOKABURRA_BRIDGE_DIR").ok().as_deref()).unwrap_or_else(
@@ -1373,7 +1421,7 @@ fn bridge_dir_env() -> Option<&'static PathBuf> {
     .as_ref()
 }
 
-/// Always beside `_autorun` under the fixed home location, unaffected by a relocated workspace root; `KOOKABURRA_BRIDGE_DIR` redirects it for tests.
+/// Always beside `_autorun` under the fixed home location, unaffected by a relocated workspace root; `KOOKABURRA_BRIDGE_DIR` redirects it in debug builds, for tests.
 pub(crate) fn bridge_root(app: &AppHandle) -> Result<PathBuf, String> {
     if let Some(dir) = bridge_dir_env() {
         return Ok(dir.clone());
@@ -1905,6 +1953,7 @@ async fn serve_native(app: &AppHandle, root: &Path, request: BridgeRequest) {
     let served = match request.kind.as_deref() {
         Some("mediaChanged") => serve_media_changed(app, &request).await,
         Some("openEdit") => serve_open_edit(app, &request).await,
+        Some("confirmImport") => serve_confirm_import(app, &request).await,
         Some("debug") => serve_debug(app, &request),
         Some("export" | "cancelExport") => crate::bridge_export::serve(app, root, &request).await,
         other => Err(format!("{other:?} isn't a native bridge kind")),
@@ -2114,6 +2163,23 @@ fn open_or_focus(
         }
     }
     Ok(opened)
+}
+
+/// The person's yes before `kb scene import` reads another project; kb refuses without it. The kind fixes the dialog's wording, so a request can't choose what the person is asked.
+async fn serve_confirm_import(app: &AppHandle, request: &BridgeRequest) -> Result<Value, String> {
+    let (slug, _dir) = native_project(app, request)?;
+    let (handle, s, client) = (app.clone(), slug.clone(), request.client.clone());
+    let allowed = tauri::async_runtime::spawn_blocking(move || {
+        confirm_project_access(&handle, &s, CONFIRM_IMPORT, client.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    if !allowed {
+        return Err(format!(
+            "the person did not allow Claude to copy a scene from \"ws:{slug}\""
+        ));
+    }
+    Ok(json!({ "allowed": true }))
 }
 
 /// Open the video editor on an existing edit of any workspace project (busy while exporting or while the editor renders another edit).
@@ -2423,7 +2489,8 @@ mod tests {
                 "debug",
                 "export",
                 "cancelExport",
-                "range"
+                "range",
+                "confirmImport"
             ])
         );
         assert_eq!(
@@ -3243,9 +3310,12 @@ mod tests {
         assert!(too_broad_to_pick(Path::new("/Users/x"), Some(home)));
         assert!(!too_broad_to_pick(Path::new("/Users/x/Desktop"), Some(home)));
         assert!(!too_broad_to_pick(Path::new("/Volumes/Work/review"), None));
-        assert!(NEVER_PICKED
-            .iter()
-            .any(|rel| Path::new("/Users/x/.ssh/keys").starts_with(home.join(rel))));
+        for refused in ["/", "/Users", "/Users/x", "/Users/x/.ssh/keys", "/Users/x/Library/Keychains"] {
+            assert!(pick_refusal(Path::new(refused), Some(home)).is_some(), "{refused}");
+        }
+        for allowed in ["/Users/x/Desktop", "/Users/x/Library/Movies", "/Volumes/Work/review"] {
+            assert!(pick_refusal(Path::new(allowed), Some(home)).is_none(), "{allowed}");
+        }
         let picked = PickedFolders::default();
         picked.note(Path::new("/Users/x/Desktop"));
         picked.note(Path::new("/Users/x/Movies"));

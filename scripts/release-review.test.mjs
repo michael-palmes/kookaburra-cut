@@ -55,12 +55,15 @@ describe("release.sh before it signs", () => {
     write("src/app.ts", "one\n");
     const conf = (version) =>
       JSON.stringify({ version, bundle: { macOS: { minimumSystemVersion: "26.0" } } });
+    const security = (version) => `# Security\n\n**As of version ${version}.**\n`;
     write("src-tauri/tauri.conf.json", conf("0.1.0"));
+    write("SECURITY.md", security("0.1.0"));
     commit("first release");
     git("tag", "-a", "v0.1.0", "-m", "first");
     write("pnpm-lock.yaml", "two\n");
     write("src/app.ts", "two\n");
     write("src-tauri/tauri.conf.json", conf("0.2.0"));
+    write("SECURITY.md", security("0.2.0"));
     commit("second release");
     git("push", "-q", "origin", "main", "--tags");
   });
@@ -81,7 +84,9 @@ describe("release.sh before it signs", () => {
   });
 
   test("signs nothing when no one answers", () => {
-    assert.equal(release("").status, 1);
+    const r = release("");
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /not signed/);
     assert.equal(git("tag", "--list", "v0.2.0"), "");
   });
 });

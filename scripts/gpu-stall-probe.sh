@@ -15,8 +15,9 @@
 # resume works, or when silent windows recycle until the GPU wedges and kb exits 2
 # (gpu-wedged); a capture that timed out while the GPU never wedged fails it.
 #
-# Launch mode (A, B, C; D needs a dev build):
-#   scripts/gpu-stall-probe.sh --app "/path/Kookaburra Cut.app" [--scenario A|B|C|D|all]
+# Launch mode, debug builds only (`pnpm acceptance:app` or `tauri build --debug`): a release
+# build ignores KOOKABURRA_BRIDGE_DIR, so it would serve the real bridge.
+#   scripts/gpu-stall-probe.sh --app "/path/target/debug/bundle/macos/Kookaburra Cut.app" [--scenario A|B|C|D|all]
 # Attach mode (a test instance you started yourself, for example a dev build:
 #   KOOKABURRA_BRIDGE=1 KOOKABURRA_BRIDGE_DIR=/tmp/kc-stall/_bridge \
 #   KOOKABURRA_WORKSPACE_ROOT=/tmp/kc-stall/root pnpm tauri dev):
@@ -80,6 +81,10 @@ if [ -n "$APP" ]; then
   exe="$APP"
   if [ -d "$APP" ]; then exe="$APP/Contents/MacOS/kookaburra-cut"; fi
   [ -x "$exe" ] || fail "no app executable at $exe"
+  case "$exe" in
+    */target/debug/*) ;;
+    *) fail "--app needs a debug build under target/debug: a release build ignores KOOKABURRA_BRIDGE_DIR" ;;
+  esac
   WORK="$(mktemp -d "${TMPDIR:-/tmp}/kc-stall.XXXXXX")"
   BRIDGE="$WORK/_bridge"
   mkdir -p "$BRIDGE" "$WORK/root"

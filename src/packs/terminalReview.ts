@@ -1,4 +1,4 @@
-/** Review of terminal blocks in scene sidecars, for the two sharing boundaries: the pack trust screen lists every pre-typed command and custom start path a pack carries before anything lands (`packReview.ts`, over hash-checked sidecars read from the pack), and the export picker warns that snapshots and commands travel with the pack (read off disk; a read failure degrades to no rows, since the picker may not fail on a review). Never the publisher's manifest, which is self-declared. */
+/** Review of terminal blocks in scene sidecars for the export picker, which warns that transcripts and snapshots travel with the pack (read off disk; a read failure degrades to no rows, since the picker may not fail on a review). */
 
 import { invoke } from "@tauri-apps/api/core";
 import { readProjectManifestSnapshot } from "../engine/projectEdit";
@@ -10,10 +10,6 @@ export interface TerminalReviewRow {
   scene: string;
   /** The scene file, for stable React keys. */
   file: string;
-  command: string | null;
-  startPath: string | null;
-  /** A captured grid travels in the sidecar (and its PNG in assets), pixels and all. */
-  hasSnapshot: boolean;
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -28,13 +24,10 @@ export function terminalReviewRows(
   for (const { file, doc } of scenes) {
     if (!isRecord(doc) || doc.terminal === undefined) continue;
     const terminal = parseSceneTerminal(doc.terminal, `${project}/${file}`);
-    const command = terminal?.startCommand ?? null;
-    const startPath = terminal?.startPath ?? null;
-    const hasSnapshot = terminal?.snapshot != null;
-    if (!command && !startPath && !hasSnapshot) continue;
+    if (!terminal?.transcript && !terminal?.snapshot) continue;
     const name = typeof doc.name === "string" ? doc.name.trim() : "";
     const scene = name || file.replace(/^scenes\//, "").replace(/\.tsx$/, "");
-    rows.push({ project, scene, file, command, startPath, hasSnapshot });
+    rows.push({ project, scene, file });
   }
   return rows;
 }

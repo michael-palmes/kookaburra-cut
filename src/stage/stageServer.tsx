@@ -101,6 +101,7 @@ import {
   unrenderableEmojiClusters,
 } from "../toolkit/text/emojiRaster";
 import { mirroredStores } from "./mirroredStores";
+import { assetUrlPath, grantReach, revokeReach } from "./realmGuard";
 import { mirrorStores } from "./storeMirror";
 import { takeWorkerInbox } from "./workerInbox";
 import { createWorkerNativePort } from "./workerNativePort";
@@ -416,8 +417,13 @@ function dispatchPointer(event: Extract<WindowNotice, { type: "pointer" }>["even
 }
 
 // ── Project hydration ────────────────────────────────────────────────────────
+/** The project holding the `project` reach grant: its folder and the pinned faces it was handed. */
+let reachProject: string | null = null;
+
 function hydrate(stageProject: StageProject, seq: number): LoadedProject {
-  const { scenes, persistentKey, assets, fonts, ...rest } = stageProject;
+  const { scenes, persistentKey, assets, fonts, root, ...rest } = stageProject;
+  grantReach("project", [root, ...fonts.map((font) => assetUrlPath(font.url))]);
+  reachProject = stageProject.id;
   setStageAssetTable(stageProject.id, assets);
   for (const font of fonts) registerWorkspaceFont(font.family, font.weight, font.url);
   const loaded: LoadedProject = {
@@ -461,6 +467,7 @@ async function handle(req: WindowRequest): Promise<{ value: unknown; transfer?: 
       return { value: await compilePersistentModule(req.projectId, req.entry) };
     case "loadProject": {
       const loaded = req.project ? hydrate(req.project, req.seq) : null;
+      if (!req.project) revokeReach("project");
       // Same barrier as the window's loadProject: troika's shared atlas assigns cells in typeset order, so every project face is generated here, sequentially, before a scene mounts (docs/determinism.md "Fonts").
       if (loaded) {
         await preloadAppFonts([
@@ -718,6 +725,7 @@ takeWorkerInbox((ev: MessageEvent<ToWorker>) => {
       return;
     case "assetsChanged":
       setStageAssetTable(msg.projectId, msg.assets);
+      if (!msg.assets && msg.projectId === reachProject) revokeReach("project");
       return;
     case "conformProgress":
       port.deliverConformProgress(msg.payload as never);

@@ -14,16 +14,17 @@ Kookaburra Cut renders every visual (animated text, graphics, and 3D) through a 
 react-three-fiber WebGL canvas, and exports video by stepping a manual clock
 frame-by-frame into a bundled **ffmpeg** sidecar (H.264 / H.265 / ProRes). It runs in
 pure WKWebView via Tauri 2, no Chromium. Two exports of the same project are
-byte-identical by design. Scenes can also be authored conversationally: the app
-embeds a Claude Code terminal that reads and rewrites your project's scene files.
+byte-identical by design. Scenes can also be authored conversationally: Edit with
+Claude hands your project to Claude Code, which reads and rewrites its scene files
+while you watch them update here.
 
 <p align="center">
   <a href="https://kookaburracut.com/">
-    <img src="docs/assets/studio-demo.gif" width="900" alt="The Kookaburra Cut studio: editing a device scene while the embedded Claude Code terminal rewrites it">
+    <img src="docs/assets/studio-demo.gif" width="900" alt="The Kookaburra Cut studio: editing a device scene while Claude Code rewrites it">
   </a>
 </p>
 
-<p align="center"><sub>Reworking a device scene from the embedded agent terminal. More at <a href="https://kookaburracut.com/">kookaburracut.com</a>.</sub></p>
+<p align="center"><sub>Reworking a device scene with Claude Code. More at <a href="https://kookaburracut.com/">kookaburracut.com</a>.</sub></p>
 
 ## Download
 
@@ -56,15 +57,15 @@ gh attestation verify KookaburraCut-<version>.dmg --repo michael-palmes/kookabur
 > welcome, recommended there; Escape declines; Settings changes it any time)
 > asks GitHub whether a newer release exists and sends no identifiers; the
 > Claude integration (the Edit with Claude handoff to the Claude desktop app,
-> or the built-in terminal, each using your own Claude Code install) sends the
-> project's files to Anthropic as you work; a live website in a scene loads
+> using your own Claude Code install) sends the project's files to Anthropic as
+> you work; a live website in a scene loads
 > only after you allow its origin. Every path, with its off switch, is in
 > [`docs/privacy.md`](docs/privacy.md) and [`SECURITY.md`](SECURITY.md).
 
 ## Core features
 
-- **AI-authored scenes**: an embedded Claude Code terminal scoped to the open
-  project. The output is plain, editable TSX built on a typed toolkit, not a
+- **AI-authored scenes**: Edit with Claude opens the project in Claude Code, with
+  a kit stamped into the folder. The output is plain, editable TSX built on a typed toolkit, not a
   black box.
 - **Deterministic export**: a manual clock stepped frame-by-frame through one
   WebGL canvas into the ffmpeg sidecar. The same project produces the same

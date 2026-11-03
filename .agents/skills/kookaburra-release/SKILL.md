@@ -13,7 +13,7 @@ A release is a **signed `v*` tag on `main`**, pushed by `pnpm release`. `.github
 
 ## Cutting a release
 
-1. **Bump the version** in `src-tauri/tauri.conf.json` (the single source of truth) and merge it to `main` through a PR like any change. The README must state the `minimumSystemVersion` floor (`macOS 26.0+`); the build job refuses otherwise.
+1. **Bump the version** in `src-tauri/tauri.conf.json` (the single source of truth), re-read `SECURITY.md` against `main` and set its "As of version" line to match, and merge both to `main` through a PR like any change. `pnpm release` and the build job refuse a tag whose `SECURITY.md` names another version, because 0.21.1 shipped under a file describing controls it lacked. The README must state the `minimumSystemVersion` floor (`macOS 26.0+`); the build job refuses otherwise.
 2. **Tag and push** from a clean `main` equal to `origin/main`:
    ```bash
    pnpm release
@@ -33,7 +33,7 @@ Rehearsals, in order of cost:
 Everything here is done by hand, once. Nothing in the repository works until it is.
 
 1. **Signing keys, in the Secure Enclave.** Two non-exportable keys, so a stolen disk signs nothing. See "Signing keys" below.
-2. **Rulesets.** `main`: pull request required, the `frontend`, `rust` and `Head commit signed` checks required, no force push, no deletion; an empty bypass list in daily use. Tags `v*`: no update, no deletion, creation only by the maintainer. (Both rulesets exist today; add the Signers check and remove the admin bypass.)
+2. **Rulesets.** `main`: pull request required, the `frontend`, `rust` and `Head commit signed` checks required, no force push, no deletion; an empty bypass list. Tags `v*`: no update, no deletion.
 3. **The `release` environment** with a required reviewer (yourself) and a deployment branch policy of **tags matching `v*` only**. Its secrets:
    | Secret | What |
    | --- | --- |

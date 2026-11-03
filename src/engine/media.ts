@@ -125,7 +125,7 @@ export async function mediaMeta(slug: string, rel: string): Promise<MediaMeta> {
   }
 }
 
-/** A native file as a webview-loadable URL: Tauri's asset protocol, one seam for both dev and packaged. The path must be inside the asset-protocol scope: the static `$APPDATA/cache/**` + `$HOME/Kookaburra Cut/**` entries in tauri.conf.json, plus the runtime workspace allow in workspace.rs `require_root` (user-chosen roots outside ~/Kookaburra Cut). */
+/** A native file as a webview-loadable URL: the `asset` scheme, one seam for both dev and packaged. The path must be within this window's reach (`src-tauri/src/asset_reach.rs`), and in the stage worker within what the window granted it (`src/stage/realmGuard.ts`). */
 export function fsUrl(absPath: string): string {
   return convertFileSrc(absPath);
 }

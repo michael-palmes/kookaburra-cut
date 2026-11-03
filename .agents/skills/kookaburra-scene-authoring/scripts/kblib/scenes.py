@@ -18,6 +18,9 @@ TEXT_STYLE_SUFFIXES = ("Color", "Font", "Size", "OffsetX", "OffsetY", "LineHeigh
 FRAME_SHAPES = {"rect", "rounded-rect", "squircle", "circle", "capsule", "none"}
 SCENE_DOC_VERSION = 1
 
+# A Place with no --transition of its own: None is a real choice there (a hard cut).
+NO_CHOICE = object()
+
 BLANK_TSX = """import {{ defineScene, SceneStage, TitleBlock, useFormat, useSceneText }} from "@kookaburra/toolkit";
 
 export default defineScene({{
@@ -87,6 +90,35 @@ def seed_inserted_scene_transitions(scenes: List[Dict[str, Any]], at: int, defau
         scenes[at - 1]["transition"] = copy.deepcopy(default)
     if not appended and "transition" not in scenes[at]:
         scenes[at]["transition"] = copy.deepcopy(default)
+
+
+def parse_transition(text: str) -> Optional[Dict[str, Any]]:
+    """--transition TYPE[:MS], or none or cut for a hard cut (None)."""
+    if text in ("none", "cut"):
+        return None
+    kind, _, ms = text.partition(":")
+    if not kind:
+        raise KbError('--transition needs TYPE or TYPE:MS, e.g. crossfade:600, or "none"', 2, kind="usage")
+    try:
+        return {"type": kind, "durationMs": int(ms) if ms else 600}
+    except ValueError:
+        raise KbError(f'--transition "{text}": the part after ":" must be milliseconds', 2, kind="usage") from None
+
+
+def seed_new_scene(scenes: List[Dict[str, Any]], at: int, default: Optional[Dict[str, Any]], choice: Any) -> None:
+    """The boundary a new scene's seed would touch, with `choice` (a Place's --transition) in the default's place: the cut
+    into an appended scene (the scene before it), else the new scene's own cut out."""
+    if choice is NO_CHOICE:
+        seed_inserted_scene_transitions(scenes, at, default)
+        return
+    appended = at + 1 == len(scenes)
+    if appended and at == 0:
+        return
+    target = scenes[at - 1] if appended else scenes[at]
+    if choice is None:
+        target.pop("transition", None)
+    else:
+        target["transition"] = copy.deepcopy(choice)
 
 
 def entry_duration(entry: Dict[str, Any]) -> int:
@@ -322,8 +354,9 @@ def copy_scene_assets(
     entry: Dict[str, Any],
     sample_pool: Optional[Path],
     tx: Optional[lockmod.Txn] = None,
+    guard: Optional[Callable[[str], None]] = None,
 ) -> Tuple[str, Optional[Dict[str, Any]], Dict[str, Any], List[str]]:
-    """Copy every referenced asset (planned on tx when given); a name clash with different bytes gets a -2 sibling and the refs follow."""
+    """Copy every referenced asset (planned on tx when given); a name clash with different bytes gets a -2 sibling and the refs follow. guard(rel) refuses a source asset by raising."""
     refs = tsxmod.scan_asset_refs(tsx_text)
     for rel in collect_json_asset_refs(entry) + (collect_json_asset_refs(doc) if doc is not None else []):
         if rel not in refs:
@@ -331,6 +364,8 @@ def copy_scene_assets(
     replacements: List[Tuple[str, str]] = []
     copied: List[str] = []
     for rel in refs:
+        if guard is not None:
+            guard(rel)
         local = source_root / rel
         src = local
         if not local.is_file() and sample_pool is not None:
@@ -429,6 +464,17 @@ def position_from(project: Project, after: Optional[str], at: Optional[int], cou
 # Each plans its writes from a fresh project.json on a kblib.lock transaction, rebuilt when someone saved meanwhile.
 
 
+class ImportedFiles:
+    """A scene read and vetted from outside this project (kb scene import): its code and sidecar, the `shared` constants
+    it brings, and guard(rel), which refuses a source asset by raising."""
+
+    def __init__(self, tsx: str, doc: Optional[Dict[str, Any]], shared: Dict[str, Any], guard: Callable[[str], None]) -> None:
+        self.tsx = tsx
+        self.doc = doc
+        self.shared = shared
+        self.guard = guard
+
+
 class Result:
     def __init__(self, file: str, index: int, scene_id: str, name: str, notes: Optional[List[str]] = None) -> None:
         self.file = file
@@ -465,13 +511,15 @@ class Pins:
 
 
 class Place:
-    """Where a new scene goes (--after S or --at N), resolved against the manifest each attempt reads."""
+    """Where a new scene goes (--after S or --at N), resolved against the manifest each attempt reads; transition is the
+    --transition asked for at its boundary (NO_CHOICE: the project's default seeds it)."""
 
-    def __init__(self, after: Optional[str] = None, at: Optional[int] = None) -> None:
+    def __init__(self, after: Optional[str] = None, at: Optional[int] = None, transition: Any = NO_CHOICE) -> None:
         if after is not None and at is not None:
             raise KbError("pass --after or --at, not both", 2, kind="usage")
         self.after = after
         self.at = at
+        self.transition = transition
 
     @property
     def given(self) -> bool:
@@ -549,7 +597,7 @@ def add_blank(project: Project, stem: str, name: Optional[str], duration: Option
         if existing.is_file():
             if f"scenes/{requested}.tsx" in listed:
                 raise KbError(f"scenes/{requested}.tsx is already scene {listed.index(f'scenes/{requested}.tsx')}; use kb scene duplicate to copy it")
-            return _register_existing(tx, project, manifest, requested, duration, where.index(view, len(scenes), pins))
+            return _register_existing(tx, project, manifest, requested, duration, where.index(view, len(scenes), pins), where.transition)
         position = where.index(view, len(scenes), pins)
         final = mint_stem(project, requested)
         display = name or humanise(final)
@@ -560,7 +608,7 @@ def add_blank(project: Project, stem: str, name: Optional[str], duration: Option
         entry = {"file": f"scenes/{final}.tsx", "durationMs": dur}
         at = len(scenes) if position is None else min(position, len(scenes))
         scenes.insert(at, entry)
-        seed_inserted_scene_transitions(scenes, at, project_default_transition(manifest))
+        seed_new_scene(scenes, at, project_default_transition(manifest), where.transition)
         notes += settle_cuts(project, manifest)
         tx.write_json(MANIFEST, manifest)
         if final != requested:
@@ -570,7 +618,7 @@ def add_blank(project: Project, stem: str, name: Optional[str], duration: Option
     return _run(project, "kb scene add", build, opts)[0]
 
 
-def _register_existing(tx: lockmod.Txn, project: Project, manifest: Dict[str, Any], stem: str, duration: Optional[int], position: Optional[int]) -> Result:
+def _register_existing(tx: lockmod.Txn, project: Project, manifest: Dict[str, Any], stem: str, duration: Optional[int], position: Optional[int], choice: Any = NO_CHOICE) -> Result:
     """Adopt a scenes/<stem>.tsx that exists on disk but is not in project.json."""
     scenes: List[Dict[str, Any]] = manifest["scenes"]
     rel = f"scenes/{stem}.tsx"
@@ -590,7 +638,7 @@ def _register_existing(tx: lockmod.Txn, project: Project, manifest: Dict[str, An
     entry = {"file": rel, "durationMs": dur}
     at = len(scenes) if position is None else min(position, len(scenes))
     scenes.insert(at, entry)
-    seed_inserted_scene_transitions(scenes, at, project_default_transition(manifest))
+    seed_new_scene(scenes, at, project_default_transition(manifest), choice)
     notes += settle_cuts(project, manifest)
     tx.write_json(MANIFEST, manifest)
     doc = project.load_sidecar(stem)
@@ -624,26 +672,36 @@ def _copy(
     sample_pool: Optional[Path],
     duplicate_naming: bool,
     duration: Optional[int],
+    choice: Any = NO_CHOICE,
+    outside: Optional["ImportedFiles"] = None,
 ) -> Result:
-    """copy_scene_between / duplicate_scene: fresh stem and id, sidecar ids re-minted, assets carried."""
+    """copy_scene_between / duplicate_scene: fresh stem and id, sidecar ids re-minted, assets carried. `outside` holds a
+    scene already read and vetted from another project (kb scene import)."""
     file = source_entry.get("file")
     if not isinstance(file, str) or not file.startswith("scenes/") or ".." in file:
         raise KbError(f"invalid scene path in the source: {file!r}")
-    tsx_path = source_root / file
-    try:
-        tsx_text = read_text(tsx_path)
-    except OSError as e:
-        raise KbError(f"cannot read {tsx_path}: {e.strerror}") from None
-    doc_path = source_root / (file[:-4] + ".json")
     doc: Optional[Dict[str, Any]] = None
-    if doc_path.is_file():
-        loaded = load_json(doc_path, str(doc_path))
-        doc = loaded if isinstance(loaded, dict) else None
+    if outside is not None:
+        tsx_text, doc = outside.tsx, copy.deepcopy(outside.doc)
+    else:
+        tsx_path = source_root / file
+        try:
+            tsx_text = read_text(tsx_path)
+        except OSError as e:
+            raise KbError(f"cannot read {tsx_path}: {e.strerror}") from None
+        doc_path = source_root / (file[:-4] + ".json")
+        if doc_path.is_file():
+            loaded = load_json(doc_path, str(doc_path))
+            doc = loaded if isinstance(loaded, dict) else None
     entry = copy.deepcopy(source_entry)
+    if outside is not None and outside.shared:
+        entry["shared"] = copy.deepcopy(outside.shared)
     same_project = source_root.resolve() == project.root.resolve()
     copied: List[str] = []
     if not same_project:
-        tsx_text, doc, entry, copied = copy_scene_assets(source_root, project.root, tsx_text, doc, entry, sample_pool, tx)
+        tsx_text, doc, entry, copied = copy_scene_assets(source_root, project.root, tsx_text, doc, entry, sample_pool, tx, outside.guard if outside is not None else None)
+    if "shared" in entry and outside is not None:
+        manifest.setdefault("shared", {}).update(entry["shared"])
     if is_preset:
         doc = inherit_preset_context(doc, manifest)
     default_transition = project_default_transition(manifest) if is_preset else None
@@ -651,7 +709,7 @@ def _copy(
     source_name = doc.get("name") if isinstance(doc, dict) and isinstance(doc.get("name"), str) else None
     fallback_name = stem_src.split("-", 1)[1].replace("-", " ") if "-" in stem_src else stem_src
     if duplicate_naming:
-        base_name = f"{source_name or fallback_name} copy"
+        base_name = name or f"{source_name or fallback_name} copy"
         final = f"{project.next_prefix():02d}-{slugify(base_name)}" if stem is None else mint_stem(project, stem)
     else:
         base_name = name or source_name or fallback_name
@@ -664,7 +722,11 @@ def _copy(
         sid = tsxmod.scene_id(tsx_text) or "?"
     else:
         tsx_text = rewritten
+    if duration is not None:
+        tsx_text = tsxmod.rewrite_defined_duration(tsx_text, duration)
     tx.write_text(f"scenes/{final}.tsx", tsx_text, create_only=True)
+    if doc is None and name:
+        doc = {"version": SCENE_DOC_VERSION}
     if doc is not None:
         if duplicate_naming and source_name is not None:
             doc["name"] = f"{source_name} copy"
@@ -680,7 +742,7 @@ def _copy(
         new_entry["effects"] = entry["effects"]
     at = len(scenes) if position is None else min(position, len(scenes))
     scenes.insert(at, new_entry)
-    seed_inserted_scene_transitions(scenes, at, default_transition)
+    seed_new_scene(scenes, at, default_transition, choice)
     notes += settle_cuts(project, manifest)
     tx.write_json(MANIFEST, manifest)
     if copied:
@@ -709,12 +771,12 @@ def copy_into(
     def build(tx: lockmod.Txn) -> Result:
         _raw, manifest = _manifest_for_edit(tx)
         at = where.index(_view(project, manifest), len(manifest["scenes"]), pins)
-        return _copy(tx, project, manifest, source_root, source_entry, stem, name, at, is_preset, sample_pool, duplicate_naming, duration)
+        return _copy(tx, project, manifest, source_root, source_entry, stem, name, at, is_preset, sample_pool, duplicate_naming, duration, where.transition)
 
     return _run(project, "kb scene add", build, opts)[0]
 
 
-def duplicate(project: Project, selector: str, position: Any = None, opts: Optional[lockmod.WriteOpts] = None) -> Result:
+def duplicate(project: Project, selector: str, position: Any = None, opts: Optional[lockmod.WriteOpts] = None, name: Optional[str] = None) -> Result:
     where = _place(position)
     pins = Pins()
 
@@ -723,7 +785,7 @@ def duplicate(project: Project, selector: str, position: Any = None, opts: Optio
         view = _view(project, raw)
         idx, _stem = pins.resolve(view, selector)
         at = where.index(view, len(manifest["scenes"]), pins) if where.given else idx + 1
-        return _copy(tx, project, manifest, project.root, raw["scenes"][idx], None, None, at, False, None, True, None)
+        return _copy(tx, project, manifest, project.root, raw["scenes"][idx], None, name, at, False, None, True, None)
 
     return _run(project, "kb scene duplicate", build, opts)[0]
 
@@ -737,7 +799,7 @@ def copy_scene(project: Project, selector: str, stem: str, name: Optional[str], 
         view = _view(project, raw)
         idx, _ = pins.resolve(view, selector)
         at = where.index(view, len(manifest["scenes"]), pins)
-        return _copy(tx, project, manifest, project.root, raw["scenes"][idx], stem, name, at, False, None, True, duration)
+        return _copy(tx, project, manifest, project.root, raw["scenes"][idx], stem, name, at, False, None, True, duration, where.transition)
 
     return _run(project, "kb scene add", build, opts)[0]
 
@@ -771,35 +833,45 @@ def move(project: Project, selector: str, to: Optional[int] = None, after: Optio
 
 def remove(project: Project, selector: str, trash_fn: Any, opts: Optional[lockmod.WriteOpts] = None) -> Tuple[int, List[str], List[Dict[str, Any]]]:
     """(index, trashed files, writes): project.json first, then the scene's own files go to the Trash."""
-    pins = Pins()
-    removed_stem: List[str] = []
+    indexes, trashed, writes = remove_many(project, [selector], trash_fn, opts)
+    return indexes[0], trashed, writes
 
-    def build(tx: lockmod.Txn) -> Tuple[int, List[str]]:
+
+def remove_many(project: Project, selectors: List[str], trash_fn: Any, opts: Optional[lockmod.WriteOpts] = None) -> Tuple[List[int], List[str], List[Dict[str, Any]]]:
+    """(indexes as they were, trashed files, writes): every scene goes in one write, all resolved against one project.json."""
+    pins = Pins()
+    removed_stems: List[str] = []
+
+    def build(tx: lockmod.Txn) -> Tuple[List[int], List[str]]:
         _raw, manifest = _manifest_for_edit(tx)
         scenes = manifest["scenes"]
-        idx, stem = pins.resolve(_view(project, manifest), selector)
-        removed_stem[:] = [stem]
-        if len(scenes) <= 1:
-            raise KbError("a project needs at least one scene; add another before removing this one")
-        removed = scenes.pop(idx)
+        view = _view(project, manifest)
+        found = {pins.resolve(view, selector) for selector in selectors}
+        indexes = sorted(idx for idx, _stem in found)
+        removed_stems[:] = [stem for _idx, stem in sorted(found)]
+        if len(indexes) >= len(scenes):
+            raise KbError("a project needs at least one scene; add another before removing this one" if len(scenes) <= 1 else "that would remove every scene; a project needs at least one")
+        removed = [scenes.pop(idx) for idx in reversed(indexes)]
         settle_cuts(project, manifest)
         tx.write_json(MANIFEST, manifest)
         trashed: List[str] = []
-        file = removed.get("file") if isinstance(removed, dict) else None
         still_used = {e.get("file") for e in scenes if isinstance(e, dict)}
-        if isinstance(file, str) and file.startswith("scenes/") and ".." not in file and file not in still_used:
-            for rel in (file, file[:-4] + ".json"):
-                if (project.root / rel).is_file():
-                    tx.trash(rel, trash_fn)
-                    trashed.append(rel)
-        return idx, trashed
+        for entry in reversed(removed):
+            file = entry.get("file") if isinstance(entry, dict) else None
+            if isinstance(file, str) and file.startswith("scenes/") and ".." not in file and file not in still_used:
+                for rel in (file, file[:-4] + ".json"):
+                    if (project.root / rel).is_file():
+                        tx.trash(rel, trash_fn)
+                        trashed.append(rel)
+        return indexes, trashed
 
-    (idx, trashed), tx = _run(project, "kb scene remove", build, opts)
-    if tx.committed and removed_stem:
+    (indexes, trashed), tx = _run(project, "kb scene remove", build, opts)
+    if tx.committed:
         from . import leases
 
-        leases.release_removed(project, removed_stem[0], tx.caller)
-    return idx, trashed, tx.writes
+        for stem in removed_stems:
+            leases.release_removed(project, stem, tx.caller)
+    return indexes, trashed, tx.writes
 
 
 def manual_length(tx: lockmod.Txn, stem: str) -> Optional[str]:

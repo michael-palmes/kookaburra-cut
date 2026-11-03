@@ -72,7 +72,7 @@ pub fn claude_app_status() -> bool {
     claude_app_installed()
 }
 
-/// Start a Claude Code session in the project's folder, re-stamping the kit first exactly as the built-in terminal does; `Err("claude-app-missing")` lets the launcher fall back to its install steps.
+/// Start a Claude Code session in the project's folder, re-stamping the kit first; `Err("claude-app-missing")` lets the launcher fall back to its install steps.
 #[tauri::command]
 pub async fn open_in_claude(
     app: AppHandle,
@@ -88,14 +88,19 @@ pub async fn open_in_claude(
     if !claude_app_installed() {
         return Err("claude-app-missing".into());
     }
+    let stamp_dir = dir.clone();
+    let stamp_app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        if let Err(e) = workspace::stamp_claude_provisioning(&app, &dir) {
+        if let Err(e) = workspace::stamp_claude_provisioning(&stamp_app, &stamp_dir) {
             log::warn!("kit stamp before opening Claude failed: {e}");
         }
-        open_target(&code_session_link(&dir, prompt.as_deref()))
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    if !workspace::review_agent_files_for(&app, &state, &slug, &dir).await? {
+        return Err("Claude stays off until you've looked at what moved. Open it again when you're ready; the text is in NOTES.md.".into());
+    }
+    open_in_background(code_session_link(&dir, prompt.as_deref())).await
 }
 
 /// `open_target` off the main thread, which sync commands would otherwise hold while `open` runs.

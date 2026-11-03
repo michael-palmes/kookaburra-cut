@@ -15,6 +15,7 @@ import {
   isWorkspaceBackedProjectId,
   type LoadedProject,
   nativeProjectSlug,
+  projectFolderPath,
   resolveAssetUrl,
   resolveProjectHdrUrl,
   workspaceEnvironmentRels,
@@ -54,6 +55,8 @@ import { workspaceFontEntries } from "../theme/fonts";
 import type { FrameRect } from "../toolkit/frame/frameLayout";
 import { applyMirroredEmoji } from "../toolkit/text/emojiRaster";
 import { mirroredStores } from "./mirroredStores";
+import { REACH_REFUSED } from "./realmGuard";
+import stageWorkerScript from "./stageWorker.ts?worker&url";
 import { mirrorStores, type StoreMirror } from "./storeMirror";
 
 /**
@@ -66,6 +69,18 @@ import { mirrorStores, type StoreMirror } from "./storeMirror";
  */
 
 const READY_TIMEOUT_MS = 90_000;
+
+let workerBootstrap: string | null = null;
+/** Tauri sets the policy header on HTML alone, so a worker served as a script runs with no policy; one started from a `blob:` inherits this window's. */
+export function stageWorkerUrl(dev = import.meta.env.DEV): string {
+  if (dev) return stageWorkerScript;
+  workerBootstrap ??= URL.createObjectURL(
+    new Blob([`import ${JSON.stringify(new URL(stageWorkerScript, location.href).href)};`], {
+      type: "text/javascript",
+    }),
+  );
+  return workerBootstrap;
+}
 
 /** A request without its id: `Omit` distributes over the union here so each shape keeps its own fields. */
 type RequestBody = WindowRequest extends infer R
@@ -156,7 +171,7 @@ export class StageClient implements StageHandle {
       },
       (name, patch) => this.send({ type: "store", name, patch }),
     );
-    this.worker = new Worker(new URL("./stageWorker.ts", import.meta.url), { type: "module" });
+    this.worker = new Worker(stageWorkerUrl(), { type: "module" });
     this.worker.onmessage = (ev: MessageEvent<ToWindow>) => this.onMessage(ev.data);
     this.worker.onerror = (ev) => {
       console.error("[stage] worker error:", ev.message, ev.filename, ev.lineno);
@@ -331,6 +346,8 @@ export class StageClient implements StageHandle {
         // info rides warn: only warn and error reach the dev harness's log.
         if (msg.level === "error") console.error(`[stage] ${msg.text}`);
         else console.warn(`[stage] ${msg.text}`);
+        // A refused texture or font can degrade silently into wrong pixels, and a packaged run has no console to grep.
+        if (msg.text.startsWith(REACH_REFUSED)) reportAutoRunError(`stage ${msg.text}`);
         return;
       case "fatal":
         this.fail(new Error(`stage worker: ${msg.text}`));
@@ -660,6 +677,7 @@ export function toStageProject(project: LoadedProject): StageProject {
         ...(errorCard ? { errorCard } : {}),
       };
     }),
+    root: isWorkspaceBackedProjectId(project.id) ? projectFolderPath(project.id) : null,
     assets: buildStageAssets(project.id),
     fonts: workspaceFontEntries(),
   };

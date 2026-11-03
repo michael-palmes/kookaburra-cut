@@ -1,5 +1,5 @@
 //! The IPC surface for packs. Every command re-resolves server side: a frontend-supplied file list is never trusted, and
-//! the Save dialog's path is re-validated here before a single byte is written.
+//! the Save dialog runs here, its path validated before a single byte is written.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
+use tauri_plugin_dialog::DialogExt;
 
 use super::deps::{self, AssetGroup, ClosureFile, HashMode, PackSelection};
 use super::error::PackError;
@@ -82,11 +83,21 @@ pub struct UnreferencedFile {
     bytes: u64,
 }
 
+/// One item's notes, listed for the tick that includes them.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentNotesGroup {
+    kind: ItemKind,
+    slug: String,
+    files: Vec<UnreferencedFile>,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PackPlanView {
     items: Vec<SelectableItem>,
     unreferenced: Vec<UnreferencedGroup>,
+    agent_notes: Vec<AgentNotesGroup>,
     warnings: Vec<String>,
     total_bytes: u64,
     file_count: usize,
@@ -137,7 +148,7 @@ pub struct PackInspectionView {
 }
 
 /// One scene sidecar as the pack carries it, read before staging and checked against its signed hash, so the trust
-/// screen reviews terminal commands and website origins from the bytes that would land.
+/// screen reviews website origins from the bytes that would land.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PackSceneDoc {
@@ -291,10 +302,29 @@ fn closure_to_view(closure: &deps::Closure, root: &Path) -> PackPlanView {
 
     // Reviewed, never silently dropped: the picker shows these with their size.
     let mut groups: Vec<UnreferencedGroup> = Vec::new();
+    let mut agent_notes: Vec<AgentNotesGroup> = Vec::new();
     for asset in &closure.reviewed_assets {
         let label = match asset.group {
             AssetGroup::Unreferenced => "Unused files",
             AssetGroup::FlattenedRender => "Flattened edit renders",
+            AssetGroup::AgentNote => {
+                let file = UnreferencedFile {
+                    rel: asset.rel.clone(),
+                    bytes: asset.bytes,
+                };
+                match agent_notes
+                    .iter_mut()
+                    .find(|g| g.kind == asset.kind && g.slug == asset.project)
+                {
+                    Some(group) => group.files.push(file),
+                    None => agent_notes.push(AgentNotesGroup {
+                        kind: asset.kind,
+                        slug: asset.project.clone(),
+                        files: vec![file],
+                    }),
+                }
+                continue;
+            }
         };
         match groups
             .iter_mut()
@@ -318,6 +348,7 @@ fn closure_to_view(closure: &deps::Closure, root: &Path) -> PackPlanView {
     PackPlanView {
         items,
         unreferenced: groups,
+        agent_notes,
         warnings: closure.warnings.iter().map(|w| w.message()).collect(),
         total_bytes: closure.totals.bytes,
         file_count: closure.totals.files,
@@ -390,6 +421,7 @@ fn enumerate_all(root: &Path) -> PackSelection {
         exclude: Vec::new(),
         include_flattened_renders: true,
         include_unreferenced_assets: true,
+        include_agent_notes: Vec::new(),
     }
 }
 
@@ -439,8 +471,7 @@ pub async fn plan_pack(
     Ok(view)
 }
 
-/// The Save dialog is the app's first, and it breaks the "paths are computed in Rust" rule deliberately, so the path is
-/// re-validated here: right extension, absolute, writable parent, and nowhere near the app bundle or a system directory.
+/// A person can drive the Save dialog anywhere, so its path is validated here: right extension, absolute, writable parent, and nowhere near the app bundle or a system directory.
 fn validate_destination(app: &AppHandle, raw: &str) -> Result<PathBuf, PackError> {
     let mut path = PathBuf::from(raw);
     if path
@@ -511,19 +542,76 @@ fn validate_destination(app: &AppHandle, raw: &str) -> Result<PathBuf, PackError
     Ok(canonical_parent.join(path.file_name().unwrap_or_default()))
 }
 
+/// The webview only suggests a file name: no path parts, no leading dots, always our extension.
+pub(super) fn suggested_file_name(suggested: &str) -> String {
+    let flat: String = suggested
+        .chars()
+        .filter(|c| !c.is_control() && !matches!(c, '/' | '\\' | ':'))
+        .take(120)
+        .collect();
+    let stem = flat.trim().trim_start_matches('.').trim();
+    let stem = if stem.is_empty() { "pack" } else { stem };
+    format!("{stem}.{PACK_EXTENSION}")
+}
+
+/// Where the pack lands: the Save dialog's answer, sheeted on the calling window, whose folder then counts as picked. A debug autorun has nobody to ask, so its round trip lands in the throwaway root's `_autorun/roundtrip` (`scripts/kookaburra-run.sh`).
+async fn choose_destination(
+    app: &AppHandle,
+    window: tauri::Window,
+    settings: &State<'_, SettingsState>,
+    file_name: String,
+) -> Result<PathBuf, String> {
+    if cfg!(debug_assertions) && crate::is_autorun() {
+        let root = workspace::require_root(app, settings)?;
+        let path = root.join("_autorun/roundtrip").join(file_name);
+        return Ok(validate_destination(app, &path.to_string_lossy())?);
+    }
+    let dialog_app = app.clone();
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        dialog_app
+            .dialog()
+            .file()
+            .set_parent(&window)
+            .set_title("Export Pack")
+            .set_file_name(file_name)
+            .add_filter("Kookaburra Pack", &[PACK_EXTENSION])
+            .blocking_save_file()
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .ok_or(PackError::Cancelled)?;
+    let picked = picked.into_path().map_err(|e| e.to_string())?;
+    let out = validate_destination(app, &picked.to_string_lossy())?;
+    if let Some(parent) = out.parent() {
+        crate::bridge::note_chosen_folder(app, parent);
+    }
+    Ok(out)
+}
+
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn build_pack(
     app: AppHandle,
+    window: tauri::Window,
     settings: State<'_, SettingsState>,
     state: State<'_, PackState>,
     selection: PackSelection,
-    destination: String,
+    suggested_name: String,
     meta: PackMetaInput,
     on_progress: Channel<PackProgress>,
 ) -> Result<BuildResult, String> {
+    let out =
+        choose_destination(&app, window, &settings, suggested_file_name(&suggested_name)).await?;
+    // The sheet can stay open while the workspace moves, so the root is read after it.
     let root = workspace::require_root(&app, &settings)?;
-    let out = validate_destination(&app, &destination)?;
     let cancel = state.reset_cancel();
+    let _ = on_progress.send(PackProgress {
+        file: 0,
+        total: 0,
+        bytes: 0,
+        total_bytes: 0,
+        stage: "hashing",
+    });
 
     // Re-resolve server side: the frontend's file list is never trusted.
     let closure = deps::resolve_closure(&root, &selection)?;
@@ -745,7 +833,7 @@ pub async fn read_pack_scene_source(
     )?)
 }
 
-/// Every scene sidecar the pack carries beside a staged scene source, parsed, for the trust screen's terminal and
+/// Every scene sidecar the pack carries beside a staged scene source, parsed, for the trust screen's
 /// website review. Each is checked against its signed hash on the way in; one mismatch refuses the pack.
 #[tauri::command]
 pub async fn read_pack_scene_docs(path: String) -> Result<Vec<PackSceneDoc>, String> {

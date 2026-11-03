@@ -24,7 +24,7 @@ const NO_VERIFY = [
   /^scripts\/(?!kookaburra-run\.sh$|setup-ffmpeg\.sh$|build-ffmpeg-sidecar\.sh$)/,
   /^(biome\.json|\.gitignore|\.npmrc|LICENSE.*|AGENTS\.md|CLAUDE\.md)$/,
   /^src-tauri\/(capabilities|dmg|icons|templates|tests|resources\/models)\//,
-  /^src-tauri\/src\/(bridge|bridge_export|bridge_health|capture_service|claude_update|cli|cli_check|cli_media|cli_song|edit|edit_masks|export_presets|global_screenshots|kit|library|library_previews|live_edits|packs_win|present|preset_posters|pty|render_win|settings_win|tap_dot_frames\.generated|theme_editor_win|theme_move|updater|website)\.rs$/,
+  /^src-tauri\/src\/(bridge|bridge_export|bridge_health|capture_service|cli|cli_check|cli_media|cli_song|edit|edit_masks|export_presets|global_screenshots|kit|library|library_previews|live_edits|packs_win|present|preset_posters|render_win|settings_win|tap_dot_frames\.generated|theme_editor_win|theme_move|updater|website)\.rs$/,
 ];
 
 // src/ files the closure can't see but the export path still depends on.

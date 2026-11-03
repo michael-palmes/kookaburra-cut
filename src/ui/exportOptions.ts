@@ -1,7 +1,7 @@
 /** Pure option/maths logic for the export modal, the stageOptions/textAnimationOptions pattern: everything the modal computes lives here, unit-pinned, so the component is layout only. The size-estimate and Fit-to-cap maths are golden-tested (decision 18: estimate = (video + audio) kbps × duration × 1.05 mux margin; over-cap warns amber + one-click fit, never silent, never blocking). */
 
 import type { AspectName } from "../engine/format";
-import type { SceneDocTerminal } from "../engine/sceneTerminal";
+import { type SceneDocTerminal, terminalSnapshotStale } from "../engine/sceneTerminal";
 import { resolveSceneWebsite, type SceneDocWebsite } from "../engine/sceneWebsite";
 import type { StillsFormat, StillsSize, StillsSummary } from "../engine/stills";
 import {
@@ -340,22 +340,35 @@ export function highQualityEncode(posterFrame: boolean): EncodeSpec | undefined 
     : undefined;
 }
 
-/** Scenes whose terminal has no baked snapshot export the themed empty frame; warn, never block. Docs and files are index-parallel (`LoadedProject`), labels fall back to the file stem (the perfProbe pattern). */
+/** Scenes whose terminal has no baked snapshot export the themed empty frame, and a transcript newer than its snapshot exports the old pixels; warn, never block. Docs and files are index-parallel (`LoadedProject`), labels fall back to the file stem (the perfProbe pattern). */
 export function terminalSnapshotWarning(
   sceneDocs: ({ name?: string; terminal?: SceneDocTerminal } | undefined)[],
   sceneFiles: string[],
 ): string | null {
-  const names: string[] = [];
+  const empty: string[] = [];
+  const unbaked: string[] = [];
   sceneDocs.forEach((doc, i) => {
-    if (!doc?.terminal || doc.terminal.snapshot?.src) return;
-    const file = sceneFiles[i] ?? "";
-    names.push(doc.name ?? file.replace(/^scenes\//, "").replace(/\.tsx$/, ""));
+    if (!doc?.terminal) return;
+    const label = `"${doc.name ?? (sceneFiles[i] ?? "").replace(/^scenes\//, "").replace(/\.tsx$/, "")}"`;
+    if (terminalSnapshotStale(doc.terminal)) unbaked.push(label);
+    else if (!doc.terminal.snapshot?.src) empty.push(label);
   });
-  if (names.length === 0) return null;
-  const list = names.map((n) => `"${n}"`).join(", ");
-  return names.length === 1
-    ? `Heads up: the terminal in ${list} has no captured snapshot, so it exports as an empty prompt. Capture one from the scene's Terminal panel.`
-    : `Heads up: the terminals in ${list} have no captured snapshots, so they export as empty prompts. Capture them from each scene's Terminal panel.`;
+  const notes: string[] = [];
+  if (empty.length === 1) {
+    notes.push(
+      `The terminal in ${empty[0]} has no snapshot, so it exports as an empty prompt. Give it a transcript in the scene's Terminal panel.`,
+    );
+  } else if (empty.length > 1) {
+    notes.push(
+      `The terminals in ${empty.join(", ")} have no snapshots, so they export as empty prompts. Give each a transcript in its scene's Terminal panel.`,
+    );
+  }
+  if (unbaked.length > 0) {
+    notes.push(
+      `Terminal text not baked yet in ${unbaked.join(", ")}, so older text or an empty prompt exports. Open the project in the editor to bake it.`,
+    );
+  }
+  return notes.length > 0 ? `Heads up: ${notes.join(" ")}` : null;
 }
 
 /** Missing and stale Website captures remain non-blocking, but export must name every scene whose poster is not current. */

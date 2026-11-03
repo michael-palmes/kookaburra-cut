@@ -134,8 +134,9 @@ export function importWebsiteImage(input: {
   return invoke<WebsiteCaptureResponse>("website_import_image", { request: input });
 }
 
-export function grantWebsiteOrigin(projectPath: string, origin: string): Promise<void> {
-  return invoke<void>("website_grant_origin", { projectPath, origin });
+/** Rust asks on a native sheet; resolves to whether the person allowed it. */
+export function grantWebsiteOrigin(projectPath: string, origin: string): Promise<boolean> {
+  return invoke<boolean>("website_grant_origin", { projectPath, origin });
 }
 
 export function revokeWebsiteOrigin(projectPath: string, origin: string): Promise<void> {

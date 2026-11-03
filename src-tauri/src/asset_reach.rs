@@ -1,4 +1,4 @@
-//! What an `asset://` URL may serve: the app's caches, the workspace's shared libraries and, per window, the one project that window loaded. The app registers the scheme itself (Tauri then skips its own handler) because Tauri's scope can allow a folder but never take it back, and a closed project must stop being readable.
+//! What an `asset://` URL may serve, per app window: the app's caches, the shared libraries and the one project that window loaded, with the workspace's browsable folders for the main window alone. A child webview is served nothing, since Tauri attaches the scheme to every webview it builds. The app registers the scheme itself (Tauri then skips its own handler) because Tauri's scope can allow a folder but never take it back, and a closed project must stop being readable.
 
 use std::collections::{HashMap, HashSet};
 use std::io::SeekFrom;
@@ -11,14 +11,18 @@ use tauri::{AppHandle, Manager, UriSchemeContext, UriSchemeResponder};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
-/// Workspace folders every window may read: the libraries shared across projects, and the welcome snapshots and scene thumbs of every project (the rest of `.kookaburra`, import backups included, stays out). Projects are never on this list.
-const SHARED_DIRS: [&str; 8] = [
+/// Workspace folders every app window may read: what any stage draws with. Projects are never on this list.
+const LIBRARY_DIRS: [&str; 2] = [
+    crate::fonts::FONTS_DIR_NAME,
+    crate::objects::OBJECTS_DIR_NAME,
+];
+
+/// Workspace folders only the main window browses: the welcome snapshots and scene thumbs of every project (the rest of `.kookaburra`, import backups included, stays out), the library cards, brands and screenshots. Any other window loading a library item reads it as its project.
+const MAIN_ONLY_DIRS: [&str; 6] = [
     ".kookaburra/snapshots",
     ".kookaburra/scene-thumbs",
     crate::library::TEMPLATES_DIR_NAME,
     crate::library::PRESETS_DIR_NAME,
-    crate::fonts::FONTS_DIR_NAME,
-    crate::objects::OBJECTS_DIR_NAME,
     crate::brands::BRANDS_DIR_NAME,
     crate::global_screenshots::SCREENSHOTS_DIR,
 ];
@@ -29,7 +33,8 @@ static OPEN_FILES: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(48
 struct Reach {
     caches: Option<PathBuf>,
     workspace: Option<PathBuf>,
-    shared: Vec<PathBuf>,
+    library: Vec<PathBuf>,
+    main_only: Vec<PathBuf>,
     files: HashSet<PathBuf>,
     projects: HashMap<String, PathBuf>,
 }
@@ -46,6 +51,15 @@ fn canonical_or_lexical(path: &Path) -> PathBuf {
     path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
 }
 
+/// Refuses every webview but the app's own windows; a `website-<hex>` child holds remote content. One list with the IPC guard, so a window the app adds cannot read on one and not the other.
+fn app_window_only(label: &str, shown: &Path) -> Result<(), String> {
+    if crate::website::trusted_invoke_label(label) {
+        Ok(())
+    } else {
+        Err(format!("not an app window: {}", shown.display()))
+    }
+}
+
 impl Reach {
     /// The real file behind `path` when `label`'s window may read it (`check` over the canonical path).
     #[cfg(test)]
@@ -53,15 +67,26 @@ impl Reach {
         self.check(label, &canonical(path)?, path)
     }
 
-    /// Whether `label`'s window may read `real` (already canonical; `shown` is the path as requested, for the message): inside one of its roots with no hidden folder below the root (the Tauri rule `requireLiteralLeadingDot`, kept here), or a file allowed by name.
+    /// Whether `label`'s window may read `real` (already canonical; `shown` is the path as requested, for the message): an app window only, inside one of its roots with no hidden folder below the root (the Tauri rule `requireLiteralLeadingDot`, kept here), or a file allowed by name.
     fn check(&self, label: &str, real: &Path, shown: &Path) -> Result<PathBuf, String> {
         let path = shown;
         let real = real.to_path_buf();
+        app_window_only(label, path)?;
         if self.files.contains(&real) {
             return Ok(real);
         }
         let project = self.projects.get(label);
-        let roots = self.caches.iter().chain(self.shared.iter()).chain(project);
+        let main_only: &[PathBuf] = if label == "main" {
+            &self.main_only
+        } else {
+            &[]
+        };
+        let roots = self
+            .caches
+            .iter()
+            .chain(&self.library)
+            .chain(main_only)
+            .chain(project);
         for root in roots {
             let Ok(below) = real.strip_prefix(root) else {
                 continue;
@@ -99,7 +124,7 @@ pub(crate) fn init(app: &AppHandle) {
     reach.0.lock().unwrap().caches = Some(canonical_or_lexical(&cache));
 }
 
-/// The workspace's shared libraries follow its root; a root that has not changed costs one comparison.
+/// The workspace's folders follow its root; a root that has not changed costs one comparison.
 pub(crate) fn set_workspace(app: &AppHandle, root: &Path) {
     let Some(reach) = app.try_state::<AssetReach>() else {
         return;
@@ -109,7 +134,8 @@ pub(crate) fn set_workspace(app: &AppHandle, root: &Path) {
     if reach.workspace.as_deref() == Some(root.as_path()) {
         return;
     }
-    reach.shared = SHARED_DIRS.iter().map(|name| root.join(name)).collect();
+    reach.library = LIBRARY_DIRS.iter().map(|name| root.join(name)).collect();
+    reach.main_only = MAIN_ONLY_DIRS.iter().map(|name| root.join(name)).collect();
     reach.workspace = Some(root);
 }
 
@@ -135,7 +161,7 @@ pub(crate) fn close_project(app: &AppHandle, label: &str) {
     reach.0.lock().unwrap().projects.remove(label);
 }
 
-/// One file every window may read by its exact path (a dev checkout's bundled library previews).
+/// One file every app window may read by its exact path (a dev checkout's bundled library previews).
 pub(crate) fn allow_file(app: &AppHandle, path: &Path) {
     let Some(reach) = app.try_state::<AssetReach>() else {
         return;
@@ -168,8 +194,9 @@ pub(crate) fn handler(
     let label = ctx.webview_label().to_owned();
     tauri::async_runtime::spawn(async move {
         let origin = window_origin(&app);
-        // The realpath syscall runs before the lock, so concurrent requests never queue behind disk latency.
+        // The realpath syscall runs before the lock, so concurrent requests never queue behind disk latency; a child webview never reaches it, so its timing says nothing about what exists.
         let allow = |path: &Path| {
+            app_window_only(&label, path)?;
             let real = canonical(path)?;
             app.state::<AssetReach>()
                 .0
@@ -177,7 +204,7 @@ pub(crate) fn handler(
                 .unwrap()
                 .check(&label, &real, path)
         };
-        match get_response(&allow, request, &origin).await {
+        match get_response(&allow, request, &origin, &label).await {
             Ok(response) => responder.respond(response),
             Err(e) => responder.respond(
                 Response::builder()
@@ -195,6 +222,7 @@ async fn get_response(
     allow: &(dyn Fn(&Path) -> Result<PathBuf, String> + Sync),
     request: Request<Vec<u8>>,
     origin: &str,
+    label: &str,
 ) -> Result<Response<Vec<u8>>, Box<dyn std::error::Error>> {
     let raw = request.uri().path();
     let path = percent_encoding::percent_decode(raw.strip_prefix('/').unwrap_or(raw).as_bytes())
@@ -203,7 +231,8 @@ async fn get_response(
     let file_path = match allow(Path::new(path.as_ref())) {
         Ok(path) => path,
         Err(reason) => {
-            log::warn!("[assets] refused: {reason}");
+            // Escaped: a child webview's page chooses this path, so it must not forge log lines.
+            log::warn!("[assets] refused {label}: {}", reason.escape_debug());
             return resp
                 .status(StatusCode::FORBIDDEN)
                 .body(Vec::new())
@@ -362,7 +391,7 @@ mod tests {
         std::fs::write(path, bytes).unwrap();
     }
 
-    /// A workspace with two projects, a shared library and a cache, as the app registers them.
+    /// A workspace with two projects, its libraries and browsable folders and a cache, as the app registers them.
     fn studio() -> (PathBuf, Reach) {
         let base = scratch();
         let root = base.join("Kookaburra Cut");
@@ -370,7 +399,13 @@ mod tests {
         write(&root.join("alpha/assets/.emoji-cache/1f600@256.png"), b"e");
         write(&root.join("beta/assets/hero.png"), b"b");
         write(&root.join(".kookaburra/snapshots/alpha.png"), b"s");
+        write(&root.join(".kookaburra/scene-thumbs/alpha/one.png"), b"s");
         write(&root.join("templates/launch/poster.png"), b"t");
+        write(&root.join("presets/hero/poster.png"), b"p");
+        write(&root.join("fonts/x.woff"), b"f");
+        write(&root.join("objects/cube/cube.glb"), b"o");
+        write(&root.join("brands/acme/logo.png"), b"l");
+        write(&root.join("screenshots/one.png"), b"g");
         write(&base.join("cache/media/abc/poster.jpg"), b"c");
         write(
             &root.join(".kookaburra/import-backup/beta/assets/hero.png"),
@@ -380,7 +415,8 @@ mod tests {
         let mut reach = Reach {
             caches: Some(base.join("cache")),
             workspace: Some(root.clone()),
-            shared: SHARED_DIRS.iter().map(|name| root.join(name)).collect(),
+            library: LIBRARY_DIRS.iter().map(|name| root.join(name)).collect(),
+            main_only: MAIN_ONLY_DIRS.iter().map(|name| root.join(name)).collect(),
             ..Default::default()
         };
         reach.projects.insert("main".into(), root.join("alpha"));
@@ -394,10 +430,101 @@ mod tests {
         for path in [
             root.join("alpha/assets/hero.png"),
             root.join(".kookaburra/snapshots/alpha.png"),
+            root.join(".kookaburra/scene-thumbs/alpha/one.png"),
             root.join("templates/launch/poster.png"),
+            root.join("presets/hero/poster.png"),
+            root.join("fonts/x.woff"),
+            root.join("objects/cube/cube.glb"),
+            root.join("brands/acme/logo.png"),
+            root.join("screenshots/one.png"),
             base.join("cache/media/abc/poster.jpg"),
         ] {
             assert_eq!(reach.resolve("main", &path).unwrap(), path);
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_child_webview_label_is_refused_everything() {
+        let (base, mut reach) = studio();
+        let root = base.join("Kookaburra Cut");
+        let allowed = base.join("elsewhere/secret.png");
+        reach.files.insert(allowed.clone());
+        reach
+            .projects
+            .insert("website-deadbeef".into(), root.join("alpha"));
+        for path in [
+            base.join("cache/media/abc/poster.jpg"),
+            root.join(".kookaburra/snapshots/alpha.png"),
+            root.join("fonts/x.woff"),
+            allowed,
+            root.join("alpha/assets/hero.png"),
+        ] {
+            let err = reach.resolve("website-deadbeef", &path).unwrap_err();
+            assert!(err.contains("not an app window"), "{err}");
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn other_windows_read_fonts_and_objects_but_not_the_main_only_folders() {
+        let (base, mut reach) = studio();
+        let root = base.join("Kookaburra Cut");
+        reach.projects.insert("present".into(), root.join("alpha"));
+        for path in [
+            root.join("fonts/x.woff"),
+            root.join("objects/cube/cube.glb"),
+            root.join("alpha/assets/hero.png"),
+            base.join("cache/media/abc/poster.jpg"),
+        ] {
+            assert_eq!(reach.resolve("present", &path).unwrap(), path);
+        }
+        for path in [
+            root.join(".kookaburra/snapshots/alpha.png"),
+            root.join(".kookaburra/scene-thumbs/alpha/one.png"),
+            root.join("brands/acme/logo.png"),
+            root.join("screenshots/one.png"),
+            root.join("templates/launch/poster.png"),
+            root.join("presets/hero/poster.png"),
+        ] {
+            let err = reach.resolve("present", &path).unwrap_err();
+            assert!(err.contains("outside"), "{err}");
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_library_item_a_window_loads_reads_as_its_project() {
+        let (base, mut reach) = studio();
+        let poster = base.join("Kookaburra Cut/templates/launch/poster.png");
+        reach.projects.insert(
+            "render".into(),
+            base.join("Kookaburra Cut/templates/launch"),
+        );
+        assert_eq!(reach.resolve("render", &poster).unwrap(), poster);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// One list with the IPC guard: all seven windows pass, nothing else does.
+    #[test]
+    fn the_app_windows_are_the_ones_the_ipc_guard_trusts() {
+        let (base, reach) = studio();
+        let font = base.join("Kookaburra Cut/fonts/x.woff");
+        for label in [
+            "main",
+            "editor",
+            "present",
+            "render",
+            "settings",
+            "packs",
+            "theme-editor",
+        ] {
+            assert!(crate::website::trusted_invoke_label(label), "{label}");
+            assert!(reach.resolve(label, &font).is_ok(), "{label}");
+        }
+        for label in ["", "Main", "website-deadbeef", "library"] {
+            assert!(!crate::website::trusted_invoke_label(label), "{label}");
+            assert!(reach.resolve(label, &font).is_err(), "{label}");
         }
         let _ = std::fs::remove_dir_all(&base);
     }
@@ -509,7 +636,8 @@ mod tests {
             request = request.header(*name, *value);
         }
         let request = request.body(Vec::new()).unwrap();
-        tauri::async_runtime::block_on(get_response(&allow, request, "tauri://localhost")).unwrap()
+        tauri::async_runtime::block_on(get_response(&allow, request, "tauri://localhost", "main"))
+            .unwrap()
     }
 
     fn encoded(path: &Path) -> String {
@@ -578,7 +706,7 @@ mod tests {
         let (base, mut reach) = studio();
         let preview = base.join("elsewhere/secret.png");
         reach.files.insert(preview.clone());
-        assert_eq!(reach.resolve("library", &preview).unwrap(), preview);
+        assert_eq!(reach.resolve("present", &preview).unwrap(), preview);
         let _ = std::fs::remove_dir_all(&base);
     }
 }

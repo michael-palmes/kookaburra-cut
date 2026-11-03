@@ -11,12 +11,12 @@ mod bridge_health;
 mod bridge_range;
 mod capture_service;
 mod claude_app;
-mod claude_update;
 mod clean_text;
 pub mod cli;
 pub mod cli_check;
 pub mod cli_media;
 pub mod cli_song;
+pub mod cli_trust;
 mod clip_cache;
 mod concurrency;
 mod conform;
@@ -32,6 +32,7 @@ mod fonts;
 mod global_screenshots;
 mod gradients;
 mod history;
+mod app_edits;
 mod imagefile;
 mod kit;
 mod library;
@@ -40,6 +41,7 @@ mod live_edits;
 mod loudness;
 mod managed;
 mod media;
+mod media_input;
 mod mp4box;
 mod native_alert;
 mod objects;
@@ -51,7 +53,6 @@ mod packs_win;
 mod present;
 mod preset_posters;
 mod privacy;
-mod pty;
 mod real_dir;
 mod render_win;
 mod scene_doc;
@@ -1447,6 +1448,7 @@ macro_rules! kookaburra_handler {
             workspace::delete_project,
             workspace::write_snapshot,
             workspace::provision_project,
+            workspace::heal_project_kit,
             workspace::ensure_sample_assets,
             workspace::list_scene_thumbs,
             workspace::write_scene_thumb,
@@ -1471,7 +1473,7 @@ macro_rules! kookaburra_handler {
             bridge::bridge_claim_request,
             bridge::bridge_write_response,
             bridge::bridge_confirm_project,
-            bridge::note_picked_folder,
+            bridge::pick_folder,
             bridge::begin_bridge_screenshot,
             bridge::save_bridge_screenshot,
             bridge::bridge_pending_count,
@@ -1550,21 +1552,11 @@ macro_rules! kookaburra_handler {
             fonts::list_system_fonts,
             fonts::list_workspace_fonts,
             fonts::pin_system_font,
-            pty::pty_spawn,
-            pty::pty_write,
-            pty::pty_resize,
-            pty::pty_kill,
-            pty::pty_pause,
-            pty::pty_resume,
-            pty::detect_claude,
-            pty::has_claude_session,
             claude_app::claude_app_status,
             claude_app::open_in_claude,
             claude_app::open_project_folder,
             claude_app::open_claude_download,
             claude_app::open_privacy_page,
-            claude_update::claude_version_info,
-            claude_update::dismiss_claude_update,
             managed::managed_policy,
             media::import_media,
             media::import_media_bytes,
@@ -1689,7 +1681,6 @@ pub fn run() {
         .manage(workspace::SettingsState::default())
         .manage(workspace::TrustState::default())
         .manage(updater::PendingUpdate::default())
-        .manage(pty::PtyState::default())
         .manage(edit::EditorState::default())
         .manage(edit::EditRenderState::default())
         .manage(present::PresentState::default())
@@ -1771,7 +1762,7 @@ pub fn run() {
                         .build(),
                 )?;
             }
-            // Native menu: the stock menus (Edit must stay, webview copy/paste rides on it) plus a Project menu whose "Edit with Claude" toggles the Claude launcher (or the legacy terminal rail), and "⚙ Settings…" (⌘,) in the app submenu's native spot (after About + ─).
+            // Native menu: the stock menus (Edit must stay, webview copy/paste rides on it) plus a Project menu whose "Edit with Claude" toggles the Claude launcher, and "⚙ Settings…" (⌘,) in the app submenu's native spot (after About + ─).
             {
                 use tauri::menu::{
                     IconMenuItemBuilder, Menu, MenuItemBuilder, MenuItemKind, NativeIcon,
@@ -1783,7 +1774,7 @@ pub fn run() {
                     MenuItemBuilder::with_id("edit-in-claude", "Edit with Claude")
                         .accelerator("Alt+CmdOrCtrl+E")
                         .build(app)?;
-                // The ⌘K palette rides a menu accelerator like ⌘Z/⌘E/⌘/; AppKit delivers it regardless of webview focus (xterm included).
+                // The ⌘K palette rides a menu accelerator like ⌘Z/⌘E/⌘/; AppKit delivers it regardless of webview focus.
                 let find_action = MenuItemBuilder::with_id("find-action", "Find an Action…")
                     .accelerator("CmdOrCtrl+K")
                     .build(app)?;

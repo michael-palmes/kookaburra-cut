@@ -33,8 +33,8 @@
     ],
     "security": {
       "dangerousDisableAssetCspModification": ["style-src"],
-      "csp": "default-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; img-src 'self' data: blob: asset: http://asset.localhost; media-src 'self' asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self' blob: 'wasm-unsafe-eval'; worker-src 'self' blob:; font-src 'self' data: asset: http://asset.localhost; connect-src 'self' blob: ipc: http://ipc.localhost asset: http://asset.localhost",
-      "devCsp": "default-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; img-src 'self' data: blob: asset: http://asset.localhost; media-src 'self' asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self' blob: 'unsafe-inline' 'wasm-unsafe-eval'; worker-src 'self' blob:; font-src 'self' data: asset: http://asset.localhost; connect-src 'self' blob: ipc: http://ipc.localhost asset: http://asset.localhost ws://localhost:1420 http://localhost:1420"
+      "csp": "default-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; img-src 'self' data: blob: asset:; media-src 'self' asset:; style-src 'self' 'unsafe-inline'; script-src 'self' blob: 'wasm-unsafe-eval'; worker-src 'self' blob:; font-src 'self' data: asset:; connect-src 'self' blob: data: ipc: asset:",
+      "devCsp": "default-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; img-src 'self' data: blob: asset:; media-src 'self' asset:; style-src 'self' 'unsafe-inline'; script-src 'self' blob: 'unsafe-inline' 'wasm-unsafe-eval'; worker-src 'self' blob:; font-src 'self' data: asset:; connect-src 'self' blob: data: ipc: asset: ws://localhost:1420 http://localhost:1420"
     }
   },
   "plugins": {

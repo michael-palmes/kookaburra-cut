@@ -18,25 +18,7 @@
           "init_default_workspace",
           "default_workspace_root",
           "user_home_dir",
-          "note_picked_folder"
-        ]
-      }
-    },
-    {
-      "identifier": "terminal",
-      "description": "The embedded Claude Code terminal: a PTY whose launch shape Rust builds (never a free command string).",
-      "commands": {
-        "allow": [
-          "pty_spawn",
-          "pty_write",
-          "pty_resize",
-          "pty_kill",
-          "pty_pause",
-          "pty_resume",
-          "detect_claude",
-          "has_claude_session",
-          "claude_version_info",
-          "dismiss_claude_update"
+          "pick_folder"
         ]
       }
     },

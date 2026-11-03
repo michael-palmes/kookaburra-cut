@@ -124,6 +124,12 @@ export asks for a name in the packs window and saves it; nothing is ever
 guessed from the macOS account. The `device` field is always `Mac`: a
 computer name is usually a person's name, and nobody chose to send it.
 
+`build_pack` runs the Save dialog itself, as a sheet on the packs window: the
+webview suggests a file name and never a path. `validate_destination` then checks
+the answer before a byte is written, and the folder counts as picked for kb
+(`docs/agent-kit.md`, "kb reach"). A debug autorun has nobody to ask, so the round
+trip lands in its throwaway root's `_autorun/roundtrip`.
+
 What this proves, and what it does not. The import copy has to be honest about
 the second column:
 
@@ -184,15 +190,21 @@ hash, so a person never reads code the author described but did not pack, or
 packed under a different hash than they signed.
 
 Agent configuration never lands. `.claude/**` entries (older packs shipped
-`settings.json`, which carries hooks and permission rules) are dropped at
-staging, listed as a note on the summary, and the app stamps its own settings
-when the project opens (`docs/agent-kit.md`, "Stamping"). A project, template
-or preset's `CLAUDE.md` travels, since authors write real notes there, but
-Claude Code would read it as instructions, so apply swaps it for the app's
-default (named after the project) and saves the author's text as `NOTES.md`
-(appended under a heading when the pack also carries one); a file that still
-matches one of the app's own defaults is replaced quietly. The summary shows
-each saved text under "The pack's author left notes for Claude"
+`settings.json`, which carries hooks and permission rules) and hidden files
+inside an item (`.mcp.json`) are dropped at staging, listed as a note on the
+summary, and the app stamps its own settings when the project opens
+(`docs/agent-kit.md`, "Stamping"). A `CLAUDE.md` travels, since authors write
+real notes there, but Claude Code would read it as instructions. So in every
+landing project, template, preset and brand, apply removes each `CLAUDE.md`,
+`CLAUDE.local.md` and `AGENTS.md` at any depth, found by path so the volume
+decides what reads as one (APFS folds `claude.md` onto it). The author's text
+goes to the item's `NOTES.md` (under a heading naming the file, when it is not
+the only text there), and bytes that are not UTF-8 or will not read count as the
+author's. A folder under one of those names goes with a line saying so. A
+project-shaped item's root `CLAUDE.md` becomes the app's default (named after
+the project, flattened to one line); a file that still matches one of the app's
+own defaults goes quietly, and one that will not delete stops the import. The
+summary shows each saved text under "The pack's author left notes for Claude"
 (`ImportOutcome.agentNotes`, the first 4 000 characters), so the person sees
 what the author wanted the agent told and moves what they agree with into
 `CLAUDE.md` themselves. The stamped RULES.md tells the agent `NOTES.md` is
@@ -207,17 +219,14 @@ moments as warnings. A project keeps its own file: export never touches it, it d
 not count towards `contentHash` (so the project still reads `identical` to its
 own pack), and a `replace` moves it to the backup with the rest of the old film.
 
-Terminal and Website scene content get their review before Continue, on the
-trust screen: `read_pack_scene_docs` reads every scene sidecar beside a staged
-scene source straight from the pack, checks each against its signed hash (one
-mismatch refuses the pack) and hands the parsed documents to
-`src/packs/packReview.ts`, which lists every terminal block that pre-types a
-command or sets a custom start path (`terminalReview.ts`) and every requested
-Website origin (`websiteReview.ts`). Never the author's manifest, which is
-self-declared, and never after the files land. Nothing runs on its own either
-way: pre-typed commands are sanitised to a single line and only run on the
-presenter's Enter (`docs/scene-terminal.md`), and no origin is approved by an
-import (`docs/scene-website.md`).
+Website scene content gets its review before Continue, on the trust screen:
+`read_pack_scene_docs` reads every scene sidecar beside a staged scene source
+straight from the pack, checks each against its signed hash (one mismatch refuses
+the pack) and hands the parsed documents to `src/packs/packReview.ts`, which lists
+every requested Website origin (`websiteReview.ts`). Never the author's manifest,
+which is self-declared, and never after the files land. No origin is approved by
+an import (`docs/scene-website.md`). Terminal scene content needs no review: it is
+text and a PNG, and nothing runs (`docs/scene-terminal.md`).
 
 ## Extraction checklist
 
@@ -232,7 +241,8 @@ test per item in `pack::tests`. Limits live in `pack::limits`.
 2. Inflate `manifest.json` capped at `MAX_MANIFEST_BYTES`, and `manifest.sig`
    capped at `MAX_SIGNATURE_BYTES` (256; a signature is 64 bytes, so a longer
    entry is refused as invalid rather than read to its end). Refuse a wrong
-   `format`, a `formatVersion` above ours, or a `minAppVersion` above ours.
+   `format` or a `formatVersion` above ours. `pack::commands` checks `minAppVersion`:
+   inspect shows the update screen and stage refuses.
 3. Recompute the publisher `keyId` from the public key beside it and refuse a
    declared id that differs. The trust store is keyed by the recomputed id.
 4. Validate every path in `files` **and every path in `contents`**. The second
@@ -251,12 +261,14 @@ test per item in `pack::tests`. Limits live in `pack::limits`.
    create a symlink. This is the CVE-2025-29787 shape: entry A a symlink, entry
    B underneath it.
 7. Reject an entry not in `files`, and a `files` entry with no zip entry.
-8. Per-subtree extension allowlist. No dotted directory is accepted: `.claude/`
-   entries are dropped before validation and reported (`paths::is_agent_config`,
-   `StagedPack::dropped`), `.git/` and the rest are refused.
+8. Per-subtree extension allowlist. No dotted directory or hidden file is
+   accepted: `.claude/` entries and hidden files inside an item are dropped before
+   validation and reported (`paths::is_dropped_entry`, `StagedPack::dropped`),
+   `.git/` and the rest are refused, as is a hidden file a scene list or `contents`
+   names and any malformed path.
 9. Skip `__MACOSX/`, `.DS_Store`, `._*` rather than refusing.
 10. Anything read from the pack before staging (a scene source for the code
-    viewer, a scene sidecar for the terminal and Website review) goes through
+    viewer, a scene sidecar for the Website review) goes through
     `read_verified_entry`: listed in `files`, capped, and refused when its bytes
     do not hash to the signed value.
 11. Sum the signed sizes in `files` (agent config excluded). Each entry streams
@@ -277,8 +289,9 @@ test per item in `pack::tests`. Limits live in `pack::limits`.
     matching the name: the volume decides what reads as that file (APFS folds
     `FLASHES.ACCEPTED.JSON` and `ﬂashes.accepted.json` onto it). One that will
     not delete stops the import.
-17. Force `0644` on files and `0755` on directories, whatever the archive said:
-    imported items are the user's documents, unlike the app's own caches.
+17. Force `0644` on files and `0755` on every directory below the staging root,
+    whatever the archive said or the umask: imported items are the user's
+    documents, unlike the app's own caches.
 
 An `object.json` `glb` or `thumbnail` is validated like an asset rel on both
 sides (`objects::validate_object_rel`, `isObjectRel`): relative, at most one
@@ -389,10 +402,19 @@ for either, because a template or preset carries only what it was saved with.
 Excluded, because it is a person's decision and not the film's:
 `flashes.accepted.json` ("Pack trust is not code trust").
 
-Included despite looking generated: `CLAUDE.md`, because authors write notes
-there; import swaps it for the app's default and keeps the text as `NOTES.md`
-("Pack trust is not code trust"). `.claude/settings.json` is app-owned and
-never travels.
+Excluded, because it names what a person imported: `assets/_meta.json`
+(provenance: `origin.sourceName`, and `origin.from` under `.originals`). A
+recipient has no record for those assets, the same as an older project.
+
+Left out unless ticked, because a person's notes may hold anything: an edited
+`CLAUDE.md`, and any `CLAUDE.local.md`, `AGENTS.md` or `NOTES.md`, at any depth
+(`scan::is_agent_note`). The export screen lists them per item with a tick, off by
+default (`PackSelection::include_agent_notes`). An unedited default `CLAUDE.md`
+stays out silently, and a brand's notes stay home with a review warning. None of
+them count towards `contentHash`, so a project reads `identical` to its own pack
+either way. A pack from an older app hashed them, so re-importing one may read as a
+difference. Import still swaps any that arrive ("Pack trust is not code trust").
+`.claude/settings.json` is app-owned and never travels.
 
 Reviewed rather than dropped: unreferenced assets and `*-edited.mp4` flattened
 renders appear in the picker with their size and a one-click drop. Nothing is

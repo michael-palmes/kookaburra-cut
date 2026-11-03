@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   buildPack,
   cancelPackBuild,
-  chooseDestination,
   getPublisherProfile,
   listPackables,
   type PublisherProfileView,
@@ -35,6 +34,7 @@ import {
 } from "./selection";
 import { reviewProjectTerminals, type TerminalReviewRow } from "./terminalReview";
 import {
+  type AgentNotesGroup,
   formatBytes,
   ITEM_KINDS,
   type ItemKind,
@@ -65,6 +65,7 @@ export function ExportView({ onClose }: { onClose: () => void }) {
   const [publisherName, setPublisherName] = useState("");
   const [warnedKey, setWarnedKey] = useState<string | null>(null);
   const [droppedAssets, setDroppedAssets] = useState<Record<string, string[]>>({});
+  const [includedNotes, setIncludedNotes] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [planning, setPlanning] = useState(false);
   const [query, setQuery] = useState("");
@@ -110,7 +111,7 @@ export function ExportView({ onClose }: { onClose: () => void }) {
   const included = useMemo(() => items.filter((i) => isIncluded(state, i)), [state, items]);
   const hasFonts = included.some((i) => i.kind === "font");
 
-  // Author-side terminal review: snapshots and pre-typed commands travel with the pack, so say so before the sign (docs/scene-terminal.md, Shared projects).
+  // Author-side terminal review: transcripts and snapshots travel with the pack, so say so before the sign (docs/scene-terminal.md, Shared projects).
   const [terminalRows, setTerminalRows] = useState<TerminalReviewRow[]>([]);
   const includedProjects = useMemo(() => packProjectItems(included), [included]);
   useEffect(() => {
@@ -143,6 +144,8 @@ export function ExportView({ onClose }: { onClose: () => void }) {
     (g) => !trimmedQuery || visibleSlugs.has(g.projectSlug),
   );
 
+  const agentNotes = plan?.agentNotes ?? [];
+
   const onToggle = useCallback((item: SelectableItem, next: boolean) => {
     setState((s) => toggle(s, item, next));
     setWarnedKey(!next && isAuto(item) ? itemKey(item.kind, item.slug) : null);
@@ -158,15 +161,15 @@ export function ExportView({ onClose }: { onClose: () => void }) {
     setQuery("");
   };
 
+  const exportingRef = useRef(false);
   const onExport = useCallback(async () => {
+    if (exportingRef.current) return;
+    exportingRef.current = true;
     setError(null);
-    const destination = await chooseDestination(slugifyFileName(packName));
-    if (!destination) return;
-    setPhase({ step: "building", progress: null });
     try {
       const result = await buildPack(
-        toBuildSelection(state, items, droppedAssets),
-        destination,
+        toBuildSelection(state, items, droppedAssets, includedNotes),
+        slugifyFileName(packName),
         {
           name: packName.trim(),
           description: description.trim() || undefined,
@@ -184,8 +187,10 @@ export function ExportView({ onClose }: { onClose: () => void }) {
           ? { step: "picking" }
           : { step: "failed", message },
       );
+    } finally {
+      exportingRef.current = false;
     }
-  }, [state, items, droppedAssets, packName, description, profile, publisherName]);
+  }, [state, items, droppedAssets, includedNotes, packName, description, profile, publisherName]);
 
   if (loading) {
     return (
@@ -211,7 +216,7 @@ export function ExportView({ onClose }: { onClose: () => void }) {
           <div className="packs-progress-fill" style={{ width: `${pct}%` }} />
         </div>
         <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
-          {p ? `${p.file} of ${p.total} files` : "Preparing…"}
+          {p && p.total > 0 ? `${p.file} of ${p.total} files` : "Preparing…"}
         </div>
         <div className="packs-actions" style={{ justifyContent: "center", marginTop: 20 }}>
           <button type="button" className="btn" onClick={() => void cancelPackBuild()}>
@@ -374,20 +379,24 @@ export function ExportView({ onClose }: { onClose: () => void }) {
             </>
           )}
 
+          {tab !== "details" && agentNotes.length > 0 && (
+            <AgentNotesGroups
+              groups={agentNotes}
+              included={includedNotes}
+              setIncluded={setIncludedNotes}
+            />
+          )}
+
           {hasFonts && <p className="packs-disclaimer">{FONT_DISCLAIMER}</p>}
 
           {terminalRows.length > 0 && (
             <div className="packs-warning" style={{ marginLeft: 0, marginTop: 14 }}>
               <div>
-                Terminal content travels with this pack: snapshots show whatever was on that screen
-                when captured, and pre-typed commands ride in the sidecars.
+                Terminal content travels with this pack, so check its text carries no secrets.
               </div>
               {terminalRows.map((row) => (
                 <div key={`${row.project}:${row.file}`}>
                   {row.project} · {row.scene}
-                  {row.hasSnapshot ? " · snapshot" : ""}
-                  {row.startPath ? ` · opens at ${row.startPath}` : ""}
-                  {row.command ? ` · ${row.command}` : ""}
                 </div>
               ))}
             </div>
@@ -591,6 +600,50 @@ function UnreferencedGroups({
               {isDropped ? "Keep" : "Drop these"}
             </button>
           </div>
+        );
+      })}
+    </>
+  );
+}
+
+/** Off until ticked: what a person wrote for themselves or for Claude may hold anything. */
+function AgentNotesGroups({
+  groups,
+  included,
+  setIncluded,
+}: {
+  groups: AgentNotesGroup[];
+  included: string[];
+  setIncluded: (next: string[]) => void;
+}) {
+  return (
+    <>
+      <div className="packs-heading">Your notes stay on this Mac</div>
+      {groups.map((group) => {
+        const key = itemKey(group.kind, group.slug);
+        const ticked = included.includes(key);
+        return (
+          <label className="packs-row" key={key}>
+            <input
+              type="checkbox"
+              checked={ticked}
+              onChange={(e) =>
+                setIncluded(
+                  e.target.checked ? [...included, key] : included.filter((k) => k !== key),
+                )
+              }
+            />
+            <span className="packs-row-main">
+              <span className="packs-row-title">
+                {DETAILS_ICON}
+                <span>Include notes from {group.slug}</span>
+              </span>
+              <span className="packs-row-detail">{group.files.map((f) => f.rel).join(", ")}</span>
+            </span>
+            <span className="packs-row-size">
+              {formatBytes(group.files.reduce((s, f) => s + f.bytes, 0))}
+            </span>
+          </label>
         );
       })}
     </>

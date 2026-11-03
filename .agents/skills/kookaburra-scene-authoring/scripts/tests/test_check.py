@@ -371,6 +371,26 @@ class CheckTests(KbTestCase):
         self.assertTrue(any("room.keys[0].at" in w and "from 0" in w for w in warnings))
         self.assertFalse(any("lights.key" in w for w in warnings), warnings)
 
+    def test_sidecar_terminal(self) -> None:
+        sidecar = self.root / "scenes" / "01-intro.json"
+        doc = read_json(sidecar)
+
+        def warnings(terminal: dict) -> List[str]:
+            write_json(sidecar, {**doc, "terminal": terminal})
+            return [w for w in messages(self.run_check(), "warning") if "terminal" in w]
+
+        self.assertEqual(warnings({"cols": 80}), [])
+        self.assertEqual(warnings({"snapshot": {"grid": [], "src": "assets/terminal-01-intro.png"}}), [])
+        baked = {"grid": [], "src": "assets/terminal-01-intro.png", "transcript": "$ ls"}
+        self.assertEqual(warnings({"transcript": "$ ls", "snapshot": baked}), [])
+        for stale in ({"transcript": "$ ls"}, {"transcript": "$ pwd", "snapshot": baked}, {"transcript": "$ ls", "snapshot": {"grid": [], "transcript": "$ ls"}}):
+            self.assertIn("older than terminal.transcript", warnings(stale)[0])
+        self.assertIn("non-empty string", warnings({"transcript": ""})[0])
+        retired = warnings({"startCommand": "rm -rf ~", "startPath": "~/x"})
+        self.assertEqual(len(retired), 2)
+        self.assertIn("terminal.startCommand", retired[0])
+        self.assertEqual(messages(self.run_check()), [])
+
     def test_sidecar_version_and_json(self) -> None:
         write_json(self.root / "scenes" / "02-hero.json", {"name": "x"})
         self.assertHasError(self.run_check(["scenes/02-hero.json"]), "ignores the whole sidecar")

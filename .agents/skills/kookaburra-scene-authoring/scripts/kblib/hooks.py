@@ -196,7 +196,9 @@ def pre_edit(payload: Dict[str, Any]) -> Tuple[int, str, str]:
     rel = edited_rel(project, payload)
     if rel is None:
         return EXIT_OK, "", ""
-    reason = blocked_reason(rel)
+    from . import kitstate
+
+    reason = blocked_reason(rel) or kitstate.write_reason(str(project.root), rel)
     if reason:
         return BLOCK, "", f"kb: blocked: {reason}"
     denied = lease_decision(project, rel, payload)
@@ -336,7 +338,8 @@ def session_start(payload: Dict[str, Any], project: Optional[Project] = None) ->
     try:
         cwd = payload.get("cwd")
         caller = hook_caller(payload) if payload.get("session_id") else None
-        text = overview.context_text(project, summary, cwd if isinstance(cwd, str) else None, caller=caller)
+        write = overview.context_md if payload.get("source") == "compact" else overview.context_text
+        text = write(project, summary, cwd if isinstance(cwd, str) else None, caller=caller)
     except Exception as e:
         text = f"Kookaburra Cut project {project.project_id} (kb context failed: {e}). Run python3 .claude/skills/kookaburra-scene-authoring/scripts/kb.py status"
     return EXIT_OK, clean_lines(text), ""

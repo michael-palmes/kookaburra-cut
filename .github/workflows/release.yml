@@ -136,6 +136,15 @@ jobs:
           min_os="$(node -p "require('./src-tauri/tauri.conf.json').bundle.macOS.minimumSystemVersion")"
           grep -q "macOS ${min_os}+" README.md || { echo "::error::README.md does not state the macOS ${min_os}+ floor"; exit 1; }
 
+      - name: Check SECURITY.md names this version
+        if: steps.meta.outputs.tag != ''
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          as_of="$(sed -nE '1,5s/^\*\*As of version ([^ ]+)\.\*\*.*/\1/p' SECURITY.md)"
+          [ "$as_of" = "$VERSION" ] || { echo "::error::SECURITY.md describes version '${as_of:-none}', not ${VERSION}"; exit 1; }
+
       - name: Set up Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -545,7 +554,8 @@ jobs:
           for f in "KookaburraCut-${VERSION}.dmg" "KookaburraCut-${VERSION}.zip" "KookaburraCut-${VERSION}-updater.app.tar.gz" latest.json; do
             [ -f "$f" ] || { echo "::error::missing $f"; exit 1; }
           done
-          sha256sum "KookaburraCut-${VERSION}.dmg" "KookaburraCut-${VERSION}.zip" "KookaburraCut-${VERSION}-updater.app.tar.gz" latest.json build-info.txt > SHA256SUMS
+          cp ../SECURITY.md SECURITY.md
+          sha256sum "KookaburraCut-${VERSION}.dmg" "KookaburraCut-${VERSION}.zip" "KookaburraCut-${VERSION}-updater.app.tar.gz" latest.json build-info.txt SECURITY.md > SHA256SUMS
           cat SHA256SUMS
 
       - name: Attest build provenance
@@ -586,5 +596,5 @@ jobs:
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
             --title "Kookaburra Cut ${VERSION}" --notes-file "$notes" --generate-notes \
             "release/KookaburraCut-${VERSION}.dmg" "release/KookaburraCut-${VERSION}.zip" \
-            "release/KookaburraCut-${VERSION}-updater.app.tar.gz" release/latest.json release/build-info.txt release/SHA256SUMS
+            "release/KookaburraCut-${VERSION}-updater.app.tar.gz" release/latest.json release/build-info.txt release/SHA256SUMS release/SECURITY.md
           echo "Draft release ${TAG} created; publish it on GitHub." >> "$GITHUB_STEP_SUMMARY"

@@ -11,27 +11,12 @@ import {
   TERMINAL_FLAG_UNDERLINE,
 } from "./sceneTerminal";
 import { type SceneTerminalColours, terminalRunColour } from "./sceneTerminalTheme";
+import { isWideCodePoint } from "./sceneTerminalWidth";
 
 /** Raster pixels per logical px, enough headroom for the 2x export frame. */
 export const TERMINAL_RASTER_SCALE = 2;
 
-/** The DOM overlay's exact stack, so the baked glyphs and the live xterm agree. */
 export const TERMINAL_FONT_STACK = 'Menlo, ui-monospace, "SF Mono", monospace';
-
-/** Enough East Asian Width to advance CJK and emoji by two cells, mirroring xterm's width-2 cells. */
-export function isWideCodePoint(cp: number): boolean {
-  return (
-    (cp >= 0x1100 && cp <= 0x115f) ||
-    (cp >= 0x2e80 && cp <= 0xa4cf) ||
-    (cp >= 0xac00 && cp <= 0xd7a3) ||
-    (cp >= 0xf900 && cp <= 0xfaff) ||
-    (cp >= 0xfe30 && cp <= 0xfe4f) ||
-    (cp >= 0xff00 && cp <= 0xff60) ||
-    (cp >= 0xffe0 && cp <= 0xffe6) ||
-    (cp >= 0x1f300 && cp <= 0x1faff) ||
-    (cp >= 0x20000 && cp <= 0x3fffd)
-  );
-}
 
 interface PaintedCell {
   ch: string;
@@ -64,19 +49,34 @@ function pngBytes(canvas: OffscreenCanvas | HTMLCanvasElement): Promise<Uint8Arr
   });
 }
 
+/** A shared project can ask for any grid, and baking needs no click: past this the raster's memory and encode time stop being a terminal's. */
+const TERMINAL_RASTER_MAX_PIXELS = 64_000_000;
+
+function rasterSize(terminal: ResolvedSceneTerminal) {
+  const fontSize = terminal.fontPx * TERMINAL_RASTER_SCALE;
+  return {
+    fontSize,
+    width: Math.max(1, Math.round(terminal.cols * TERMINAL_CELL_WIDTH_EM * fontSize)),
+    height: Math.max(1, Math.round(terminal.rows * TERMINAL_CELL_HEIGHT_EM * fontSize)),
+  };
+}
+
+export function terminalTooLargeToBake(terminal: ResolvedSceneTerminal): boolean {
+  const { width, height } = rasterSize(terminal);
+  return width * height > TERMINAL_RASTER_MAX_PIXELS;
+}
+
 /** Draw the snapshot grid (backgrounds, cursor block, glyphs, underlines) and return PNG bytes sized `cols x rows` cells at `fontPx x TERMINAL_RASTER_SCALE`. */
 export async function rasterTerminalSnapshot(
   terminal: ResolvedSceneTerminal,
   colours: SceneTerminalColours,
 ): Promise<Uint8Array> {
-  const { cols, rows, fontPx } = terminal;
+  const { cols, rows } = terminal;
   const grid = terminal.snapshot?.grid ?? [];
   const cursor = terminal.snapshot?.cursor ?? null;
-  const fontSize = fontPx * TERMINAL_RASTER_SCALE;
+  const { fontSize, width, height } = rasterSize(terminal);
   const cellW = TERMINAL_CELL_WIDTH_EM * fontSize;
   const cellH = TERMINAL_CELL_HEIGHT_EM * fontSize;
-  const width = Math.max(1, Math.round(cols * cellW));
-  const height = Math.max(1, Math.round(rows * cellH));
 
   const canvas =
     typeof OffscreenCanvas !== "undefined"

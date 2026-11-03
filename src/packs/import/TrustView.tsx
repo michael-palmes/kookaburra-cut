@@ -1,7 +1,7 @@
 import type { PackReview } from "../packReview";
 import { formatBytes, formatDate, formatKeyId, type PackInspection } from "../types";
 
-/** Screen 1. The honesty rule: a publisher name is rendered as self-declared, always. No tick, no badge, no green for a name. The publisher verdict comes first and the integrity tick below it, so "Contents verified" never heads a pack from a stranger or a changed key. Scene code counts, pre-typed terminal commands and website origins come from the signed files the reader checked, never the manifest's description of itself, and are all here before Continue. Continue is primary only for a publisher this Mac knows under this key; otherwise Cancel is. */
+/** Screen 1. The honesty rule: a publisher name is rendered as self-declared, always. No tick, no badge, no green for a name. The publisher verdict comes first and the integrity tick below it, so "Contents verified" never heads a pack from a stranger or a changed key. Scene code counts and website origins come from the signed files the reader checked, never the manifest's description of itself, and are all here before Continue. Continue is primary only for a publisher this Mac knows under this key; otherwise Cancel is. */
 export function TrustView({
   inspection,
   review,
@@ -67,28 +67,6 @@ export function TrustView({
                   View the code
                 </button>
               </div>
-            </div>
-          </div>
-        )}
-
-        {review.terminals.length > 0 && (
-          <div className="packs-verdict packs-verdict-warn">
-            <span className="packs-verdict-icon" aria-hidden="true">
-              !
-            </span>
-            <div className="packs-verdict-body">
-              <strong>Terminal scenes come with pre-typed commands</strong>
-              Nothing runs on its own: a pre-typed command only runs when you press Enter on it.
-              Review these before presenting, since they were written by the pack's author.
-              {review.terminals.map((row) => (
-                <div className="packs-terminal-review-row" key={`${row.project}:${row.file}`}>
-                  <span className="packs-verdict-note">
-                    {row.project} · {row.scene}
-                    {row.startPath ? ` · opens at ${row.startPath}` : ""}
-                  </span>
-                  {row.command && <code className="packs-terminal-command">{row.command}</code>}
-                </div>
-              ))}
             </div>
           </div>
         )}

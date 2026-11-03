@@ -5,23 +5,28 @@ plain words, what can leave the Mac, what the app keeps, how to clear it, and
 how an organisation can lock it down. The engineering version, with the file or
 command behind every sentence, is [SECURITY.md](../SECURITY.md).
 
+This page describes version 0.22.0. On 0.21.1, pressing Allow on a shared project
+runs its code with your account, and the app's own data is not private to your
+account. Update once a newer release is out, and until then open only projects
+you'd trust as a program.
+
 ## Nothing leaves your Mac unless you start it
 
 Opening a project, editing scenes, importing a pack, exporting a video or a PDF
 and presenting never touch the network. There is no account, no telemetry, no
 crash reporting, and nothing phones home. The app's own window can only talk to
-itself: the browser rules it ships with name no outside host.
+itself: the browser rules it ships with name no outside host. Scene code you
+allow runs under the same rules, shut off from the network and from the app's
+commands, though it can read its project and the fonts and 3D objects in your
+libraries.
 
-Seven things can reach the internet, and each one starts with you:
+Four things can reach the internet, and each one starts with you:
 
 | What | When | Where it goes | What goes | Off switch |
 | --- | --- | --- | --- | --- |
 | Update check | At launch, if you left the first-run switch on, or when you choose Check for Updates | GitHub, the app's release page | One request for the latest release file. No identifiers, nothing about your usage or your Mac | The switch on the first-run welcome, or Settings ▸ Updates |
 | Update install | Only when you press Install and relaunch | GitHub, the release download | Nothing; the new build comes down, is checked against a key built into the app, and replaces itself | Press Later |
-| Claude Code version check | While the built-in terminal is running Claude, at most once a day, and only when the update check is on | Anthropic's download site | One request for the current Claude Code version. No identifiers | The same update switch |
-| Built-in Claude terminal | Only when you press Start Claude Code in the built-in terminal | Anthropic, through your own Claude Code install | Your project's files and your conversation, as you work, under your Anthropic account | Do not start it; Settings ▸ Claude ▸ Edit with chooses the Claude app instead |
-| Claude Code installer | Only when you press Install Claude Code or Update in the built-in terminal | Anthropic's install script, typed visibly into the terminal | Whatever Anthropic's installer needs | Do not press it; install Claude Code yourself |
-| Edit with Claude | Only when you press Edit with Claude and the Claude desktop app is installed | The Claude desktop app on this Mac, which then talks to Anthropic under your account | The project folder's path and a starter prompt, typed in for you, never sent until you press Enter there | Settings ▸ Claude ▸ Edit with |
+| Edit with Claude | Only when you press Edit with Claude and the Claude desktop app is installed | The Claude desktop app on this Mac, which then talks to Anthropic under your account | The project folder's path and a starter prompt, typed in for you, never sent until you press Enter there | Do not press it; a configuration profile can turn it off |
 | Live websites in a scene | Only after you press Allow for that website in the editor; a presentation then loads it again on each hold | The website you approved | The page loads like a browser tab, cookies and all, in a profile separate from Safari | Revoke the website in the scene's inspector; Settings ▸ Website data clears what it stored |
 
 Two buttons open a web page in your browser: Get Claude (the Claude download
@@ -30,21 +35,23 @@ app; nothing about you is added to it.
 
 ## What the Claude integration sends
 
-Both Claude paths use your own Claude Code install and your own Anthropic
-account. The app never holds a key for you.
+Claude uses your own Claude Code install and your own Anthropic account. The app
+never holds a key for you, and it never starts Claude Code or a shell itself.
 
-- **The built-in terminal** starts Claude Code in the project's folder with a
-  fixed set of options. Claude reads the project's files and sends what it needs
-  to Anthropic as you work, as it would in any terminal. Scene edits and the
-  project's own `kb` commands run without asking; other commands ask you first,
-  with Claude Code's own judgement deciding which. The terminal says this before
-  you start.
 - **Edit with Claude** hands the project to the Claude desktop app and types a
-  starter prompt in. Nothing is sent until you press Enter in that app.
+  starter prompt in. Nothing is sent until you press Enter in that app. From
+  there, Claude Code sends the project's files to Anthropic as you work, under
+  your own account and settings.
 - **What the agent is allowed** comes from the app, not from the project. Every
   time a project opens, the app rewrites the project's Claude settings: only the
   app's own permission rules and hooks stay, and anything a shared folder or a
-  pack arrived with is removed and noted in the log.
+  pack arrived with is removed and noted in the log. Other files Claude Code would
+  read as instructions or settings, such as `AGENTS.md` or `.mcp.json`, move out
+  of the way, their text saved to `NOTES.md`. A macOS sheet shows you what moved,
+  and Claude won't start until you've seen it.
+- **Sending work off the Mac asks first.** Commands that look like an upload, and
+  the agent's web tools, stop and ask you. That slows a misled agent, but it isn't
+  a sandbox, so start Claude only in folders you trust.
 - **Text in a project is data, not instructions.** The rules the app gives the
   agent say that scene copy, notes, brand files, pack contents and captured
   frames are content to edit, never commands to obey, and to stop and ask before
@@ -63,10 +70,11 @@ it: importing only writes files, and the first open asks the question above.
 
 A pack is signed by the app that made it. On import the app checks that every
 file matches the signed list, tells you whether it has seen this publisher's
-key before, and shows the scene code, terminal commands and websites it
-carries. A publisher's name is never verified: only the key is. Agent settings
+key before, and shows the scene code and websites it carries. A publisher's name is never verified: only the key is. Agent settings
 never travel in a pack, and an author's notes for Claude are saved beside the
-project as `NOTES.md` for you to read, not for the agent to obey.
+project as `NOTES.md` for you to read, not for the agent to obey. When you export
+a pack, your own notes stay out unless you tick them, and the names of files you
+imported never travel.
 
 ## What the app keeps on your Mac, and how to clear it
 
@@ -85,7 +93,8 @@ project as `NOTES.md` for you to read, not for the agent to obey.
   Storage shows their size and clears them; they are rebuilt as you work, and
   deleting a project or an asset clears its own frames and previews. Time
   Machine skips these two caches, since everything in them comes back from
-  your project's own footage.
+  your project's own footage. Frames the agent's tools save inside a project,
+  and the app's smaller caches, are backed up like any file.
 - **Settings**: your preferences, which publishers' keys you have imported from,
   which projects you allowed to run. The key that signs your own packs lives
   in your login Keychain and never synchronises; macOS may ask once to let the
@@ -111,8 +120,7 @@ run the same build with the network paths you do not want switched off and
 greyed out in Settings with a note that the organisation manages them: Claude
 (both paths and the version check), live websites, the update check, the
 publishers whose packs may be imported, and the workspace location. The keys
-and a sample profile are in [docs/mdm.md](./mdm.md) once that work lands; until
-then the switches above are per person.
+and a sample profile are in [docs/mdm.md](./mdm.md).
 
 Report a security problem privately through the repository's Security tab, as
 [SECURITY.md](../SECURITY.md) describes.

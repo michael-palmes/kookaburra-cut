@@ -833,7 +833,7 @@ async function ensureProjectsRoot(): Promise<void> {
   presetsRoot ??= await join(resources, "presets");
 }
 
-/** The absolute folder behind a project id, for the surfaces that need a real path (the Claude terminal's cwd, the media browsers' preview URLs, the titlebar identity). Null until the id's tree has resolved: workspace projects need `loadProject`, workspace library items their catalogue hydration, and the bundled trees `ensureProjectsRoot`. */
+/** The absolute folder behind a project id, for the surfaces that need a real path (the media browsers' preview URLs, the titlebar identity). Null until the id's tree has resolved: workspace projects need `loadProject`, workspace library items their catalogue hydration, and the bundled trees `ensureProjectsRoot`. */
 export function projectFolderPath(id: string): string | null {
   const { scope, slug } = parseProjectId(id);
   switch (scope) {

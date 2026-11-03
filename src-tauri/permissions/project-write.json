@@ -25,6 +25,7 @@
           "delete_project",
           "write_snapshot",
           "provision_project",
+          "heal_project_kit",
           "ensure_sample_assets",
           "set_last_project",
           "set_last_export_preset",

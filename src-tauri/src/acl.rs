@@ -209,7 +209,7 @@ fn every_window_has_a_capability() {
 }
 
 #[test]
-fn only_the_main_window_reaches_the_terminal_trust_and_the_rest_of_the_studio() {
+fn only_the_main_window_reaches_trust_and_the_rest_of_the_studio() {
     for label in [
         "present",
         "render",
@@ -220,8 +220,6 @@ fn only_the_main_window_reaches_the_terminal_trust_and_the_rest_of_the_studio() 
     ] {
         let commands = allowed(label);
         for denied in [
-            "pty_spawn",
-            "pty_write",
             "check_project_trust",
             "request_project_trust",
             "trust_project",
@@ -421,7 +419,6 @@ fn the_packs_window_handles_packs_and_nothing_else() {
             "list_packables",
             "list_projects",
             "next_queued_pack",
-            "note_picked_folder",
             "open_imported_project",
             "open_pack_import",
             "pin_fonts_for_pack",
@@ -457,11 +454,11 @@ fn the_settings_window_owns_caches_the_workspace_location_updates_and_the_publis
             "list_known_publishers",
             "managed_policy",
             "move_workspace",
-            "note_picked_folder",
             "open_claude_download",
             "open_in_claude",
             "open_privacy_page",
             "open_project_folder",
+            "pick_folder",
             "record_skipped_version",
             "reveal_in_finder",
             "rotate_publisher_key",

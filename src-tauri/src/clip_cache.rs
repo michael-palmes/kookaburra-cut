@@ -330,8 +330,7 @@ pub(crate) fn count_args(src: &str, hardware: bool, probe_png: &Path) -> Vec<Str
         "pipe:1".into(),
     ];
     args.extend(lane_args(hardware));
-    args.extend(["-protocol_whitelist".into(), "file,pipe".into()]);
-    args.extend(["-i".into(), src.to_owned()]);
+    args.extend(crate::media_input::untrusted_input(Path::new(src)));
     args.extend(
         [
             "-an",
@@ -378,11 +377,8 @@ pub(crate) fn chunk_args(
         "pipe:1".into(),
     ];
     args.extend(lane_args(hardware));
+    args.extend(crate::media_input::untrusted_input(Path::new(src)));
     args.extend([
-        "-protocol_whitelist".into(),
-        "file,pipe".into(),
-        "-i".into(),
-        src.to_owned(),
         "-vf".into(),
         format!(
             "fps={CLIP_FPS}:start_time=0,trim=start_frame={start}:end_frame={end},setpts=PTS-STARTPTS"
@@ -1553,7 +1549,7 @@ mod tests {
         assert!(!joined.contains("hwaccel"));
         assert!(count_args("/s", true, Path::new("/p.png"))
             .join(" ")
-            .contains("-hwaccel videotoolbox -protocol_whitelist file,pipe -i /s"));
+            .contains("-hwaccel videotoolbox -protocol_whitelist file,pipe -format_whitelist"));
     }
 
     #[test]

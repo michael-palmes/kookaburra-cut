@@ -15,6 +15,7 @@ from ..beats import cache as beat_cache
 from ..beats import commands as beat_commands
 from ..beats import model as beat_model
 from ..catalog import load_catalog
+from ..media_input import input_args
 from ..util import EXIT_ENV, EXIT_OK, EXIT_PROBLEMS, KbError, emit, emit_json, ok_envelope
 from ..video import passes
 from . import timeline as tl
@@ -46,7 +47,7 @@ A cut placed on a beat shows on the first frame at or after it, so 0 to 1 frame 
 
 def stream_starts(tools: passes.Tools, film: Path) -> Dict[str, Optional[float]]:
     """Presentation start (ms) of the format and the first video and audio streams, edit lists honoured."""
-    proc = subprocess.run([tools.ffprobe, "-v", "error", "-print_format", "json", "-show_entries",
+    proc = subprocess.run([tools.ffprobe, "-v", "error", *input_args(film), "-print_format", "json", "-show_entries",
                            "stream=codec_type,start_time:format=start_time", str(film)],
                           capture_output=True, text=True, timeout=120, errors="replace")
     if proc.returncode != 0:
