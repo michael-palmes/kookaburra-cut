@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import { type Camera, Matrix4, Vector3 } from "three";
 import { type StageRect, stageCamera } from "../../engine/gizmoRegistry";
 import { projectGizmoTargets } from "../../engine/gizmoTargetFrames";
@@ -40,9 +40,11 @@ function localTargets(): Gizmo2DTargetFrame[] {
 
 export function useStageTargets(): Gizmo2DTargetFrame[] {
   const stage = stageOrNull();
-  return useSyncExternalStore(stage ? stage.subscribeFrame : subscribeLocal, () =>
-    stage ? stage.frame().targets : localTargets(),
+  const subscribe = useCallback(
+    (listener: () => void) => (stage ? stage.subscribeFrame(listener) : subscribeLocal(listener)),
+    [stage],
   );
+  return useSyncExternalStore(subscribe, () => (stage ? stage.frame().targets : localTargets()));
 }
 
 /** The target's box in client pixels: a panel item maps its world x/y linearly against the frame, a world item lands where the live camera put it (`viewport` is the world's rect, the cutout-corrected canvas box). */
