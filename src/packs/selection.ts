@@ -145,6 +145,21 @@ export function defaultPackName(organisation?: string, publisher?: string): stri
   return base;
 }
 
+/** Why Export is unavailable once something is ticked, or null when it isn't blocked; a null profile is still loading. */
+export function exportBlocker(
+  includedCount: number,
+  packName: string,
+  profile: { profile: unknown } | null,
+  publisherName: string,
+): string | null {
+  if (includedCount === 0 || !profile) return null;
+  if (!packName.trim()) return "Name the pack in Details to export it.";
+  if (!profile.profile && !publisherName.trim()) {
+    return "Add your name or studio in Details to sign this pack.";
+  }
+  return null;
+}
+
 export function slugifyFileName(name: string): string {
   const slug = name
     .trim()
