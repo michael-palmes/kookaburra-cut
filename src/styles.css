@@ -198,6 +198,7 @@ body {
 .app {
   display: grid;
   grid-template-rows: var(--titlebar-h) 1fr auto;
+  grid-template-columns: minmax(0, 1fr);
   height: 100%;
   min-width: 0;
   overflow: hidden;
