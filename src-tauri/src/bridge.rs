@@ -347,7 +347,7 @@ pub struct Heartbeat {
 
 // ── Picked folders ─────────────────────────────────────────────────────────
 
-/// Folders a person chose in one of the app's native dialogs this session (`note_picked_folder`); published in the heartbeat so kb and the headless CLI can honour them, forgotten when the app quits.
+/// Folders a person chose in one of the app's native dialogs this session (`pick_folder`, the pack Save dialog); published in the heartbeat so kb and the headless CLI can honour them, forgotten when the app quits.
 #[derive(Default)]
 pub struct PickedFolders(Mutex<Vec<PathBuf>>);
 
@@ -378,42 +378,71 @@ fn too_broad_to_pick(dir: &Path, home: Option<&Path>) -> bool {
 /// Folders whose contents are credentials (the same set kb refuses to read).
 const NEVER_PICKED: [&str; crate::kit::CREDENTIAL_DIRS.len()] = crate::kit::CREDENTIAL_DIRS;
 
-/// A folder the person just chose in a native dialog (a Save dialog's parent counts). Only an existing directory is kept, and never one broad enough to make the confinement moot or one that holds credentials; the command comes from the webview, so it trusts the path no further than that.
-#[tauri::command]
-pub fn note_picked_folder(
-    app: AppHandle,
-    state: State<'_, PickedFolders>,
-    path: String,
-) -> Result<(), String> {
-    let path = PathBuf::from(path);
-    if !path.is_absolute() {
-        return Err("a picked folder must be an absolute path".into());
+/// Why a chosen folder stays off kb's write roots: never one broad enough to make the confinement moot or one that holds credentials.
+fn pick_refusal(dir: &Path, home: Option<&Path>) -> Option<&'static str> {
+    if too_broad_to_pick(dir, home) {
+        return Some("that folder is too broad to hand to Claude");
     }
-    let dir = if path.is_dir() {
-        path
-    } else {
-        path.parent()
-            .filter(|p| p.is_dir())
-            .map(Path::to_path_buf)
-            .ok_or("that path is not inside an existing folder")?
-    };
-    let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
+    home.is_some_and(|home| NEVER_PICKED.iter().any(|rel| dir.starts_with(home.join(rel))))
+        .then_some("that folder holds credentials and is never handed to Claude")
+}
+
+/// Record a folder a Rust-run dialog just returned (a Save dialog's parent counts), unless the rules keep it off kb's write roots.
+pub(crate) fn note_chosen_folder(app: &AppHandle, dir: &Path) {
+    let dir = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
     let home = app
         .path()
         .home_dir()
         .ok()
         .map(|h| std::fs::canonicalize(&h).unwrap_or(h));
-    if too_broad_to_pick(&dir, home.as_deref()) {
-        return Err("that folder is too broad to hand to Claude; pick a folder inside it".into());
+    match pick_refusal(&dir, home.as_deref()) {
+        Some(reason) => log::info!("[bridge] not offering a chosen folder to kb: {reason}"),
+        None => app.state::<PickedFolders>().note(&dir),
     }
-    if home
-        .as_deref()
-        .is_some_and(|home| NEVER_PICKED.iter().any(|rel| dir.starts_with(home.join(rel))))
-    {
-        return Err("that folder holds credentials and is never handed to Claude".into());
+}
+
+/// What a folder dialog is for; Rust owns its wording.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PickPurpose {
+    WorkspaceLocation,
+}
+
+impl PickPurpose {
+    fn title(self) -> &'static str {
+        match self {
+            Self::WorkspaceLocation => "Choose where Kookaburra Cut keeps your projects",
+        }
     }
-    state.note(&dir);
-    Ok(())
+}
+
+/// Runs the folder dialog from Rust as a sheet on the calling window, so the path is the person's and never the webview's. The rules only decide kb's reach: the person's own choice still comes back (the workspace's default parent is the home folder), and the command that uses it validates it.
+#[tauri::command]
+pub async fn pick_folder(
+    app: AppHandle,
+    window: tauri::Window,
+    purpose: PickPurpose,
+) -> Result<Option<String>, String> {
+    if !matches!(window.label(), "main" | "settings") {
+        return Err("this window cannot pick folders".into());
+    }
+    let dialog_app = app.clone();
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        dialog_app
+            .dialog()
+            .file()
+            .set_parent(&window)
+            .set_title(purpose.title())
+            .blocking_pick_folder()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    let Some(picked) = picked else {
+        return Ok(None);
+    };
+    let path = picked.into_path().map_err(|e| e.to_string())?;
+    note_chosen_folder(&app, &path);
+    Ok(Some(path.to_string_lossy().into_owned()))
 }
 
 /// `pickedDirs` of every live heartbeat under `bridge`, for a process with no app handle (the headless CLI).
@@ -1361,7 +1390,7 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-/// `KOOKABURRA_BRIDGE_DIR` (tests only): an absolute path, else an error naming the value.
+/// `KOOKABURRA_BRIDGE_DIR` (debug builds only): an absolute path, else an error naming the value.
 pub(crate) fn bridge_dir_override(raw: Option<&str>) -> Result<Option<PathBuf>, String> {
     let Some(raw) = raw.map(str::trim).filter(|raw| !raw.is_empty()) else {
         return Ok(None);
@@ -1377,6 +1406,9 @@ pub(crate) fn bridge_dir_override(raw: Option<&str>) -> Result<Option<PathBuf>, 
 }
 
 fn bridge_dir_env() -> Option<&'static PathBuf> {
+    if !cfg!(debug_assertions) {
+        return None;
+    }
     static DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
     DIR.get_or_init(|| {
         bridge_dir_override(std::env::var("KOOKABURRA_BRIDGE_DIR").ok().as_deref()).unwrap_or_else(
@@ -1389,7 +1421,7 @@ fn bridge_dir_env() -> Option<&'static PathBuf> {
     .as_ref()
 }
 
-/// Always beside `_autorun` under the fixed home location, unaffected by a relocated workspace root; `KOOKABURRA_BRIDGE_DIR` redirects it for tests.
+/// Always beside `_autorun` under the fixed home location, unaffected by a relocated workspace root; `KOOKABURRA_BRIDGE_DIR` redirects it in debug builds, for tests.
 pub(crate) fn bridge_root(app: &AppHandle) -> Result<PathBuf, String> {
     if let Some(dir) = bridge_dir_env() {
         return Ok(dir.clone());
@@ -3278,9 +3310,12 @@ mod tests {
         assert!(too_broad_to_pick(Path::new("/Users/x"), Some(home)));
         assert!(!too_broad_to_pick(Path::new("/Users/x/Desktop"), Some(home)));
         assert!(!too_broad_to_pick(Path::new("/Volumes/Work/review"), None));
-        assert!(NEVER_PICKED
-            .iter()
-            .any(|rel| Path::new("/Users/x/.ssh/keys").starts_with(home.join(rel))));
+        for refused in ["/", "/Users", "/Users/x", "/Users/x/.ssh/keys", "/Users/x/Library/Keychains"] {
+            assert!(pick_refusal(Path::new(refused), Some(home)).is_some(), "{refused}");
+        }
+        for allowed in ["/Users/x/Desktop", "/Users/x/Library/Movies", "/Volumes/Work/review"] {
+            assert!(pick_refusal(Path::new(allowed), Some(home)).is_none(), "{allowed}");
+        }
         let picked = PickedFolders::default();
         picked.note(Path::new("/Users/x/Desktop"));
         picked.note(Path::new("/Users/x/Movies"));

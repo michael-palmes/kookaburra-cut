@@ -22,7 +22,8 @@
 #   TAURI_CLI                     the tauri CLI command (default "pnpm tauri"; CI passes a pinned cargo-tauri)
 #
 # Output in release/: Kookaburra Cut.app, KookaburraCut-<v>.dmg, KookaburraCut-<v>.zip,
-#   KookaburraCut-<v>-updater.app.tar.gz (+ .sig, bound to the version) and latest.json.
+#   KookaburraCut-<v>-updater.app.tar.gz (+ .sig, bound to the version) and latest.json;
+#   --adhoc adds updater-adhoc.pub, the throwaway key verify-release.sh checks against.
 #
 set -euo pipefail
 
@@ -37,7 +38,7 @@ while [[ $# -gt 0 ]]; do
     --app) APP_IN="${2:?--app needs a path}"; shift 2 ;;
     --adhoc) ADHOC=1; shift ;;
     --plain-dmg) PLAIN_DMG=1; shift ;;
-    --help | -h) sed -n '2,25p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    --help | -h) sed -n '2,26p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "ERROR: unknown argument '$1'" >&2; exit 2 ;;
   esac
 done
@@ -115,7 +116,7 @@ done
 log "Sidecars are self-contained (system libraries only)"
 
 mkdir -p "$OUT"
-rm -rf "$APP_BUNDLE" "$DMG" "$ZIP" "$UPDATER_TAR" "$UPDATER_TAR.sig" "$LATEST_JSON"
+rm -rf "$APP_BUNDLE" "$DMG" "$ZIP" "$UPDATER_TAR" "$UPDATER_TAR.sig" "$LATEST_JSON" "$OUT/updater-adhoc.pub"
 ditto --norsrc --noextattr --noqtn "$APP_IN" "$APP_BUNDLE"
 find "$APP_BUNDLE" \( -name '._*' -o -name '.DS_Store' \) -delete
 xattr -cr "$APP_BUNDLE"
@@ -222,6 +223,7 @@ if [[ "$ADHOC" == 1 ]]; then
   "${TAURI[@]}" signer generate --ci --force -p "$THROWAWAY_PASSWORD" -w "$TEMP_DIR/updater.key" >/dev/null
   TAURI_SIGNING_PRIVATE_KEY_PATH="$TEMP_DIR/updater.key" TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$THROWAWAY_PASSWORD" \
     "${TAURI[@]}" signer sign --app-version "$VERSION" "$UPDATER_TAR"
+  cp "$TEMP_DIR/updater.key.pub" "$OUT/updater-adhoc.pub"
 else
   "${TAURI[@]}" signer sign --app-version "$VERSION" "$UPDATER_TAR"
 fi

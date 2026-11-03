@@ -14142,7 +14142,6 @@ textarea.text-inspector-copy-input {
   color: var(--warning);
 }
 
-/* ── Scene terminal overlay ─────────────────────────────────────── */
 /* ── Scene Website overlay ──────────────────────────────────────── */
 .scene-website-overlay {
   position: absolute;
@@ -14267,8 +14266,7 @@ textarea.text-inspector-copy-input {
 }
 
 .scene-website-consent strong,
-.scene-website-consent code,
-.scene-website-consent p {
+.scene-website-consent code {
   display: block;
 }
 
@@ -14277,13 +14275,6 @@ textarea.text-inspector-copy-input {
   overflow-wrap: anywhere;
   color: var(--text-primary);
   font-size: 12px;
-}
-
-.scene-website-consent p {
-  margin: 8px 0 0;
-  color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1.45;
 }
 
 .scene-website-consent-actions {

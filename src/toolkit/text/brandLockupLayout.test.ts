@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { brandLockupItemMotionTiming, lockupLayout } from "./brandLockupLayout";
 
 const base = {
-  title: "Swyftx App",
-  subtitle: "2.10.1",
+  title: "Sample App",
+  subtitle: "1.20.3",
   iconWidth: 1.4,
   titleSize: 0.36,
   subtitleSize: 0.82,

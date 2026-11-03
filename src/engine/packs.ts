@@ -1,7 +1,6 @@
-/** The frontend seam for `.kbpack` export and import: typed wrappers over the Rust commands, plus the Save dialog. Every filesystem touch stays in Rust behind a path-confined command. */
+/** The frontend seam for `.kbpack` export and import: typed wrappers over the Rust commands. Every filesystem touch stays in Rust behind a path-confined command. */
 
 import { Channel, invoke } from "@tauri-apps/api/core";
-import { save } from "@tauri-apps/plugin-dialog";
 import type {
   ImportOutcome,
   ImportPlan,
@@ -13,7 +12,6 @@ import type {
   Resolution,
   SceneSource,
 } from "../packs/types";
-import { notePickedFolder } from "./pickedFolders";
 
 export interface PackSelection {
   projects: string[];
@@ -104,26 +102,16 @@ export interface PackMetaInput {
   rememberPublisher?: boolean;
 }
 
-/** The app's first Save dialog. The path is user-chosen through a native OS surface, and Rust re-validates it before writing. */
-export async function chooseDestination(defaultName: string): Promise<string | null> {
-  const path = await save({
-    title: "Export Pack",
-    defaultPath: `${defaultName}.kbpack`,
-    filters: [{ name: "Kookaburra Pack", extensions: ["kbpack"] }],
-  });
-  await notePickedFolder(path);
-  return path ?? null;
-}
-
+/** Rust runs the Save dialog and rejects with "Cancelled." when the person backs out; the webview only suggests a name. */
 export function buildPack(
   selection: PackSelection,
-  destination: string,
+  suggestedName: string,
   meta: PackMetaInput,
   onProgress?: (p: PackProgress) => void,
 ): Promise<{ path: string; bytes: number }> {
   const channel = new Channel<PackProgress>();
   if (onProgress) channel.onmessage = onProgress;
-  return invoke("build_pack", { selection, destination, meta, onProgress: channel });
+  return invoke("build_pack", { selection, suggestedName, meta, onProgress: channel });
 }
 
 export function cancelPackBuild(): Promise<void> {

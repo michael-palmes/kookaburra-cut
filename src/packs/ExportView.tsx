@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   buildPack,
   cancelPackBuild,
-  chooseDestination,
   getPublisherProfile,
   listPackables,
   type PublisherProfileView,
@@ -162,15 +161,15 @@ export function ExportView({ onClose }: { onClose: () => void }) {
     setQuery("");
   };
 
+  const exportingRef = useRef(false);
   const onExport = useCallback(async () => {
+    if (exportingRef.current) return;
+    exportingRef.current = true;
     setError(null);
-    const destination = await chooseDestination(slugifyFileName(packName));
-    if (!destination) return;
-    setPhase({ step: "building", progress: null });
     try {
       const result = await buildPack(
         toBuildSelection(state, items, droppedAssets, includedNotes),
-        destination,
+        slugifyFileName(packName),
         {
           name: packName.trim(),
           description: description.trim() || undefined,
@@ -188,6 +187,8 @@ export function ExportView({ onClose }: { onClose: () => void }) {
           ? { step: "picking" }
           : { step: "failed", message },
       );
+    } finally {
+      exportingRef.current = false;
     }
   }, [state, items, droppedAssets, includedNotes, packName, description, profile, publisherName]);
 
@@ -215,7 +216,7 @@ export function ExportView({ onClose }: { onClose: () => void }) {
           <div className="packs-progress-fill" style={{ width: `${pct}%` }} />
         </div>
         <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
-          {p ? `${p.file} of ${p.total} files` : "Preparing…"}
+          {p && p.total > 0 ? `${p.file} of ${p.total} files` : "Preparing…"}
         </div>
         <div className="packs-actions" style={{ justifyContent: "center", marginTop: 20 }}>
           <button type="button" className="btn" onClick={() => void cancelPackBuild()}>

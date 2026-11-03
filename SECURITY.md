@@ -243,7 +243,8 @@ backup. Everything else is backed up like any document: projects with their own
   overwriting, or the project's `exports/` folder (Settings ▸ Video, "Save
   exports to Downloads"; terminal and bridge runs always use the project
   folder). ffmpeg writes a hidden `.part` sibling and renames it on success.
-  Stills and `.kbpack` files go where the save dialog points
+  Stills go where the save dialog points; `.kbpack` files go where the Save
+  dialog `build_pack` runs from Rust points, never a webview path
   (`pack::commands::validate_destination` refuses system folders, `$APPDATA`
   and the app bundle). Control: `resolve_export_output` in `lib.rs`.
 - **`~/.claude`**: Claude Code's own history, sessions and login. The app never
@@ -361,9 +362,10 @@ so no credential passes through it and no window can type into a session.
   content, and before anything that sends work off the Mac.
 - **kb reach** (`kblib/reach.py`): writes (`capture --out`, `assets unused --archive`,
   the CLI's `render --out` in `cli.rs`) land only inside the project, the
-  workspace or a folder the app's own dialog returned this session
-  (`note_picked_folder` in `bridge.rs`, which refuses the home folder, shallow
-  paths and credential folders); reads outside the workspace print the resolved
+  workspace or a folder a Rust-run dialog returned this session (`pick_folder`
+  and the pack Save dialog, through `note_chosen_folder` in `bridge.rs`, which
+  keeps out the home folder, shallow paths and credential folders; the webview
+  cannot add one); reads outside the workspace print the resolved
   path and size to stderr and refuse `~/.ssh`, `~/.aws`, `~/.config`,
   `~/.gnupg`, `~/Library/Keychains`, `~/.docker`, `~/.kube`, `~/.azure`,
   `~/.claude`, `.env*`, `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`, private
@@ -420,6 +422,14 @@ drop a request, which is the out-of-scope case above.
   allowed it (`require_source_allowed`); bundled templates and presets ship
   with the app and pass. The main window asks through the native sheet before
   calling, so a person meets the sheet, never the refusal.
+- **Website origin grants** (`website_grant_origin`, main window only): an
+  `NSAlert` sheet names the origin and the project; the default button, Return,
+  is Don't allow. Only a request `website_open` or a blocked navigation raised
+  this session can reach it, and any answer spends that request. A grant is once
+  per origin per project; an origin already granted asks nothing. The Allow
+  gate, moving the workspace, bridge confirmations and these grants are all
+  answered natively, so a compromised webview can show the question but never
+  press the button.
 - **Per-window ACL** (`src-tauri/permissions/*.json`, `src-tauri/capabilities/*.json`):
   every `#[tauri::command]` belongs to exactly one permission set, and each
   window gets only its sets. Main: project read, render and write, trust, media
@@ -556,12 +566,13 @@ builds it in separate jobs, each on a fresh runner.
 
 - **Build, with no signing secret in reach.** The build job checks that the tag
   is signed by a key in `main`'s `.github/allowed_tag_signers` (read from `main`,
-  never from the tagged tree) and sits on `main`, builds the ffmpeg sidecar from
-  sources pinned by SHA-256 and commit (`scripts/build-ffmpeg-sidecar.sh`),
-  fetches the beat model against its pins, unpacks the licensed device models
-  from a private repository's `age`-encrypted archive and refuses any glb that
-  does not match `src/assets/models/licensed.sha256`, runs
-  `pnpm tauri build --no-sign` and uploads the unsigned app with its SHA-256.
+  never from the tagged tree) and sits on `main`. Before any dependency or
+  repository script runs, it unpacks the licensed device models from a private
+  repository's `age`-encrypted archive. It then refuses any glb that does not match
+  `src/assets/models/licensed.sha256`, builds the ffmpeg sidecar from sources
+  pinned by SHA-256 and commit (`scripts/build-ffmpeg-sidecar.sh`), fetches the
+  beat model against its pins, runs `pnpm tauri build --no-sign` and uploads the
+  unsigned app with its SHA-256.
   Its only secrets are the read-only token for that private repository and the
   archive's decryption key; neither can sign anything.
 - **Sign, in the protected `release` environment.** Behind a required reviewer
@@ -579,7 +590,8 @@ builds it in separate jobs, each on a fresh runner.
   runner: `codesign --verify --deep --strict`, the Developer ID chain, the Team
   ID, no entitlements, `stapler validate` and `spctl` on the zip's app, the
   updater tar's app and the DMG; the DMG holds the same bytes as the zip;
-  `latest.json` names the same signature and version; the signed binary runs
+  the updater signature verifies against `plugins.updater.pubkey`; `latest.json`
+  names the same signature and version; the signed binary runs
   `edit caps` and `check flashes` on a film its bundled ffmpeg renders; and the
   sidecars' signature-stripped digests equal the build job's record, which
   reaches verify through the sign job's artefact.
@@ -598,13 +610,16 @@ builds it in separate jobs, each on a fresh runner.
   `.github/allowed_tag_signers` before pushing; the build job checks the same
   line. Every pull request's head commit
   must be signed by a key in `.github/allowed_signers`, or in the tag list when
-  it changes either list, `signers.yml` or `release.yml`
+  it changes `.github/`, a script the release pipeline runs, a lock file,
+  `package.json`, `patches/`, `tauri.conf.json` or a build config or pin file
   (`.github/workflows/signers.yml`, run from the default branch's copy). Only the
   head commit is checked, `main` requires no approving review, and everything
-  else the sign job runs (its scripts, the lock files, the source pins,
-  `tauri.conf.json`) changes under the commit key.
+  else, including `src/`, `build.rs` and `vite.config.ts`, changes under the
+  commit key and is built into what the sign job signs. A job a pull request adds
+  can report under this check's name, and GitHub doesn't say which result counts,
+  so a stolen commit key may get past the rule.
   `CODEOWNERS` names the maintainer; `audit.yml` runs
-  `pnpm audit --prod` and `cargo deny check advisories` on every pull request
+  `pnpm audit` and `cargo deny check advisories` on every pull request
   and weekly. Every workflow but `scorecard.yml` starts from `permissions: {}` or
   `contents: read` (`scorecard.yml` starts from `read-all`, and its one job
   narrows to `security-events` and `id-token`). Every workflow
@@ -651,12 +666,12 @@ Deliberately deferred, recorded so nobody mistakes them for done:
 - A Homebrew cask, so MDM fleets can install and pin versions without the DMG.
 - A per-project website data store: approved projects share one login profile
   today (`docs/scene-website.md`, "Accepted residual risk").
-- The bridge queue has no authentication beyond the user account.
-- A native consent for website origin grants and picked folders. Today those take the main window's word; only
-  the Allow gate, cross-project bridge access and a workspace move sit behind a
-  native sheet.
+- Bridge request signing: the queue is 0700 and same-user processes are out of
+  scope, so it has no authentication beyond the user account.
 - Sealing the trust state: `trustedProjects`, `websiteOriginGrants` and
-  `knownPublishers` are plain JSON under the 0600 file mode.
+  `knownPublishers` are plain JSON under the 0600 file mode. An HMAC under a
+  Keychain secret can't serve headless exports, and after the stage worker a forged
+  grant buys only a sandboxed render; native consent closes the webview path.
 - A narrower `asset://`: any window can read every project's welcome snapshot and
   scene thumbs, plus `screenshots/` and `brands/`.
 - A token on the autorun launch variables: `KOOKABURRA_ACTION` and its set are
@@ -669,3 +684,5 @@ Deliberately deferred, recorded so nobody mistakes them for done:
   Claude Code's own managed settings outrank that flag today.
 - A second reviewer on the `release` environment, a required review on `main` and
   a pinned build toolchain.
+- A signature check only a GitHub App can post, with its key limited to `main`, so
+  a pull request's own workflow can't answer for it.

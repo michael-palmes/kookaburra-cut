@@ -43,9 +43,11 @@ describe("workspace names", () => {
   test("the denylist catches past leak shapes and lets placeholders through", () => {
     const hit = (t) => findHits([line(t)], [], patterns).length > 0;
     assert.ok(hit("/Users/someone/Kookaburra Cut/demo"));
+    assert.ok(hit('const home = "/Users/someone";'));
     assert.ok(hit("~/Kookaburra Cut/acme-launch-3/scenes"));
     assert.ok(hit("open 2026-03-04-boardroom-cut first"));
     assert.ok(!hit("/Users/x/Kookaburra Cut"));
+    assert.ok(!hit('const home = "/Users/x";'));
     assert.ok(!hit("~/Kookaburra Cut/brands/<slug>/brand.json"));
     assert.ok(!hit("~/Kookaburra Cut/_autorun/last-run.json"));
     assert.ok(!hit("~/Kookaburra Cut/<slug>/project.json"));

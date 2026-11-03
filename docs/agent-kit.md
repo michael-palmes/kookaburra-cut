@@ -271,8 +271,9 @@ As built (`scripts/kblib/`):
   `assets unused --archive DIR`, and the CLI's `render --out`) land only inside the project,
   its workspace, `~/Kookaburra Cut`, or a folder one of the app's own native dialogs
   returned this session; anything else is exit 2 (`usage`) naming the allowed roots. The
-  app keeps those folders in memory (`PickedFolders`, fed by every folder dialog and the
-  Save dialog's parent, forgotten on quit) and publishes them in the heartbeat as
+  app keeps those folders in memory (`PickedFolders`, fed by the dialogs Rust runs itself:
+  `pick_folder` and the pack Save dialog's parent, forgotten on quit; the webview can't add
+  one) and publishes them in the heartbeat as
   `pickedDirs`, which kb and the headless CLI read. Reads of a path the agent names
   (`assets add`, `assets add-folder`, `assets replace`, `chart set-data`, `doc merge @file`, `verify-export FILE`)
   are silent inside the workspace, announced on stderr with the resolved path and size
@@ -1244,8 +1245,8 @@ editor); never record baselines from `kb export`.
 ## The bridge (v2)
 
 File-drop queue under the FIXED `~/Kookaburra Cut/_bridge/` (never a relocated root;
-`KOOKABURRA_BRIDGE_DIR`, an absolute path, redirects it for tests only, and kb reads
-`KB_BRIDGE_DIR`, then `KOOKABURRA_BRIDGE_DIR`).
+`KOOKABURRA_BRIDGE_DIR`, an absolute path, redirects it in debug builds only, for tests; a
+release build ignores it. kb reads `KB_BRIDGE_DIR`, then `KOOKABURRA_BRIDGE_DIR`).
 
 ### Instances and addressing
 
