@@ -118,7 +118,7 @@ them. FileVault and your account password are the protection at rest.
 The app can be locked down with a configuration profile from your MDM, so staff
 run the same build with the network paths you do not want switched off and
 greyed out in Settings with a note that the organisation manages them: Claude
-(both paths and the version check), live websites, the update check, the
+(Edit with Claude and Get Claude), live websites, the update check, the
 publishers whose packs may be imported, and the workspace location. The keys
 and a sample profile are in [docs/mdm.md](./mdm.md).
 
