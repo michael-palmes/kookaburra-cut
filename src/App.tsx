@@ -1676,10 +1676,12 @@ export default function App() {
     await refreshProjects();
   }, [refreshProjects]);
 
+  const stagedProjectRef = useRef<LoadedProject | null>(null);
   // The one project-swap path: the loader effect, the autorun theme-preview batch, and the user-theme preview borrow all apply a loaded project identically (canvas project, active theme, effects store, clock duration).
   const applyLoadedProject = useCallback(
     (loaded: LoadedProject) => {
       setProject(loaded);
+      stagedProjectRef.current = loaded;
       void stageOrNull()?.applyProject(loaded);
       if (!isAutoRun) {
         setPreviewAudioProject(loaded);
@@ -1712,6 +1714,15 @@ export default function App() {
     },
     [isAutoRun],
   );
+
+  // An in-memory doc patch swaps `project` without a load, so the worker hears of it only here; never mid-export, where it would land between frames.
+  useEffect(() => {
+    const staged = stagedProjectRef.current;
+    if (!project || project === staged || project.id !== staged?.id) return;
+    if (exporting || isExporting()) return;
+    stagedProjectRef.current = project;
+    void stageOrNull()?.applyProject(project);
+  }, [project, exporting]);
 
   const handleCreateProject = useCallback(
     async (name: string, templateId: string, themeId: string, group: string | null) => {

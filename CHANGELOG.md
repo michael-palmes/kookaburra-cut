@@ -6,12 +6,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-11-03
+
+### Added
+
+- Whole folders of media import in one go, with a searchable brand library.
+  Every still is checked on the way in, and colour profiles and EXIF turns
+  bake to plain sRGB.
+- A soundtrack can come from an MP4; only its audio is kept.
+- Claude can map a song bar by bar, read a reference film, check a span of
+  the film for flashes while designing, and split, renumber or import scenes.
+- Launch primitives in the toolkit: beat lookups, screen fills and library 3D
+  objects placed in scene code.
+
 ### Changed
 
 - A new app icon with dark, clear and tinted modes, and new printed art for the
   README, update dialogs and installer.
 - Terminal scenes are written, not recorded: type or paste a transcript (ANSI
   colours work) and the app bakes it. Existing snapshots stay as they are.
+- A project's Claude kit restores itself when it goes missing, and Claude hears
+  what you changed in the app.
+- The release notes templates set each list beside the moving product.
 
 ### Removed
 
@@ -19,6 +35,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   with Claude opens your project in the Claude app, and Claude Code in your own
   terminal keeps working with the kit. This drops the daily Claude Code version
   check, and Present and the editor no longer run live terminal sessions.
+
+### Fixed
+
+- After a pack's keep both, scene code follows the renamed object, theme or
+  brand.
+- A scene stage that misses its start window recovers without a relaunch, and
+  pack screens keep their actions in view with long lists.
+
+### Security
+
+- Scene code runs in an isolated worker, shut off from the network and the
+  app's commands, and reads only its project, fonts and 3D objects.
+- Website grants, folder picks and pack destinations are answered on native
+  sheets, so a compromised window can show the question but never answer it.
+- The app's data, caches and agent folders are private to your account and
+  skipped by Spotlight; footage and exports stay out of project history.
+- A shared folder can't run its own `kb`, steer the app's writes through links
+  or configure the agent, and the agent's tools refuse credential files.
+- Pack imports review what actually lands, from the signed file list, before
+  Continue.
 
 ## [0.21.1] - 2026-10-29
 

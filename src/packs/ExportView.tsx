@@ -20,6 +20,7 @@ import {
   countByKind,
   defaultPackName,
   EMPTY_STATE,
+  exportBlocker,
   includedItems,
   isAuto,
   isIncluded,
@@ -60,6 +61,7 @@ export function ExportView({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<Tab>("project");
   const [phase, setPhase] = useState<Phase>({ step: "picking" });
   const [profile, setProfile] = useState<PublisherProfileView | null>(null);
+  const [profileFailed, setProfileFailed] = useState(false);
   const [packName, setPackName] = useState("");
   const [description, setDescription] = useState("");
   const [publisherName, setPublisherName] = useState("");
@@ -82,7 +84,7 @@ export function ExportView({ onClose }: { onClose: () => void }) {
         setProfile(p);
         setPackName(defaultPackName(p.organisation ?? undefined, p.effectiveName ?? undefined));
       })
-      .catch(() => undefined);
+      .catch(() => setProfileFailed(true));
   }, []);
 
   // Re-resolve the closure whenever the direct ticks change. Debounced: plan_pack walks every sidecar.
@@ -110,6 +112,10 @@ export function ExportView({ onClose }: { onClose: () => void }) {
   const bytes = useMemo(() => totalBytes(state, items), [state, items]);
   const included = useMemo(() => items.filter((i) => isIncluded(state, i)), [state, items]);
   const hasFonts = included.some((i) => i.kind === "font");
+  const blocker =
+    profileFailed && included.length > 0
+      ? "Your publisher details didn't load. Close and reopen Export to try again."
+      : exportBlocker(included.length, packName, profile, publisherName);
 
   // Author-side terminal review: transcripts and snapshots travel with the pack, so say so before the sign (docs/scene-terminal.md, Shared projects).
   const [terminalRows, setTerminalRows] = useState<TerminalReviewRow[]>([]);
@@ -416,6 +422,15 @@ export function ExportView({ onClose }: { onClose: () => void }) {
             {included.length === 0
               ? "Nothing selected"
               : `${packName || "Untitled pack"} · ${included.length} item${included.length === 1 ? "" : "s"} · ${planning ? "Estimating…" : formatBytes(bytes)}`}
+            {blocker && (
+              <button
+                type="button"
+                className="packs-footer-hint"
+                onClick={() => pickTab("details")}
+              >
+                {blocker}
+              </button>
+            )}
           </div>
           <div className="packs-actions">
             <button type="button" className="btn" onClick={onClose}>
@@ -424,12 +439,7 @@ export function ExportView({ onClose }: { onClose: () => void }) {
             <button
               type="button"
               className="btn primary"
-              disabled={
-                included.length === 0 ||
-                !packName.trim() ||
-                !profile ||
-                (!profile.profile && !publisherName.trim())
-              }
+              disabled={included.length === 0 || !profile || blocker !== null}
               onClick={() => void onExport()}
             >
               Export…

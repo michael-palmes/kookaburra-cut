@@ -165,10 +165,13 @@ backup. Everything else is backed up like any document: projects with their own
   remote, a root commit by someone else or a `.git` file is left as it is and
   logged: `src-tauri/src/history.rs`), `CLAUDE.md`,
   `NOTES.md`, `BRAND.md`, the stamped `.claude/` and `./kb`, anything a stamp
-  moved out of the way (`kb.moved-aside`, `.claude.moved-aside*`), `.kb/` and, beside
+  moved out of the way (`kb.moved-aside`, `.claude.moved-aside*`),
+  `.kookaburra/app-edits.jsonl` (what the app's own writers changed, for the
+  agent: `src-tauri/src/app_edits.rs`), `.kb/` and, beside
   a film, `<film>.flashes/` (the frames of its flash warnings). `.kb/` ignores
   itself in git, never travels in a pack, and holds the agent's lock, leases,
-  events and notes, plus work that can show confidential content: `captures/`,
+  events and notes, kit files someone edited (`kit-replaced/`, kept before a
+  restamp), plus work that can show confidential content: `captures/`,
   `previews/`, `flashes/`, `footage/`, `thumbs/`, `song/` (a track's analysis) and
   `reference/` (frames of a reference film and the words read from them).
   Workspace-level: `brands/`, `themes/`,
@@ -205,9 +208,8 @@ backup. Everything else is backed up like any document: projects with their own
   update bookkeeping, `trustedProjects` (slug, path, content hash, time),
   `knownPublishers` (the TOFU store), `websiteOriginGrants` per project path,
   `agentFiles` (per folder, what a stamp moved and whether a person has seen it),
-  the publisher profile, the Claude preferences and the last Claude version
-  seen; per-project entries other than the trust grant outlive a project
-  delete. Written through a temporary file that is 0600 from its first byte, then
+  the publisher profile and the Claude preferences; per-project entries other
+  than the trust grant outlive a project delete. Written through a temporary file that is 0600 from its first byte, then
   a rename, under one lock. Control: `workspace.rs` (`AppSettings`,
   `settings_path`), `privacy::atomic_write_private`.
 - **The pack signing key**: 32 raw bytes created on the first pack export, a
@@ -327,8 +329,9 @@ so no credential passes through it and no window can type into a session.
   and `model`, and `.claude/commands/`, `.claude/agents/` and unshipped
   `.claude/skills/*` are deleted, each logged `[kit]`. `WebFetch` and `WebSearch`
   ask, and `Read` of credential paths is denied, for the agent's own tools. Hooks
-  run `kb.py hook …` only (`SessionStart`,
-  `PreToolUse`, `PostToolUse`, `PostToolUseFailure`), and only once the person
+  run `kb.py hook …` only (`SessionStart`, `UserPromptSubmit`,
+  `PreToolUse`, `PostToolUse`, `PostToolUseFailure`; the first two print a fixed
+  note instead when the kit is missing), and only once the person
   accepts Claude Code's own folder trust. Release and dev builds restamp when
   any stamped file's SHA-256 differs from the shipped file or from the `files`
   record in `kit.json`.
@@ -692,8 +695,6 @@ Deliberately deferred, recorded so nobody mistakes them for done:
   its own tools and ask a person; a script a misled agent runs can still read a
   file.
 - The still checks on app icons: `import_app_icon` takes only the extension list.
-- A managed key for Claude Code's permission mode: sessions always start in auto.
-  Claude Code's own managed settings outrank that flag today.
 - A second reviewer on the `release` environment, a required review on `main` and
   a pinned runner image and Xcode (`build-info.txt` records both).
 - A signature check only a GitHub App can post, with its key limited to `main`, so
