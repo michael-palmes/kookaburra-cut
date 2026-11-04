@@ -6,6 +6,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.22.1] - 2026-11-05
+
+### Changed
+
+- Transitions and comparisons export with about 410 MB less memory at 4K, so
+  heavy films are less likely to hit macOS's memory limit mid-export.
+
+### Security
+
+- Releases build on a pinned toolchain (Rust, Node, pnpm and the sidecar's
+  build tools), and every file in the signed app must match the build's own
+  record before a release is drafted. Each release's `build-info.txt` says how
+  it was built, covered by `SHA256SUMS` and the provenance attestation.
+
 ## [0.22.0] - 2026-11-03
 
 ### Added
