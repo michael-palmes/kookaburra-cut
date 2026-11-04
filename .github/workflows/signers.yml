@@ -56,7 +56,9 @@ jobs:
             rust-toolchain
             rust-toolchain.toml
             scripts/build-ffmpeg-sidecar.sh
+            scripts/bundle-digest.sh
             scripts/check-licensed-models.sh
+            scripts/install-build-tools.sh
             scripts/make-dmg.sh
             scripts/release.sh
             scripts/seed-cargo-target.sh

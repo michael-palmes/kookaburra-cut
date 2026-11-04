@@ -34,22 +34,19 @@ env:
   AGE_SHA256: "e2020b073c44f692685a24d6abc378817eb81ffaaf49fd0531ef8565f767f2f5"
 
 jobs:
-  # Builds from pinned source with no signing secret in reach. Its output is an unsigned app and its digest.
+  # Builds from pinned source with no signing secret in reach. Its output is an unsigned app, its digest and the build record.
   build:
     name: Build unsigned payload
     runs-on: macos-26
     timeout-minutes: 120
     permissions:
       contents: read
-    env:
-      HOMEBREW_NO_AUTO_UPDATE: "1"
-      HOMEBREW_NO_ANALYTICS: "1"
-      HOMEBREW_NO_ENV_HINTS: "1"
     outputs:
       version: ${{ steps.meta.outputs.version }}
       tag: ${{ steps.meta.outputs.tag }}
       publish: ${{ steps.meta.outputs.publish }}
       payload_sha256: ${{ steps.payload.outputs.sha256 }}
+      record_sha256: ${{ steps.record.outputs.sha256 }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -76,7 +73,7 @@ jobs:
           fi
           publish=false
           if [ -n "$tag" ] && { [ "$EVENT_NAME" = push ] || [ "$INPUT_DRY_RUN" = false ]; }; then publish=true; fi
-          { echo "version=$version"; echo "tag=$tag"; echo "publish=$publish"; } >> "$GITHUB_OUTPUT"
+          { echo "version=$version"; echo "tag=$tag"; echo "publish=$publish"; echo "source_date_epoch=$(git show -s --format=%ct HEAD)"; } >> "$GITHUB_OUTPUT"
           echo "Kookaburra Cut $version (tag: ${tag:-none}, publish: $publish)"
 
       # Pins the signer to the key in main's .github/allowed_tag_signers (read from main, never from the
@@ -148,26 +145,34 @@ jobs:
           as_of="$(sed -nE '1,5s/^\*\*As of version ([^ ]+)\.\*\*.*/\1/p' SECURITY.md)"
           [ "$as_of" = "$VERSION" ] || { echo "::error::SECURITY.md describes version '${as_of:-none}', not ${VERSION}"; exit 1; }
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-
       - name: Set up Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
-          cache: pnpm
+          node-version-file: package.json
 
+      # Corepack refuses a pnpm that misses packageManager's hash; pnpm itself and pnpm/action-setup ignore the hash.
+      - name: Set up pnpm
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack install
+          pnpm --version
+
+      # rust-toolchain.toml pins the version.
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # stable
-        with:
-          toolchain: stable
+        run: rustup toolchain install --no-self-update
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       # Build tools only; every shipped byte of the sidecar comes from the pinned sources in the script.
-      - name: Install sidecar build tools
-        run: brew install nasm pkgconf
+      - name: Install sidecar build tools (SHA-256 pinned)
+        run: |
+          set -euo pipefail
+          bash scripts/install-build-tools.sh "$RUNNER_TEMP/build-tools"
+          echo "$RUNNER_TEMP/build-tools/bin" >> "$GITHUB_PATH"
 
       - name: Build the ffmpeg sidecar from pinned source
         run: |
@@ -178,7 +183,10 @@ jobs:
       - name: Fetch the beat-this model (SHA-256 pinned)
         run: pnpm setup:models
 
+      # The app only: nothing about the sidecar's build may move, since its x264 string is export bytes.
       - name: Build the app (unsigned)
+        env:
+          SOURCE_DATE_EPOCH: ${{ steps.meta.outputs.source_date_epoch }}
         run: pnpm tauri build --ci --no-sign
 
       - name: Pack the unsigned payload
@@ -192,10 +200,12 @@ jobs:
           [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$VERSION" ] \
             || { echo "::error::the bundle is not version $VERSION"; exit 1; }
           bash scripts/setup-models.sh --check "$app/Contents/Resources/models"
-          mkdir -p payload
-          bash scripts/sidecar-digest.sh "$app/Contents/MacOS/ffmpeg" "$app/Contents/MacOS/ffprobe" | tee payload/sidecar-digests.txt
           find "$app" \( -name '._*' -o -name '.DS_Store' \) -delete
           xattr -cr "$app"
+          mkdir -p payload record
+          bash scripts/sidecar-digest.sh "$app/Contents/MacOS/ffmpeg" "$app/Contents/MacOS/ffprobe" | tee record/sidecar-digests.txt
+          bash scripts/bundle-digest.sh "$app" > record/bundle-digests.txt
+          echo "$(wc -l < record/bundle-digests.txt) files in the bundle record"
           COPYFILE_DISABLE=1 /usr/bin/tar --no-mac-metadata --no-xattrs --no-acls --no-fflags --uid 0 --gid 0 --numeric-owner \
             -czf "payload/KookaburraCut-${VERSION}-unsigned.tar.gz" -C "$(dirname "$app")" "Kookaburra Cut.app"
           sha="$(shasum -a 256 "payload/KookaburraCut-${VERSION}-unsigned.tar.gz" | cut -d' ' -f1)"
@@ -209,6 +219,42 @@ jobs:
           path: payload/
           if-no-files-found: error
           retention-days: 1
+
+      # Verify and publish read this from here, never through the sign job.
+      - name: Write the build record
+        id: record
+        env:
+          SOURCE_DATE_EPOCH: ${{ steps.meta.outputs.source_date_epoch }}
+        run: |
+          set -euo pipefail
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "source_date_epoch=$SOURCE_DATE_EPOCH"
+            echo "runner_image=${ImageOS:?} ${ImageVersion:?}"
+            echo "macos=$(sw_vers -productVersion) $(sw_vers -buildVersion)"
+            echo "xcode=$(xcodebuild -version | tr '\n' ' ')"
+            echo "sdk=$(xcrun --show-sdk-version) $(xcrun --show-sdk-build-version)"
+            echo "rustc=$(rustc --version)"
+            echo "cargo=$(cargo --version)"
+            echo "node=$(node --version)"
+            echo "pnpm=$(pnpm --version)"
+            echo "tauri_cli=$(pnpm --silent tauri --version)"
+            echo "tauri_cli_updater_signing=$TAURI_CLI_VERSION"
+            echo "cmake=$(cmake --version | sed -n '1s/^cmake version //p')"
+            echo "nasm=$(nasm --version | awk '{ print $3 }')"
+            echo "pkgconf=$(pkg-config --version)"
+            bash scripts/build-ffmpeg-sidecar.sh --print-pins
+          } > record/build-info.txt
+          cat record/build-info.txt
+          echo "sha256=$(cd record && shasum -a 256 build-info.txt bundle-digests.txt sidecar-digests.txt | shasum -a 256 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the build record
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: kookaburra-cut-${{ steps.meta.outputs.version }}-build-record
+          path: record/
+          if-no-files-found: error
+          retention-days: 30
 
   # The only job that can see the signing and notary secrets. It builds nothing and never runs the payload:
   # it checks the payload's digest against the build job, signs, notarises, staples and packages.
@@ -312,7 +358,6 @@ jobs:
           set -euo pipefail
           [ -n "${KOOKABURRA_TEAM_ID:-}" ] || { echo "::error::APPLE_TEAM_ID is not set as a repository variable"; exit 1; }
           bash scripts/sign-and-notarize.sh --app "$RUNNER_TEMP/unsigned/Kookaburra Cut.app" --plain-dmg
-          cp payload/sidecar-digests.txt release/sidecar-digests.txt
           rm -rf "release/Kookaburra Cut.app"
 
       - name: Remove signing material
@@ -352,8 +397,22 @@ jobs:
           name: kookaburra-cut-${{ needs.build.outputs.version }}-signed
           path: release
 
-      - name: Verify signatures, notarisation, the CLI and the sidecar digests
-        run: bash scripts/verify-release.sh --dir release --sidecar-digests release/sidecar-digests.txt
+      - name: Download the build record
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: kookaburra-cut-${{ needs.build.outputs.version }}-build-record
+          path: record
+
+      - name: Check the build record
+        env:
+          RECORD_SHA256: ${{ needs.build.outputs.record_sha256 }}
+        run: |
+          set -euo pipefail
+          got="$(cd record && shasum -a 256 build-info.txt bundle-digests.txt sidecar-digests.txt | shasum -a 256 | cut -d' ' -f1)"
+          [ "$got" = "$RECORD_SHA256" ] || { echo "::error::the build record is not the one the build job wrote"; exit 1; }
+
+      - name: Verify signatures, notarisation, the CLI and the bundle digests
+        run: bash scripts/verify-release.sh --dir release --sidecar-digests record/sidecar-digests.txt --bundle-digests record/bundle-digests.txt
 
       - name: Summary
         run: |
@@ -362,7 +421,9 @@ jobs:
             echo "### Kookaburra Cut ${VERSION}"
             echo '```'; (cd release && shasum -a 256 KookaburraCut-*.dmg KookaburraCut-*.zip KookaburraCut-*-updater.app.tar.gz latest.json); echo '```'
             echo "Sidecars (signature stripped, equal to the build job's record):"
-            echo '```'; cat release/sidecar-digests.txt; echo '```'
+            echo '```'; cat record/sidecar-digests.txt; echo '```'
+            echo "Every bundle file equals the build job's record ($(wc -l < record/bundle-digests.txt) files). Build info:"
+            echo '```'; cat record/build-info.txt; echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload the verified set
@@ -402,6 +463,20 @@ jobs:
           name: kookaburra-cut-${{ needs.build.outputs.version }}-unsigned
           path: payload
 
+      - name: Download the build record
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: kookaburra-cut-${{ needs.build.outputs.version }}-build-record
+          path: record
+
+      - name: Check the build record
+        env:
+          RECORD_SHA256: ${{ needs.build.outputs.record_sha256 }}
+        run: |
+          set -euo pipefail
+          got="$(cd record && shasum -a 256 build-info.txt bundle-digests.txt sidecar-digests.txt | shasum -a 256 | cut -d' ' -f1)"
+          [ "$got" = "$RECORD_SHA256" ] || { echo "::error::the build record is not the one the build job wrote"; exit 1; }
+
       - name: Install tauri-cli (pinned, for the updater signature)
         run: |
           set -euo pipefail
@@ -420,7 +495,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/unsigned"
           /usr/bin/tar -xzf "$payload" -C "$RUNNER_TEMP/unsigned"
           bash scripts/sign-and-notarize.sh --app "$RUNNER_TEMP/unsigned/Kookaburra Cut.app" --adhoc --plain-dmg
-          bash scripts/verify-release.sh --adhoc --dir release --sidecar-digests payload/sidecar-digests.txt
+          bash scripts/verify-release.sh --adhoc --dir release --sidecar-digests record/sidecar-digests.txt --bundle-digests record/bundle-digests.txt
           rm -rf "release/Kookaburra Cut.app"
 
       - name: Upload the rehearsal set
@@ -457,15 +532,30 @@ jobs:
           name: kookaburra-cut-${{ needs.build.outputs.version }}
           path: release
 
+      - name: Download the build record
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: kookaburra-cut-${{ needs.build.outputs.version }}-build-record
+          path: record
+
+      - name: Check the build record
+        env:
+          RECORD_SHA256: ${{ needs.build.outputs.record_sha256 }}
+        run: |
+          set -euo pipefail
+          got="$(cd record && shasum -a 256 build-info.txt bundle-digests.txt sidecar-digests.txt | shasum -a 256 | cut -d' ' -f1)"
+          [ "$got" = "$RECORD_SHA256" ] || { echo "::error::the build record is not the one the build job wrote"; exit 1; }
+
       - name: Write SHA256SUMS
         working-directory: release
         run: |
           set -euo pipefail
+          cp ../record/build-info.txt build-info.txt
           for f in "KookaburraCut-${VERSION}.dmg" "KookaburraCut-${VERSION}.zip" "KookaburraCut-${VERSION}-updater.app.tar.gz" latest.json; do
             [ -f "$f" ] || { echo "::error::missing $f"; exit 1; }
           done
           cp ../SECURITY.md SECURITY.md
-          sha256sum "KookaburraCut-${VERSION}.dmg" "KookaburraCut-${VERSION}.zip" "KookaburraCut-${VERSION}-updater.app.tar.gz" latest.json SECURITY.md > SHA256SUMS
+          sha256sum "KookaburraCut-${VERSION}.dmg" "KookaburraCut-${VERSION}.zip" "KookaburraCut-${VERSION}-updater.app.tar.gz" latest.json build-info.txt SECURITY.md > SHA256SUMS
           cat SHA256SUMS
 
       - name: Attest build provenance
@@ -475,6 +565,7 @@ jobs:
             release/KookaburraCut-${{ needs.build.outputs.version }}.dmg
             release/KookaburraCut-${{ needs.build.outputs.version }}.zip
             release/KookaburraCut-${{ needs.build.outputs.version }}-updater.app.tar.gz
+            release/build-info.txt
 
       # A draft: a person reads the run and publishes. The in-app updater sees the release only once published.
       - name: Draft the GitHub release
@@ -498,10 +589,12 @@ jobs:
 
           Signed with a Developer ID Application certificate (Team ID ${TEAM_ID}), hardened runtime, notarised by Apple. Built by this repository's release workflow from the signed tag \`${TAG}\`.
 
+          \`build-info.txt\` records the toolchain, the runner image, the commit and the sidecar pins this build used.
+
           The bundled ffmpeg sidecar is a GPL build (libx264, libx265). Its recipe and source pins are \`scripts/build-ffmpeg-sidecar.sh\`; sources: ffmpeg.org, code.videolan.org/videolan/x264, github.com/Multicorewareinc/x265.
           EOF
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
             --title "Kookaburra Cut ${VERSION}" --notes-file "$notes" --generate-notes \
             "release/KookaburraCut-${VERSION}.dmg" "release/KookaburraCut-${VERSION}.zip" \
-            "release/KookaburraCut-${VERSION}-updater.app.tar.gz" release/latest.json release/SHA256SUMS release/SECURITY.md
+            "release/KookaburraCut-${VERSION}-updater.app.tar.gz" release/latest.json release/build-info.txt release/SHA256SUMS release/SECURITY.md
           echo "Draft release ${TAG} created; publish it on GitHub." >> "$GITHUB_STEP_SUMMARY"

@@ -9,7 +9,8 @@
 #
 # Bump "version" in src-tauri/tauri.conf.json first and merge it; the tag step refuses unless
 # SECURITY.md names that version and the checkout is main, equal to origin/main after a fetch,
-# with that version still untagged.
+# with that version still untagged. It prints what changed since the previous tag and asks y/N
+# before signing.
 #
 set -euo pipefail
 
@@ -20,7 +21,7 @@ ADHOC=0
 for arg in "$@"; do
   case "$arg" in
     --adhoc) ADHOC=1 ;;
-    --help | -h) sed -n '2,13p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    --help | -h) sed -n '2,14p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "ERROR: unknown argument '$arg'" >&2; exit 2 ;;
   esac
 done
@@ -59,6 +60,25 @@ git fetch --quiet origin main "+refs/tags/*:refs/tags/*"
 ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || die "tag $TAG already exists; bump \"version\" in src-tauri/tauri.conf.json."
 TAG_KEY=$(git config --path kookaburra.tagkey) || die "set kookaburra.tagkey to the public key file of the key in .github/allowed_tag_signers (kookaburra-release skill)."
 [[ "$(git config gpg.format)" == "ssh" ]] || die "set gpg.format to ssh (the keys in .github/allowed_tag_signers are SSH keys)."
+
+# What the tag key would vouch for: read it before signing, since src/ and build.rs change under the commit key.
+TAG_PATHS=()
+while read -r path; do
+  TAG_PATHS+=("$path")
+done < <(sed -n '/tag_paths=(/,/^ *)$/p' "$ROOT/.github/workflows/signers.yml" | sed '1d;$d')
+[[ ${#TAG_PATHS[@]} -gt 0 ]] || die "no tag_paths found in .github/workflows/signers.yml."
+PREV_TAG=$(git tag --merged HEAD --list 'v*' --sort=-v:refname | sed -n 1p)
+if [[ -n "$PREV_TAG" ]]; then
+  echo "==> Commits since $PREV_TAG"
+  git --no-pager shortlog "$PREV_TAG..HEAD"
+  echo "==> What the release pipeline runs or pins, changed since $PREV_TAG"
+  git --no-pager diff --stat "$PREV_TAG..HEAD" -- "${TAG_PATHS[@]}"
+else
+  echo "==> No previous tag on this branch, so nothing to compare $TAG with"
+fi
+echo
+read -r -p "Sign and push $TAG? [y/N] " ANSWER || ANSWER=""
+[[ "$ANSWER" == [yY] ]] || die "not signed; nothing was tagged."
 
 echo "==> Tagging $TAG (Touch ID signs it)"
 SSH_SK_PROVIDER="${SSH_SK_PROVIDER:-/usr/lib/ssh-keychain.dylib}" git -c user.signingkey="$TAG_KEY" tag -s "$TAG" -m "Kookaburra Cut ${VERSION}"

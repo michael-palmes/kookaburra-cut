@@ -4,7 +4,7 @@
 # Homebrew dylib dependencies, replacing the dev copy `setup-ffmpeg.sh` provisions.
 # Every shipped byte comes from pinned source: the ffmpeg tarball is checked against
 # FFMPEG_SHA256, x264 against a commit, x265 against its release tarball's SHA-256.
-# Homebrew supplies build tools only (nasm, cmake), never code that ships.
+# Build tools (nasm, cmake) never ship: CI pins them (install-build-tools.sh), locally Homebrew will do.
 # Output: src-tauri/bin/ffmpeg-aarch64-apple-darwin and ffprobe-aarch64-apple-darwin.
 #
 #   pnpm setup:ffmpeg:release              # GPL build (libx264 + libx265 + VideoToolbox + ProRes)

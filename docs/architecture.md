@@ -517,8 +517,8 @@ Where the live Tauri-2 setup matters for working in the code:
 6. **Build config:** Vite 8 transforms/minifies with **Oxc** (`build.minify:
    "oxc"`, never `"esbuild"`); `@vitejs/plugin-react@6`; `build.target:
    "safari26"` (the macOS-26 WKWebView floor).
-7. **Rust target:** `aarch64-apple-darwin` is the host default: `rustup default
-   stable` suffices, no `rustup target add`.
+7. **Rust target:** `aarch64-apple-darwin` is the host default: `rust-toolchain.toml`
+   pins the version and rustup installs it, no `rustup target add`.
 8. **The hidden render window** (label `render`, `render.html` →
    `src/renderMain.tsx`) serves live captures and scene thumbs off-screen: its
    own realm, with its own stage worker, mounts the shared scene tree, so the

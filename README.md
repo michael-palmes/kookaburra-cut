@@ -89,8 +89,8 @@ Prerequisites:
 
 - macOS on Apple Silicon, Xcode command-line tools (Xcode 26 to bundle the app or
   change its icon)
-- Node ≥ 20.19, pnpm
-- Rust stable (`rustup default stable`)
+- Node 24.22.1, pnpm (`corepack enable` honours the pinned version)
+- Rust through `rustup` (`rust-toolchain.toml` pins the version)
 - ffmpeg on `PATH` (for the dev sidecar copy)
 
 ```bash
