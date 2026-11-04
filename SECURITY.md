@@ -1,8 +1,10 @@
 # Security policy
 
-**As of version 0.22.0.** This file describes that version. Older versions have
-less: see "Version 0.21.1" below. Each release from 0.22.0 on carries its own
-copy of this file in its assets.
+**As of version 0.22.1.** This file describes that version. Older versions have
+less: 0.22.0 is the same app, built before the pinned toolchain and the
+whole-bundle record ("Release integrity"), and "Version 0.21.1" below lists what
+that version lacks. Each release from 0.22.0 on carries its own copy of this file
+in its assets.
 
 On a managed Mac, a configuration profile can pin the posture an organisation
 needs: turn off the app's Claude launchers, live scene websites or update checks,
