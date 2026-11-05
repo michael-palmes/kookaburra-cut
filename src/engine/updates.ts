@@ -57,6 +57,8 @@ export interface AutoCheckInput {
   storedConsent: boolean | null | undefined;
   managedOff: boolean;
   lastCheckedMs: number | null | undefined;
+  /** This window's last automatic attempt, so a failing check (which stores no timestamp) still waits out the throttle. */
+  lastAttemptMs: number | null;
   exporting: boolean;
   nowMs: number;
 }
@@ -66,7 +68,7 @@ export function autoCheckDue(s: AutoCheckInput): boolean {
   return (
     !s.exporting &&
     consentFromSettings(s.storedConsent, s.managedOff) === "on" &&
-    shouldAutoCheck(s.lastCheckedMs ?? null, s.nowMs)
+    shouldAutoCheck(Math.max(s.lastCheckedMs ?? 0, s.lastAttemptMs ?? 0) || null, s.nowMs)
   );
 }
 
@@ -149,6 +151,7 @@ export function useUpdateCheck({
   phaseRef.current = phase;
   const consentRef = useRef(consent);
   consentRef.current = consent;
+  const lastAttemptRef = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -212,10 +215,13 @@ export function useUpdateCheck({
             storedConsent: s.updateCheckConsent,
             managedOff: policy.disableUpdateCheck,
             lastCheckedMs: s.lastUpdateCheckMs,
+            lastAttemptMs: lastAttemptRef.current,
             exporting: isExporting(),
             nowMs: Date.now(),
           });
-          if (!cancelled && due) void doCheck("auto");
+          if (cancelled || !due) return;
+          lastAttemptRef.current = Date.now();
+          void doCheck("auto");
         })
         .catch(() => {});
     };

@@ -44,6 +44,7 @@ describe("autoCheckDue", () => {
     storedConsent: true,
     managedOff: false,
     lastCheckedMs: NOW - AUTO_CHECK_THROTTLE_MS,
+    lastAttemptMs: null,
     exporting: false,
     nowMs: NOW,
   };
@@ -53,6 +54,14 @@ describe("autoCheckDue", () => {
     expect(autoCheckDue({ ...due, lastCheckedMs: null })).toBe(true);
     expect(autoCheckDue({ ...due, lastCheckedMs: undefined })).toBe(true);
     expect(autoCheckDue({ ...due, lastCheckedMs: NOW - 1 })).toBe(false);
+  });
+
+  it("waits out the throttle after a failed attempt that stored no timestamp", () => {
+    expect(autoCheckDue({ ...due, lastCheckedMs: null, lastAttemptMs: NOW - 1 })).toBe(false);
+    expect(
+      autoCheckDue({ ...due, lastCheckedMs: null, lastAttemptMs: NOW - AUTO_CHECK_THROTTLE_MS }),
+    ).toBe(true);
+    expect(autoCheckDue({ ...due, lastAttemptMs: NOW - 1 })).toBe(false);
   });
 
   it("never checks without consent, under a profile or mid-export", () => {
