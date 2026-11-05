@@ -176,7 +176,7 @@ export function PublisherPane() {
                       ? "in your login Keychain, never synchronised"
                       : "in a file only your account can read"
                   }`
-                : "Created in your login Keychain the first time you export a pack, and never leaves this Mac."}
+                : "Your fingerprint shows here after your next pack export."}
             </span>
           </div>
           {view?.key && (

@@ -158,7 +158,7 @@ impl PackError {
                 "Your signing key at {p} can be read by other accounts on this Mac. Run: chmod 600 {p}"
             ),
             Self::KeyDenied => {
-                "Kookaburra Cut was not allowed to use its pack signing key in your Keychain. Allow it when macOS asks, then export again.".into()
+                "Kookaburra Cut wasn't allowed to use your pack signing key. Choose Allow when macOS asks, then try again.".into()
             }
             Self::PublisherNameMissing => {
                 "Enter a publisher name so people know who this pack came from.".into()

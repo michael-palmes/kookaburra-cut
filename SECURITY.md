@@ -217,13 +217,19 @@ backup. Everything else is backed up like any document: projects with their own
 - **The pack signing key**: 32 raw bytes created on the first pack export, a
   generic password in the login Keychain (service "Kookaburra Cut pack signing
   key", account the bundle identifier, `kSecAttrSynchronizable` unset so it
-  never leaves the Mac); macOS may ask once whether the app may use it, and a
-  declined prompt stops the export rather than minting a second key.
-  `$APPDATA/pack-key/ed25519.key` (folder 0700, file 0600, refused if group or
-  other bits are set) is the fallback only where the Keychain cannot answer: a
-  background autorun, no login keychain, or `KOOKABURRA_PACK_KEY_FILE=1` in a
-  dev session; a file from an earlier build moves into the Keychain once and
-  is deleted. Control: `src-tauri/src/pack/key.rs`.
+  never leaves the Mac); macOS may ask once whether the app may use it, only
+  when signing or rotating, and a declined prompt stops that rather than
+  minting a second key. `$APPDATA/pack-key/ed25519.key` (folder 0700, file
+  0600, refused if group or other bits are set) is the fallback only where the
+  Keychain cannot answer: no login keychain, or `KOOKABURRA_PACK_KEY_FILE=1`;
+  a file from an earlier build moves into the Keychain at the next signing and
+  is deleted. Settings reads only `pack-key/identity.json` (0600, atomic): the
+  public key, its id and where it lives, rewritten at signing whenever it
+  disagrees with the real key. Builds without a Developer ID signature, and
+  autoruns, never touch the Keychain and keep their own file key in
+  `$APPDATA/pack-key-dev/`, so a dev or ad-hoc build can't create the release
+  item with an access list that trusts only itself. Control:
+  `src-tauri/src/pack/key.rs`.
 - **`$APPDATA/cache/`**: `clips/` (decoded video frames per content hash,
   capped at 20 GB by default with least-recently-used eviction in 120-frame
   chunks, never while pinned by an open project or a running export; an

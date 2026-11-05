@@ -180,7 +180,7 @@ export interface PublisherProfileView {
   effectiveName: string | null;
   organisation: string | null;
   website: string | null;
-  /** Absent until the first pack is signed: the key is created lazily. */
+  /** Absent until this build signs or rotates: read from the key's record, never the Keychain. */
   key: PublisherKey | null;
 }
 
