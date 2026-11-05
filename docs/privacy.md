@@ -97,8 +97,8 @@ imported never travel.
   and the app's smaller caches, are backed up like any file.
 - **Settings**: your preferences, which publishers' keys you have imported from,
   which projects you allowed to run. The key that signs your own packs lives
-  in your login Keychain and never synchronises; macOS may ask once to let the
-  app use it.
+  in your login Keychain and never synchronises; macOS may ask once, when you
+  export a pack or rotate the key, to let the app use it.
 - **Website data**: cookies and site storage for websites you allowed, in a
   profile separate from Safari. Settings ▸ Website data clears one site or all.
 - **Agent files**: the Claude Code skills and settings the app writes inside

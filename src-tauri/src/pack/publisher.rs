@@ -27,7 +27,7 @@ pub struct PublisherProfileView {
     pub effective_name: Option<String>,
     pub organisation: Option<String>,
     pub website: Option<String>,
-    /// Absent until this install signs its first pack.
+    /// Absent until this build signs or rotates: read from the key's record, never from the Keychain.
     pub key: Option<PublisherKeyView>,
 }
 
@@ -298,19 +298,22 @@ pub fn manifest_publisher(
     })
 }
 
+fn key_view((identity, stored_in): (key::PackIdentity, key::KeyStorage)) -> PublisherKeyView {
+    PublisherKeyView {
+        key_id_display: key::format_key_id(&identity.key_id),
+        key_id: identity.key_id,
+        public_key: identity.public_key,
+        stored_in,
+    }
+}
+
+/// Settings opens on this, so it reads the key's record and never the private half: a Keychain prompt or a denial cannot reach it.
 fn profile_view(
     app: &AppHandle,
     state: &State<'_, SettingsState>,
 ) -> Result<PublisherProfileView, String> {
     let settings = load_settings(app, state)?;
-    let key = key::existing_identity(app)
-        .map_err(String::from)?
-        .map(|(identity, stored_in)| PublisherKeyView {
-            key_id_display: key::format_key_id(&identity.key_id),
-            key_id: identity.key_id,
-            public_key: identity.public_key,
-            stored_in,
-        });
+    let key = key::recorded_identity(app).map(key_view);
     let profile = settings.publisher;
     Ok(PublisherProfileView {
         effective_name: profile.as_ref().map(|p| p.name.clone()),
@@ -342,19 +345,12 @@ pub fn set_publisher_profile(
     profile_view(&app, &state)
 }
 
-/// Replace the signing key. `known_publishers` is deliberately untouched: rotating changes who *we* look like, not who we trust.
+/// Replace the signing key. `known_publishers` is deliberately untouched: rotating changes who *we* look like, not who we trust. Async so a Keychain prompt never holds the main thread.
 #[tauri::command]
-pub fn rotate_publisher_key(app: AppHandle) -> Result<PublisherKeyView, String> {
-    key::rotate_identity(&app).map_err(String::from)?;
-    key::existing_identity(&app)
-        .map_err(String::from)?
-        .map(|(identity, stored_in)| PublisherKeyView {
-            key_id_display: key::format_key_id(&identity.key_id),
-            key_id: identity.key_id,
-            public_key: identity.public_key,
-            stored_in,
-        })
-        .ok_or_else(|| "the new signing key could not be read back".to_owned())
+pub async fn rotate_publisher_key(app: AppHandle) -> Result<PublisherKeyView, String> {
+    key::rotate_identity(&app)
+        .map(key_view)
+        .map_err(String::from)
 }
 
 #[tauri::command]

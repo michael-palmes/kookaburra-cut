@@ -106,12 +106,25 @@ app would refuse its own packs), so it rises only with a release; until then
 Each install generates an Ed25519 keypair on first export and keeps it in the
 login Keychain as a generic password (service "Kookaburra Cut pack signing
 key", account the bundle identifier, never synchronised to iCloud). macOS may
-ask once whether the app may use it. Where the Keychain cannot answer (a
-background autorun, no login keychain, `KOOKABURRA_PACK_KEY_FILE=1` in a dev
-session) the key lives 0600 at `$APPDATA/pack-key/ed25519.key` instead, and a
-file left by an earlier build is moved into the Keychain once and deleted. A
-declined Keychain prompt stops the export rather than minting a second key on
-disk. The manifest is signed detached over its exact stored bytes, never a
+ask once whether the app may use it, and only signing and rotating ever ask.
+Where the Keychain cannot answer (no login keychain,
+`KOOKABURRA_PACK_KEY_FILE=1`) the key lives 0600 at
+`$APPDATA/pack-key/ed25519.key` instead, and a file left by an earlier build is
+moved into the Keychain at the next signing and deleted. A declined Keychain
+prompt stops the export or rotation rather than minting a second key on disk.
+
+Settings never reads the private half. It shows the key id and where the key
+lives from `pack-key/identity.json` (0600, written atomically), which creating,
+rotating, moving or signing with the key rewrites whenever it disagrees with
+the real key, so an edited or stale record lasts only until the next export. A
+key from before the record shows after its next export. A build without a
+Developer ID signature (`pnpm tauri dev`, `pnpm release:rehearse`, acceptance
+builds) shares the release bundle identifier but never touches the Keychain: it
+keeps a file key and its record in `$APPDATA/pack-key-dev/`, as background
+autoruns do, since a Keychain item it created would trust only its own cdhash
+and every release after it would prompt.
+
+The manifest is signed detached over its exact stored bytes, never a
 re-serialisation. The public key travels in the manifest with its `keyId`
 (`hex(sha256(pubkey)[0..8])`); the reader recomputes the id from the key and
 refuses a pack whose declared id differs (`KeyIdMismatch`), and
