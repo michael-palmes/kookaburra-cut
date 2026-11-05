@@ -1,10 +1,11 @@
 # Security policy
 
-**As of version 0.22.1.** This file describes that version. Older versions have
-less: 0.22.0 is the same app, built before the pinned toolchain and the
-whole-bundle record ("Release integrity"), and "Version 0.21.1" below lists what
-that version lacks. Each release from 0.22.0 on carries its own copy of this file
-in its assets.
+**As of version 0.22.2.** This file describes that version. Older versions have
+less: 0.22.1 asks the Keychain for the pack key whenever Settings or Export
+opens, and its Later stops the launch check offering that version again; 0.22.0
+is 0.22.1 built before the pinned toolchain and the whole-bundle record
+("Release integrity"); and "Version 0.21.1" below lists what that version lacks.
+Each release from 0.22.0 on carries its own copy of this file in its assets.
 
 On a managed Mac, a configuration profile can pin the posture an organisation
 needs: turn off the app's Claude launchers, live scene websites or update checks,
@@ -76,8 +77,9 @@ It is built for these risks:
   captured frames, fetched pages) is written by whoever shared it. The stamped
   rules tell the agent it is data, never instructions, and every bridge and kb
   output escapes control, bidi and format characters and caps its length.
-- **An agent that reaches too far.** The app starts neither Claude Code nor a
-  shell: a session begins in the Claude app or the person's own terminal. kb
+- **An agent that reaches too far.** The app starts no Claude Code, and no
+  shell but the updater's administrator install ("On the Mac"): a session
+  begins in the Claude app or the person's own terminal. kb
   writes only inside the project, the workspace or a folder a person picked in the app this
   session, and refuses credential folders; other projects need an in-app
   confirmation; commands that look like sending work off the Mac ask a person
@@ -266,7 +268,8 @@ backup. Everything else is backed up like any document: projects with their own
 - **Temporary files**: hidden siblings beside their target (`*.tmp`,
   `.staging-*`, `.part`, `.kit-tmp`, `.kc-render/`); the app has no
   `std::env::temp_dir` outside tests. The updater plugin unpacks an update in
-  the system temporary folder while installing. kb and the brand skill use it for
+  the system temporary folder while installing, or beside the app when that
+  folder is on another volume. kb and the brand skill use it for
   short-lived work that can hold copies of stills and frames (`kb-*` and `brand-*`
   folders, removed when the step ends), and for hook baselines (`kb-hooks/`).
 
@@ -308,15 +311,24 @@ Also:
   app's own environment, not the sidecars' allow-list. kb and the brand skill also
   run `osascript` to rasterise an SVG they have rewritten first (`kblib/svgsafe.py`).
 - `open` for Finder, the `claude://` handoff and the fixed pages (`claude_app.rs`).
+- The updater, only after Install and relaunch (`updater.rs`,
+  `download_and_install`): `touch` from `PATH` on the installed bundle, then
+  `/usr/bin/open -n` to relaunch it (Tauri's `restart`). When the app's folder
+  isn't writable, macOS asks for an administrator password and the plugin runs
+  `do shell script` as root: `sh` with `/usr/bin/osascript -l JavaScript` to
+  swap the bundles, then `mv` and `rm` on paths it quoted itself. Cancelling
+  leaves the installed app as it was.
 
-The app never starts a shell or Claude Code.
+The app never starts Claude Code, and starts a shell only for that administrator
+install.
 
 ## What reaches your agent
 
 Claude Code runs outside the app, in the Claude desktop app or the person's own
 terminal, under their own account, install and settings. The app holds no API
-key, sends nothing to Anthropic itself and starts no Claude Code or shell process,
-so no credential passes through it and no window can type into a session.
+key, sends nothing to Anthropic itself and starts no Claude Code, and no shell
+but the updater's administrator install, so no credential passes through it and
+no window can type into a session.
 
 - **The `claude://` handoff** (`claude_app.rs`): `open claude://code/new?folder=<project>&q=<prompt>`,
   the prompt capped at the Claude app's limit, opened only when LaunchServices
@@ -653,9 +665,13 @@ builds it in separate jobs, each on a fresh runner.
 
   ```bash
   shasum -a 256 -c SHA256SUMS --ignore-missing
-  gh attestation verify KookaburraCut-<version>.dmg --repo michael-palmes/kookaburra-cut \
-    --signer-workflow michael-palmes/kookaburra-cut/.github/workflows/release.yml \
-    --source-ref refs/tags/v<version> --deny-self-hosted-runners
+  for f in KookaburraCut-<version>.dmg build-info.txt; do
+    gh attestation verify "$f" --repo michael-palmes/kookaburra-cut \
+      --signer-workflow michael-palmes/kookaburra-cut/.github/workflows/release.yml \
+      --source-ref refs/tags/v<version> --deny-self-hosted-runners
+  done
+  grep '^commit=' build-info.txt                          # the same commit as the next line
+  git ls-remote https://github.com/michael-palmes/kookaburra-cut 'refs/tags/v<version>^{}'
   codesign -dvv "/Applications/Kookaburra Cut.app"       # flags=0x10000(runtime), Authority=Developer ID Application
   spctl -a -t exec -vv "/Applications/Kookaburra Cut.app" # source=Notarized Developer ID
   ```

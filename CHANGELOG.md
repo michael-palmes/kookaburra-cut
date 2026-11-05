@@ -6,10 +6,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.22.2] - 2026-11-05
+
 ### Fixed
 
 - Later on an update offer now means later: the update comes back at the next
   daily check instead of never, and an app left open still checks once a day.
+- Settings and Export no longer ask macOS for the pack signing key when they
+  open, so a Keychain prompt or a Deny can't break either window. macOS asks at
+  most once, when you export a pack or rotate the key.
+
+### Security
+
+- The updater plugin moves to 2.14.1, clearing three advisories against `zip`
+  4.6.1. That crate was a Windows-only dependency and never built into the Mac
+  app.
 
 ## [0.22.1] - 2026-11-05
 
