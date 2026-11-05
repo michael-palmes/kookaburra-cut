@@ -1,9 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isExporting } from "./exportState";
 import { managedPolicy } from "./managed";
 import { getSettings } from "./workspace";
 
-/** Frontend face of the opt-in update lane (src-tauri/src/updater.rs). All network and consent bookkeeping happens Rust-side; this module holds the pure launch-check policy and the per-window hook that drives the dialogs, the Settings rows and the manual-check surfaces. */
+/** Frontend face of the opt-in update lane (src-tauri/src/updater.rs). All network and consent bookkeeping happens Rust-side; this module holds the pure auto-check policy and the per-window hook that drives the dialogs, the Settings rows and the manual-check surfaces. */
 
 export type UpdateConsent = "loading" | "undecided" | "on" | "off";
 
@@ -25,18 +26,17 @@ export function setUpdateConsent(consent: boolean): Promise<void> {
   return invoke<void>("set_update_consent", { consent });
 }
 
-export function recordSkippedVersion(version: string): Promise<void> {
-  return invoke<void>("record_skipped_version", { version });
-}
-
 export function installUpdateAndRelaunch(): Promise<void> {
   return invoke<void>("install_update_and_relaunch");
 }
 
-// ── Launch-check policy (pure, vitest-covered) ─────────────────────────────
+// ── Auto-check policy (pure, vitest-covered) ───────────────────────────────
 
-/** SturtBar's cadence: launch checks at most once per 20h; manual checks never throttle. */
+/** SturtBar's cadence: automatic checks at most once per 20h; manual checks never throttle. */
 export const AUTO_CHECK_THROTTLE_MS = 20 * 60 * 60 * 1000;
+
+/** How often an open main window asks whether the throttle has lapsed; wall-clock based, so a Mac that slept catches up. */
+export const AUTO_CHECK_POLL_MS = 60 * 60 * 1000;
 
 /** A profile that turns update checks off pins consent off; the stored tri-state still says whether the welcome's ask is owed. */
 export function consentFromSettings(
@@ -53,12 +53,21 @@ export function shouldAutoCheck(lastCheckedMs: number | null, nowMs: number): bo
   return lastCheckedMs === null || nowMs - lastCheckedMs >= AUTO_CHECK_THROTTLE_MS;
 }
 
-/** A declined version stays declined; the modal returns only for a different one. */
-export function shouldOfferVersion(
-  lastOfferedVersion: string | null,
-  availableVersion: string,
-): boolean {
-  return lastOfferedVersion !== availableVersion;
+export interface AutoCheckInput {
+  storedConsent: boolean | null | undefined;
+  managedOff: boolean;
+  lastCheckedMs: number | null | undefined;
+  exporting: boolean;
+  nowMs: number;
+}
+
+/** Fed fresh settings on every tick, so a switch turned off in Settings stops the next check here too. Later only hides the offer: it returns at the next check that is due. */
+export function autoCheckDue(s: AutoCheckInput): boolean {
+  return (
+    !s.exporting &&
+    consentFromSettings(s.storedConsent, s.managedOff) === "on" &&
+    shouldAutoCheck(s.lastCheckedMs ?? null, s.nowMs)
+  );
 }
 
 export interface UpdateStatusInput {
@@ -116,7 +125,7 @@ export interface UpdateCheckApi {
 }
 
 export interface UseUpdateCheckOptions {
-  /** Launch-check on mount (main window only; Settings passes false, autorun suppresses it). */
+  /** Check at mount and whenever due while mounted (main window only; Settings passes false, autorun suppresses it). */
   autoCheck: boolean;
   /** Feedback for manual checks that end without an offer (mapped to a toast in the main window). */
   onManualResult?: (kind: "upToDate" | "devBuild" | "error", message: string) => void;
@@ -140,8 +149,6 @@ export function useUpdateCheck({
   phaseRef.current = phase;
   const consentRef = useRef(consent);
   consentRef.current = consent;
-  const lastOfferedRef = useRef<string | null>(null);
-  const autoCheckDoneRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -152,7 +159,6 @@ export function useUpdateCheck({
         setWelcomeOwed(consentFromSettings(s.updateCheckConsent) === "undecided");
         setConsent(consentFromSettings(s.updateCheckConsent, policy.disableUpdateCheck));
         setLastCheckedMs(s.lastUpdateCheckMs ?? null);
-        lastOfferedRef.current = s.lastOfferedVersion ?? null;
       })
       .catch(() => {
         if (!cancelled) setConsent("undecided");
@@ -179,9 +185,7 @@ export function useUpdateCheck({
           if (mode === "manual") onManualResult?.("upToDate", "Kookaburra Cut is up to date.");
         } else {
           setAvailable(result);
-          setOfferVisible(
-            mode === "manual" || shouldOfferVersion(lastOfferedRef.current, result.version),
-          );
+          setOfferVisible(true);
         }
         if (consentRef.current === "on") setLastCheckedMs(Date.now());
       } catch (e) {
@@ -198,11 +202,30 @@ export function useUpdateCheck({
   const runCheck = useCallback(() => doCheck("manual"), [doCheck]);
 
   useEffect(() => {
-    if (!autoCheck || consent !== "on" || autoCheckDoneRef.current) return;
-    if (!shouldAutoCheck(lastCheckedMs, Date.now())) return;
-    autoCheckDoneRef.current = true;
-    void doCheck("auto");
-  }, [autoCheck, consent, lastCheckedMs, doCheck]);
+    if (!autoCheck) return;
+    let cancelled = false;
+    const tick = () => {
+      if (phaseRef.current !== "idle") return;
+      Promise.all([getSettings(), managedPolicy()])
+        .then(([s, policy]) => {
+          const due = autoCheckDue({
+            storedConsent: s.updateCheckConsent,
+            managedOff: policy.disableUpdateCheck,
+            lastCheckedMs: s.lastUpdateCheckMs,
+            exporting: isExporting(),
+            nowMs: Date.now(),
+          });
+          if (!cancelled && due) void doCheck("auto");
+        })
+        .catch(() => {});
+    };
+    tick();
+    const timer = window.setInterval(tick, AUTO_CHECK_POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [autoCheck, doCheck]);
 
   const answerConsent = useCallback(
     async (on: boolean) => {
@@ -227,7 +250,6 @@ export function useUpdateCheck({
         setLastCheckedMs(null);
         setAvailable(null);
         setOfferVisible(false);
-        lastOfferedRef.current = null;
       }
       try {
         await setUpdateConsent(on);
@@ -242,12 +264,7 @@ export function useUpdateCheck({
   const dismissOffer = useCallback(() => {
     setOfferVisible(false);
     setInstallError(null);
-    const version = available?.version;
-    if (version) {
-      lastOfferedRef.current = version;
-      void recordSkippedVersion(version).catch(() => {});
-    }
-  }, [available]);
+  }, []);
 
   const install = useCallback(async () => {
     if (phaseRef.current === "installing") return;

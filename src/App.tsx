@@ -439,7 +439,7 @@ export default function App() {
     void invoke("cancel_stills_export").catch(() => {});
   }, [isAutoRun]);
 
-  // The opt-in update lane: launch check in this window only, manual results land as toasts.
+  // The opt-in update lane: automatic checks in this window only, manual results land as toasts.
   const onUpdateManualResult = useCallback(
     (kind: "upToDate" | "devBuild" | "error", message: string) => {
       setToast({ kind: kind === "error" ? "error" : "success", message });
@@ -3494,7 +3494,7 @@ export default function App() {
           updatesManaged={updates.managed}
         />
       )}
-      {updates.offerVisible && updates.available && !isAutoRun && (
+      {updates.offerVisible && updates.available && !isAutoRun && !exporting && (
         <UpdateAvailableDialog
           version={updates.available.version}
           installing={updates.phase === "installing"}

@@ -1588,7 +1588,6 @@ macro_rules! kookaburra_handler {
             settings_win::hardware_video_support,
             updater::check_for_update,
             updater::set_update_consent,
-            updater::record_skipped_version,
             updater::install_update_and_relaunch,
             edit::open_edit,
             edit::open_edit_named,

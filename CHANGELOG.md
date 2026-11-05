@@ -6,6 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Later on an update offer now means later: the update comes back at the next
+  daily check instead of never, and an app left open still checks once a day.
+
 ## [0.22.1] - 2026-11-05
 
 ### Changed

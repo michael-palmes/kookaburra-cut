@@ -97,26 +97,8 @@ pub fn set_update_consent(
         s.update_check_consent = Some(consent);
         if !consent {
             s.last_update_check_ms = None;
-            s.last_offered_version = None;
         }
     })
-}
-
-/// Remember a declined offer so the same version is not re-offered every launch.
-#[tauri::command]
-pub fn record_skipped_version(
-    app: AppHandle,
-    settings: State<'_, SettingsState>,
-    version: String,
-) -> Result<(), String> {
-    if workspace::load_settings(&app, &settings)?.update_check_consent == Some(true) {
-        workspace::update_settings(&app, &settings, |s| {
-            if s.update_check_consent == Some(true) {
-                s.last_offered_version = Some(version);
-            }
-        })?;
-    }
-    Ok(())
 }
 
 /// Download, verify and install the pending update, then restart into the new version. On failure the update is put back so Install can be retried.
