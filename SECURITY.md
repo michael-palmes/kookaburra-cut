@@ -646,15 +646,18 @@ builds it in separate jobs, each on a fresh runner.
   previous tag, asks y/N, signs the tag and verifies it against
   `.github/allowed_tag_signers` before pushing; the build job checks the same
   line. Every pull request's head commit
-  must be signed by a key in `.github/allowed_signers`, or in the tag list when
-  it changes `.github/`, a script the release pipeline runs, a lock file,
-  `package.json`, `patches/`, `tauri.conf.json` or a build config or pin file
-  (`.github/workflows/signers.yml`, run from the default branch's copy). Only the
+  must be signed by a key in `main`'s `.github/allowed_signers`, or in its tag
+  list when it changes `.github/`, a script the release pipeline runs, a lock
+  file, `package.json`, `patches/`, `tauri.conf.json` or a build config or pin
+  file (`.github/workflows/signers.yml`, run from the default branch's copy). A
+  job with no secret fetches the head as data and checks it (`Head commit
+  signed`); for a pull request into `main`, a second job posts that verdict as
+  `Signed head`, a check run of a GitHub App that holds only Checks write. Its
+  private key lives in the `signed-head` environment, which only `main` can
+  use, so a workflow a pull request adds can't post as the app. Only the
   head commit is checked, `main` requires no approving review, and everything
   else, including `src/`, `build.rs` and `vite.config.ts`, changes under the
-  commit key and is built into what the sign job signs. A job a pull request adds
-  can report under this check's name, and GitHub doesn't say which result counts,
-  so a stolen commit key may get past the rule.
+  commit key and is built into what the sign job signs.
   `CODEOWNERS` names the maintainer; `audit.yml` runs
   `pnpm audit` and `cargo deny check advisories` on every pull request
   and weekly. Every workflow but `scorecard.yml` starts from `permissions: {}` or
@@ -721,5 +724,7 @@ Deliberately deferred, recorded so nobody mistakes them for done:
 - The still checks on app icons: `import_app_icon` takes only the extension list.
 - A second reviewer on the `release` environment, a required review on `main` and
   a pinned runner image and Xcode (`build-info.txt` records both).
-- A signature check only a GitHub App can post, with its key limited to `main`, so
-  a pull request's own workflow can't answer for it.
+- Requiring the app's `Signed head` check. Until the `main` ruleset requires it,
+  pinned to the app, in place of `Head commit signed`, a job a pull request adds
+  can report under that name, GitHub doesn't say which result counts, and a
+  stolen commit key may get past the tag-key rule.
