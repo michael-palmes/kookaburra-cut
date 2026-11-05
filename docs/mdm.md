@@ -27,13 +27,13 @@ installed or removed while the app runs takes effect at the next launch.
 | `DisableClaude` | boolean | `true` removes every Claude entry point: the launcher that greets a new project, the Edit with Claude titlebar button and palette command, the Project menu item, the Create with Claude start card and the theme card's Edit with Claude. The `claude://` handoff (`open_in_claude`) and the Claude download page refuse with the managed reason and touch no network. Settings ▸ Claude shows locked rows |
 | `DisableLiveWebsites` | boolean | `true` makes `website_open` refuse, so no child browser view ever opens for a scene website in the editor or during a Present hold. Captured website PNGs still render in previews and exports. The editor's website panel shows the locked state in place of Open live website |
 | `AllowedPublisherKeyIds` | array of strings | Pack imports are limited to packs signed by these publisher key ids (the 16 hex characters a publisher shows under Settings ▸ Publisher, with or without the spaces). `inspect_pack` and `stage_pack` refuse any other pack before anything is written, naming the policy. An empty forced array means no pack imports at all. The id is recomputed from the pack's public key, never read from its manifest |
-| `DisableUpdateCheck` | boolean | `true` pins update consent off: no launch check, the first-run welcome shows the reason in place of its switch, Settings ▸ Updates locks the switch and Check now, the Check for Updates menu item is gone, and `check_for_update` and `install_update_and_relaunch` refuse. The Rust side records consent as off whatever a switch asks for |
+| `DisableUpdateCheck` | boolean | `true` pins update consent off: no automatic checks, the first-run welcome shows the reason in place of its switch, Settings ▸ Updates locks the switch and Check now, the Check for Updates menu item is gone, and `check_for_update` and `install_update_and_relaunch` refuse. The Rust side records consent as off whatever a switch asks for |
 | `WorkspaceRoot` | string | An absolute path (a leading `~/` expands to the user's home). The app keeps projects, themes, fonts and brands there, creating the folder on first launch; `init_workspace` and `move_workspace` refuse, and Settings ▸ Workspace shows the fixed path with a lock in place of Change location. A relative or malformed path locks relocation without moving anything |
 
 A key that is forced to `false` (or an empty `WorkspaceRoot`) still marks the
 install as managed, which only matters for the boot log line. Under
 `DisableUpdateCheck` the first-run welcome's Get started records the consent
-it showed (off), so lifting the profile later leaves launch checks off until
+it showed (off), so lifting the profile later leaves automatic checks off until
 the person turns the Settings switch on; the welcome is not asked twice.
 
 ## What a managed user sees

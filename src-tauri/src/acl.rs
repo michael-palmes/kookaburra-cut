@@ -459,7 +459,6 @@ fn the_settings_window_owns_caches_the_workspace_location_updates_and_the_publis
             "open_privacy_page",
             "open_project_folder",
             "pick_folder",
-            "record_skipped_version",
             "reveal_in_finder",
             "rotate_publisher_key",
             "set_claude_preferences",

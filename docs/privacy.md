@@ -24,7 +24,7 @@ Four things can reach the internet, and each one starts with you:
 
 | What | When | Where it goes | What goes | Off switch |
 | --- | --- | --- | --- | --- |
-| Update check | At launch, if you left the first-run switch on, or when you choose Check for Updates | GitHub, the app's release page | One request for the latest release file. No identifiers, nothing about your usage or your Mac | The switch on the first-run welcome, or Settings ▸ Updates |
+| Update check | At launch and about once a day while the app is open, if you left the first-run switch on, or when you choose Check for Updates | GitHub, the app's release page | One request for the latest release file. No identifiers, nothing about your usage or your Mac | The switch on the first-run welcome, or Settings ▸ Updates |
 | Update install | Only when you press Install and relaunch | GitHub, the release download | Nothing; the new build comes down, is checked against a key built into the app, and replaces itself | Press Later |
 | Edit with Claude | Only when you press Edit with Claude and the Claude desktop app is installed | The Claude desktop app on this Mac, which then talks to Anthropic under your account | The project folder's path and a starter prompt, typed in for you, never sent until you press Enter there | Do not press it; a configuration profile can turn it off |
 | Live websites in a scene | Only after you press Allow for that website in the editor; a presentation then loads it again on each hold | The website you approved | The page loads like a browser tab, cookies and all, in a profile separate from Safari | Revoke the website in the scene's inspector; Settings ▸ Website data clears what it stored |

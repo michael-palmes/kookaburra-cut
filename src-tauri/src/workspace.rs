@@ -93,9 +93,6 @@ pub struct AppSettings {
     /// Unix-ms of the last update check; only written while consent is on (launch-check throttle marker).
     #[serde(default)]
     pub last_update_check_ms: Option<u64>,
-    /// Last version offered and declined ("Later"), so the same version isn't re-offered every launch.
-    #[serde(default)]
-    pub last_offered_version: Option<String>,
     /// Inverted so the serde/Default false means the Claude launcher shows on a new project's first open.
     #[serde(default)]
     pub disable_claude_first_open: bool,
@@ -3119,6 +3116,25 @@ mod tests {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, r#"{"workspaceRoot":"/tmp/half"#).unwrap();
         assert!(read_settings_file(&path).workspace_root.is_none());
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn an_older_file_with_a_retired_skipped_version_keeps_its_settings_and_drops_it_on_save() {
+        let path = settings_scratch("retired");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            r#"{"workspaceRoot":"/tmp/ws","updateCheckConsent":true,"lastUpdateCheckMs":1,"lastOfferedVersion":"0.2.0"}"#,
+        )
+        .unwrap();
+        let loaded = read_settings_file(&path);
+        assert_eq!(loaded.workspace_root.as_deref(), Some("/tmp/ws"));
+        assert_eq!(loaded.update_check_consent, Some(true));
+        update_settings_at(&path, &Mutex::new(None), |s| s.lag_warning = None).unwrap();
+        let saved = std::fs::read_to_string(&path).unwrap();
+        assert!(!saved.contains("lastOfferedVersion"), "{saved}");
+        assert!(saved.contains("lastUpdateCheckMs"), "{saved}");
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 

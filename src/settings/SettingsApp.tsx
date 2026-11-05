@@ -682,9 +682,10 @@ export function SettingsApp() {
         <h2>Updates</h2>
         <div className="settings-row">
           <div className="settings-row-text">
-            <span className="settings-row-title">Check for updates on launch</span>
+            <span className="settings-row-title">Check for updates automatically</span>
             <span className="muted settings-row-detail">
-              Asks GitHub whether a newer release exists. No identifiers, nothing about your usage.
+              Asks GitHub about once a day whether a newer release exists. No identifiers, nothing
+              about your usage.
             </span>
           </div>
           {updates.managed ? (
@@ -692,7 +693,7 @@ export function SettingsApp() {
           ) : (
             <input
               type="checkbox"
-              aria-label="Check for updates on launch"
+              aria-label="Check for updates automatically"
               checked={updates.consent === "on"}
               disabled={updates.consent === "loading"}
               onChange={(e) => void updates.toggleConsent(e.target.checked)}

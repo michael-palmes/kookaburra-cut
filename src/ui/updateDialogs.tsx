@@ -93,7 +93,7 @@ export function WelcomeDialog({
   );
 }
 
-/** A newer release is ready: install in place and relaunch, or decline (Later also remembers the version so it isn't re-offered every launch). */
+/** A newer release is ready: install in place and relaunch, or Later, which hides it until the next due check offers it again. */
 export function UpdateAvailableDialog({
   version,
   installing,

@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  AUTO_CHECK_POLL_MS,
   AUTO_CHECK_THROTTLE_MS,
+  autoCheckDue,
   consentFromSettings,
   formatCheckedAgo,
   formatUpdateStatus,
   shouldAutoCheck,
-  shouldOfferVersion,
 } from "./updates";
 
 const NOW = 1_800_000_000_000;
@@ -38,11 +39,45 @@ describe("shouldAutoCheck", () => {
   });
 });
 
-describe("shouldOfferVersion", () => {
-  it("re-offers only a different version than the declined one", () => {
-    expect(shouldOfferVersion(null, "0.2.0")).toBe(true);
-    expect(shouldOfferVersion("0.2.0", "0.2.0")).toBe(false);
-    expect(shouldOfferVersion("0.2.0", "0.3.0")).toBe(true);
+describe("autoCheckDue", () => {
+  const due = {
+    storedConsent: true,
+    managedOff: false,
+    lastCheckedMs: NOW - AUTO_CHECK_THROTTLE_MS,
+    lastAttemptMs: null,
+    exporting: false,
+    nowMs: NOW,
+  };
+
+  it("checks once the throttle lapses with consent on", () => {
+    expect(autoCheckDue(due)).toBe(true);
+    expect(autoCheckDue({ ...due, lastCheckedMs: null })).toBe(true);
+    expect(autoCheckDue({ ...due, lastCheckedMs: undefined })).toBe(true);
+    expect(autoCheckDue({ ...due, lastCheckedMs: NOW - 1 })).toBe(false);
+  });
+
+  it("waits out the throttle after a failed attempt that stored no timestamp", () => {
+    expect(autoCheckDue({ ...due, lastCheckedMs: null, lastAttemptMs: NOW - 1 })).toBe(false);
+    expect(
+      autoCheckDue({ ...due, lastCheckedMs: null, lastAttemptMs: NOW - AUTO_CHECK_THROTTLE_MS }),
+    ).toBe(true);
+    expect(autoCheckDue({ ...due, lastAttemptMs: NOW - 1 })).toBe(false);
+  });
+
+  it("never checks without consent, under a profile or mid-export", () => {
+    expect(autoCheckDue({ ...due, storedConsent: false })).toBe(false);
+    expect(autoCheckDue({ ...due, storedConsent: null })).toBe(false);
+    expect(autoCheckDue({ ...due, storedConsent: undefined })).toBe(false);
+    expect(autoCheckDue({ ...due, managedOff: true })).toBe(false);
+    expect(autoCheckDue({ ...due, exporting: true })).toBe(false);
+  });
+
+  it("comes due again on the first tick past the throttle in a window left open", () => {
+    const ticks = Math.ceil(AUTO_CHECK_THROTTLE_MS / AUTO_CHECK_POLL_MS);
+    const at = (n: number) =>
+      autoCheckDue({ ...due, lastCheckedMs: NOW, nowMs: NOW + n * AUTO_CHECK_POLL_MS });
+    expect(at(ticks - 1)).toBe(false);
+    expect(at(ticks)).toBe(true);
   });
 });
 
