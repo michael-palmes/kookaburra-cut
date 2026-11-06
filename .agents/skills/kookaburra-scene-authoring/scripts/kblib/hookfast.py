@@ -549,6 +549,12 @@ def git_withheld(root: str) -> Optional[str]:
 
     from . import git
 
+    if not git.git_available():
+        return None
+    nested = git.nested_repo(Path(root))
+    if nested:
+        return (f"{nested} is another repository, and git run there uses its hooks and settings. kb denied this command: "
+                "./kb checkpoint, ./kb history and ./kb diff work on this project's own history, or ask the person to move that folder out.")
     refused = git.refusal(Path(root))
     if refused:
         return (f"{refused}, so git could run a program this folder names. kb denied this command, and ./kb checkpoint refuses here too: "

@@ -90,8 +90,14 @@ pub async fn open_in_claude(
     }
     let stamp_dir = dir.clone();
     let stamp_app = app.clone();
+    let stamp_slug = slug.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        if let Err(e) = workspace::stamp_claude_provisioning(&stamp_app, &stamp_dir) {
+        use tauri::Manager;
+        let state = stamp_app.state::<SettingsState>();
+        let stamped = workspace::restamping_trust(&stamp_app, &state, &stamp_slug, || {
+            workspace::stamp_claude_provisioning(&stamp_app, &stamp_dir)
+        });
+        if let Err(e) = stamped {
             log::warn!("kit stamp before opening Claude failed: {e}");
         }
     })

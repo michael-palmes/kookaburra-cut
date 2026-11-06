@@ -226,6 +226,8 @@ class BashPreTests(BashHookCase):
         self.assertIn(".git/hooks/pre-commit would run under git", self.denial("git commit -m x") or "")
         hook.unlink()
         self.assertIsNone(self.denial("git commit -m x"))
+        (self.root / "scenes" / "shared" / ".git").mkdir(parents=True)
+        self.assertIn("scenes/shared/.git is another repository", self.denial("cd scenes/shared && git commit -m x") or "")
 
     def test_hand_writes_to_asset_records_are_denied(self) -> None:
         write_json(self.root / "assets" / "_meta.json", {"version": 1, "assets": {}})

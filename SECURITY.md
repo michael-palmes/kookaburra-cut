@@ -369,8 +369,8 @@ no window can type into a session.
   plain git runs the folder's hooks and the programs its config names: a live
   hook found on a folder's first open moves to `.git/hooks.moved-aside/` and the
   review sheet lists it (`sweep_agent_files`), and a `.git/config` the app
-  refuses, a `.git` that is a link or file, or a hook added later leaves the
-  agent no git allow rule and a `Bash(git:*)` deny, decided again at every
+  refuses, a `.git` that is a link or file, a hook added later, or another
+  repository inside the project leaves the agent no git allow rule and a `Bash(git:*)` deny, decided again at every
   stamp and logged `[kit]`. kb's `bash-pre` hook refuses the same live, for a
   session that starts in a terminal after the folder changed
   (`kblib/hookfast.py`, `git_withheld`). Every stamp (first load per session, before
