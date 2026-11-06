@@ -117,6 +117,100 @@ fn refuse_foreign(dir: &Path) -> Result<(), String> {
     }
 }
 
+/// What `.git/hooks` holds beyond git's own `.sample` files, of any kind, as paths from `dir`; a `.git/hooks` that isn't a real folder counts as one.
+pub(crate) fn live_hooks(dir: &Path) -> Vec<PathBuf> {
+    let rel = Path::new(".git").join("hooks");
+    let hooks = dir.join(&rel);
+    if std::fs::symlink_metadata(&hooks).is_err() {
+        return Vec::new();
+    }
+    if !crate::real_dir::is_real_dir(&hooks) {
+        return vec![rel];
+    }
+    let Ok(entries) = std::fs::read_dir(&hooks) else {
+        return vec![rel];
+    };
+    let mut live: Vec<PathBuf> = entries
+        .flatten()
+        .map(|entry| entry.file_name())
+        .filter(|name| !name.to_string_lossy().ends_with(".sample"))
+        .map(|name| rel.join(name))
+        .collect();
+    live.sort();
+    live
+}
+
+/// The first `.git` below the project's own, links never followed: git run in that folder uses its hooks and settings instead.
+fn nested_repo(dir: &Path) -> Option<PathBuf> {
+    let mut stack = vec![PathBuf::new()];
+    while let Some(rel) = stack.pop() {
+        for entry in std::fs::read_dir(dir.join(&rel))
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
+            let child = rel.join(entry.file_name());
+            if entry.file_name() == ".git" {
+                if !rel.as_os_str().is_empty() {
+                    return Some(child);
+                }
+            } else if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                stack.push(child);
+            }
+        }
+    }
+    None
+}
+
+/// Whether git runs without macOS offering to install the developer tools, as kb's `git_available` decides.
+fn git_usable() -> bool {
+    static USABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *USABLE.get_or_init(|| {
+        let Some(exe) = std::env::var_os("PATH").and_then(|path| {
+            std::env::split_paths(&path)
+                .map(|dir| dir.join("git"))
+                .find(|candidate| candidate.is_file())
+        }) else {
+            return false;
+        };
+        if std::fs::canonicalize(&exe).ok().as_deref() != Some(Path::new("/usr/bin/git")) {
+            return true;
+        }
+        Command::new("xcode-select")
+            .arg("-p")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success())
+    })
+}
+
+fn shown(rel: &Path) -> String {
+    crate::clean_text::clean_text_with_cap(
+        &crate::clean_text::clean_name(&rel.to_string_lossy()),
+        80,
+    )
+}
+
+/// Whether the agent's own plain `git` may run here: only where the app would run git itself, no hook would fire under it and no repository sits below it.
+pub(crate) fn agent_git_verdict(dir: &Path) -> Result<(), String> {
+    if let Some(nested) = nested_repo(dir) {
+        return Err(format!("{} is another repository", shown(&nested)));
+    }
+    if std::fs::symlink_metadata(dir.join(".git")).is_err() {
+        return Ok(());
+    }
+    if !git_usable() {
+        return Err("git isn't set up on this Mac".into());
+    }
+    refuse_foreign(dir)?;
+    match live_hooks(dir).first() {
+        Some(hook) => Err(format!("{} would run under git", shown(hook))),
+        None => Ok(()),
+    }
+}
+
 fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
     git_env(dir, args, &[], None)
 }
@@ -639,6 +733,62 @@ mod tests {
         set_config(&dir, "remote.origin.uploadpack", "/bin/false");
         assert!(refuse_foreign(&dir).unwrap_err().contains("uploadpack"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn live_hooks_ignores_samples_and_counts_links_and_folders() {
+        let dir = app_repo("live-hooks");
+        let hooks = dir.join(".git/hooks");
+        std::fs::create_dir_all(&hooks).unwrap();
+        assert_eq!(
+            live_hooks(&dir),
+            Vec::<PathBuf>::new(),
+            "git init's own samples"
+        );
+        std::fs::write(hooks.join("pre-commit"), "#!/bin/sh\n").unwrap();
+        std::os::unix::fs::symlink("/bin/true", hooks.join("post-checkout")).unwrap();
+        std::fs::create_dir(hooks.join("pre-push.d")).unwrap();
+        std::fs::write(hooks.join("commit-msg.sample"), "").unwrap();
+        assert_eq!(
+            live_hooks(&dir),
+            [
+                ".git/hooks/post-checkout",
+                ".git/hooks/pre-commit",
+                ".git/hooks/pre-push.d"
+            ]
+            .map(PathBuf::from)
+        );
+        std::fs::remove_dir_all(&hooks).unwrap();
+        std::os::unix::fs::symlink(std::env::temp_dir(), &hooks).unwrap();
+        assert_eq!(live_hooks(&dir), [PathBuf::from(".git/hooks")]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_live_hook_or_foreign_config_withholds_the_agents_git() {
+        let dir = temp("agent-git");
+        assert_eq!(agent_git_verdict(&dir), Ok(()), "no repository yet");
+        init_repo(&dir, "chore: create project").unwrap();
+        assert_eq!(agent_git_verdict(&dir), Ok(()));
+        let hook = dir.join(".git/hooks/pre-commit");
+        std::fs::create_dir_all(hook.parent().unwrap()).unwrap();
+        std::fs::write(&hook, "#!/bin/sh\n").unwrap();
+        let withheld = agent_git_verdict(&dir).unwrap_err();
+        assert!(withheld.contains(".git/hooks/pre-commit"), "{withheld}");
+        std::fs::remove_file(&hook).unwrap();
+        set_config(&dir, "core.fsmonitor", "/bin/true");
+        let withheld = agent_git_verdict(&dir).unwrap_err();
+        assert!(withheld.contains("core.fsmonitor"), "{withheld}");
+
+        let nested = temp("agent-git-nested");
+        std::fs::create_dir_all(nested.join("scenes/shared/.git/hooks")).unwrap();
+        assert_eq!(
+            agent_git_verdict(&nested).unwrap_err(),
+            "scenes/shared/.git is another repository",
+            "cd into it and git uses its hooks, with no root repository at all"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&nested);
     }
 
     #[test]

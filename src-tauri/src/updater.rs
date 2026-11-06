@@ -53,13 +53,24 @@ pub async fn check_for_update(
         builder = builder.endpoints(vec![url]).map_err(|e| e.to_string())?;
     }
     let updater = builder.build().map_err(|e| e.to_string())?;
-    let found = updater.check().await.map_err(|e| match e {
-        tauri_plugin_updater::Error::ReleaseNotFound => "no published release found".to_string(),
-        other => other.to_string(),
-    })?;
+    let found = updater
+        .check()
+        .await
+        .map_err(|e| match e {
+            tauri_plugin_updater::Error::ReleaseNotFound => {
+                "no published release found".to_string()
+            }
+            other => other.to_string(),
+        })
+        .inspect_err(|e| log::warn!("[update] check failed: {}", crate::audit::field(e)))?;
 
     let outcome = match found {
         Some(update) => {
+            log::info!(
+                "[update] {} is available (running {})",
+                crate::audit::field(&update.version),
+                update.current_version
+            );
             // The manifest's notes are never surfaced: anyone holding the GitHub account could write them.
             let check = UpdateCheck::Available {
                 version: update.version.clone(),
@@ -69,6 +80,7 @@ pub async fn check_for_update(
             check
         }
         None => {
+            log::info!("[update] up to date ({})", app.package_info().version);
             *pending.0.lock().map_err(|_| "updater state poisoned")? = None;
             UpdateCheck::UpToDate
         }
@@ -114,9 +126,18 @@ pub async fn install_update_and_relaunch(
         .map_err(|_| "updater state poisoned")?
         .take()
         .ok_or("no pending update; run a check first")?;
+    let version = crate::audit::field(&update.version);
+    log::info!("[update] installing {version}");
     match update.download_and_install(|_, _| {}, || {}).await {
-        Ok(()) => app.restart(),
+        Ok(()) => {
+            log::info!("[update] {version} installed, relaunching");
+            app.restart()
+        }
         Err(e) => {
+            log::warn!(
+                "[update] {version} failed to install: {}",
+                crate::audit::field(&e.to_string())
+            );
             *pending.0.lock().map_err(|_| "updater state poisoned")? = Some(update);
             Err(e.to_string())
         }

@@ -119,7 +119,11 @@ scripts/
   `settings.json`, `settings.local.json`, `skills` and `worktrees`, a nested `.claude`, a link,
   a folder, a file over 256 KB or not UTF-8, and a settings file that doesn't parse move aside
   unread. A root `CLAUDE.md` that isn't a shipped default moves only on the first open of a
-  folder; after that it is the person's.
+  folder; after that it is the person's. The same goes for hooks: on the first open everything
+  in `.git/hooks` but git's `.sample` files (a link moves as a link, and a `.git/hooks` that is
+  a link moves whole) goes to `.git/hooks.moved-aside/<name>` (then `-2`, `-3`), inside `.git` so
+  packs, the trust hash and this sweep never see it, and the review lists it. A hook that won't
+  move is logged and only keeps the agent's git off.
 - **The review** (`src-tauri/src/workspace.rs`). `AppSettings.agentFiles`, by absolute folder
   and outside it so a folder can't mark itself reviewed, records the first sweep, the app
   version and what moved. `review_agent_files_for` shows that on a native sheet (Return is Not
@@ -145,6 +149,14 @@ scripts/
   configure the agent; what the person wants the agent told goes in `CLAUDE.md` once the
   folder is open, which Claude Code reads as instructions and the stamp leaves alone past
   the RULES import.
+- **The agent's git** (`history::agent_git_verdict`, asked at every stamp). Plain `git` runs the
+  folder's hooks and the programs its `.git/config` names, so the template's five git rules stay
+  only while the app would run git there itself, no live hook remains and no other `.git` sits below
+  the root (git run in that folder would use its own hooks). Otherwise they go and
+  `deny` gains `Bash(git:*)`, with one `[kit]` line naming why; either set is the app's own, so
+  the swap is never listed for review. kb's `bash-pre` refuses any command that runs git under
+  the same verdict, checked live (`hookfast.git_withheld`), and names `./kb checkpoint`,
+  `./kb history` and `./kb diff`, which never run hooks.
 
 Managed settings:
 
