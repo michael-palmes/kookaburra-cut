@@ -10,9 +10,17 @@ use crate::workspace::{self, SettingsState};
 /// The desktop app truncates `q` here; capping first keeps the `open` argv small too.
 const MAX_PROMPT_CHARS: usize = 14_336;
 const DOWNLOAD_URL: &str = "https://claude.ai/download";
-/// docs/privacy.md on the default branch: what leaves the Mac, in plain words.
-const PRIVACY_URL: &str =
-    "https://github.com/michael-palmes/kookaburra-cut/blob/main/docs/privacy.md";
+const REPO_URL: &str = "https://github.com/michael-palmes/kookaburra-cut";
+
+/// docs/privacy.md at the installed version's tag, so the words match the build; a dev build reads `main`.
+fn privacy_url(version: &str, dev: bool) -> String {
+    let at = if dev {
+        "main".to_string()
+    } else {
+        format!("v{version}")
+    };
+    format!("{REPO_URL}/blob/{at}/docs/privacy.md")
+}
 
 /// `claude://code/new?folder=…&q=…`, form-encoded the way the app's URLSearchParams reads it back.
 fn code_session_link(folder: &Path, prompt: Option<&str>) -> String {
@@ -139,10 +147,11 @@ pub async fn open_claude_download() -> Result<(), String> {
     open_in_background(DOWNLOAD_URL.to_string()).await
 }
 
-/// The fixed privacy page, the same way: a constant URL, nothing from the caller.
+/// The fixed privacy page, the same way: the URL comes from the build's own version, nothing from the caller.
 #[tauri::command]
-pub async fn open_privacy_page() -> Result<(), String> {
-    open_in_background(PRIVACY_URL.to_string()).await
+pub async fn open_privacy_page(app: AppHandle) -> Result<(), String> {
+    let version = app.package_info().version.to_string();
+    open_in_background(privacy_url(&version, cfg!(debug_assertions))).await
 }
 
 #[cfg(test)]
@@ -181,6 +190,18 @@ mod tests {
     fn blank_prompts_are_left_out() {
         let link = code_session_link(&PathBuf::from("/Users/x/p"), Some("   "));
         assert_eq!(query(&link), vec![("folder".into(), "/Users/x/p".into())]);
+    }
+
+    #[test]
+    fn the_privacy_page_follows_the_installed_version_and_main_in_dev() {
+        assert_eq!(
+            privacy_url("0.22.2", false),
+            "https://github.com/michael-palmes/kookaburra-cut/blob/v0.22.2/docs/privacy.md"
+        );
+        assert_eq!(
+            privacy_url("0.22.2", true),
+            "https://github.com/michael-palmes/kookaburra-cut/blob/main/docs/privacy.md"
+        );
     }
 
     #[test]
