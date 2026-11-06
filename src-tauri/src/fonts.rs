@@ -662,7 +662,10 @@ fn extract_face_from_collection(data: &[u8], postscript: &str) -> Result<Vec<u8>
             continue;
         }
 
-        // Rebuild: header + directory + table data (original order, 4-byte aligned).
+        // Rebuild: header + directory + table data (original order, 4-byte aligned). The header's u16 search fields index at most 4095 tables.
+        if tables.len() >= 4096 {
+            return Err("font face declares too many tables".into());
+        }
         let num_tables = tables.len() as u16;
         let mut search_range: u16 = 1;
         let mut entry_selector: u16 = 0;
@@ -691,8 +694,9 @@ fn extract_face_from_collection(data: &[u8], postscript: &str) -> Result<Vec<u8>
                 out.push(0);
             }
             let new_offset = out.len() as u32;
+            let end = t.offset.checked_add(t.length).ok_or("table out of bounds")?;
             let bytes = data
-                .get(t.offset as usize..(t.offset + t.length) as usize)
+                .get(t.offset as usize..end as usize)
                 .ok_or("table out of bounds")?;
             out.extend_from_slice(bytes);
             let rec = dir_start + i * 16;
@@ -1031,6 +1035,46 @@ mod tests {
         assert_eq!(cache.entries.get(&key).unwrap().mtime_ms, mtime_ms);
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A collection face whose table runs past u32, or that declares more tables than an sfnt header can index, is refused rather than overflowed.
+    #[test]
+    fn a_hostile_collection_is_refused_not_overflowed() {
+        fn collection(records: &[([u8; 4], u32, u32)]) -> Vec<u8> {
+            let ps: Vec<u8> = "Tiny".encode_utf16().flat_map(u16::to_be_bytes).collect();
+            let mut name = Vec::new();
+            for field in [0u16, 1, 18, 3, 1, 0x409, 6, ps.len() as u16, 0] {
+                name.extend_from_slice(&field.to_be_bytes());
+            }
+            name.extend_from_slice(&ps);
+            let mut all = records.to_vec();
+            let name_offset = 16 + 12 + (all.len() as u32 + 1) * 16;
+            all.push((*b"name", name_offset, name.len() as u32));
+            let mut out = b"ttcf".to_vec();
+            for field in [0x0001_0000u32, 1, 16, 0x0001_0000] {
+                out.extend_from_slice(&field.to_be_bytes());
+            }
+            out.extend_from_slice(&(all.len() as u16).to_be_bytes());
+            out.extend_from_slice(&[0u8; 6]);
+            for (tag, offset, length) in &all {
+                out.extend_from_slice(tag);
+                out.extend_from_slice(&0u32.to_be_bytes());
+                out.extend_from_slice(&offset.to_be_bytes());
+                out.extend_from_slice(&length.to_be_bytes());
+            }
+            out.extend_from_slice(&name);
+            out
+        }
+        let past_the_end = collection(&[(*b"OS/2", 0xFFFF_FFF0, 0x20)]);
+        assert_eq!(
+            extract_face_from_collection(&past_the_end, "Tiny").unwrap_err(),
+            "table out of bounds"
+        );
+        let too_many = collection(&vec![(*b"glyf", 0, 1); 4095]);
+        assert_eq!(
+            extract_face_from_collection(&too_many, "Tiny").unwrap_err(),
+            "font face declares too many tables"
+        );
     }
 
     /// Best-effort: exercises the extractor against a real system collection when present.
