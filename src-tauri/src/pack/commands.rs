@@ -875,54 +875,86 @@ pub async fn stage_pack(
     on_progress: Channel<PackProgress>,
 ) -> Result<super::conflicts::ImportPlan, String> {
     let archive = Path::new(&path);
-    crate::packs_win::validate_incoming(archive)?;
-    let root = workspace::require_root(&app, &settings)?;
-    let running = app.package_info().version.to_string();
+    let shown = crate::audit::path(archive);
+    let staged: Result<super::conflicts::ImportPlan, String> = async {
+        crate::packs_win::validate_incoming(archive)?;
+        let root = workspace::require_root(&app, &settings)?;
+        let running = app.package_info().version.to_string();
 
-    let inspection = read::inspect(archive)?;
-    deny_managed_publisher(&inspection.manifest.publisher)?;
-    if read::version_lt(&running, &inspection.manifest.min_app_version) {
-        return Err(PackError::AppTooOld {
-            needs: inspection.manifest.min_app_version.clone(),
-            running,
+        let inspection = read::inspect(archive)?;
+        let manifest_publisher = &inspection.manifest.publisher;
+        log::info!(
+            "[pack] {shown}: publisher \"{}\", key {}, {}, {} items",
+            crate::audit::field(&manifest_publisher.name),
+            key::key_id_of(&manifest_publisher.public_key).unwrap_or_else(|| "unreadable".into()),
+            verdict_kind(&publisher::publisher_verdict(
+                &publisher::known_publishers(&app, &settings)?,
+                manifest_publisher,
+            )),
+            inspection.manifest.contents.item_count()
+        );
+        deny_managed_publisher(&inspection.manifest.publisher)?;
+        if read::version_lt(&running, &inspection.manifest.min_app_version) {
+            return Err(PackError::AppTooOld {
+                needs: inspection.manifest.min_app_version.clone(),
+                running,
+            }
+            .into());
         }
-        .into());
-    }
-    // Never stage a pack whose signature does not hold, whatever the UI thinks it saw earlier.
-    let Some(signature) = &inspection.signature else {
-        return Err(PackError::SignatureMissing.into());
-    };
-    if !key::verify_manifest(
-        &inspection.manifest.publisher.public_key,
-        &inspection.manifest_bytes,
-        signature,
-    ) {
-        return Err(PackError::SignatureInvalid.into());
-    }
+        // Never stage a pack whose signature does not hold, whatever the UI thinks it saw earlier.
+        let Some(signature) = &inspection.signature else {
+            return Err(PackError::SignatureMissing.into());
+        };
+        if !key::verify_manifest(
+            &inspection.manifest.publisher.public_key,
+            &inspection.manifest_bytes,
+            signature,
+        ) {
+            return Err(PackError::SignatureInvalid.into());
+        }
 
-    let cancel = state.reset_cancel();
-    let cancelled = cancel.clone();
-    let staged = read::stage(
-        archive,
-        &root,
-        &inspection.manifest,
-        |bytes, total_bytes| {
-            let _ = on_progress.send(PackProgress {
-                file: 0,
-                total: 0,
-                bytes,
-                total_bytes,
-                stage: "unpacking",
-            });
-        },
-        &move || cancelled.load(Ordering::SeqCst),
-    )?;
+        let cancel = state.reset_cancel();
+        let cancelled = cancel.clone();
+        let staged = read::stage(
+            archive,
+            &root,
+            &inspection.manifest,
+            |bytes, total_bytes| {
+                let _ = on_progress.send(PackProgress {
+                    file: 0,
+                    total: 0,
+                    bytes,
+                    total_bytes,
+                    stage: "unpacking",
+                });
+            },
+            &move || cancelled.load(Ordering::SeqCst),
+        )?;
 
-    let plan = super::conflicts::plan_conflicts(&root, &staged, &selection)?;
-    if let Ok(mut guard) = state.staged.lock() {
-        *guard = Some(staged);
+        let plan = super::conflicts::plan_conflicts(&root, &staged, &selection)?;
+        if let Ok(mut guard) = state.staged.lock() {
+            *guard = Some(staged);
+        }
+        Ok(plan)
     }
-    Ok(plan)
+    .await;
+    match &staged {
+        Ok(plan) => log::info!(
+            "[pack] {shown}: staged, {} items to place",
+            plan.items.len()
+        ),
+        Err(e) => log::warn!("[pack] {shown}: refused: {}", crate::audit::field(e)),
+    }
+    staged
+}
+
+fn verdict_kind(verdict: &publisher::PublisherVerdict) -> &'static str {
+    match verdict {
+        publisher::PublisherVerdict::FirstTime => "first time",
+        publisher::PublisherVerdict::Known { .. } => "known",
+        publisher::PublisherVerdict::NameChanged { .. } => "name changed",
+        publisher::PublisherVerdict::KeyChanged { .. } => "key changed",
+    }
 }
 
 #[tauri::command]
@@ -945,7 +977,8 @@ pub async fn apply_import(
     let publisher_block = staged.manifest.publisher.clone();
     let pack_name = staged.manifest.pack.name.clone();
 
-    let outcome = super::apply::apply_import(&root, staged, &resolutions, |done, total, label| {
+    let key_id = key::key_id_of(&publisher_block.public_key).unwrap_or_else(|| "unreadable".into());
+    let applied = super::apply::apply_import(&root, staged, &resolutions, |done, total, label| {
         let _ = on_progress.send(PackProgress {
             file: done,
             total,
@@ -954,7 +987,22 @@ pub async fn apply_import(
             stage: "applying",
         });
         let _ = label;
-    })?;
+    });
+    let outcome = match applied {
+        Ok(outcome) => outcome,
+        Err(e) => {
+            let e = String::from(e);
+            log::warn!(
+                "[pack] key {key_id}: import failed: {}",
+                crate::audit::field(&e)
+            );
+            return Err(e);
+        }
+    };
+    log::info!(
+        "[pack] key {key_id}: imported, {}",
+        outcome_counts(&outcome)
+    );
 
     // A slug a pack wrote now holds a publisher's content, so its consent is gone; keep-both lands under a fresh slug.
     for result in &outcome.results {
@@ -971,7 +1019,7 @@ pub async fn apply_import(
             _ => continue,
         };
         if let Err(e) = workspace::forget_project_trust(&app, &settings, &trust, &id) {
-            eprintln!("[packs] forgetting trust for {id} failed: {e}");
+            log::warn!("[pack] forgetting trust for {id} failed: {e}");
         }
     }
 
@@ -986,7 +1034,7 @@ pub async fn apply_import(
     }) {
         if let Err(e) = publisher::remember_publisher(&app, &settings, &publisher_block, &pack_name)
         {
-            eprintln!("[packs] recording the publisher failed: {e}");
+            log::warn!("[pack] recording the publisher failed: {e}");
         }
     }
 
@@ -994,6 +1042,23 @@ pub async fn apply_import(
     use tauri::Emitter;
     let _ = app.emit("kookaburra://workspace-changed", ());
     Ok(outcome)
+}
+
+fn outcome_counts(outcome: &super::apply::ImportOutcome) -> String {
+    use super::apply::ItemOutcome;
+    let count = |kind: ItemOutcome| outcome.results.iter().filter(|r| r.outcome == kind).count();
+    let mut text = format!(
+        "{} added, {} replaced, {} kept both, {} skipped, {} failed",
+        count(ItemOutcome::Added),
+        count(ItemOutcome::Replaced),
+        count(ItemOutcome::KeptBoth),
+        count(ItemOutcome::Skipped),
+        count(ItemOutcome::Failed)
+    );
+    if outcome.stopped_at.is_some() {
+        text.push_str(", stopped early");
+    }
+    text
 }
 
 #[tauri::command]

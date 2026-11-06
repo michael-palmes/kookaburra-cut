@@ -275,23 +275,24 @@ fn system_source() -> impl PreferenceSource {
     HashMap::<&'static str, PrefValue>::new()
 }
 
-/// One `[managed]` line for the forced keys and one per malformed one, at boot; stderr like the other modules' lines, so a packaged app reports it too.
+/// One `[managed]` line for the forced keys and one per malformed one, at boot, in the app log.
 pub fn log_at_boot() {
     let policy = policy();
     if !policy.managed {
         return;
     }
-    eprintln!(
+    log::info!(
         "[managed] configuration profile forces: {}",
         policy.forced_keys.join(", ")
     );
     for issue in &policy.issues {
-        eprintln!("[managed] {issue}");
+        log::warn!("[managed] {issue}");
     }
 }
 
-/// The error a refused command returns: the reason, then the key, so support can find the profile.
+/// The error a refused command returns: the reason, then the key, so support can find the profile. Every refusal passes here, so each is logged.
 pub fn refusal(key: Key) -> String {
+    log::warn!("[managed] refused: {}", key.name());
     format!("{REASON_PREFIX} {} ({}).", key.reason(), key.name())
 }
 

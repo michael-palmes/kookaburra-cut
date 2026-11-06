@@ -119,9 +119,12 @@ the same forced keys). Replace the UUIDs with your own.
 2. Launch the app. Settings ▸ Claude shows locked rows, the titlebar has no
    Edit with Claude, the Project menu has no Edit with Claude item, and a new
    project opens without the launcher.
-3. In a dev build, the terminal that runs `pnpm tauri dev` shows
-   `[managed] configuration profile forces: DisableClaude` at boot, plus one
-   line per malformed key.
+3. `~/Library/Application Support/com.mpalmes.kookaburracut/logs/app.log`
+   shows `[managed] configuration profile forces: DisableClaude` at boot, plus
+   one line per malformed key and a `[managed] refused:` line naming the key
+   each time a command is refused (`src-tauri/src/managed.rs`, written by
+   `audit.rs`). A dev build prints the same lines in the terminal that runs
+   `pnpm tauri dev`.
 4. The negative check: without a profile,
    `defaults write com.mpalmes.kookaburracut DisableClaude -bool true` changes
    nothing, because the key is set but not forced. `defaults delete` it
