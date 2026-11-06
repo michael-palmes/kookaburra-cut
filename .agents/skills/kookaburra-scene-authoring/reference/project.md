@@ -155,7 +155,7 @@ line (`--json` adds palette and faces); `./kb theme show <id>` prints tokens. Se
 
 Thirty-five themes in four collections, every one tuned for readability first: strong
 secondary-label contrast and calm, low-contrast backgrounds (slow mesh gradients, faint
-grids or one soft 3D dome at most).
+grids or one faint 3D look at most, such as Frost's dome or Obsidian Stage's light shafts).
 
 | Theme | Mode | Mood | Faces |
 | --- | --- | --- | --- |
