@@ -1,0 +1,51 @@
+{
+  "version": 2,
+  "name": "One Dot",
+  "tagline": "For ideas with no screen to show: one dot becomes every graphic in turn, and the numbers are the copy.",
+  "category": "proof",
+  "tags": ["explainer", "numbers", "concept", "one take", "motion graphics", "pricing"],
+  "personas": ["finance", "co-founder", "marketer"],
+  "level": "showcase",
+  "tier": "bold",
+  "uses": [],
+  "highlights": [
+    "One shape carries the whole film, with no cuts",
+    "Counters roll as the dots change colour",
+    "The logo is the last morph"
+  ],
+  "bring": [
+    "4 or 5 real numbers with short labels",
+    "A two-word product category",
+    "Logo mark",
+    "Brand colour"
+  ],
+  "looks": ["kookaburra-daylight", "kookaburra-mid-century", "kookaburra-blue-hour"],
+  "preview": {
+    "poster": 0,
+    "frames": [
+      {
+        "scene": 0,
+        "atMs": 6600
+      },
+      {
+        "scene": 0,
+        "atMs": 16900
+      },
+      {
+        "scene": 0,
+        "atMs": 22500
+      },
+      {
+        "scene": 0,
+        "atMs": 41250
+      }
+    ],
+    "loop": {
+      "scene": 0,
+      "atMs": 13125,
+      "durationMs": 6000
+    }
+  },
+  "order": 112,
+  "status": "beta"
+}

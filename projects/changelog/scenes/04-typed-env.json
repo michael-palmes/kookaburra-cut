@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Change 2",
+  "text": {
+    "label": "04 · Change 2",
+    "bars": "Bars 9–10",
+    "copy": "Typed env config",
+    "shot": "Before and after code, with only the changed lines lit."
+  }
+}

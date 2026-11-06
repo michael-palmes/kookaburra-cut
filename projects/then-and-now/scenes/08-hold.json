@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Hold",
+  "text": {
+    "label": "08 · Hold",
+    "bars": "Bars 15–16",
+    "copy": "",
+    "shot": "The old version fades out of the last frame and the new one holds."
+  }
+}

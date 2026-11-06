@@ -1,0 +1,41 @@
+{
+  "id": "everywhere",
+  "name": "Everywhere",
+  "version": 2,
+  "themeId": "kookaburra-soft-field",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/01-phone.tsx",
+      "durationMs": 3750
+    },
+    {
+      "file": "scenes/02-phone-closer.tsx",
+      "durationMs": 3750
+    },
+    {
+      "file": "scenes/03-hand-off.tsx",
+      "durationMs": 3750
+    },
+    {
+      "file": "scenes/04-laptop.tsx",
+      "durationMs": 3750
+    },
+    {
+      "file": "scenes/05-three-sizes.tsx",
+      "durationMs": 3750
+    },
+    {
+      "file": "scenes/06-tablet.tsx",
+      "durationMs": 1875
+    },
+    {
+      "file": "scenes/07-one-to-many.tsx",
+      "durationMs": 3750
+    },
+    {
+      "file": "scenes/08-lockup.tsx",
+      "durationMs": 5625
+    }
+  ]
+}
