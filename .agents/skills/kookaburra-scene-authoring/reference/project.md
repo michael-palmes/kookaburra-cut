@@ -351,5 +351,6 @@ beat timings, repeated sizes. Nothing renders from it directly.
 - The app icon is the fixed path `assets/app-icon.png` (BrandLockup reads it). Replace
   that file to change it; keep it square.
 - `*-sample.*` files, `sample-*-recording.mp4` and `app-icon.png` are bundled
-  placeholders the app restores on load. Use them for drafts; deleting them only
-  brings them back.
+  placeholders. A project holds the ones its files name, plus `app-icon.png`; the rest
+  are listed in `catalog.json` `samplePool`. Name one in a scene and the app copies it
+  into `assets/` on the next load. Use them for drafts.

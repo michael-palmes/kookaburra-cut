@@ -23,8 +23,11 @@ pub(crate) const MANIFEST_FILENAME: &str = "project.json";
 /// The template manifest a bundled project must carry to be creatable from; the frontend registry (`src/engine/templates.ts`) globs the same file. Spikes and preview labs never carry one, so they self-exclude from both.
 const TEMPLATE_FILENAME: &str = "template.json";
 
-/// The shared sample media pool inside the bundled tree, seeded into every new project's assets/ rather than copied into every template.
+/// The shared sample media pool inside the bundled tree: a project gets the samples it names, rather than every template shipping copies.
 const SAMPLES_DIR_NAME: &str = "_samples";
+
+/// Pool samples seeded whether or not a project names them: the fixed app icon path `BrandLockup` and the app icon picker read.
+const ALWAYS_SEEDED_SAMPLES: [&str; 1] = ["app-icon.png"];
 
 /// Sample screenshots seeded into every new project's assets (screen pickers never start empty).
 const SAMPLE_SCREENSHOTS: [(&str, &[u8]); 4] = [
@@ -1802,8 +1805,6 @@ pub fn create_project(
     // Always present even when the template ships none (e.g. "blank", since empty dirs don't survive git): media import and relative asset references expect the folder.
     std::fs::create_dir_all(dir.join("assets")).map_err(|e| e.to_string())?;
     std::fs::create_dir_all(dir.join("edits")).map_err(|e| e.to_string())?;
-    // Templates reference the shared samples by name without shipping them, so seed the pool here (same ancient stamping as the backfill, so they sort below the user's own media).
-    copy_missing_sample_assets(&samples_root(&app), &dir.join("assets"))?;
     for (i, (name, bytes)) in SAMPLE_SCREENSHOTS.iter().enumerate() {
         let dest = dir.join("assets").join(name);
         if !dest.exists() {
@@ -1825,6 +1826,10 @@ pub fn create_project(
     }
     let pretty = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
     std::fs::write(dir.join(MANIFEST_FILENAME), pretty + "\n").map_err(|e| e.to_string())?;
+    // Templates name the shared samples without shipping them; seeding reads the copied project, so it runs once the manifest is in place, and a miss is healed on load rather than failing the create.
+    if let Err(e) = copy_missing_sample_assets(&samples_root(&app), &dir) {
+        log::warn!("[samples] {slug}: seeding deferred to the first load: {e}");
+    }
 
     // Claude Code provisioning, shared with the per-open re-stamp (see `stamp_claude_provisioning`).
     stamp_claude_provisioning(&app, &dir)?;
@@ -2071,7 +2076,7 @@ const SAMPLE_MEDIA_EXTENSIONS: [&str; 7] = ["png", "jpg", "jpeg", "webp", "mp4",
 /// The screenshots' ancient-stamp indices start here so a growing pool never reorders them.
 const SAMPLE_SCREENSHOT_STAMP_OFFSET: u64 = 100;
 
-/// The samples `ensure_sample_assets` restores at every project load; deleting one only brings it back, so the unused sweep leaves the whole pool alone.
+/// Every pool name, which the unused sweep and the conform check leave alone: projects made before seeding followed references hold the whole pool, and those copies are the app's samples, not the user's imports.
 pub(crate) fn backfilled_sample_names(app: &AppHandle) -> Vec<String> {
     pool_sample_names(&samples_root(app))
 }
@@ -2105,13 +2110,20 @@ fn pool_sample_names(source_assets: &Path) -> Vec<String> {
     names
 }
 
-/// Copy each pool sample into the project's assets/ only when missing; never clobbers. Fresh copies and existing untouched copies are ancient-stamped so they sit below the user's own media; a user-replaced file never matches the bundled bytes and keeps its own dates.
+/// Copy each pool sample the project names (and the always-seeded icon) into its assets/ when missing; never clobbers. A sample is named by the in-use rule (`media::AssetRefs`) over the project's own files, so exactly the samples a delete would refuse are seeded and restored. Fresh copies and existing untouched copies are ancient-stamped so they sit below the user's own media; a user-replaced file never matches the bundled bytes and keeps its own dates.
 pub(crate) fn copy_missing_sample_assets(
     source_assets: &Path,
-    project_assets: &Path,
+    project: &Path,
 ) -> Result<(), String> {
-    std::fs::create_dir_all(project_assets).map_err(|e| e.to_string())?;
+    let project_assets = project.join("assets");
+    std::fs::create_dir_all(&project_assets).map_err(|e| e.to_string())?;
+    let refs = crate::media::project_asset_refs(project);
     for (i, name) in pool_sample_names(source_assets).iter().enumerate() {
+        let named = ALWAYS_SEEDED_SAMPLES.contains(&name.as_str())
+            || !refs.references(&format!("assets/{name}")).is_empty();
+        if !named {
+            continue;
+        }
         let dst = project_assets.join(name);
         let src = source_assets.join(name);
         if dst.exists() {
@@ -2130,7 +2142,7 @@ pub(crate) fn copy_missing_sample_assets(
     Ok(())
 }
 
-/// Backfill the bundled sample assets into a workspace project (projects created before the samples were vendored into every template).
+/// Restore the pool samples a workspace project names when they are missing (deleted outside the app, or named by a scene written outside it); the frontend calls it on every project load.
 #[tauri::command]
 pub fn ensure_sample_assets(
     app: AppHandle,
@@ -2144,7 +2156,7 @@ pub fn ensure_sample_assets(
         return Err(format!("\"{slug}\" is not a project folder"));
     }
     let project_assets = dir.join("assets");
-    copy_missing_sample_assets(&samples_root(&app), &project_assets)?;
+    copy_missing_sample_assets(&samples_root(&app), &dir)?;
     // The creation-seeded screenshots heal the same way (their bundled bytes are embedded).
     for (i, (name, bytes)) in SAMPLE_SCREENSHOTS.iter().enumerate() {
         let dst = project_assets.join(name);
@@ -3670,15 +3682,51 @@ mod tests {
         dir
     }
 
+    /// A scratch project whose manifest, sidecar and scene module name the given assets.
+    fn sample_naming_project(manifest: &[&str], sidecar: &[&str], module: &[&str]) -> PathBuf {
+        let dir = scratch_dir();
+        let audio = manifest
+            .first()
+            .map(|rel| format!(r#","audio":{{"file":"{rel}"}}"#))
+            .unwrap_or_default();
+        std::fs::write(
+            dir.join(MANIFEST_FILENAME),
+            format!(
+                r#"{{"id":"p","name":"P","themeId":"t","scenes":[{{"file":"scenes/01-a.tsx","durationMs":1000}}]{audio}}}"#
+            ),
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.join("scenes")).unwrap();
+        let media: Vec<String> = sidecar
+            .iter()
+            .map(|rel| format!(r#"{{"src":"{rel}"}}"#))
+            .collect();
+        std::fs::write(
+            dir.join("scenes/01-a.json"),
+            format!(r#"{{"version":1,"media":[{}]}}"#, media.join(",")),
+        )
+        .unwrap();
+        let shots: Vec<String> = module
+            .iter()
+            .map(|rel| format!(r#"<Shot src="{rel}" />"#))
+            .collect();
+        std::fs::write(dir.join("scenes/01-a.tsx"), shots.join("\n")).unwrap();
+        dir
+    }
+
     #[test]
     fn copy_missing_sample_assets_is_idempotent_and_never_clobbers() {
         let source = scratch_dir();
         std::fs::write(source.join("sample-phone-recording.mp4"), b"video-bytes").unwrap();
         std::fs::write(source.join("app-icon.png"), b"icon-bytes").unwrap();
-        let dest_root = scratch_dir();
-        let dest = dest_root.join("assets");
+        let project = sample_naming_project(
+            &["assets/sample-phone-recording.mp4"],
+            &["assets/sample-laptop-recording.mp4"],
+            &[],
+        );
+        let dest = project.join("assets");
 
-        copy_missing_sample_assets(&source, &dest).unwrap();
+        copy_missing_sample_assets(&source, &project).unwrap();
         assert_eq!(
             std::fs::read(dest.join("sample-phone-recording.mp4")).unwrap(),
             b"video-bytes"
@@ -3690,17 +3738,17 @@ mod tests {
 
         // A project's own same-named file survives a later backfill.
         std::fs::write(dest.join("app-icon.png"), b"user-file").unwrap();
-        copy_missing_sample_assets(&source, &dest).unwrap();
+        copy_missing_sample_assets(&source, &project).unwrap();
         assert_eq!(
             std::fs::read(dest.join("app-icon.png")).unwrap(),
             b"user-file"
         );
 
-        // A missing source file is skipped, not an error (sample-laptop-recording.mp4 here).
+        // A named sample the pool doesn't hold is skipped, not an error.
         assert!(!dest.join("sample-laptop-recording.mp4").exists());
 
         let _ = std::fs::remove_dir_all(&source);
-        let _ = std::fs::remove_dir_all(&dest_root);
+        let _ = std::fs::remove_dir_all(&project);
     }
 
     #[test]
@@ -3710,9 +3758,9 @@ mod tests {
         std::fs::write(source.join(".DS_Store"), b"junk").unwrap();
         std::fs::write(source.join("home-light-sample.jpg"), b"jpg").unwrap();
         std::fs::write(source.join("app-icon.png"), b"png").unwrap();
-        let dest_root = scratch_dir();
-        let dest = dest_root.join("assets");
-        copy_missing_sample_assets(&source, &dest).unwrap();
+        let project = sample_naming_project(&[], &["assets/home-light-sample.jpg"], &[]);
+        let dest = project.join("assets");
+        copy_missing_sample_assets(&source, &project).unwrap();
         assert!(dest.join("home-light-sample.jpg").is_file());
         assert!(dest.join("app-icon.png").is_file());
         assert!(!dest.join("README.md").exists());
@@ -3725,7 +3773,71 @@ mod tests {
             ]
         );
         let _ = std::fs::remove_dir_all(&source);
-        let _ = std::fs::remove_dir_all(&dest_root);
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn seeding_copies_only_the_samples_a_project_names() {
+        let source = scratch_dir();
+        for name in [
+            "app-icon.png",
+            "first-sample.mp4",
+            "second-sample.jpg",
+            "third-sample.jpg",
+            "unnamed-sample.mp4",
+        ] {
+            std::fs::write(source.join(name), name.as_bytes()).unwrap();
+        }
+        let project = sample_naming_project(
+            &["assets/first-sample.mp4"],
+            &["assets/second-sample.jpg"],
+            &["assets/third-sample.jpg"],
+        );
+        copy_missing_sample_assets(&source, &project).unwrap();
+        let mut seeded: Vec<String> = std::fs::read_dir(project.join("assets"))
+            .unwrap()
+            .flatten()
+            .filter_map(|e| e.file_name().to_str().map(str::to_owned))
+            .collect();
+        seeded.sort();
+        assert_eq!(
+            seeded,
+            [
+                "app-icon.png",
+                "first-sample.mp4",
+                "second-sample.jpg",
+                "third-sample.jpg"
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&source);
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn a_named_sample_comes_back_and_an_unnamed_one_stays_deleted() {
+        let source = scratch_dir();
+        std::fs::write(source.join("named-sample.jpg"), b"named").unwrap();
+        std::fs::write(source.join("unnamed-sample.jpg"), b"unnamed").unwrap();
+        let project = sample_naming_project(&[], &["assets/named-sample.jpg"], &[]);
+        let dest = project.join("assets");
+        // A project made before seeding followed references holds the whole pool.
+        std::fs::create_dir_all(&dest).unwrap();
+        std::fs::write(dest.join("unnamed-sample.jpg"), b"unnamed").unwrap();
+
+        copy_missing_sample_assets(&source, &project).unwrap();
+        assert!(dest.join("named-sample.jpg").is_file());
+        assert!(
+            dest.join("unnamed-sample.jpg").is_file(),
+            "an existing copy is never removed"
+        );
+
+        std::fs::remove_file(dest.join("named-sample.jpg")).unwrap();
+        std::fs::remove_file(dest.join("unnamed-sample.jpg")).unwrap();
+        copy_missing_sample_assets(&source, &project).unwrap();
+        assert!(dest.join("named-sample.jpg").is_file());
+        assert!(!dest.join("unnamed-sample.jpg").exists());
+        let _ = std::fs::remove_dir_all(&source);
+        let _ = std::fs::remove_dir_all(&project);
     }
 
     #[test]

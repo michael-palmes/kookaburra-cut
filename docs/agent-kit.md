@@ -1833,7 +1833,8 @@ summary, from `DEVICE_MEDIA_KEYS`), `camera` (`presets`, `dof`, `motionBlur`), `
 `projectManifest` (`version`, `keys`), `toolkit` (`imports`, `exports`), `presets`,
 `templates`, `exportPresets` (the Export modal's video rows: `aspects`, `favouredAspect`, `fps`,
 `shortEdge`, `codec`, `container`, `loudnessTarget`, `lane`, `hardware`), `samplePool` (the
-bundled placeholder assets the app restores, which the in-use rule always keeps). Every entry
+bundled placeholder assets, which the in-use rule always keeps; the app seeds and restores the
+ones a project names). Every entry
 has an `id`; most have `label` and a one-line `summary`.
 
 ## The toolkit reference
