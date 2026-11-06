@@ -1,0 +1,35 @@
+{
+  "version": 2,
+  "name": "Field Notes",
+  "tagline": "A launch told like a field journal: paper, ink and specimen plates, then a speed-up into your wordmark.",
+  "category": "launch",
+  "tags": ["editorial", "paper", "journal", "launch", "wordmark", "handmade"],
+  "personas": ["marketer", "co-founder"],
+  "level": "showcase",
+  "tier": "bold",
+  "uses": [],
+  "highlights": [
+    "Graphics at 12 frames a second on jittering paper",
+    "Screens pinned as specimen plates",
+    "A speed-up montage into a wordmark built letter by letter"
+  ],
+  "bring": [
+    "Product name and its family",
+    "A hook line and an answer line",
+    "5 screens",
+    "One comparison: two labels and a number",
+    "Wordmark"
+  ],
+  "looks": ["kookaburra-ivory", "kookaburra-basel", "kookaburra-ink"],
+  "preview": {
+    "poster": 3,
+    "frames": [3, 4, 6, 11],
+    "loop": {
+      "scene": 10,
+      "atMs": 1875,
+      "durationMs": 6000
+    }
+  },
+  "order": 105,
+  "status": "beta"
+}

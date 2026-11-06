@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "name": "Teaser",
+  "tagline": "Show almost nothing: a rim of light, three words in huge condensed caps, the product as a letter, then the date.",
+  "category": "launch",
+  "tags": ["teaser", "coming soon", "launch", "date", "social", "dark"],
+  "personas": ["marketer", "co-founder"],
+  "level": "standard",
+  "tier": "bold",
+  "uses": [],
+  "highlights": [
+    "A rim of light and a macro crash-in",
+    "Claim words in huge condensed caps, cropped past the frame",
+    "The device turns edge-on and becomes a letter"
+  ],
+  "bring": ["Logo", "Launch date", "3 to 6 claim words", "3 cropped screens"],
+  "looks": ["kookaburra-onyx", "kookaburra-night-drive", "kookaburra-basel"],
+  "preview": {
+    "poster": 6,
+    "frames": [0, 2, 5, 6],
+    "loop": {
+      "scene": 4,
+      "atMs": 0,
+      "durationMs": 6000
+    }
+  },
+  "order": 106,
+  "status": "beta"
+}

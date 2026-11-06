@@ -1,0 +1,41 @@
+{
+  "id": "by-the-numbers",
+  "name": "By the Numbers",
+  "version": 2,
+  "themeId": "kookaburra-onyx",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/01-claim.tsx",
+      "durationMs": 3750
+    },
+    {
+      "file": "scenes/02-number-one.tsx",
+      "durationMs": 3750
+    },
+    {
+      "file": "scenes/03-label-one.tsx",
+      "durationMs": 1875
+    },
+    {
+      "file": "scenes/04-number-two.tsx",
+      "durationMs": 5625
+    },
+    {
+      "file": "scenes/05-trend.tsx",
+      "durationMs": 3750
+    },
+    {
+      "file": "scenes/06-trend-peak.tsx",
+      "durationMs": 1875
+    },
+    {
+      "file": "scenes/07-number-three.tsx",
+      "durationMs": 5625
+    },
+    {
+      "file": "scenes/08-lockup.tsx",
+      "durationMs": 3750
+    }
+  ]
+}

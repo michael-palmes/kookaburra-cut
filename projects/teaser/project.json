@@ -1,0 +1,41 @@
+{
+  "id": "teaser",
+  "name": "Teaser",
+  "version": 2,
+  "themeId": "kookaburra-onyx",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/01-rim.tsx",
+      "durationMs": 1875
+    },
+    {
+      "file": "scenes/02-crash-in.tsx",
+      "durationMs": 1875
+    },
+    {
+      "file": "scenes/03-word-calmer.tsx",
+      "durationMs": 1875
+    },
+    {
+      "file": "scenes/04-word-clearer.tsx",
+      "durationMs": 1875
+    },
+    {
+      "file": "scenes/05-word-yours.tsx",
+      "durationMs": 1875
+    },
+    {
+      "file": "scenes/06-letter.tsx",
+      "durationMs": 1875
+    },
+    {
+      "file": "scenes/07-date.tsx",
+      "durationMs": 1875
+    },
+    {
+      "file": "scenes/08-logo.tsx",
+      "durationMs": 1875
+    }
+  ]
+}

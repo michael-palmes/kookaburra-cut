@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "name": "By the Numbers",
+  "tagline": "When the numbers are the news: glass figures you can walk around, counters on the beat, a trend drawn in light.",
+  "category": "proof",
+  "tags": ["numbers", "stats", "metrics", "impact", "counter", "year in review"],
+  "personas": ["marketer", "finance", "co-founder"],
+  "level": "standard",
+  "tier": "safe",
+  "uses": [],
+  "highlights": [
+    "Glass numerals that catch the light",
+    "Counters that roll and tick on the beat",
+    "A trend drawn as a trail of light"
+  ],
+  "bring": ["3 or 4 numbers with labels", "Optional data for the trend"],
+  "looks": ["kookaburra-onyx", "kookaburra-blue-hour", "kookaburra-frost"],
+  "preview": {
+    "poster": 1,
+    "frames": [1, 3, 4, 6],
+    "loop": {
+      "scene": 1,
+      "atMs": 0,
+      "durationMs": 6000
+    }
+  },
+  "order": 108,
+  "status": "beta"
+}

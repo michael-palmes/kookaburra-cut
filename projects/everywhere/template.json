@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "name": "Everywhere",
+  "tagline": "Now on every screen: phone, tablet and laptop move as one, with a hand-off between them.",
+  "category": "launch",
+  "tags": ["cross-platform", "devices", "phone", "tablet", "laptop", "launch"],
+  "personas": ["marketer", "pm"],
+  "level": "showcase",
+  "tier": "safe",
+  "uses": [],
+  "highlights": [
+    "Devices enter on a choreographed arc",
+    "A card hands off from phone to laptop in one move",
+    "Five devices, five live screens for the lockup"
+  ],
+  "bring": ["Matching screens for each device", "Product name", "A platforms line"],
+  "looks": ["kookaburra-soft-field", "kookaburra-sky", "kookaburra-daylight"],
+  "preview": {
+    "poster": 6,
+    "frames": [0, 2, 4, 6],
+    "loop": {
+      "scene": 2,
+      "atMs": 0,
+      "durationMs": 6000
+    }
+  },
+  "order": 109,
+  "status": "beta"
+}

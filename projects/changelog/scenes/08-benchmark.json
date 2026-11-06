@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Benchmark",
+  "text": {
+    "label": "08 · Benchmark",
+    "bars": "Bars 17–18 · hit",
+    "copy": "38% faster cold starts",
+    "shot": "Hit: a benchmark counter rolls through the final phrase."
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "version": 2,
+  "name": "Exhibition",
+  "tagline": "A product tour hung like an exhibition: one slow take through a top-lit gallery, a wall label for every screen.",
+  "category": "feature",
+  "tags": ["gallery", "tour", "exhibition", "one take", "screens", "showcase"],
+  "personas": ["marketer", "co-founder", "pm"],
+  "level": "showcase",
+  "tier": "bold",
+  "uses": [],
+  "highlights": [
+    "One take with no cuts, paced by the music",
+    "Framed screens with museum wall labels",
+    "Focus pulls from each frame to its label"
+  ],
+  "bring": ["4 to 6 screens", "A title and a one-line caption for each"],
+  "looks": ["kookaburra-ivory", "kookaburra-mid-century", "kookaburra-ink"],
+  "preview": {
+    "poster": 0,
+    "frames": [
+      {
+        "scene": 0,
+        "atMs": 3750
+      },
+      {
+        "scene": 0,
+        "atMs": 18750
+      },
+      {
+        "scene": 0,
+        "atMs": 26250
+      },
+      {
+        "scene": 0,
+        "atMs": 41250
+      }
+    ],
+    "loop": {
+      "scene": 0,
+      "atMs": 13125,
+      "durationMs": 6000
+    }
+  },
+  "order": 111,
+  "status": "beta"
+}

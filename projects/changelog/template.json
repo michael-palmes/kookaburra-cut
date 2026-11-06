@@ -1,0 +1,34 @@
+{
+  "version": 2,
+  "name": "Changelog",
+  "tagline": "For SDKs, APIs and CLIs: a command runs, the version chain advances, the diff lights up and the benchmark lands.",
+  "category": "ai-developer",
+  "tags": ["developer", "changelog", "release", "cli", "sdk", "api"],
+  "personas": ["developer", "pm"],
+  "level": "standard",
+  "tier": "safe",
+  "uses": [],
+  "highlights": [
+    "A typed command at real cadence",
+    "Version cards chained along dashed rules",
+    "Changed lines lit, then a benchmark counter"
+  ],
+  "bring": [
+    "Version number",
+    "3 to 6 changes",
+    "The upgrade command",
+    "Optional code snippet and benchmark"
+  ],
+  "looks": ["kookaburra-mainframe", "kookaburra-afterglow", "kookaburra-basel"],
+  "preview": {
+    "poster": 1,
+    "frames": [0, 1, 2, 7],
+    "loop": {
+      "scene": 0,
+      "atMs": 0,
+      "durationMs": 6000
+    }
+  },
+  "order": 110,
+  "status": "beta"
+}

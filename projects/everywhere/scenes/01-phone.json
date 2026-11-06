@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Phone",
+  "text": {
+    "label": "01 · Phone",
+    "bars": "Bars 1–2",
+    "copy": "Plan on your phone.",
+    "shot": "The phone enters on a choreographed arc with today's plan on screen."
+  }
+}
