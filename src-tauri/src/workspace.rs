@@ -2402,8 +2402,13 @@ pub(crate) fn forget_project_trust(
     })
 }
 
-/// Settings ▸ Clear all app data: every session allow goes, so no project passes on this launch's word.
+/// Settings ▸ Clear all app data: every session allow and unredeemed Allow goes, so no project passes on this launch's word.
 pub(crate) fn forget_session_trust(trust: &TrustState) {
+    trust
+        .nonces
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clear();
     trust
         .session
         .lock()

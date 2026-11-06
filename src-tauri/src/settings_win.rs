@@ -135,9 +135,22 @@ pub fn forget_allowed_project(
     slug: String,
 ) -> Result<(), String> {
     workspace::require_window(&window, "settings")?;
+    let open = workspace::load_settings(&app, &state)?.last_project;
+    if open.as_deref() == Some(main_window_id(&slug).as_str()) {
+        return Err("that project is open: close it in Kookaburra Cut first".into());
+    }
     workspace::forget_project_trust(&app, &state, &trust, &slug)?;
     log::info!("[trust] {slug}: forgotten in Settings");
     Ok(())
+}
+
+/// A grant's key as the main window names the project: workspace slugs carry `ws:`, library ids already have their scope.
+fn main_window_id(key: &str) -> String {
+    if key.contains(':') {
+        key.to_owned()
+    } else {
+        format!("ws:{key}")
+    }
 }
 
 /// Why Clear all app data must wait: each of these reads what the clear removes.
@@ -193,9 +206,6 @@ pub async fn clear_app_data(
     if let Err(e) = workspace::reset_settings(&app, &state) {
         failed.push(format!("settings: {e}"));
     }
-    if let Err(e) = website::clear_stored_data(&app, &websites, None).await {
-        failed.push(format!("Website data: {e}"));
-    }
     if let Err(e) = clip_cache::clear(&app) {
         failed.push(format!("clip cache: {e}"));
     }
@@ -214,6 +224,10 @@ pub async fn clear_app_data(
         autorun.as_deref(),
     ));
     privacy::seal_cache_roots(&app_data);
+    // Last, so no await sits between the recheck and the files an export would read.
+    if let Err(e) = website::clear_stored_data(&app, &websites, None).await {
+        failed.push(format!("Website data: {e}"));
+    }
     log::info!(
         "[settings] cleared all app data; {} part(s) could not be cleared",
         failed.len()
@@ -364,6 +378,15 @@ mod tests {
     fn touch(path: &Path) {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, b"x").unwrap();
+    }
+
+    #[test]
+    fn a_grant_key_matches_the_main_windows_project_id() {
+        assert_eq!(main_window_id("product-tour"), "ws:product-tour");
+        assert_eq!(
+            main_window_id("ws-template:launch-kit"),
+            "ws-template:launch-kit"
+        );
     }
 
     #[test]
