@@ -26977,6 +26977,500 @@
       ]
     },
     {
+      "id": "unveil",
+      "label": "Unveil",
+      "summary": "The big reveal: out of the dark on the first hit, three features, the name on the final hit.",
+      "category": "launch",
+      "tags": ["launch", "reveal", "hero", "keynote", "music", "beat cut"],
+      "personas": ["marketer", "co-founder"],
+      "level": "showcase",
+      "tier": "bold",
+      "uses": ["audio"],
+      "highlights": [
+        "Cut to an original song: the device rises into the light on bar 9",
+        "Three features, each a claim, its proof and a close look",
+        "The name and the date land on the final hit, then silence"
+      ],
+      "bring": [
+        "An opening line",
+        "Product name",
+        "Three features, one line each",
+        "Three screen recordings and five screenshots",
+        "A date or call to action",
+        "Logo"
+      ],
+      "song": {
+        "title": "First Light",
+        "bpm": 128
+      },
+      "looks": ["kookaburra-onyx", "kookaburra-daylight", "kookaburra-ink"],
+      "sceneCount": 16,
+      "durationMs": 59975,
+      "aspects": ["16:9"],
+      "themeId": "kookaburra-onyx",
+      "scenes": [
+        {
+          "file": "scenes/01-edge.tsx",
+          "durationMs": 3725,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/02-glass.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/03-question.tsx",
+          "durationMs": 7500,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/04-reveal.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/05-name.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/06-claim-1.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/07-proof-1.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/08-detail-1.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/09-claim-2.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/10-proof-2.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/11-detail-2.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/12-claim-3.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/13-lineup.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/14-flyby.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/15-montage.tsx",
+          "durationMs": 7500,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/16-lockup.tsx",
+          "durationMs": 7500,
+          "transition": null,
+          "blocks": ["text"]
+        }
+      ]
+    },
+    {
+      "id": "field-notes",
+      "label": "Field Notes",
+      "summary": "A launch told like a field journal: paper, ink and specimen plates, then a speed-up into your wordmark.",
+      "category": "launch",
+      "tags": ["editorial", "paper", "journal", "launch", "wordmark", "handmade"],
+      "personas": ["marketer", "co-founder"],
+      "level": "showcase",
+      "tier": "bold",
+      "uses": [],
+      "highlights": [
+        "Graphics at 12 frames a second on jittering paper",
+        "Screens pinned as specimen plates",
+        "A speed-up montage into a wordmark built letter by letter"
+      ],
+      "bring": [
+        "Product name and its family",
+        "A hook line and an answer line",
+        "5 screens",
+        "One comparison: two labels and a number",
+        "Wordmark"
+      ],
+      "song": null,
+      "looks": ["kookaburra-ivory", "kookaburra-basel", "kookaburra-ink"],
+      "sceneCount": 12,
+      "durationMs": 60000,
+      "aspects": ["16:9"],
+      "themeId": "kookaburra-ivory",
+      "scenes": [
+        {
+          "file": "scenes/01-hook.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/02-line-up.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/03-problem.tsx",
+          "durationMs": 5625,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/04-answer.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/05-plate-today.tsx",
+          "durationMs": 5625,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/06-plates.tsx",
+          "durationMs": 5625,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/07-proof.tsx",
+          "durationMs": 7500,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/08-learns.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/09-moves.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/10-shares.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/11-montage.tsx",
+          "durationMs": 7500,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/12-wordmark.tsx",
+          "durationMs": 7500,
+          "transition": null,
+          "blocks": ["text"]
+        }
+      ]
+    },
+    {
+      "id": "teaser",
+      "label": "Teaser",
+      "summary": "Show almost nothing: a rim of light, three words in huge condensed caps, the product as a letter, then the date.",
+      "category": "launch",
+      "tags": ["teaser", "coming soon", "launch", "date", "social", "dark"],
+      "personas": ["marketer", "co-founder"],
+      "level": "standard",
+      "tier": "bold",
+      "uses": [],
+      "highlights": [
+        "A rim of light and a macro crash-in",
+        "Claim words in huge condensed caps, cropped past the frame",
+        "The device turns edge-on and becomes a letter"
+      ],
+      "bring": ["Logo", "Launch date", "3 to 6 claim words", "3 cropped screens"],
+      "song": null,
+      "looks": ["kookaburra-onyx", "kookaburra-night-drive", "kookaburra-basel"],
+      "sceneCount": 8,
+      "durationMs": 15000,
+      "aspects": ["16:9"],
+      "themeId": "kookaburra-onyx",
+      "scenes": [
+        {
+          "file": "scenes/01-rim.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/02-crash-in.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/03-word-calmer.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/04-word-clearer.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/05-word-yours.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/06-letter.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/07-date.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/08-logo.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        }
+      ]
+    },
+    {
+      "id": "everywhere",
+      "label": "Everywhere",
+      "summary": "Now on every screen: phone, tablet and laptop move as one, with a hand-off between them.",
+      "category": "launch",
+      "tags": ["cross-platform", "devices", "phone", "tablet", "laptop", "launch"],
+      "personas": ["marketer", "pm"],
+      "level": "showcase",
+      "tier": "safe",
+      "uses": [],
+      "highlights": [
+        "Devices enter on a choreographed arc",
+        "A card hands off from phone to laptop in one move",
+        "Five devices, five live screens for the lockup"
+      ],
+      "bring": ["Matching screens for each device", "Product name", "A platforms line"],
+      "song": null,
+      "looks": ["kookaburra-soft-field", "kookaburra-sky", "kookaburra-daylight"],
+      "sceneCount": 8,
+      "durationMs": 30000,
+      "aspects": ["16:9"],
+      "themeId": "kookaburra-soft-field",
+      "scenes": [
+        {
+          "file": "scenes/01-phone.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/02-phone-closer.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/03-hand-off.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/04-laptop.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/05-three-sizes.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/06-tablet.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/07-one-to-many.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/08-lockup.tsx",
+          "durationMs": 5625,
+          "transition": null,
+          "blocks": ["text"]
+        }
+      ]
+    },
+    {
+      "id": "spotlight",
+      "label": "Spotlight",
+      "summary": "One feature, start to finish, in a calm daylight studio. Works for phone or web.",
+      "category": "feature",
+      "tags": ["feature", "explainer", "how it works", "demo", "music", "calm"],
+      "personas": ["pm", "marketer"],
+      "level": "standard",
+      "tier": "safe",
+      "uses": ["audio"],
+      "highlights": [
+        "The problem in a line, then the feature by name",
+        "A punch-in on the one control that matters",
+        "Works for an app on a phone or a web app in a browser window"
+      ],
+      "bring": [
+        "A problem line",
+        "Feature name",
+        "One screen recording of the flow",
+        "A benefit line, with a figure or quote to prove it",
+        "A call to action",
+        "Logo"
+      ],
+      "song": {
+        "title": "Daylight",
+        "bpm": 128
+      },
+      "looks": ["kookaburra-mid-century", "kookaburra-daylight", "kookaburra-ivory"],
+      "sceneCount": 8,
+      "durationMs": 31875,
+      "aspects": ["16:9"],
+      "themeId": "kookaburra-mid-century",
+      "scenes": [
+        {
+          "file": "scenes/01-problem.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/02-name.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/03-flow-a.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/04-flow-b.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/05-close-up.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/06-claim.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/07-proof.tsx",
+          "durationMs": 5625,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/08-lockup.tsx",
+          "durationMs": 5625,
+          "transition": null,
+          "blocks": ["text"]
+        }
+      ]
+    },
+    {
+      "id": "exhibition",
+      "label": "Exhibition",
+      "summary": "A product tour hung like an exhibition: one slow take through a top-lit gallery, a wall label for every screen.",
+      "category": "feature",
+      "tags": ["gallery", "tour", "exhibition", "one take", "screens", "showcase"],
+      "personas": ["marketer", "co-founder", "pm"],
+      "level": "showcase",
+      "tier": "bold",
+      "uses": [],
+      "highlights": [
+        "One take with no cuts, paced by the music",
+        "Framed screens with museum wall labels",
+        "Focus pulls from each frame to its label"
+      ],
+      "bring": ["4 to 6 screens", "A title and a one-line caption for each"],
+      "song": null,
+      "looks": ["kookaburra-ivory", "kookaburra-mid-century", "kookaburra-ink"],
+      "sceneCount": 1,
+      "durationMs": 45000,
+      "aspects": ["16:9"],
+      "themeId": "kookaburra-ivory",
+      "scenes": [
+        {
+          "file": "scenes/01-gallery.tsx",
+          "durationMs": 45000,
+          "transition": null,
+          "blocks": ["text"]
+        }
+      ]
+    },
+    {
       "id": "whats-new-social-cut",
       "label": "What's New (social cut)",
       "summary": "Name the version, show three shipped things, end on the update CTA.",
@@ -27875,6 +28369,469 @@
           "durationMs": 2400,
           "transition": null,
           "blocks": ["backdrop", "background", "text", "textAnimation", "themeId"]
+        }
+      ]
+    },
+    {
+      "id": "release-reel",
+      "label": "Release Reel",
+      "summary": "Every release, cut to the beat: one colour, one word and one screen per new thing.",
+      "category": "update",
+      "tags": ["release", "what's new", "update", "version", "changelog", "music"],
+      "personas": ["pm", "marketer", "developer"],
+      "level": "standard",
+      "tier": "bold",
+      "uses": ["audio"],
+      "highlights": [
+        "The version number slams in on bar 1",
+        "Each feature floods its own colour room on the downbeat",
+        "A cascade of chips covers everything else"
+      ],
+      "bring": [
+        "App icon",
+        "Version number",
+        "Three features: a punch word and a line each",
+        "A recording per feature",
+        "An optional list for And more",
+        "Product name"
+      ],
+      "song": {
+        "title": "Colour Theory",
+        "bpm": 128
+      },
+      "looks": ["kookaburra-frost", "kookaburra-citrus", "kookaburra-lagoon"],
+      "sceneCount": 13,
+      "durationMs": 46874,
+      "aspects": ["16:9"],
+      "themeId": "kookaburra-frost",
+      "scenes": [
+        {
+          "file": "scenes/01-version.tsx",
+          "durationMs": 3749,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/02-whats-new.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/03-word-1.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/04-proof-1.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/05-detail-1.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/06-word-2.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/07-proof-2.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/08-detail-2.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/09-word-3.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/10-proof-3.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/11-detail-3.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/12-and-more.tsx",
+          "durationMs": 7500,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/13-lockup.tsx",
+          "durationMs": 9375,
+          "transition": null,
+          "blocks": ["text"]
+        }
+      ]
+    },
+    {
+      "id": "then-and-now",
+      "label": "Then & Now",
+      "summary": "For redesigns: the same camera move over the old and the new, and a bar of glass sweeps the old one away.",
+      "category": "update",
+      "tags": ["redesign", "before and after", "comparison", "update", "glass", "refresh"],
+      "personas": ["pm", "marketer"],
+      "level": "standard",
+      "tier": "safe",
+      "uses": [],
+      "highlights": [
+        "Identical camera moves on both versions",
+        "A refracting glass sweep from then to now",
+        "Cool light for then, warm light for now"
+      ],
+      "bring": ["Matching before and after screens or recordings", "3 short labels"],
+      "song": null,
+      "looks": ["kookaburra-frost", "kookaburra-daylight", "kookaburra-blue-hour"],
+      "sceneCount": 8,
+      "durationMs": 30000,
+      "aspects": ["16:9"],
+      "themeId": "kookaburra-frost",
+      "scenes": [
+        {
+          "file": "scenes/01-then.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/02-then-closer.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/03-sweep.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/04-clearer.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/05-calmer.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/06-faster.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/07-now.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/08-hold.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        }
+      ]
+    },
+    {
+      "id": "by-the-numbers",
+      "label": "By the Numbers",
+      "summary": "When the numbers are the news: glass figures you can walk around, counters on the beat, a trend drawn in light.",
+      "category": "proof",
+      "tags": ["numbers", "stats", "metrics", "impact", "counter", "year in review"],
+      "personas": ["marketer", "finance", "co-founder"],
+      "level": "standard",
+      "tier": "safe",
+      "uses": [],
+      "highlights": [
+        "Glass numerals that catch the light",
+        "Counters that roll and tick on the beat",
+        "A trend drawn as a trail of light"
+      ],
+      "bring": ["3 or 4 numbers with labels", "Optional data for the trend"],
+      "song": null,
+      "looks": ["kookaburra-onyx", "kookaburra-blue-hour", "kookaburra-frost"],
+      "sceneCount": 8,
+      "durationMs": 30000,
+      "aspects": ["16:9"],
+      "themeId": "kookaburra-onyx",
+      "scenes": [
+        {
+          "file": "scenes/01-claim.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/02-number-one.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/03-label-one.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/04-number-two.tsx",
+          "durationMs": 5625,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/05-trend.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/06-trend-peak.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/07-number-three.tsx",
+          "durationMs": 5625,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/08-lockup.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        }
+      ]
+    },
+    {
+      "id": "one-dot",
+      "label": "One Dot",
+      "summary": "For ideas with no screen to show: one dot becomes every graphic in turn, and the numbers are the copy.",
+      "category": "proof",
+      "tags": ["explainer", "numbers", "concept", "one take", "motion graphics", "pricing"],
+      "personas": ["finance", "co-founder", "marketer"],
+      "level": "showcase",
+      "tier": "bold",
+      "uses": [],
+      "highlights": [
+        "One shape carries the whole film, with no cuts",
+        "Counters roll as the dots change colour",
+        "The logo is the last morph"
+      ],
+      "bring": [
+        "4 or 5 real numbers with short labels",
+        "A two-word product category",
+        "Logo mark",
+        "Brand colour"
+      ],
+      "song": null,
+      "looks": ["kookaburra-daylight", "kookaburra-mid-century", "kookaburra-blue-hour"],
+      "sceneCount": 1,
+      "durationMs": 45000,
+      "aspects": ["16:9"],
+      "themeId": "kookaburra-daylight",
+      "scenes": [
+        {
+          "file": "scenes/01-one-dot.tsx",
+          "durationMs": 45000,
+          "transition": null,
+          "blocks": ["text"]
+        }
+      ]
+    },
+    {
+      "id": "prompt",
+      "label": "Prompt",
+      "summary": "The prompt is the hero: results ride the beat, the music stops for a follow-up, and the answer lands in the product.",
+      "category": "ai-developer",
+      "tags": ["ai", "prompt", "assistant", "chat", "launch", "carousel"],
+      "personas": ["marketer", "pm", "developer"],
+      "level": "standard",
+      "tier": "bold",
+      "uses": [],
+      "highlights": [
+        "The prompt typed at two and a half times real size",
+        "A results carousel, one push every two beats",
+        "A bar of silence before the answer lands"
+      ],
+      "bring": [
+        "2 or 3 prompts, 40 characters or fewer",
+        "Results as screens or short loops",
+        "One follow-up and its answer",
+        "Product name"
+      ],
+      "song": null,
+      "looks": ["kookaburra-daylight", "kookaburra-afterglow", "kookaburra-soft-field"],
+      "sceneCount": 8,
+      "durationMs": 30000,
+      "aspects": ["16:9"],
+      "themeId": "kookaburra-daylight",
+      "scenes": [
+        {
+          "file": "scenes/01-ask.tsx",
+          "durationMs": 5625,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/02-results.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/03-second-ask.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/04-settle.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/05-stop.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/06-answer.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/07-in-product.tsx",
+          "durationMs": 5625,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/08-lockup.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        }
+      ]
+    },
+    {
+      "id": "changelog",
+      "label": "Changelog",
+      "summary": "For SDKs, APIs and CLIs: a command runs, the version chain advances, the diff lights up and the benchmark lands.",
+      "category": "ai-developer",
+      "tags": ["developer", "changelog", "release", "cli", "sdk", "api"],
+      "personas": ["developer", "pm"],
+      "level": "standard",
+      "tier": "safe",
+      "uses": [],
+      "highlights": [
+        "A typed command at real cadence",
+        "Version cards chained along dashed rules",
+        "Changed lines lit, then a benchmark counter"
+      ],
+      "bring": [
+        "Version number",
+        "3 to 6 changes",
+        "The upgrade command",
+        "Optional code snippet and benchmark"
+      ],
+      "song": null,
+      "looks": ["kookaburra-mainframe", "kookaburra-afterglow", "kookaburra-basel"],
+      "sceneCount": 10,
+      "durationMs": 45000,
+      "aspects": ["16:9"],
+      "themeId": "kookaburra-mainframe",
+      "scenes": [
+        {
+          "file": "scenes/01-command.tsx",
+          "durationMs": 5625,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/02-chain.tsx",
+          "durationMs": 5625,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/03-cold-starts.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/04-typed-env.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/05-python.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/06-route-types.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/07-breaking.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/08-benchmark.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/09-latency.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/10-docs.tsx",
+          "durationMs": 7500,
+          "transition": null,
+          "blocks": ["text"]
         }
       ]
     }
