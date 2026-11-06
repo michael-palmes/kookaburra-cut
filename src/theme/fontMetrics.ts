@@ -15,6 +15,29 @@ export interface MeasureTextOptions {
   letterSpacing?: number;
   /** Line advance as a multiple of the font size; absent is the face's own "normal". */
   lineHeight?: number;
+  /** Where the text's `position` sits on the block; glyph boxes measure from there (default the headline's, centre and middle). */
+  anchorX?: "left" | "center" | "right";
+  anchorY?: "top" | "middle" | "bottom";
+  /** Per-line alignment inside the block, visible on multi-line text (default left). */
+  textAlign?: "left" | "center" | "right";
+}
+
+/** One glyph of a measured block, in the text's own space: world units from its `position` under the measured anchors, y up. */
+export interface GlyphBox {
+  /** What it draws: one character (a surrogate pair stays whole), or a ligature's whole run. */
+  text: string;
+  /** Where that starts in the displayed text (`*word*` markup stripped, an emoji as one placeholder). */
+  index: number;
+  /** Its line, 0 first. */
+  line: number;
+  /** The pen cell's left edge and advance; a space has one too, so spaces can hold a slot. */
+  x: number;
+  width: number;
+  /** Its line's baseline, and the face's cap height above it. */
+  baseline: number;
+  capHeight: number;
+  /** The outline's bounds `[left, bottom, right, top]`; null for whitespace. */
+  ink: readonly [number, number, number, number] | null;
 }
 
 /** A typeset block in world units: `ascent` runs from the block top to the first baseline and `descent` from the last baseline to the block bottom, so one line has `ascent + descent === height`. */
@@ -24,6 +47,8 @@ export interface TextMetrics {
   ascent: number;
   descent: number;
   lines: number;
+  /** Every glyph in reading order, line breaks left out. */
+  glyphs: GlyphBox[];
 }
 
 const faces = new Map<string, TroikaParsedFont>();
@@ -90,6 +115,10 @@ export function metricsFontUrl(font: FontRef | string): string {
 }
 
 const LINE_BREAKING_SPACE = /[^\S ]/;
+/** troika's default-ignorable set: drawn as nothing, whatever the face's outline says. */
+const IGNORABLE =
+  // biome-ignore lint/suspicious/noMisleadingCharacterClass: troika's exact class, matched one code unit at a time
+  /[\u00AD\u034F\u061C\u115F-\u1160\u17B4-\u17B5\u180B-\u180E\u200B-\u200F\u202A-\u202E\u2060-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFF8]/;
 const ANY_SPACE = /\s/;
 
 /** Per code unit, the face troika's resolver picks: the text's face, else the fallback face, else (uncovered) troika's second resolved face; whitespace keeps the previous character's face. */
@@ -134,12 +163,28 @@ interface FaceLine {
   baseline: number;
 }
 
+interface LineGlyph {
+  x: number;
+  width: number;
+  space: boolean;
+  face: FaceLine;
+  index: number;
+  capHeight: number;
+  /** The outline relative to the pen and baseline, or null for an empty glyph. */
+  ink: [number, number, number, number] | null;
+  newline: boolean;
+}
+
 interface Line {
   width: number;
   lineHeight: number;
   baseline: number;
-  glyphs: { x: number; width: number; space: boolean; face: FaceLine }[];
+  glyphs: LineGlyph[];
 }
+
+const ANCHOR_X = { left: 0, center: 0.5, right: 1 } as const;
+const ANCHOR_Y = { top: 0, middle: 0.5, bottom: 1 } as const;
+const ALIGN = { left: 0, center: 0.5, right: 1 } as const;
 
 /** Metrics for one string; null until its face has been parsed. */
 export function measureText(text: string, opts: MeasureTextOptions): TextMetrics | null {
@@ -178,17 +223,24 @@ export function measureText(text: string, opts: MeasureTextOptions): TextMetrics
     const mult = fontSize / face.unitsPerEm;
     let lastX = 0;
     let lastAdvance = 0;
-    face.forEachGlyph(str.slice(start, end), fontSize, letterSpacing, (glyph, gx, _gy, ci) => {
+    face.forEachGlyph(str.slice(start, end), fontSize, letterSpacing, (glyph, gx, gy, ci) => {
       const glyphX = gx + runEndX;
       const char = str.charAt(ci + start);
       const width = glyph.advanceWidth * mult;
       lastX = glyphX;
       lastAdvance = glyph.advanceWidth;
+      const empty = glyph.xMin === glyph.xMax || glyph.yMin === glyph.yMax || IGNORABLE.test(char);
       line.glyphs.push({
         x: glyphX + lineX,
         width,
         space: !!char && LINE_BREAKING_SPACE.test(char),
         face: data,
+        index: ci + start,
+        capHeight: face.capHeight * mult,
+        ink: empty
+          ? null
+          : [glyph.xMin * mult, gy + glyph.yMin * mult, glyph.xMax * mult, gy + glyph.yMax * mult],
+        newline: char === "\n",
       });
       if (char === "\n") {
         line = newLine();
@@ -223,5 +275,44 @@ export function measureText(text: string, opts: MeasureTextOptions): TextMetrics
     ascent: 0 - lines[0].baseline,
     descent: height + lines[lines.length - 1].baseline,
     lines: lines.length,
+    glyphs: glyphBoxes(str, lines, width, height, opts),
   };
+}
+
+/** The glyphs placed as troika draws them: each line aligned in the block, the block offset by its anchors. */
+function glyphBoxes(
+  str: string,
+  lines: Line[],
+  width: number,
+  height: number,
+  opts: MeasureTextOptions,
+): GlyphBox[] {
+  const offsetX = -width * ANCHOR_X[opts.anchorX ?? "center"];
+  const offsetY = height * ANCHOR_Y[opts.anchorY ?? "middle"];
+  const align = ALIGN[opts.textAlign ?? "left"];
+  const placed = lines.flatMap((l, line) =>
+    l.glyphs.map((g) => ({ g, line, shift: (width - l.width) * align + offsetX })),
+  );
+  const out: GlyphBox[] = [];
+  for (let i = 0; i < placed.length; i++) {
+    const { g, line, shift } = placed[i];
+    if (g.newline) continue;
+    const next = placed[i + 1]?.g.index ?? str.length;
+    const x = g.x + shift;
+    const baseline = lines[line].baseline + offsetY;
+    out.push({
+      text: str.slice(g.index, Math.max(next, g.index + 1)),
+      index: g.index,
+      line,
+      x,
+      width: g.width,
+      baseline,
+      capHeight: g.capHeight,
+      ink:
+        g.space || !g.ink
+          ? null
+          : [x + g.ink[0], baseline + g.ink[1], x + g.ink[2], baseline + g.ink[3]],
+    });
+  }
+  return out;
 }
