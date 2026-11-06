@@ -98,6 +98,13 @@ describe("gate plan", () => {
     assert.equal(classify("package.json", closure, { depsChanged: true }).kind, "render");
   });
 
+  test("advisory config beside the lock file never gates", () => {
+    for (const path of ["src-tauri/deny.toml", "src-tauri/osv-scanner.toml"]) {
+      assert.equal(classify(path, closure).kind, "none", path);
+    }
+    assert.equal(classify("src-tauri/Cargo.lock", closure).kind, "render");
+  });
+
   test("unlisted paths and the app shell are gated", () => {
     for (const path of [
       "src/App.tsx",
