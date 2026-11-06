@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- `anyhow` moves to 1.0.104 (RUSTSEC-2026-0190) and `webpki-root-certs` to
+  1.0.11 (RUSTSEC-2026-0383, distrusted emSign roots). `glib` (RUSTSEC-2024-0429)
+  and `proc-macro-error` (RUSTSEC-2024-0370) sit in the Linux GTK stack the Mac
+  app never builds, and `src-tauri/osv-scanner.toml` records them as ignored
+  with the reason.
+
 ## [0.22.2] - 2026-11-05
 
 ### Fixed

@@ -1,0 +1,9 @@
+# osv-scanner and the Scorecard Vulnerabilities check read this beside Cargo.lock; deny.toml scopes the same graph.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0429"
+reason = "glib: the Linux GTK stack tauri/wry pull in; never compiled for the one shipped target"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0370"
+reason = "proc-macro-error: build-time dependency of glib-macros/gtk3-macros, same Linux-only stack"
