@@ -134,6 +134,20 @@ def refusal(root: Path) -> Optional[str]:
     return _config_seen[1]
 
 
+def live_hooks(root: Path) -> List[str]:
+    """What .git/hooks holds beyond git's own .sample files, of any kind; a .git/hooks that isn't a real folder counts as one. kb's own git never runs them."""
+    hooks = os.path.join(str(root), ".git", "hooks")
+    try:
+        if not stat.S_ISDIR(os.lstat(hooks).st_mode):
+            return [".git/hooks"]
+        names = os.listdir(hooks)
+    except FileNotFoundError:
+        return []
+    except OSError:
+        return [".git/hooks"]
+    return sorted(f".git/hooks/{name}" for name in names if not name.endswith(".sample"))
+
+
 def run(root: Path, args: List[str], check: bool = True, timeout: float = 30) -> subprocess.CompletedProcess:
     """git in the project, isolated from the folder's settings and any repository above it; a failure naming index.lock is retried (50 ms doubling to 1.6 s), then exit 3 kind index-locked."""
     refused = refusal(root)

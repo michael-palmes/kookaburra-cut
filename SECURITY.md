@@ -68,12 +68,13 @@ It is built for these risks:
 
 - **A shared project or pack that carries code or agent configuration.** A
   project's scenes are TypeScript that the app compiles and runs; a pack or a
-  shared folder can also carry `CLAUDE.md`, `.claude/settings.json` and website
-  origins. Scene code runs only after a person presses
+  shared folder can also carry `CLAUDE.md`, `.claude/settings.json`, website
+  origins and a `.git` that names a program. Scene code runs only after a person presses
   Allow on a native sheet bound to the content's hash, and then on a stage shut
   off from the network and the app's commands; agent configuration is dropped on
   import and moved out of the folder at every open, and Claude won't start until
-  a person has seen what moved; nothing in a pack runs when it is imported.
+  a person has seen what moved; the agent's own git runs only where the app
+  would run git itself; nothing in a pack runs when it is imported.
 - **An agent that follows the wrong instructions.** Everything in a project
   (scene copy, `project.json` fields, brand files, notes, pack contents,
   captured frames, fetched pages) is written by whoever shared it. The stamped
@@ -308,11 +309,14 @@ Also:
 
 - `git` from `PATH` (`history.rs`), at project creation and after a project has
   loaded through the Allow gate, never on a failed load, to find footage in older
-  history and rewrite it. A folder's `.git` arrives with it, so each run sets
+  history and rewrite it, and at each kit stamp to read `.git/config` for the
+  agent's verdict. A folder's `.git` arrives with it, so each run sets
   `GIT_CONFIG_NOSYSTEM`, `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CEILING_DIRECTORIES`
   and overrides every key that names a program (`GUARDS`), and the app refuses a
   `.git` that is a link or file, or a `.git/config` holding a key the app and
-  git's own setup don't write. kb's git does the same (`kblib/git.py`).
+  git's own setup don't write. kb's git does the same (`kblib/git.py`). The
+  agent's own plain git has no such overrides, so it gets the same verdict and a
+  hook check instead (`history::agent_git_verdict`, "What the kit auto-allows").
 - `/usr/bin/sips` to check and convert a dropped still (`src-tauri/src/imagefile.rs`,
   `kblib/imagefile.py`): one file, a 60 s limit in the app, no shell, and the
   app's own environment, not the sidecars' allow-list. kb and the brand skill also
@@ -353,7 +357,16 @@ stamped before the profile stays in its folder, and its kb still runs.
 - **What the kit auto-allows** (`kit.rs`, `managed_allow_rules`): `Bash(./kb *)`,
   the two `kb.py` spellings, the template's `git status/diff/log/add/commit`,
   and `Read` of `~/Kookaburra Cut/_bridge/**`, `themes/**`, `brands/**` and
-  the app bundle's `Resources/**`. Every stamp (first load per session, before
+  the app bundle's `Resources/**`. The git rules stay only in a folder whose
+  `.git` the app would run git in itself (`history::agent_git_verdict`), since
+  plain git runs the folder's hooks and the programs its config names: a live
+  hook found on a folder's first open moves to `.git/hooks.moved-aside/` and the
+  review sheet lists it (`sweep_agent_files`), and a `.git/config` the app
+  refuses, a `.git` that is a link or file, or a hook added later leaves the
+  agent no git allow rule and a `Bash(git:*)` deny, decided again at every
+  stamp and logged `[kit]`. kb's `bash-pre` hook refuses the same live, for a
+  session that starts in a terminal after the folder changed
+  (`kblib/hookfast.py`, `git_withheld`). Every stamp (first load per session, before
   each handoff) rewrites `.claude/settings.json`:
   only `$schema`, `model`, the managed `allow`, `ask` and `deny` rules and the
   hooks with the kb marker stay, `.claude/settings.local.json` is cut to `$schema`
