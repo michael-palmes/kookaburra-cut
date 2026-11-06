@@ -69,6 +69,13 @@ export const TOOLKIT_SHOW: Readonly<
       "objectId placed in TSX loads when it first mounts, even mid-film: every capture waits for it, so no frame shows it missing. A preview pops it in. No gizmo: use the sidecar `objects` array for an object the inspector should move.",
     ],
   },
+  DotField: {
+    example: `<DotField columns={10} rows={10} pitch={0.26} reveal={{ progress: ramp(localMs, 0, 900) }} count={{ value: 40 * ramp(localMs, 1200, 2950, "outCubic"), order: "rows-up" }} />`,
+    timing: [
+      "The field reads no clock: every progress, phase and value is a number the scene derives from useTimeline(), so put each on a beat with ramp and keep a count on its counter's own window and ease.",
+      "merge closes every gap at once and pulls displaced dots home over its first half; gather's last stretch hands the final dot's edge to the dot nearest its point.",
+    ],
+  },
   useBeatGrid: {
     example: `const grid = useBeatGrid();\nconst hit = grid?.at(5, 3) ?? 2000;`,
     timing: [

@@ -23406,6 +23406,11 @@
         "id": "obsidian",
         "label": "Obsidian",
         "tier": "dark"
+      },
+      {
+        "id": "lightTrail",
+        "label": "Light trail",
+        "tier": "dark"
       }
     ],
     "animations": [
@@ -24210,6 +24215,11 @@
         "summary": "Every catalogue device id."
       },
       {
+        "id": "DOT_ORDERS",
+        "kind": "constant",
+        "summary": "The orders a DotField count or reveal walks: reading, rows-up, ..."
+      },
+      {
         "id": "DashedBracket",
         "kind": "component",
         "summary": "Dashed bracket over a span: span, depth, side top|bottom|left|right, plus the DashedRule style; progress draws out from the middle."
@@ -24239,6 +24249,11 @@
         "id": "DeviceScreenAnchor",
         "kind": "component",
         "summary": "Child of Device: <DeviceScreenAnchor u v> pins content to its screen (u right, v down, 0..1)."
+      },
+      {
+        "id": "DotField",
+        "kind": "component",
+        "summary": "Grid or waffle of dots in one draw: reveal, wave, window, count, funnel, gather, merge, fill."
       },
       {
         "id": "EASE_NAMES",
@@ -24310,7 +24325,7 @@
       {
         "id": "Pill",
         "kind": "component",
-        "summary": "RoundedRect with fully round ends: width, height, color, opacity, stroke."
+        "summary": "RoundedRect with fully round ends: width, height, color, opacity, stroke, fill."
       },
       {
         "id": "PromptBar",
@@ -24335,7 +24350,7 @@
       {
         "id": "RoundedRect",
         "kind": "component",
-        "summary": "Flat, colour-exact rounded rect: width, height, radius, color, opacity, stroke."
+        "summary": "Flat, colour-exact rounded rect: width, height, radius, color, opacity, stroke; fill for a fluid gradient."
       },
       {
         "id": "SCREEN_LIFT",
@@ -24419,6 +24434,11 @@
         "id": "WireGrid",
         "kind": "component",
         "summary": "Travelling-wave wire grid on the clock."
+      },
+      {
+        "id": "accentFluidColours",
+        "kind": "function",
+        "summary": "accentFluidColours(hex): the default fill's deep, mid and highlight shades of a colour."
       },
       {
         "id": "clamp01",
@@ -24882,6 +24902,36 @@
         "id": "DeviceSpec"
       },
       {
+        "id": "DotAdjust"
+      },
+      {
+        "id": "DotCount"
+      },
+      {
+        "id": "DotFieldProps"
+      },
+      {
+        "id": "DotFunnel"
+      },
+      {
+        "id": "DotGather"
+      },
+      {
+        "id": "DotInfo"
+      },
+      {
+        "id": "DotOrder"
+      },
+      {
+        "id": "DotReveal"
+      },
+      {
+        "id": "DotWave"
+      },
+      {
+        "id": "DotWindow"
+      },
+      {
         "id": "EaseName"
       },
       {
@@ -24889,6 +24939,9 @@
       },
       {
         "id": "ExtrudedTextProps"
+      },
+      {
+        "id": "FluidFill"
       },
       {
         "id": "FormatInfo"

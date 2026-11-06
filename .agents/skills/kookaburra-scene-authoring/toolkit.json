@@ -335,6 +335,14 @@
         "doc": "0..1, multiplied into every fade (default 1)."
       },
       {
+        "name": "emphasisAt",
+        "type": "number",
+        "required": false,
+        "default": "when the line has landed",
+        "units": "ms",
+        "doc": "Scene ms a shaped emphasis (`textStyle.<key>Emphasis` ending in `pill` or `battery`) starts drawing on; default when the line has landed."
+      },
+      {
         "name": "stagger",
         "type": "\"char\" | \"word\"",
         "required": false,
@@ -540,7 +548,7 @@
   },
   "AnimatedHeadlineProps": {
     "kind": "type",
-    "signature": "interface AnimatedHeadlineProps { text: string; from?: number; to?: number; preset?: TextPresetName; outPreset?: TextPresetName; outAt?: number; outDurationMs?: number; hitAt?: number; opacity?: number; stagger?: \"char\" | \"word\"; staggerMs?: number; delayMs?: number; durationMs?: number | \"authored\"; startScale?: number; shine?: boolean; direction?: TextDirection; buildShiftEm?: number; delivery?: TextDelivery; ease?: EaseName; face?: \"headline\" | \"body\"; color?: \"text\" | \"muted\" | \"accent\" | (string & {}); textKey?: string; styleKey?: string; motionKey?: string; defaultColor?: \"text\" | \"muted\" | \"accent\" | (string & {}); position?: V3; fontSize?: number; fontRef?: FontRef; textAlign?: \"left\" | \"center\" | \"right\"; anchorX?: \"left\" | \"center\" | \"right\"; anchorY?: \"top\" | \"middle\" | \"bottom\"; maxWidth?: number; fit?: \"width\"; depth?: boolean | HeadlineDepth; lineHeight?: number; managedTextRole?: ManagedTextRenderRole; managedTextCodedMotion?: TextAnimationSpec; look?: string; lookParams?: Partial<TextLookSpec>; }"
+    "signature": "interface AnimatedHeadlineProps { text: string; from?: number; to?: number; preset?: TextPresetName; outPreset?: TextPresetName; outAt?: number; outDurationMs?: number; hitAt?: number; opacity?: number; emphasisAt?: number; stagger?: \"char\" | \"word\"; staggerMs?: number; delayMs?: number; durationMs?: number | \"authored\"; startScale?: number; shine?: boolean; direction?: TextDirection; buildShiftEm?: number; delivery?: TextDelivery; ease?: EaseName; face?: \"headline\" | \"body\"; color?: \"text\" | \"muted\" | \"accent\" | (string & {}); textKey?: string; styleKey?: string; motionKey?: string; defaultColor?: \"text\" | \"muted\" | \"accent\" | (string & {}); position?: V3; fontSize?: number; fontRef?: FontRef; textAlign?: \"left\" | \"center\" | \"right\"; anchorX?: \"left\" | \"center\" | \"right\"; anchorY?: \"top\" | \"middle\" | \"bottom\"; maxWidth?: number; fit?: \"width\"; depth?: boolean | HeadlineDepth; lineHeight?: number; managedTextRole?: ManagedTextRenderRole; managedTextCodedMotion?: TextAnimationSpec; look?: string; lookParams?: Partial<TextLookSpec>; }"
   },
   "BeatGrid": {
     "kind": "type",
@@ -973,6 +981,11 @@
     "kind": "constant",
     "summary": "Every catalogue device id.",
     "signature": "const DEVICE_IDS: DeviceId[];"
+  },
+  "DOT_ORDERS": {
+    "kind": "constant",
+    "summary": "The orders a DotField count or reveal walks: reading, rows-up, ...",
+    "signature": "const DOT_ORDERS: readonly DotOrder[];"
   },
   "DashedBracket": {
     "kind": "component",
@@ -1476,6 +1489,214 @@
     "kind": "type",
     "signature": "interface DeviceSpec { id: DeviceId; name: string; form: DeviceForm; glbUrl: string; screen: DeviceScreenSpec; coverScreen?: DeviceScreenSpec; colours: DeviceColourSpec[]; defaultColour: string; previews: Record<string, string>; fit?: DeviceFitSpec; layoutWidth: number; fittedHeight: number; shadow: DeviceShadowSpec; lid?: { node: string; openDeg: number; defaultDeg: number; pivot?: V3 }; fold?: DeviceFoldSpec; }"
   },
+  "DotAdjust": {
+    "kind": "type",
+    "signature": "interface DotAdjust { offset?: readonly [number, number]; scale?: number; alpha?: number; }",
+    "doc": "What the per-dot callback may change."
+  },
+  "DotCount": {
+    "kind": "type",
+    "signature": "interface DotCount { value: number; color?: string; order?: DotOrder; seed?: number; }",
+    "doc": "A run of dots recoloured in order: `value` dots (fractional values blend the next one) take `color`. Several runs stack one after another."
+  },
+  "DotField": {
+    "kind": "component",
+    "summary": "Grid or waffle of dots in one draw: reveal, wave, window, count, funnel, gather, merge, fill.",
+    "signature": "function DotField(props: DotFieldProps): ReactElement;",
+    "doc": "Hundreds of dots in ONE instanced draw, laid out as a grid or waffle, each dot's size, place and colour a pure function of the authored fields: a pop-in, a halftone wave, a window that clears for a hero number, counts recolouring dots in order as a counter rolls, a funnel, a gather into one dot and a merge into a solid tile. Flat and colour-exact like `RoundedRect`, or filled with the fluid gradient. Drive every field from `useTimeline()`; the field itself reads no clock.",
+    "props": [
+      {
+        "name": "columns",
+        "type": "number",
+        "required": false,
+        "default": "10",
+        "doc": "Dots across (default 10)."
+      },
+      {
+        "name": "rows",
+        "type": "number",
+        "required": false,
+        "default": "10",
+        "doc": "Dots down (default 10)."
+      },
+      {
+        "name": "pitch",
+        "type": "number | readonly [number, number]",
+        "required": false,
+        "default": "0.3",
+        "units": "world units",
+        "doc": "Centre-to-centre spacing in world units, or [across, down] (default 0.3)."
+      },
+      {
+        "name": "size",
+        "type": "number",
+        "required": false,
+        "default": "0.72",
+        "doc": "Dot diameter as a fraction of the pitch (default 0.72)."
+      },
+      {
+        "name": "shape",
+        "type": "\"circle\" | \"square\"",
+        "required": false,
+        "default": "\"circle\"",
+        "doc": "\"circle\" (default) or \"square\", a waffle cell."
+      },
+      {
+        "name": "roundness",
+        "type": "number",
+        "required": false,
+        "default": "0.25",
+        "units": "0..1",
+        "doc": "A square's corner radius, 0..1 of half its side (default 0.25)."
+      },
+      {
+        "name": "color",
+        "type": "string",
+        "required": false,
+        "default": "text",
+        "doc": "Theme token (`text`, `muted`, `accent`, `background`) or hex (default `text`)."
+      },
+      {
+        "name": "fill",
+        "type": "FluidFill | boolean",
+        "required": false,
+        "doc": "A fluid gradient instead of the flat colour, sampled in screen space so the dots and any filled `RoundedRect` share one gradient; `true` takes colours from the theme accent."
+      },
+      {
+        "name": "opacity",
+        "type": "number",
+        "required": false,
+        "default": "1"
+      },
+      {
+        "name": "reveal",
+        "type": "DotReveal",
+        "required": false,
+        "doc": "Dots pop in one by one."
+      },
+      {
+        "name": "wave",
+        "type": "DotWave",
+        "required": false,
+        "doc": "A travelling wave of dot sizes."
+      },
+      {
+        "name": "window",
+        "type": "DotWindow",
+        "required": false,
+        "doc": "A clearing that opens for a hero number."
+      },
+      {
+        "name": "count",
+        "type": "DotCount | readonly DotCount[]",
+        "required": false,
+        "doc": "Dots recoloured in order as a value rolls: one run, or several stacked."
+      },
+      {
+        "name": "funnel",
+        "type": "DotFunnel",
+        "required": false,
+        "doc": "Columns narrowing into an arrow."
+      },
+      {
+        "name": "gather",
+        "type": "DotGather",
+        "required": false,
+        "doc": "Every dot drawn into one."
+      },
+      {
+        "name": "merge",
+        "type": "number",
+        "required": false,
+        "default": "0",
+        "units": "0..1",
+        "doc": "0..1: the dots swell and merge into one solid tile covering the grid (displaced dots return home first)."
+      },
+      {
+        "name": "tileRadius",
+        "type": "number",
+        "required": false,
+        "default": "half the pitch",
+        "units": "world units",
+        "doc": "The merged tile's corner radius, world units (default half the pitch)."
+      },
+      {
+        "name": "dot",
+        "type": "(info: DotInfo) => DotAdjust | undefined",
+        "required": false,
+        "doc": "Per-dot adjustment, called for every dot every frame: keep it a pure function of its argument and the clock."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]"
+      },
+      {
+        "name": "rotation",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]",
+        "doc": "Radians."
+      },
+      {
+        "name": "scale",
+        "type": "number",
+        "required": false,
+        "default": "1"
+      },
+      {
+        "name": "renderOrder",
+        "type": "number",
+        "required": false,
+        "default": "0"
+      }
+    ],
+    "example": "<DotField columns={10} rows={10} pitch={0.26} reveal={{ progress: ramp(localMs, 0, 900) }} count={{ value: 40 * ramp(localMs, 1200, 2950, \"outCubic\"), order: \"rows-up\" }} />",
+    "timing": [
+      "The field reads no clock: every progress, phase and value is a number the scene derives from useTimeline(), so put each on a beat with ramp and keep a count on its counter's own window and ease.",
+      "merge closes every gap at once and pulls displaced dots home over its first half; gather's last stretch hands the final dot's edge to the dot nearest its point."
+    ]
+  },
+  "DotFieldProps": {
+    "kind": "type",
+    "signature": "interface DotFieldProps { columns?: number; rows?: number; pitch?: number | readonly [number, number]; size?: number; shape?: \"circle\" | \"square\"; roundness?: number; color?: string; fill?: FluidFill | boolean; opacity?: number; reveal?: DotReveal; wave?: DotWave; window?: DotWindow; count?: DotCount | readonly DotCount[]; funnel?: DotFunnel; gather?: DotGather; merge?: number; tileRadius?: number; dot?: (info: DotInfo) => DotAdjust | undefined; position?: V3; rotation?: V3; scale?: number; renderOrder?: number; }"
+  },
+  "DotFunnel": {
+    "kind": "type",
+    "signature": "interface DotFunnel { progress: number; to?: number; stagger?: number; }",
+    "doc": "Columns narrowing into an arrow: each column keeps fewer slots than the one before and the extra dots stack onto them."
+  },
+  "DotGather": {
+    "kind": "type",
+    "signature": "interface DotGather { progress: number; to?: readonly [number, number]; size?: number; }",
+    "doc": "Every dot drawn to one point, merging into one dot."
+  },
+  "DotInfo": {
+    "kind": "type",
+    "signature": "interface DotInfo { index: number; col: number; row: number; x: number; y: number; radius: number; alpha: number; }",
+    "doc": "What the per-dot callback sees: the dot after the reveal, wave, window and funnel."
+  },
+  "DotOrder": {
+    "kind": "type",
+    "signature": "type DotOrder = \"reading\" | \"rows-up\" | \"columns\" | \"centre\" | \"random\";",
+    "doc": "Which dot goes first: `reading` (left to right, top row down), `rows-up` (left to right, bottom row up, the waffle-chart fill), `columns` (top to bottom, left column first), `centre` (nearest the middle first) or `random` (seeded)."
+  },
+  "DotReveal": {
+    "kind": "type",
+    "signature": "interface DotReveal { progress: number; order?: DotOrder; seed?: number; span?: number; overshoot?: number; }",
+    "doc": "Dots popping in one after another."
+  },
+  "DotWave": {
+    "kind": "type",
+    "signature": "interface DotWave { amount?: number; angleDeg?: number; wavelength?: number; phase?: number; min?: number; }",
+    "doc": "A travelling wave of dot sizes (the halftone wave)."
+  },
+  "DotWindow": {
+    "kind": "type",
+    "signature": "interface DotWindow { open: number; radius?: number; softness?: number; centre?: readonly [number, number]; roundness?: number; ripple?: number; }",
+    "doc": "A clearing that opens from a point: the dots there shrink away, the nearest first, leaving a window for a hero number."
+  },
   "EASE_NAMES": {
     "kind": "constant",
     "summary": "Every ease name (see kb catalog eases).",
@@ -1583,6 +1804,11 @@
     "kind": "constant",
     "summary": "android: what unknown or unavailable models render as.",
     "signature": "const FALLBACK_DEVICE_ID: DeviceId;"
+  },
+  "FluidFill": {
+    "kind": "type",
+    "signature": "interface FluidFill { shader?: string; colors?: readonly string[]; params?: Readonly<Record<string, number>>; speed?: number; scale?: number; }",
+    "doc": "A fluid fill for `RoundedRect`, `Pill` and `DotField`. Every field is optional: `true` (or `{}`) is the mesh gradient in colours drawn from the theme accent."
   },
   "FormatInfo": {
     "kind": "type",
@@ -2010,7 +2236,7 @@
   },
   "Pill": {
     "kind": "component",
-    "summary": "RoundedRect with fully round ends: width, height, color, opacity, stroke.",
+    "summary": "RoundedRect with fully round ends: width, height, color, opacity, stroke, fill.",
     "signature": "function Pill(props: PillProps): ReactElement;",
     "doc": "A RoundedRect whose radius is half the shorter side.",
     "props": [
@@ -2057,6 +2283,12 @@
         "doc": "Border colour; defaults to the theme text colour."
       },
       {
+        "name": "fill",
+        "type": "FluidFill | boolean",
+        "required": false,
+        "doc": "A fluid gradient fill sampled in screen space, so several shapes look through one gradient; `true` takes colours from the theme accent. Replaces `color`."
+      },
+      {
         "name": "position",
         "type": "V3",
         "required": false,
@@ -2086,7 +2318,7 @@
   },
   "PillProps": {
     "kind": "type",
-    "signature": "interface PillProps { width: number; height: number; color?: string; opacity?: number; strokeWidth?: number; strokeColor?: string; position?: V3; rotation?: V3; scale?: number | V3; renderOrder?: number; }"
+    "signature": "interface PillProps { width: number; height: number; color?: string; opacity?: number; strokeWidth?: number; strokeColor?: string; fill?: FluidFill | boolean; position?: V3; rotation?: V3; scale?: number | V3; renderOrder?: number; }"
   },
   "PlacedObjectProps": {
     "kind": "type",
@@ -2362,9 +2594,9 @@
   },
   "RoundedRect": {
     "kind": "component",
-    "summary": "Flat, colour-exact rounded rect: width, height, radius, color, opacity, stroke.",
+    "summary": "Flat, colour-exact rounded rect: width, height, radius, color, opacity, stroke; fill for a fluid gradient.",
     "signature": "function RoundedRect(props: RoundedRectProps): ReactElement;",
-    "doc": "An unlit, antialiased rounded rectangle with an optional border ring; colour-exact like ImageCard, and size, radius and colours animate without rebuilding geometry.",
+    "doc": "An unlit, antialiased rounded rectangle with an optional border ring; colour-exact like ImageCard, and size, radius and colours animate without rebuilding geometry. With `fill` it shows a fluid gradient instead of a flat colour.",
     "props": [
       {
         "name": "radius",
@@ -2415,6 +2647,12 @@
         "required": false,
         "default": "the theme text colour",
         "doc": "Border colour; defaults to the theme text colour."
+      },
+      {
+        "name": "fill",
+        "type": "FluidFill | boolean",
+        "required": false,
+        "doc": "A fluid gradient fill sampled in screen space, so several shapes look through one gradient; `true` takes colours from the theme accent. Replaces `color`."
       },
       {
         "name": "position",
@@ -3256,6 +3494,12 @@
   "WireGridProps": {
     "kind": "type",
     "signature": "interface WireGridProps { size?: number; divisions?: number; amplitude?: number; wavelength?: number; speed?: number; tone?: \"text\" | \"accent\" | \"muted\"; opacity?: number; glow?: number; position?: V3; rotation?: V3; }"
+  },
+  "accentFluidColours": {
+    "kind": "function",
+    "summary": "accentFluidColours(hex): the default fill's deep, mid and highlight shades of a colour.",
+    "signature": "function accentFluidColours(accent: string): string[];",
+    "doc": "Deep, mid, highlight and a hue-shifted shade of the theme accent: the cobalt-to-ice value material, in any brand colour."
   },
   "clamp01": {
     "kind": "function",

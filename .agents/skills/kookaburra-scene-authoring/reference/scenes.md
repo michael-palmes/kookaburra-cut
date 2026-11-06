@@ -182,10 +182,17 @@ export default defineScene({
   `stampScale` options and a base `scale`. Prefer it to hand-copying the pop.
 - `clamp01(x)`, `lerp(a, b, t)` for the rest.
 - `RoundedRect` (`width`, `height`, `radius`, `color`, `opacity`, `strokeWidth`,
-  `strokeColor`, `position`, `rotation`, `scale`, `renderOrder`) and `Pill` (radius is
-  half the shorter side) are flat and colour-exact; size, radius and colours animate
-  freely (no geometry rebuild). Fills default to the theme accent, strokes to the text
-  colour.
+  `strokeColor`, `fill`, `position`, `rotation`, `scale`, `renderOrder`) and `Pill`
+  (radius is half the shorter side) are flat and colour-exact; size, radius and colours
+  animate freely (no geometry rebuild). Fills default to the theme accent, strokes to
+  the text colour.
+- `fill` swaps the flat colour for a slowly flowing fluid gradient, the value material
+  of a product-free explainer: `fill` alone takes deep, mid and highlight shades of the
+  theme accent; `fill={{ colors: ["#3a67b8", "#7195cf", "#e8fcfd"], speed: 0.4 }}` sets
+  them (`shader` and `params` take any `kb catalog backgrounds` shader; `scale`, default
+  0.6, lower to show more of the gradient inside one small shape). It is
+  sampled in SCREEN space, so tiles, pills and a `DotField` side by side look through
+  one gradient, and a shape can hand over to another in place without a seam.
 - Per-frame geometry pitfall: never animate geometry `args` (a growing radius in
   `args` rebuilds the geometry every frame). Build a unit geometry once and animate
   `scale`, `position`, `rotation` or material `opacity`.
@@ -235,6 +242,7 @@ export default defineScene({
 | `StagedObject`, `HeroObject` | 3D objects |
 | `ParticleField`, `WireGrid`, `Ribbon` | Seeded generative shapes on the clock |
 | `RoundedRect`, `Pill` | Flat cards, badges, chips and bars (Motion helpers above) |
+| `DotField` | Hundreds of dots as a grid or waffle in one draw: pop-ins, a halftone wave, a window for a hero number, counts, a funnel, a gather and a merge into a tile (below) |
 | `DashedRule`, `DashedBracket` | Dashed dividers, connectors and span brackets with a draw-on (below) |
 | `SplitField` | The frame split into image, video or colour tiles (the sidecar `mosaic`, reference/media.md) |
 | `TapRing`, `Cursor` | Tap pulses and a travelling, clicking pointer (the sidecar `taps`, reference/media.md) |
@@ -253,6 +261,39 @@ Generative shapes (all motion from the clock, randomness from `seed`):
 - `<ExtrudedText text from to position rotation fontSize depth bevel tone lit textKey />`
   (rotation in radians; bundled faces only)
 - `<HeroObject model="handset" position rotation scale spinDegPerSec floatAmplitude floatHz lit />`
+
+Dot fields (`DotField`, flat and colour-exact or `fill`ed; every field is a value the
+scene drives from `useTimeline()`, so put each on a beat with `ramp`):
+
+```tsx
+const { localMs } = useTimeline();
+const taxed = ramp(localMs, 1200, 2950, "outCubic"); // the counter's own window and ease
+<DotField columns={10} rows={10} pitch={0.26}
+  reveal={{ progress: ramp(localMs, 0, 900), seed: 3 }}        // random pop-in
+  count={{ value: 40 * taxed, order: "rows-up" }} />            // dots go muted as it rolls
+<AnimatedCounter from={0} to={40} startMs={1200} durationMs={1750} ease="outCubic" />
+```
+
+- Layout: `columns`, `rows`, `pitch` (centre to centre, or `[x, y]`), `size` (diameter
+  as a fraction of the pitch, 0.72), `shape` `"circle"` or `"square"` (a waffle cell,
+  `roundness` 0..1), `color` (token or hex, default `text`) or `fill`. Dots index in
+  reading order from the top left; positions are world units from the field centre.
+- `wave={{ phase: localMs / 900, wavelength: 7, angleDeg: -45, min: 0.15, amount }}`:
+  a halftone wave of sizes travelling along `angleDeg`.
+- `window={{ open: ramp(...), radius: 2.5, softness: 2, roundness: 4, centre: [0, 0] }}`:
+  dots shrink away from the centre outward, opening a clearing (in dots) for a hero
+  number laid over it.
+- `count={{ value, color: "muted", order }}`: `value` dots take `color` in `order`
+  (`reading`, `rows-up`, `columns`, `centre`, `random`); a fractional value blends the
+  next dot. An array stacks runs, one category after another.
+- `funnel={{ progress, to: 1, stagger: 0.5 }}`: the columns narrow one after another
+  into an arrow, extra dots stacking onto fewer slots; `gather={{ progress, to: [x, y],
+  size }}` draws every dot into one (an `outBack` progress swells it past its size).
+- `merge={ramp(...)}` (0..1): the dots swell and fuse into one solid tile covering the
+  grid (`tileRadius`); with `fill`, swap to a filled `RoundedRect` of the same size at
+  1 and keep morphing it.
+- `dot={(d) => ({ offset, scale, alpha })}` adjusts single dots: keep it a pure function
+  of `d` and the clock. Up to 10,000 dots.
 
 Dashed shapes (flat and colour-exact, one mesh per dash, colour defaulting to the theme
 muted):

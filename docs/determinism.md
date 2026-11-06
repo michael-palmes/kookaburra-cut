@@ -1344,6 +1344,12 @@ of which can move pixels for text that uses neither (proven EQUAL on
 - **Barriers.** Emphasis rects and the type head come from the first typeset's carets,
   so both report text-derived pending (`textDerivedState.ts`) until the carets land: no
   capture draws the pre-measure frame.
+- **Shaped emphasis is opt-in.** A `pill` or `battery` shape (`textStyle.<key>Emphasis`)
+  pads its ranges with one space a side (`padEmphasisRanges`) and mounts `EmphasisPills`
+  behind the words from the same caret rects, so it waits on the same barrier. The trace
+  and flood are pure functions of scene ms, and the words' crossfade rides the existing
+  emphasis colour uniform: no stagger program changes, and plain emphasis keeps its
+  exact text and bytes.
 
 ## Generative 3D primitives
 
@@ -1378,6 +1384,26 @@ The generative toolkit primitives (`ExtrudedText`, `ParticleField`, `WireGrid`,
   ATTACHES to the object's group (never wraps it), mounts only for the
   inspector-selected object AND is cleared by `exportPreamble`
   (`useObjectEditStore`), so it can never reach an exported frame.
+
+### Dot fields and fluid fills
+
+- **One instanced draw, written in the commit.** `DotField` uploads every dot's
+  position, size, opacity and tint from `dotFieldFrame` (`toolkit/shapes/dotFieldMath.ts`,
+  pure) in a layout effect, the `ParticleField` rule. Its seeded orders (a mulberry32
+  Fisher-Yates shuffle) are export contract, pinned by a golden test.
+- **Merging is seam-free by construction.** While `merge` is above 0 every dot draws its
+  exact cell, with corners computed from whole and half cell edges, so neighbours share
+  bit-identical edges: no gap, no double blend. Only the grid's outer edges take the AA
+  margin. The tile's distance is clamped inside, so every gap closes at once.
+- **The fluid fill is the fixed background's shader, sampled per fragment.**
+  `fluidFillFunction` rewrites a shader background's fragment into `kkFluid(st)` and the
+  shape passes its screen position (clip xy over w, divided per fragment so perspective
+  stays exact). The pattern lays out against the export format (`u_kkFrame`), never the
+  canvas, and its time is the absolute project clock read per draw, the background's own
+  rule. The display-domain colour decodes to linear and leaves through three's
+  `linearToOutputTexel`, so a filled shape lands like a flat `RoundedRect` in every
+  target. A shape without `fill` never mounts it: `RoundedRect` and `Pill` keep their
+  exact program and bytes.
 
 **Framing is invisible to the gate.** `useFormat().frame`/`safe` are measured at
 the content plane `z=0`; content offset toward the camera projects larger and can

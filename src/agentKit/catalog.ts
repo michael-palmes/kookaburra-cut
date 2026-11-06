@@ -749,6 +749,15 @@ export const TOOLKIT_SUMMARIES: Record<
     internal: true,
   },
   ParticleField: { summary: "Seeded instanced particles drifting on the clock." },
+  DotField: {
+    summary:
+      "Grid or waffle of dots in one draw: reveal, wave, window, count, funnel, gather, merge, fill.",
+  },
+  DOT_ORDERS: { summary: "The orders a DotField count or reveal walks: reading, rows-up, ..." },
+  accentFluidColours: {
+    summary:
+      "accentFluidColours(hex): the default fill's deep, mid and highlight shades of a colour.",
+  },
   PromptBar: {
     summary:
       "Chat prompt bar: text types in from `from` to `to` (45 ms a key by default), caret, send button.",
@@ -838,9 +847,12 @@ export const TOOLKIT_SUMMARIES: Record<
   useTheme: { summary: "The resolved theme tokens for this scene." },
   useTimeline: { summary: "{ localMs, globalMs, progress }; progress is PROJECT-wide." },
   EASE_NAMES: { summary: "Every ease name (see kb catalog eases)." },
-  Pill: { summary: "RoundedRect with fully round ends: width, height, color, opacity, stroke." },
+  Pill: {
+    summary: "RoundedRect with fully round ends: width, height, color, opacity, stroke, fill.",
+  },
   RoundedRect: {
-    summary: "Flat, colour-exact rounded rect: width, height, radius, color, opacity, stroke.",
+    summary:
+      "Flat, colour-exact rounded rect: width, height, radius, color, opacity, stroke; fill for a fluid gradient.",
   },
   clamp01: { summary: "clamp01(x): x clamped to 0..1." },
   ease: {
