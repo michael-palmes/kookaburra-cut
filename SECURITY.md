@@ -208,7 +208,12 @@ backup. Everything else is backed up like any document: projects with their own
   progress for up to an hour and 2 GiB in all; `requests/.claimed/` the claimed
   requests; `apps/<pid>.json` and `app.json` heartbeats carry the executable
   path, workspace root, open project, playhead and the folders picked this
-  session; `cli.json` the headless CLI's location. The app never creates it
+  session; `cli.json` the headless CLI's location. kb also writes there:
+  `exports/<slug>/` (one record per finished `kb export`, the newest 50 kept),
+  `film/<slug>/` (frames and sheets of its film runs, the newest 12 kept),
+  `video/<slug>/` (`kb video` scratch, pruned to three drafts per edit, 24 h and
+  1 GB) and `font-verdicts.json` (the app's font verdicts, cached); see
+  `docs/agent-kit.md`. The app never creates it
   under `DisableAgentKit` (`bridge_root` refuses first), though kb in a kit
   stamped earlier can still write requests nobody answers. Control: `bridge.rs`
   (`bridge_root`, the caps at its head, `prune`).
@@ -302,7 +307,11 @@ backup. Everything else is backed up like any document: projects with their own
   folder, and so does every export under `ExportsInProject`, which routes a
   Downloads request to the project in `export_dir_kind`). Video and stills
   follow the same rule. ffmpeg writes a hidden `.part` sibling and renames it
-  on success. `.kbpack` files go where the Save
+  on success. A video export that fails leaves `<export>.health.json` where
+  the film would land in the project's `exports/`: the reason and error, the
+  frame and scenes it reached, its render rate and the app's memory samples
+  (`export_health.rs`, `health_path`); the next start of that export, or its
+  success, removes it. `.kbpack` files go where the Save
   dialog `build_pack` runs from Rust points, never a webview path
   (`pack::commands::validate_destination` refuses system folders, `$APPDATA`
   and the app bundle). Control: `resolve_export_output` in `lib.rs`.
@@ -555,7 +564,15 @@ drop a request, which is the out-of-scope case above.
   nothing until the person grants its origin in the editor; the child
   WKWebView has no Tauri capability, no file, media or sensor access, no
   downloads and no new windows; an approved origin reloads in Present on each
-  hold without a further click (`src/present/PresentWebsiteOverlay.tsx`).
+  hold without a further click (`src/present/PresentWebsiteOverlay.tsx`). Its
+  one way to the app is the `kookaburraWebsiteFocus` script message handler
+  (`website.rs`, `WebsiteMessageHandler`): a page, or the init script on
+  pointer down, focus and Shift-Escape, may post the string `acquire` or
+  `release`, and anything else is ignored. Either becomes a
+  `kookaburra://website-focus` event carrying the app's own view id and a
+  focused flag, broadcast to the app's windows, and `release` returns keyboard
+  focus to the window that owns the view; nothing from the page is read or
+  passed on.
 
 ## Packs
 
