@@ -1,5 +1,4 @@
-// The four security documents and the changelog must describe the version tauri.conf.json
-// names: the release skill bumps all of them together, and this fails when one is missed.
+// The version files, the four security documents and the changelog move together at a release.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -10,6 +9,11 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (path) => readFileSync(join(ROOT, path), "utf8");
 const VERSION = JSON.parse(read("src-tauri/tauri.conf.json")).version;
 
+const VERSION_FILES = [
+  ["package.json", (text) => JSON.parse(text).version],
+  ["src-tauri/Cargo.toml", (text) => text.match(/^version = "([^"]+)"/m)?.[1]],
+];
+
 const VERSION_LINES = [
   ["SECURITY.md", /^\*\*As of version (\d+\.\d+\.\d+)\.\*\*/m],
   ["docs/privacy.md", /^This page describes version (\d+\.\d+\.\d+)\./m],
@@ -17,8 +21,14 @@ const VERSION_LINES = [
   ["docs/fleet.md", /^Describes version (\d+\.\d+\.\d+)\./m],
 ];
 
-test("every security document describes the version tauri.conf.json names", () => {
+test("package.json and Cargo.toml carry the version tauri.conf.json names", () => {
   assert.match(VERSION, /^\d+\.\d+\.\d+$/);
+  for (const [file, pick] of VERSION_FILES) {
+    assert.equal(pick(read(file)), VERSION, `${file} is not at ${VERSION}`);
+  }
+});
+
+test("every security document describes the version tauri.conf.json names", () => {
   for (const [file, line] of VERSION_LINES) {
     const found = read(file).match(line);
     assert.ok(found, `${file} has no version line`);

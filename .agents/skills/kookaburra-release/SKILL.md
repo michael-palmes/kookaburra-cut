@@ -23,7 +23,7 @@ A release is a **signed `v*` tag on `main`**, pushed by `pnpm release`. `.github
 3. **Approve the sign job** when GitHub asks (the `release` environment's required reviewer). The run waits for you; nothing is signed before.
 4. **Publish the draft** once verify and publish are green: read the run summary (digests, sidecar record, SBOM count, build info), check the draft's assets hold `KookaburraCut-<version>.cdx.json` and its body opens with the version's changelog section, then publish the release on GitHub. The in-app updater only sees a published release (the draft 404s at `releases/latest/download/latest.json`).
 5. **Run the packaged-parity gate** on the published DMG's app (below). The workflow does not run it: it needs this machine's recorded baselines.
-6. **Update the website.** In `mpalmes-website-nextjs`, set `DESCRIBES` in `pages/kookaburracut/security.tsx` to the new version so its tag-pinned links resolve, and refresh `Expires` in `public/kookaburracut/security.txt` if it falls within the next three months; open a PR there.
+6. **Update the website.** In `mpalmes-website-nextjs`, set `DESCRIBES` in `pages/kookaburracut/security.tsx` to the new version so its tag-pinned links resolve (the page lands with the website's security PRs; before then there is nothing to set), and refresh `Expires` in `public/kookaburracut/security.txt` if it falls within the next three months; open a PR there.
 
 Rehearsals, in order of cost:
 - `pnpm release:rehearse`: build, sign ad hoc, plain DMG, verify, on this Mac. No key, no tag.
