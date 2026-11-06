@@ -1,3 +1,4 @@
+import { GRAIN_HOLD_MAX } from "../engine/effectParams";
 import { parseMotionBlurOverride } from "../engine/motionBlur";
 import { parseWarn } from "../engine/parseWarnings";
 import { normalizeLighting, resolveLighting } from "../engine/sceneLighting";
@@ -416,6 +417,10 @@ function parseEffects(v: unknown, source: string): EffectsConfig | undefined {
   const n = v.grain;
   if (isRecord(n) && isNum(n.intensity)) {
     out.grain = { intensity: n.intensity };
+    if (isNum(n.hold) && n.hold >= 1) out.grain.hold = Math.min(GRAIN_HOLD_MAX, Math.round(n.hold));
+    else if (n.hold !== undefined) {
+      parseWarn(`[theme] ${source}: invalid "effects.grain.hold", dropped`);
+    }
   } else if (n !== undefined) parseWarn(`[theme] ${source}: invalid "effects.grain", dropped`);
   return Object.keys(out).length > 0 ? out : undefined;
 }

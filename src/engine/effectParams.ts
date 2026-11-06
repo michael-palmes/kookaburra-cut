@@ -6,6 +6,15 @@ export function grainSeed(globalMs: number, fps: number): number {
   return Math.round((globalMs / 1000) * fps);
 }
 
+/** The longest grain hold, in frames (one second). */
+export const GRAIN_HOLD_MAX = 60;
+
+/** The paper boil: a frame seed held for `hold` frames, so one grain pattern stays put that long (an integer division of the frame index); absent, or under 2, changes every frame. */
+export function heldGrainSeed(seed: number, hold: number | undefined): number {
+  const frames = hold === undefined ? 1 : Math.min(GRAIN_HOLD_MAX, Math.round(hold));
+  return frames > 1 ? Math.floor(seed / frames) : seed;
+}
+
 /** The "amount" field of each effect, the one that at 0 turns the effect off; used to fade an effect that exists on only one side of a transition in/out, rather than popping it. */
 const AMOUNT_KEY = {
   bloom: "intensity",
@@ -18,7 +27,10 @@ const EFFECT_KEYS = ["bloom", "vignette", "lut", "grain"] as const;
 
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 
-/** Blend one effect present on A and/or B. Numeric fields lerp; string fields snap at t≥0.5. */
+/** Fields that count frames: a lerp would hold for a fraction of one, so they snap like strings. */
+const SNAPPED_FIELDS = new Set(["hold"]);
+
+/** Blend one effect present on A and/or B. Numeric fields lerp; string and frame-count fields snap at t≥0.5. */
 function blendOneEffect(
   key: (typeof EFFECT_KEYS)[number],
   a: Record<string, unknown> | undefined,
@@ -31,7 +43,7 @@ function blendOneEffect(
       const av = a[f];
       const bv = b[f];
       out[f] =
-        typeof av === "number" && typeof bv === "number"
+        typeof av === "number" && typeof bv === "number" && !SNAPPED_FIELDS.has(f)
           ? lerp(av, bv, progress)
           : progress >= 0.5
             ? bv

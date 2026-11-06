@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { EffectsConfig } from "../theme/tokens";
 import {
   blendEffectParams,
+  GRAIN_HOLD_MAX,
   grainSeed,
+  heldGrainSeed,
   resolveEffectParams,
   sceneBaseEffects,
 } from "./effectParams";
@@ -23,6 +25,33 @@ describe("grainSeed — deterministic per-frame grain seed", () => {
     expect(grainSeed(1000, 60)).toBe(60); // 1.0s × 60 = 60
     expect(grainSeed(500, 60)).toBe(30); // 0.5s × 60 = 30
     expect(grainSeed(24, 30)).toBe(1); // 0.024s × 30 = 0.72 → 1
+  });
+});
+
+describe("heldGrainSeed: the paper boil", () => {
+  it("leaves the seed alone without a hold, at 1, or on a malformed one", () => {
+    for (const hold of [undefined, 1, 0, -3, 1.4, Number.NaN]) {
+      expect(heldGrainSeed(137, hold)).toBe(137);
+    }
+  });
+
+  it("holds each pattern for exactly `hold` frames from frame 0", () => {
+    const seeds = Array.from({ length: 15 }, (_, f) =>
+      heldGrainSeed(grainSeed((f * 1000) / 60, 60), 5),
+    );
+    expect(seeds).toEqual([0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2]);
+  });
+
+  it("rounds the hold and caps it at one second", () => {
+    expect(heldGrainSeed(9, 2.6)).toBe(3);
+    expect(heldGrainSeed(GRAIN_HOLD_MAX * 3 + 1, 10_000)).toBe(3);
+  });
+
+  it("holds 3 then 2 output frames on a 30 fps export (the 60 grid's even frames)", () => {
+    const seeds = Array.from({ length: 10 }, (_, f) =>
+      heldGrainSeed(grainSeed((f * 1000) / 30, 60), 5),
+    );
+    expect(seeds).toEqual([0, 0, 0, 1, 1, 2, 2, 2, 3, 3]);
   });
 });
 
@@ -84,6 +113,13 @@ describe("blendEffectParams — lerp an effect stack across a transition", () =>
       luminanceThreshold: 0.8,
       luminanceSmoothing: 0.025,
     });
+  });
+
+  it("snaps a grain hold at the midpoint instead of holding for a fraction of a frame", () => {
+    const held: EffectsConfig = { grain: { intensity: 0.1, hold: 5 } };
+    const plain: EffectsConfig = { grain: { intensity: 0.1, hold: 2 } };
+    expect(blendEffectParams(held, plain, 0.49).grain?.hold).toBe(5);
+    expect(blendEffectParams(held, plain, 0.5).grain?.hold).toBe(2);
   });
 
   it("fades an A-only effect out toward its amount=0 as progress rises", () => {
