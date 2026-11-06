@@ -1,0 +1,75 @@
+{
+  "version": 3,
+  "name": "framed",
+  "sources": [
+    {
+      "id": "s1",
+      "rel": "assets/capture.mp4",
+      "width": 1920,
+      "height": 1080,
+      "fps": 60,
+      "durationMs": 12000
+    },
+    {
+      "id": "s2",
+      "rel": "assets/still.png",
+      "kind": "image",
+      "width": 1600,
+      "height": 900,
+      "fps": 0,
+      "durationMs": 0
+    }
+  ],
+  "settings": {
+    "width": 1080,
+    "height": 1080,
+    "fps": 30
+  },
+  "clips": [
+    {
+      "id": "c1",
+      "sourceId": "s1",
+      "inMs": 0,
+      "outMs": 4000,
+      "speed": 1,
+      "startMs": 0,
+      "crop": [0.25, 0.0, 0.5625, 1.0]
+    },
+    {
+      "id": "c2",
+      "sourceId": "s1",
+      "inMs": 4000,
+      "outMs": 8000,
+      "speed": 1.5,
+      "startMs": 4000,
+      "zoom": {
+        "keys": [
+          {
+            "tMs": 0,
+            "rect": [0.25, 0.0, 0.5625, 1.0]
+          },
+          {
+            "tMs": 1000,
+            "rect": [0.4, 0.2, 0.28125, 0.5],
+            "ease": "smooth"
+          },
+          {
+            "tMs": 2500,
+            "rect": [0.25, 0.0, 0.5625, 1.0],
+            "ease": "linear"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c3",
+      "sourceId": "s2",
+      "inMs": 0,
+      "outMs": 0,
+      "speed": 1,
+      "startMs": 6667,
+      "holdMs": 2000,
+      "crop": [0.1, 0.1, 0.45, 0.8]
+    }
+  ]
+}

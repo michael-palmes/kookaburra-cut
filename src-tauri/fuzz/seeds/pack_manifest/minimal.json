@@ -1,0 +1,60 @@
+{
+  "format": "kookaburra-pack",
+  "formatVersion": 2,
+  "appVersion": "0.22.2",
+  "minAppVersion": "0.6.0",
+  "pack": {
+    "name": "Seed Pack",
+    "createdAt": "2026-07-26T00:00:00Z"
+  },
+  "publisher": {
+    "name": "Seed Publisher",
+    "device": "studio-mac",
+    "publicKey": "ed25519:LDAM+rJLjK+Vl7pBnCgVaRGE+JRJSzauxDEUpcDHbPs=",
+    "keyId": "2e0fee91ebe660b5"
+  },
+  "contents": {
+    "projects": [
+      {
+        "slug": "acme",
+        "name": "Acme",
+        "bytes": 4096,
+        "modifiedAt": "2026-07-26T00:00:00Z",
+        "contentHash": "822b33ad87c148a0a20a5ba7cd5ebcaa68d36a18e7aad165554903f52ca82757",
+        "root": "payload/projects/acme",
+        "manifestVersion": 9,
+        "sceneCount": 1,
+        "sceneFiles": ["scenes/01-hero.tsx"],
+        "durationMs": 4000,
+        "formats": ["16:9", "9:16"],
+        "themeId": "ws:acme-dark",
+        "requires": {
+          "themes": ["acme-dark"],
+          "fonts": ["Acme Sans@600"]
+        },
+        "hasSceneCode": true
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "payload/projects/acme/project.json",
+      "sha256": "9f22103d8dffb670d0a88d489c7c86d667f2735f36bd13f97689f237a7c32e1c",
+      "bytes": 512
+    },
+    {
+      "path": "payload/projects/acme/scenes/01-hero.json",
+      "sha256": "1704d7a82c908db92257506162215a615d7a5cc47dfb3b5d0fa52dcf7c781cd0",
+      "bytes": 256
+    },
+    {
+      "path": "payload/projects/acme/scenes/01-hero.tsx",
+      "sha256": "b2175a81734f1736164c2660ac4819c9a478807414b6822b3f9fc3ec8b06f111",
+      "bytes": 2048
+    }
+  ],
+  "totals": {
+    "files": 3,
+    "bytes": 2816
+  }
+}

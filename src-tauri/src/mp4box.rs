@@ -40,7 +40,7 @@ pub(crate) fn edit_start(path: &Path) -> Option<EditStart> {
     edit_start_in(&mut File::open(path).ok()?)
 }
 
-fn edit_start_in<R: Read + Seek>(movie: &mut R) -> Option<EditStart> {
+pub(crate) fn edit_start_in<R: Read + Seek>(movie: &mut R) -> Option<EditStart> {
     edit_start_of(&read_moov(movie)?)
 }
 

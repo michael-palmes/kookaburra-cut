@@ -1,0 +1,74 @@
+[package]
+name = "kookaburra-cut-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.kookaburra-cut]
+path = ".."
+features = ["fuzzing"]
+
+[[bin]]
+name = "edit_doc"
+path = "fuzz_targets/edit_doc.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "mp4_edit_start"
+path = "fuzz_targets/mp4_edit_start.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pack_archive_path"
+path = "fuzz_targets/pack_archive_path.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pack_manifest"
+path = "fuzz_targets/pack_manifest.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pack_signature"
+path = "fuzz_targets/pack_signature.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "png_decode"
+path = "fuzz_targets/png_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "sfnt_face"
+path = "fuzz_targets/sfnt_face.rs"
+test = false
+doc = false
+bench = false
+
+# Symbolised crash traces.
+[profile.release]
+debug = 1
+
+# macOS 27 dyld rejects optimised proc-macro dylibs (mis-aligned LINKEDIT string pool), as in the app's Cargo.toml.
+[profile.release.build-override]
+opt-level = 0
+
+[workspace]

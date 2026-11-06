@@ -7,6 +7,10 @@ dist-ssr/
 
 # Rust / Tauri build artifacts
 src-tauri/target/
+src-tauri/fuzz/target/
+src-tauri/fuzz/corpus/
+src-tauri/fuzz/artifacts/
+src-tauri/fuzz/coverage/
 src-tauri/gen/
 
 # Release artefacts (signed .app / .dmg / .zip) and the DMG staging scratch

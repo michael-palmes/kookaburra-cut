@@ -271,7 +271,7 @@ pub fn embedding_from_fs_type(fs_type: u16) -> FontEmbedding {
 }
 
 /// fsType sits at OS/2 + 8. A missing table or any parse failure reads Unknown (usually an old free face), which gates as a warning rather than a refusal.
-fn embedding_in_face(data: &[u8], face_offset: usize) -> FontEmbedding {
+pub(crate) fn embedding_in_face(data: &[u8], face_offset: usize) -> FontEmbedding {
     let Ok((_, tables)) = face_tables(data, face_offset) else {
         return FontEmbedding::Unknown;
     };
@@ -288,7 +288,7 @@ fn embedding_in_face(data: &[u8], face_offset: usize) -> FontEmbedding {
 }
 
 /// 0 for a plain sfnt; for a collection, the named face if it resolves, else the first.
-fn embedding_face_offset(data: &[u8], postscript: Option<&str>) -> usize {
+pub(crate) fn embedding_face_offset(data: &[u8], postscript: Option<&str>) -> usize {
     if data.get(0..4) != Some(b"ttcf") {
         return 0;
     }
@@ -586,15 +586,15 @@ fn read_u32(data: &[u8], at: usize) -> Result<u32, String> {
         .ok_or_else(|| "font data truncated".to_string())
 }
 
-struct TableRecord {
+pub(crate) struct TableRecord {
     tag: [u8; 4],
     checksum: u32,
-    offset: u32,
-    length: u32,
+    pub(crate) offset: u32,
+    pub(crate) length: u32,
 }
 
 /// The table records of the face whose offset table starts at `face_offset`.
-fn face_tables(data: &[u8], face_offset: usize) -> Result<(u32, Vec<TableRecord>), String> {
+pub(crate) fn face_tables(data: &[u8], face_offset: usize) -> Result<(u32, Vec<TableRecord>), String> {
     let sfnt_version = read_u32(data, face_offset)?;
     let num_tables = read_u16(data, face_offset + 4)? as usize;
     let mut tables = Vec::with_capacity(num_tables);
@@ -649,7 +649,7 @@ fn name_string(data: &[u8], tables: &[TableRecord], want_id: u16) -> Option<Stri
 }
 
 /// Extract the face matching `postscript` from a ttc/otc into a standalone font.
-fn extract_face_from_collection(data: &[u8], postscript: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn extract_face_from_collection(data: &[u8], postscript: &str) -> Result<Vec<u8>, String> {
     if data.get(0..4) != Some(b"ttcf") {
         return Err("not a TrueType collection".into());
     }
@@ -662,7 +662,10 @@ fn extract_face_from_collection(data: &[u8], postscript: &str) -> Result<Vec<u8>
             continue;
         }
 
-        // Rebuild: header + directory + table data (original order, 4-byte aligned).
+        // Rebuild: header + directory + table data (original order, 4-byte aligned). The header's u16 search fields index at most 4095 tables.
+        if tables.len() >= 4096 {
+            return Err("font face declares too many tables".into());
+        }
         let num_tables = tables.len() as u16;
         let mut search_range: u16 = 1;
         let mut entry_selector: u16 = 0;
@@ -691,8 +694,9 @@ fn extract_face_from_collection(data: &[u8], postscript: &str) -> Result<Vec<u8>
                 out.push(0);
             }
             let new_offset = out.len() as u32;
+            let end = t.offset.checked_add(t.length).ok_or("table out of bounds")?;
             let bytes = data
-                .get(t.offset as usize..(t.offset + t.length) as usize)
+                .get(t.offset as usize..end as usize)
                 .ok_or("table out of bounds")?;
             out.extend_from_slice(bytes);
             let rec = dir_start + i * 16;
@@ -759,14 +763,14 @@ fn find_collection_face(data: &[u8], postscript: &str) -> Result<(usize, usize),
     Err(format!("face \"{postscript}\" not found in the collection"))
 }
 
-struct VarAxis {
+pub(crate) struct VarAxis {
     tag: [u8; 4],
     min: f32,
     default: f32,
     max: f32,
 }
 
-struct VarInstance {
+pub(crate) struct VarInstance {
     postscript_name_id: Option<u16>,
     coords: Vec<f32>,
 }
@@ -775,7 +779,7 @@ fn read_fixed(data: &[u8], at: usize) -> Result<f32, String> {
     Ok(read_u32(data, at)? as i32 as f32 / 65536.0)
 }
 
-fn parse_fvar(
+pub(crate) fn parse_fvar(
     data: &[u8],
     tables: &[TableRecord],
 ) -> Result<(Vec<VarAxis>, Vec<VarInstance>), String> {
@@ -1031,6 +1035,46 @@ mod tests {
         assert_eq!(cache.entries.get(&key).unwrap().mtime_ms, mtime_ms);
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A collection face whose table runs past u32, or that declares more tables than an sfnt header can index, is refused rather than overflowed.
+    #[test]
+    fn a_hostile_collection_is_refused_not_overflowed() {
+        fn collection(records: &[([u8; 4], u32, u32)]) -> Vec<u8> {
+            let ps: Vec<u8> = "Tiny".encode_utf16().flat_map(u16::to_be_bytes).collect();
+            let mut name = Vec::new();
+            for field in [0u16, 1, 18, 3, 1, 0x409, 6, ps.len() as u16, 0] {
+                name.extend_from_slice(&field.to_be_bytes());
+            }
+            name.extend_from_slice(&ps);
+            let mut all = records.to_vec();
+            let name_offset = 16 + 12 + (all.len() as u32 + 1) * 16;
+            all.push((*b"name", name_offset, name.len() as u32));
+            let mut out = b"ttcf".to_vec();
+            for field in [0x0001_0000u32, 1, 16, 0x0001_0000] {
+                out.extend_from_slice(&field.to_be_bytes());
+            }
+            out.extend_from_slice(&(all.len() as u16).to_be_bytes());
+            out.extend_from_slice(&[0u8; 6]);
+            for (tag, offset, length) in &all {
+                out.extend_from_slice(tag);
+                out.extend_from_slice(&0u32.to_be_bytes());
+                out.extend_from_slice(&offset.to_be_bytes());
+                out.extend_from_slice(&length.to_be_bytes());
+            }
+            out.extend_from_slice(&name);
+            out
+        }
+        let past_the_end = collection(&[(*b"OS/2", 0xFFFF_FFF0, 0x20)]);
+        assert_eq!(
+            extract_face_from_collection(&past_the_end, "Tiny").unwrap_err(),
+            "table out of bounds"
+        );
+        let too_many = collection(&vec![(*b"glyf", 0, 1); 4095]);
+        assert_eq!(
+            extract_face_from_collection(&too_many, "Tiny").unwrap_err(),
+            "font face declares too many tables"
+        );
     }
 
     /// Best-effort: exercises the extractor against a real system collection when present.

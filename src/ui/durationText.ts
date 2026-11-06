@@ -33,10 +33,10 @@ export function parseSceneLength(text: string): number | null {
   return Number(raw);
 }
 
-/** A typed scene length as whole milliseconds, or null when the text is junk or under `MIN_SCENE_LENGTH_MS`. The single commit-side check every scene-length field uses. */
+/** A typed scene length as whole milliseconds, or null when the text is junk, under `MIN_SCENE_LENGTH_MS` or past what a number can hold. The single commit-side check every scene-length field uses. */
 export function parseSceneLengthMs(text: string): number | null {
   const seconds = parseSceneLength(text);
   if (seconds === null) return null;
   const ms = Math.round(seconds * 1000);
-  return ms >= MIN_SCENE_LENGTH_MS ? ms : null;
+  return Number.isFinite(ms) && ms >= MIN_SCENE_LENGTH_MS ? ms : null;
 }

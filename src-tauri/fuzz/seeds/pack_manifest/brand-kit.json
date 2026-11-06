@@ -1,0 +1,298 @@
+{
+  "format": "kookaburra-pack",
+  "formatVersion": 3,
+  "appVersion": "0.22.2",
+  "minAppVersion": "0.6.0",
+  "pack": {
+    "name": "Seed Pack",
+    "createdAt": "2026-07-26T00:00:00Z",
+    "description": "Round-trip seed"
+  },
+  "publisher": {
+    "name": "Seed Publisher",
+    "device": "studio-mac",
+    "publicKey": "ed25519:LDAM+rJLjK+Vl7pBnCgVaRGE+JRJSzauxDEUpcDHbPs=",
+    "keyId": "2e0fee91ebe660b5"
+  },
+  "contents": {
+    "projects": [
+      {
+        "slug": "acme",
+        "name": "Acme",
+        "bytes": 4096,
+        "modifiedAt": "2026-07-26T00:00:00Z",
+        "contentHash": "822b33ad87c148a0a20a5ba7cd5ebcaa68d36a18e7aad165554903f52ca82757",
+        "root": "payload/projects/acme",
+        "manifestVersion": 9,
+        "sceneCount": 2,
+        "sceneFiles": ["scenes/01-hero.tsx", "scenes/02-stat.tsx"],
+        "durationMs": 8000,
+        "formats": ["16:9", "9:16"],
+        "themeId": "ws:acme-dark",
+        "requires": {
+          "themes": ["acme-dark"],
+          "fonts": ["Acme Sans@600"]
+        },
+        "hasSceneCode": true
+      }
+    ],
+    "templates": [
+      {
+        "slug": "acme-promo",
+        "name": "Acme promo",
+        "bytes": 4096,
+        "modifiedAt": "2026-07-26T00:00:00Z",
+        "contentHash": "3321c3a30ba08206e3891e3bfb9b65dd75d515c40ec5cbd13a50cbe5def52e34",
+        "root": "payload/templates/acme-promo",
+        "manifestVersion": 9,
+        "sceneCount": 1,
+        "sceneFiles": ["scenes/01-hero.tsx"],
+        "durationMs": 4000,
+        "formats": ["16:9", "9:16"],
+        "themeId": "ws:acme-dark",
+        "requires": {
+          "themes": ["acme-dark"],
+          "fonts": ["Acme Sans@600"]
+        },
+        "hasSceneCode": true
+      }
+    ],
+    "presets": [
+      {
+        "slug": "stat-hero",
+        "name": "Stat hero",
+        "bytes": 4096,
+        "modifiedAt": "2026-07-26T00:00:00Z",
+        "contentHash": "9bcce3f17e8cb224b7ea1b45ac33e8ce48b882cd60863946f20d67616b3e5979",
+        "root": "payload/presets/stat-hero",
+        "manifestVersion": 9,
+        "sceneCount": 1,
+        "sceneFiles": ["scenes/01-stat.tsx"],
+        "durationMs": 4000,
+        "formats": ["16:9", "9:16"],
+        "themeId": "ws:acme-dark",
+        "requires": {
+          "themes": ["acme-dark"],
+          "fonts": ["Acme Sans@600"]
+        },
+        "hasSceneCode": true
+      }
+    ],
+    "themes": [
+      {
+        "slug": "acme-dark",
+        "name": "Acme Dark",
+        "bytes": 3000,
+        "modifiedAt": "2026-07-26T00:00:00Z",
+        "contentHash": "b1bb447a617748d8275290f511fdb373085e0bf4e73cad932f8578c6a0330352",
+        "mode": "dark",
+        "docVersion": 3,
+        "swatches": ["#0b0f1a", "#f5c518", "#ffffff"],
+        "requires": {
+          "fonts": ["Acme Sans@600"],
+          "gradients": ["sunrise"]
+        }
+      }
+    ],
+    "brands": [
+      {
+        "slug": "acme",
+        "name": "Acme",
+        "bytes": 19000,
+        "modifiedAt": "2026-07-26T00:00:00Z",
+        "contentHash": "822b33ad87c148a0a20a5ba7cd5ebcaa68d36a18e7aad165554903f52ca82757",
+        "description": "The Acme brand",
+        "swatches": ["#f5c518", "#0b0f1a"],
+        "colorCount": 6,
+        "imageCount": 1,
+        "requires": {
+          "themes": ["acme-dark"],
+          "fonts": ["Acme Sans@600"]
+        }
+      }
+    ],
+    "fonts": [
+      {
+        "slug": "acme-sans-600",
+        "name": "Acme Sans SemiBold",
+        "bytes": 90000,
+        "modifiedAt": "2026-07-26T00:00:00Z",
+        "contentHash": "89c648af556db13fde95dea188d603781b51a993259648a4523b0edc447c031c",
+        "family": "Acme Sans",
+        "weight": 600,
+        "postscript": "AcmeSans-SemiBold",
+        "file": "payload/fonts/AcmeSans-SemiBold.ttf",
+        "sha256": "402a5090f4e1159254f3acade351626421d1c5fcdce48cb0223f545dedde56dd",
+        "instanced": {
+          "axes": {
+            "wght": 600.0,
+            "wdth": 100.0
+          },
+          "instancer": "allsorts 0.17.0"
+        },
+        "embedding": "installable"
+      },
+      {
+        "slug": "acme-display-700",
+        "name": "Acme Display Bold",
+        "bytes": 0,
+        "modifiedAt": "2026-07-26T00:00:00Z",
+        "contentHash": "5d1b63fa6d07d6ca1309cfb0f5ceca9b1f948e9f761839af727307f758b68fcd",
+        "family": "Acme Display",
+        "weight": 700,
+        "postscript": "AcmeDisplay-Bold",
+        "embedding": "restricted",
+        "referenceOnly": true
+      }
+    ],
+    "objects": [
+      {
+        "slug": "widget",
+        "name": "Widget",
+        "bytes": 259000,
+        "modifiedAt": "2026-07-26T00:00:00Z",
+        "contentHash": "8ac140ceb6ca8d6e51a987a9828b9f97b95bbc3ae6bdb0558e2631cb8da232b8",
+        "glb": "payload/objects/widget/model.glb",
+        "thumbnail": "payload/objects/widget/thumb.png",
+        "licence": "CC0",
+        "tags": ["hardware", "hero"]
+      }
+    ],
+    "gradients": [
+      {
+        "slug": "sunrise",
+        "name": "Sunrise",
+        "bytes": 220,
+        "modifiedAt": "2026-07-26T00:00:00Z",
+        "contentHash": "e9f2a0186210e30a516d12b001717fc17b1887acad69faf5c2141067f3f6b094"
+      }
+    ],
+    "exportPresets": [
+      {
+        "slug": "square-loop",
+        "name": "Square loop",
+        "bytes": 240,
+        "modifiedAt": "2026-07-26T00:00:00Z",
+        "contentHash": "4d5248248c87cab30efe706147737020a68dc327cf00553550aec72376898229"
+      }
+    ],
+    "screenshots": [
+      {
+        "slug": "shot",
+        "name": "Shot",
+        "bytes": 48000,
+        "modifiedAt": "2026-07-26T00:00:00Z",
+        "contentHash": "8dccea5217902053b636f0e105c590eb30db4280b8a7a51806110f7ff7b5177e",
+        "file": "payload/screenshots/shot.png",
+        "width": 1920,
+        "height": 1080
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "payload/brands/acme/brand.json",
+      "sha256": "45657da34af6f8663cd2d7c6013aad97ad26916a73b81c0328f386f49a1d7e6b",
+      "bytes": 900
+    },
+    {
+      "path": "payload/brands/acme/guidelines.md",
+      "sha256": "b4712c2ac17014a9a21305d43a945e637e028b8a81e307296025a7676a379087",
+      "bytes": 6000
+    },
+    {
+      "path": "payload/brands/acme/images/logos/mark.png",
+      "sha256": "d70286bab577da77ce4dba12fdeda2857bdbab1e9dbe89158050c1cb08cd00b3",
+      "bytes": 12000
+    },
+    {
+      "path": "payload/export-presets/square-loop.json",
+      "sha256": "5bf790f2a0782f357063461846128fc3401da12738f35bd87c845a434a86209b",
+      "bytes": 240
+    },
+    {
+      "path": "payload/fonts/AcmeSans-SemiBold.ttf",
+      "sha256": "a552daeeac7a21d308452694c60462813b0777da9bb376c3b5e1dcdeee563814",
+      "bytes": 90000
+    },
+    {
+      "path": "payload/gradients/sunrise.json",
+      "sha256": "8a6933b3d2182b426451c387518a03a41d8c13b30f556ca9bfde47bd26425738",
+      "bytes": 220
+    },
+    {
+      "path": "payload/objects/widget/model.glb",
+      "sha256": "af71578e4b821cd5399c5bbc31e0a65deb701791863b4e3f4dc77a490e9127f1",
+      "bytes": 250000
+    },
+    {
+      "path": "payload/objects/widget/object.json",
+      "sha256": "6ff40fe7263b2bbabae16dfa60bd231f9df03cf0405cf00fb4b0360c5cef7e81",
+      "bytes": 180
+    },
+    {
+      "path": "payload/objects/widget/thumb.png",
+      "sha256": "f2dacad11f34e6c35417788e694f467f4967a959e04aefdd686946d954fc1d20",
+      "bytes": 9000
+    },
+    {
+      "path": "payload/presets/stat-hero/preset.json",
+      "sha256": "bb91697f82698abdd316eef4aa7af733fcc1f8f432eec87bc8773a7ae30da86c",
+      "bytes": 200
+    },
+    {
+      "path": "payload/presets/stat-hero/project.json",
+      "sha256": "278d4798414014d85798cc354d0524137b12650381a8547ebd8f1ea2812e7cc6",
+      "bytes": 400
+    },
+    {
+      "path": "payload/presets/stat-hero/scenes/01-stat.tsx",
+      "sha256": "7ff273aebc14fd8e29e372dba555737dedc5d77bb1eaf47fb62abfbe2fda351d",
+      "bytes": 1500
+    },
+    {
+      "path": "payload/projects/acme/project.json",
+      "sha256": "9f22103d8dffb670d0a88d489c7c86d667f2735f36bd13f97689f237a7c32e1c",
+      "bytes": 512
+    },
+    {
+      "path": "payload/projects/acme/scenes/01-hero.tsx",
+      "sha256": "b2175a81734f1736164c2660ac4819c9a478807414b6822b3f9fc3ec8b06f111",
+      "bytes": 2048
+    },
+    {
+      "path": "payload/projects/acme/scenes/02-stat.tsx",
+      "sha256": "83f3d7fdff492d3328d432ff511bb079ba667a712a86f810bb0c353e8a2e7572",
+      "bytes": 1800
+    },
+    {
+      "path": "payload/screenshots/shot.png",
+      "sha256": "b2b2f823494b8e31f2e6c56040e6b46b0c9b0e831d28f978c1ab9dd2e2526fa4",
+      "bytes": 48000
+    },
+    {
+      "path": "payload/templates/acme-promo/project.json",
+      "sha256": "a171896fa5f87a06b411f4cd72df225c2ed15a0d0c21615de4014dfda1f3f671",
+      "bytes": 512
+    },
+    {
+      "path": "payload/templates/acme-promo/scenes/01-hero.tsx",
+      "sha256": "89f2dc9a3b4f89500997263e1bf5b3e74b2fd71ea8de27d1c53a56a53dd4c578",
+      "bytes": 2048
+    },
+    {
+      "path": "payload/templates/acme-promo/template.json",
+      "sha256": "330cfa26f68ca85a9adfa5d57ce41d3c079a92e56a198d3fbb0f163fd0a4e173",
+      "bytes": 300
+    },
+    {
+      "path": "payload/themes/acme-dark/theme.json",
+      "sha256": "3ff6ff8a3cbbcd73c1b183ed596c4aa287879fe37933661517ad12c07cdc7704",
+      "bytes": 3000
+    }
+  ],
+  "totals": {
+    "files": 20,
+    "bytes": 428860
+  }
+}
