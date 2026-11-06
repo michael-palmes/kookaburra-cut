@@ -785,6 +785,13 @@ builds it in separate jobs, each on a fresh runner.
   `contents: read` (`scorecard.yml` starts from `read-all`, and its one job
   narrows to `security-events` and `id-token`). Every workflow
   pins actions to a commit SHA and sets `persist-credentials: false`.
+  `codeql.yml` scans JavaScript/TypeScript, Rust, Actions and Python. `unsafe`
+  is denied crate-wide and allowed only per file or function, every block with
+  a one-line SAFETY comment (`[lints]` in `src-tauri/Cargo.toml`, which CI's
+  clippy enforces). pnpm runs no dependency's install script (`allowBuilds: {}`
+  in `pnpm-workspace.yaml`), and with `strictDepBuilds` a lock that adds one
+  fails `pnpm install --frozen-lockfile` until someone reviews it; no
+  dependency has one today, so the empty list changes nothing yet.
 - **Verify an install.** On the release page's files. `scripts/verify-install.sh`
   runs all of this on a downloaded release, plus the sidecars' signatures and a
   diff of this file against the previous release's, and downloads nothing:
@@ -856,8 +863,9 @@ Deliberately deferred, recorded so nobody mistakes them for done:
   faces, the mp4 `moov` reader, PNG decode): `allsorts` shaping, glTF inputs,
   the image facts readers and the `.kbpack` archive reader as a whole are
   bounded and tested on hostile fixtures, not fuzzed.
-- A strict pass over every `unsafe` block (the objc2 bridges in `native_alert.rs`,
-  `website.rs` and the AVFoundation conform path).
+- An App Sandbox for the app itself: kb's headless CLI is the same binary, the
+  updater swaps the bundle in place, and each workspace or linked `assets/`
+  root would need a dialog (`docs/decisions.md`, "No App Sandbox").
 - A Homebrew cask, so MDM fleets can install and pin versions without the DMG.
 - A per-project website data store: approved projects share one login profile
   today (`docs/scene-website.md`, "Accepted residual risk").
