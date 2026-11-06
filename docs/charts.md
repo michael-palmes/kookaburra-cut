@@ -21,7 +21,7 @@ slideware.
 | Series colours | Per-series override, else one of 10 named schemes, else theme `chartColors`, else a derived OKLCH ramp | A chart often wants its own colours without restyling the whole scene; user themes without a curated palette still read on light and dark. |
 | Chart type (typeface) | One face for the WHOLE chart: block `chart.font`, else the project's `typography.chart`, else the theme faces | Data wants a numerals face (often a mono or a grotesk) that the rest of the deck does not; splitting it per label would only invite a chart that disagrees with itself. |
 | Number formatting | Hand-rolled, no `Intl` | Locale data varies across macOS versions, which would break byte-identical export. |
-| Appearance | 15 presets in four tiers, resolved to one surface | No renderer ever sees a preset id, so the 2D and 3D paths cannot disagree. |
+| Appearance | 16 presets in four tiers, resolved to one surface | No renderer ever sees a preset id, so the 2D and 3D paths cannot disagree. |
 | Build-in | 19 presets in three tiers, sampled per element | A preset is a row of channel parameters, never bespoke motion code. |
 | One per scene | One `chart` block | Mirrors `layeredScreenshot` / `compare`. |
 
@@ -41,6 +41,7 @@ src/toolkit/chart/
   Chart.tsx        the host                 -> resolves, samples, mounts
   Chart2D.tsx      flat renderer            -> Bars2D, Lines2D, Pie2D (+ chart2dMath)
   Chart3D.tsx      lit renderer             -> bars3d, ribbon3d, pie3d, axes3d (+ space3d, surface3d)
+  Trail.tsx        light trail              -> a strip per run and a glowing head, both renderers (+ trailMath)
   reveal.ts        build-state clamps       -> the seam both renderers read channels through
 ```
 
@@ -196,7 +197,7 @@ Resolution rules worth knowing:
 
 ## Appearance presets
 
-Fifteen presets in four tiers (`stylePresets.ts`, `CHART_STYLE_PRESET_IDS` is the
+Sixteen presets in four tiers (`stylePresets.ts`, `CHART_STYLE_PRESET_IDS` is the
 carousel order). Every row is stated as deltas against `boardroom`, and
 `resolveChartStyle` folds the preset, the authored `style` scalars and the theme into
 ONE `ChartStyleSurface` (a flat facet, a lit facet, and the treatments that cross
@@ -219,6 +220,7 @@ both). Nothing downstream reads `style.preset`.
 | dark | `nightEditorial` | Restrained night editorial: fine rules, matte marks and a barely luminous edge. |
 | dark | `launchGlow` | Luminous launch dashboard: rising fill, strong points and bright dimensional edges. |
 | dark | `obsidian` | Premium dimensional material: dense metal, broad clearcoat and a sculpted bevel without glow. |
+| dark | `lightTrail` | A trend drawn as light through space: a white-hot core in a soft halo, brightest at its head, with no furniture at all. |
 
 Merge rules, per authored field:
 
@@ -238,6 +240,38 @@ Merge rules, per authored field:
 the theme background in OKLCH (stop colours only; the renderers build their write-once
 `DataTexture` from them). `chartStackSurface` gives stack segments a matte finish
 under `interiorFlatStacks`, so a tall stack is not a column of highlights.
+
+### Furniture and the light trail
+
+Two shared surface fields exist for `lightTrail`. Every other preset resolves them to
+the base values (`furniture: "full"`, `lineFinish: "solid"`, `threed.trailDepth: 0`), so
+nothing else moves.
+
+- **`furniture: "none"`.** Both renderers draw the marks alone: no gridlines, axis line,
+  tick or category labels, axis names, legend, value labels, floor or wall grid, whatever
+  the block's `axis` and `labels` say. The fits reserve nothing: `chart2dBands` and
+  `chart2dInsets` return zero (a pie drops its value-label pad too), and `fitChart3d`
+  (`bare`) builds the plot at the whole rect with no side, below or top allowance.
+  `chart2dLook` carries the field into the flat look, so a mount still reserves exactly
+  what the renderer draws.
+- **`lineFinish: "trail"`.** Each run is ONE strip (`Trail.tsx`, maths in
+  `trailMath.ts`), widened in the vertex shader across its screen-space tangent: a
+  Gaussian core one stroke (`strokeFraction`) wide inside a halo `CHART_TRAIL_SPREAD`
+  strokes wide that lands on exactly zero at its edge, with round caps and mitred joints
+  capped at 2.5x. Brightness ramps from `CHART_TRAIL_TAIL` at the first point to full at
+  the leading end, where a radial head burns: on the draw-on edge while `draw` or `trace`
+  draws it on, on the last point once settled, carrying that point's pulse. Flat charts
+  widen by export pixels (the `Line2` convention); a 3D line widens by chart units, so it
+  faces the camera and tapers with perspective, and its start recedes `trailDepth` (half
+  the plot's short side) behind the plane its leading end lands on (`chartTrailZ`). The
+  fit reserves that depth only where a tilt turns it into the frame (`depthReach`). Flat
+  areas take the trail as their edge; 3D areas, bars and pies keep their solids under the
+  preset's emissive edge.
+- **Colour.** The trail takes the series colour. On a dark stage it adds light, the core
+  lifted toward white in OKLCH on the series' own hue (`chartTrailTone`); on a light one
+  it lays down ink with the core deepened, since a glow washes out on white.
+  `isDarkFirstSurface` counts a trail as dark-first, so the marks' emissive edge relaxes
+  there too.
 
 ## Build-in presets
 
@@ -567,6 +601,16 @@ This is an export-path feature and gates through `docs/determinism.md`.
 - **Fat lines** take their `resolution` uniform once from the format's fixed pixel
   dimensions, never from a resize listener, so a stroke is the same fraction of the
   frame in preview and in export.
+- **The light trail** is one `ShaderMaterial` that mounts only under
+  `lineFinish: "trail"`, so no existing material's source changed. Glow blends `One`,
+  `One` and leaves the destination alpha alone (ink blends straight alpha), and never
+  writes depth; a strip covers each pixel once, so light never doubles at a joint. Flat
+  trails sit in the transparent list at `CHART_2D_ORDER.mark` and take the format's
+  fixed pixel height, like fat lines. A 3D trail sits in the OPAQUE list at
+  `CHART_TRAIL_RENDER_ORDER` (500: after every other opaque mark, before the frame's
+  above band), so glass in front refracts it. Writing no depth, it hides only behind
+  depth-writing content, and depth of field blurs it with whatever lies behind it.
+  Buffers rewrite in place only when a centre moves; uniforms are written on commit.
 - **The gizmo never exports.** `exportPreamble` clears the chart edit selection, so a
   staged chart renders its bare transform.
 - **Eyeball first.** Verify proves determinism, not correctness. Check an

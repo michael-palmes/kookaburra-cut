@@ -10,6 +10,7 @@ import {
   areaShape,
   CHART_2D_ORDER,
   CHART_2D_Z_STEP,
+  type Chart2DDrawLook,
   type Chart2DMetrics,
   type ChartDrawUniforms,
   type ChartSize,
@@ -39,7 +40,9 @@ import { chartColourAt } from "./palette";
 import { revealAt } from "./reveal";
 import { type ChartRevealSource, chartRevealFn, chartSeriesReveal } from "./revealSource";
 import { chartGradientRamp } from "./stylePresets";
-import type { ChartLayout, ChartPoint, ChartStyleSurface2D, ChartValueLabels } from "./types";
+import { ChartSeriesTrail } from "./Trail";
+import { CHART_TRAIL_FEATHER, chartTrailReach, chartTrailRuns, chartTrailTone } from "./trailMath";
+import type { ChartLayout, ChartPoint, ChartValueLabels } from "./types";
 
 /** Glow-head sizes, in point radii: the dot itself, and how far the stroke brightens either side of the head. */
 const HEAD_DOT = 1.7;
@@ -52,7 +55,7 @@ export interface Lines2DProps {
   colours: string[];
   size: ChartSize;
   metrics: Chart2DMetrics;
-  look: ChartStyleSurface2D;
+  look: Chart2DDrawLook;
   labels: ChartValueLabels;
   /** The chip behind every value label (the preset's pill or the block's background); null draws them bare. */
   pill: ChartValuePill | null;
@@ -60,7 +63,7 @@ export interface Lines2DProps {
   bold: boolean;
   reveal?: ChartRevealSource;
   opacity: number;
-  /** The export frame in pixels: the `LineMaterial` resolution reference. */
+  /** The export frame in pixels: the `LineMaterial` resolution reference, and a light trail's. */
   resolution: { width: number; height: number };
   /** Pixels per world unit at that resolution, for the stroke's pixel width. */
   pixelsPerUnit: number;
@@ -80,6 +83,9 @@ export function Lines2D(props: Lines2DProps) {
   const theme = useTheme();
   const at = chartRevealFn(reveal);
   const filled = layout.type === "area" || layout.type === "stackedArea";
+  // A light trail carries its own head and pulse, so the flat dots and the accent head stand down under it.
+  const trail = look.lineFinish === "trail";
+  const trailReach = chartTrailReach(metrics.stroke);
   const dot = useMemo(() => new CircleGeometry(1, 20), []);
   useEffect(() => () => dot.dispose(), [dot]);
 
@@ -120,7 +126,29 @@ export function Lines2D(props: Lines2DProps) {
                 z={layerZ}
               />
             )}
+            {(!filled || look.areaStroke) && trail && (
+              <ChartSeriesTrail
+                points={points}
+                runs={chartTrailRuns(series.points)}
+                place={(p) => [
+                  plotToWorldX(size, p.x),
+                  plotToWorldY(size, p.y),
+                  layerZ + CHART_2D_Z_STEP / 2,
+                ]}
+                draw={build.draw}
+                pulseAt={(i) => builds[i]?.pulse ?? 0}
+                tone={chartTrailTone(colour, theme.colors.background)}
+                reach={trailReach * props.pixelsPerUnit}
+                flat
+                framePixels={props.resolution.height}
+                feather={trailReach * CHART_TRAIL_FEATHER}
+                alpha={alpha}
+                order={{ strip: CHART_2D_ORDER.mark, head: CHART_2D_ORDER.mark }}
+                headLift={CHART_2D_Z_STEP}
+              />
+            )}
             {(!filled || look.areaStroke) &&
+              !trail &&
               runs.map(([from, to]) => (
                 <LineStroke
                   key={from}
@@ -143,7 +171,7 @@ export function Lines2D(props: Lines2DProps) {
               if (!vertex.datum || !vertex.inside) return null;
               const pulse = builds[i].pulse;
               // A chart without point dots still shows an emphasis pulse: the dot fades up with the envelope and leaves with it.
-              if (!look.points && pulse <= 0) return null;
+              if (!look.points && (pulse <= 0 || trail)) return null;
               return (
                 <mesh
                   key={vertex.categoryIndex}
@@ -166,7 +194,7 @@ export function Lines2D(props: Lines2DProps) {
                 </mesh>
               );
             })}
-            {draw.head && (
+            {draw.head && !trail && (
               <mesh
                 geometry={dot}
                 position={[draw.head.x, draw.head.y, layerZ + CHART_2D_Z_STEP * 1.5]}

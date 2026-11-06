@@ -25,8 +25,10 @@ import type {
   ChartAxisKey,
   ChartBarMark,
   ChartConfig,
+  ChartFurniture,
   ChartGridlineStyle,
   ChartLayout,
+  ChartLineFinish,
   ChartPieSlice,
   ChartPoint,
   ChartStyleSurface,
@@ -105,15 +107,29 @@ export const CHART_2D_APPEARANCE: Chart2DAppearance = {
   pieRadius: 0.86,
 };
 
-/** What the flat metrics resolve from: the appearance fractions, plus the resolved surface's stroke-weight multiplier when one is passed (a bare `Chart2DAppearance` leaves every thickness alone). */
-export type Chart2DLook = Chart2DAppearance & { strokeWidthScale?: number };
+/** What the flat metrics resolve from: the appearance fractions, plus the resolved surface's stroke-weight multiplier and furniture when one is passed (a bare `Chart2DAppearance` leaves every thickness alone and keeps its furniture). */
+export type Chart2DLook = Chart2DAppearance & {
+  strokeWidthScale?: number;
+  furniture?: ChartFurniture;
+};
 
-/** The appearance one flat chart actually draws with: the resolved surface's flat facet, then the scene's own `look` overrides, with the preset's `pieGapScale` folded into `pieGap` so every arc (flat and extruded) cuts the same gap. A fresh object, never the surface's own. */
+/** The flat facet as one chart draws it, with the shared treatments the flat path reads carried alongside. */
+export type Chart2DDrawLook = ChartStyleSurface2D & {
+  furniture: ChartFurniture;
+  lineFinish: ChartLineFinish;
+};
+
+/** The appearance one flat chart actually draws with: the resolved surface's flat facet, then the scene's own `look` overrides, with the preset's `pieGapScale` folded into `pieGap` so every arc (flat and extruded) cuts the same gap, and its furniture and line finish carried so a mount reserves exactly what the renderer draws. A fresh object, never the surface's own. */
 export function chart2dLook(
   surface: ChartStyleSurface,
   look?: Partial<Chart2DAppearance>,
-): ChartStyleSurface2D {
-  const merged: ChartStyleSurface2D = { ...surface.twod, ...look };
+): Chart2DDrawLook {
+  const merged: Chart2DDrawLook = {
+    ...surface.twod,
+    ...look,
+    furniture: surface.furniture,
+    lineFinish: surface.lineFinish,
+  };
   merged.pieGap *= Math.max(0, surface.pieGapScale);
   return merged;
 }
@@ -855,13 +871,24 @@ export function legendLabels(chart: ChartConfig, layout: ChartLayout): string[] 
   return chart.data.series.map((s) => s.name);
 }
 
-/** Furniture band sizes from the same constants the renderer draws with. Label widths are ESTIMATED (`CHART_GLYPH_ADVANCE`), never measured: a pure function keeps the plot rect free of a troika settling race. */
+/** Furniture band sizes from the same constants the renderer draws with. Label widths are ESTIMATED (`CHART_GLYPH_ADVANCE`), never measured: a pure function keeps the plot rect free of a troika settling race. Every band is zero under `furniture: "none"`, whatever the block switches on. */
 export function chart2dBands(
   chart: ChartConfig,
   layout: ChartLayout,
   size: ChartSize,
   look: Chart2DLook = CHART_2D_APPEARANCE,
 ): Chart2DBands {
+  if (look.furniture === "none") {
+    return {
+      tick: 0,
+      category: 0,
+      valueName: 0,
+      categoryName: 0,
+      legend: 0,
+      legendWidth: 0,
+      legendRows: 0,
+    };
+  }
   const m = chart2dMetrics(size, look);
   const vertical = layout.valueAxis === "y";
   const pie = layout.type === "pie";
@@ -912,13 +939,14 @@ export interface Chart2DInsets {
 export const withGap = (thickness: number, gap: number): number =>
   thickness > 0 ? gap + thickness : 0;
 
-/** How much room the furniture needs outside the plot rect, for the mount to subtract before it hands `size` to `Chart2D`. */
+/** How much room the furniture needs outside the plot rect, for the mount to subtract before it hands `size` to `Chart2D`; nothing at all under `furniture: "none"`, so the plot fills its rect. */
 export function chart2dInsets(
   chart: ChartConfig,
   layout: ChartLayout,
   size: ChartSize,
   look: Chart2DLook = CHART_2D_APPEARANCE,
 ): Chart2DInsets {
+  if (look.furniture === "none") return { top: 0, right: 0, bottom: 0, left: 0 };
   const m = chart2dMetrics(size, look);
   const bands = chart2dBands(chart, layout, size, look);
   const insets: Chart2DInsets = { top: 0, right: 0, bottom: 0, left: 0 };

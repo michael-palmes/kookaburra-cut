@@ -12,6 +12,7 @@ import {
   chartStackSurface,
   isChartStylePresetId,
   isDarkFirstSurface,
+  isLightBackground,
   resolveChartStyle,
 } from "./stylePresets";
 import type { ChartStyle, ChartStyleSurface } from "./types";
@@ -64,9 +65,10 @@ describe("catalogue", () => {
       "nightEditorial",
       "launchGlow",
       "obsidian",
+      "lightTrail",
     ]);
-    expect(CHART_STYLE_PRESET_IDS).toHaveLength(15);
-    expect(new Set(CHART_STYLE_PRESET_IDS).size).toBe(15);
+    expect(CHART_STYLE_PRESET_IDS).toHaveLength(16);
+    expect(new Set(CHART_STYLE_PRESET_IDS).size).toBe(16);
     expect(CHART_STYLE_PRESET_IDS[0]).toBe(CHART_STYLE_DEFAULT_ID);
   });
 
@@ -97,6 +99,7 @@ describe("catalogue", () => {
       "market",
       "market",
       "market",
+      "dark",
       "dark",
       "dark",
       "dark",
@@ -135,6 +138,9 @@ describe("surface completeness", () => {
       expect(s.threed.emissiveEdge).toBeGreaterThanOrEqual(0);
       expect(s.threed.emissiveEdge).toBeLessThanOrEqual(1);
       expect(s.seriesLightnessStep).toBeGreaterThanOrEqual(0);
+      expect(["full", "none"]).toContain(s.furniture);
+      expect(["solid", "trail"]).toContain(s.lineFinish);
+      expect(s.threed.trailDepth).toBeGreaterThanOrEqual(0);
     }
   });
 
@@ -152,10 +158,13 @@ describe("surface completeness", () => {
       transmission: 0,
       emissiveEdge: 0,
       interiorFlatStacks: false,
+      trailDepth: 0,
     });
     expect(s.gridStyleWeight).toBe(1);
     expect(s.legendChrome).toBe("plain");
     expect(s.seriesLightnessStep).toBe(0);
+    expect(s.furniture).toBe("full");
+    expect(s.lineFinish).toBe("solid");
   });
 });
 
@@ -170,6 +179,7 @@ describe("preset intent", () => {
       "pulseGlass",
       "nightEditorial",
       "launchGlow",
+      "lightTrail",
     ]);
     expect(glassy.filter((id) => glowing.includes(id))).toEqual(["pulseGlass"]);
   });
@@ -194,6 +204,7 @@ describe("preset intent", () => {
       "nightEditorial",
       "launchGlow",
       "obsidian",
+      "lightTrail",
     ]);
   });
 
@@ -205,7 +216,7 @@ describe("preset intent", () => {
 
   it("puts the vertical ramp on the gradient looks", () => {
     const ramped = CHART_STYLE_PRESET_IDS.filter((id) => resolve(id).twod.areaGradient !== "none");
-    expect(ramped).toEqual(["gradientRise", "horizon", "pulseGlass", "launchGlow"]);
+    expect(ramped).toEqual(["gradientRise", "horizon", "pulseGlass", "launchGlow", "lightTrail"]);
   });
 
   it("squares terminal's corners and steps paperCut's series", () => {
@@ -230,6 +241,25 @@ describe("preset intent", () => {
     expect(material.threed.metalness).toBeGreaterThan(0.8);
     expect(material.threed.clearcoat).toBeGreaterThan(0.8);
     expect(material.threed.emissiveEdge).toBe(0);
+  });
+
+  it("clears the furniture and draws lines as light on lightTrail alone", () => {
+    const trail = resolve("lightTrail");
+    expect(CHART_STYLE_PRESETS.lightTrail.tier).toBe("dark");
+    expect(CHART_STYLE_PRESETS.lightTrail.label).toBe("Light trail");
+    expect(trail.furniture).toBe("none");
+    expect(trail.lineFinish).toBe("trail");
+    // Pinned: the depth travel restyles every 3D trail, so it moves on purpose or not at all.
+    expect(trail.threed.trailDepth).toBe(0.5);
+    // The stage it would have laid stays off too, so the flag and the finish never disagree.
+    expect(trail.threed.wallGrid).toBe(false);
+    expect(trail.threed.floorShadow).toBe(false);
+    for (const id of CHART_STYLE_PRESET_IDS.filter((id) => id !== "lightTrail")) {
+      const s = resolve(id);
+      expect(s.furniture, id).toBe("full");
+      expect(s.lineFinish, id).toBe("solid");
+      expect(s.threed.trailDepth, id).toBe(0);
+    }
   });
 });
 
@@ -282,6 +312,25 @@ describe("theme adaptation", () => {
     for (const id of ["boardroom", "print", "paperCut", "terminal", "studio", "horizon"]) {
       expect(resolve(id, {}, light), id).toEqual(resolve(id, {}, dark));
     }
+  });
+
+  it("treats a light trail as dark-first by its finish alone, and relaxes its glowing marks", () => {
+    const surface = resolve("lightTrail");
+    expect(isDarkFirstSurface({ ...surface, threed: { ...surface.threed, emissiveEdge: 0 } })).toBe(
+      true,
+    );
+    expect(resolve("lightTrail", {}, light).threed.emissiveEdge).toBeLessThan(
+      surface.threed.emissiveEdge,
+    );
+    // The finish itself never relaxes away: on white it lays down ink instead (`chartTrailTone`).
+    expect(resolve("lightTrail", {}, light).lineFinish).toBe("trail");
+    expect(resolve("lightTrail", {}, light).furniture).toBe("none");
+  });
+
+  it("reads a light stage by OKLCH lightness, and a broken hex as dark", () => {
+    expect(isLightBackground(light.colors.background)).toBe(true);
+    expect(isLightBackground(dark.colors.background)).toBe(false);
+    expect(isLightBackground("not-a-colour")).toBe(false);
   });
 });
 

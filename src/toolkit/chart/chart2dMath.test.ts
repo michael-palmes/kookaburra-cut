@@ -553,6 +553,27 @@ describe("furniture bands", () => {
     expect(insets.top).toBe(insets.bottom);
     expect(chart2dBands(chartOf(values), layout, size).tick).toBe(0);
   });
+
+  it("reserves nothing at all under furniture none, whatever the block switches on", () => {
+    const none = { top: 0, right: 0, bottom: 0, left: 0 };
+    const bare = { ...CHART_2D_APPEARANCE, furniture: "none" as const };
+    const layout = layoutOf("column", values, {
+      axis: { value: { name: "Revenue" }, category: { name: "Quarter" } },
+    });
+    const chart = chartOf(values, {
+      labels: { legend: { visible: true, position: "top" } } as never,
+    });
+    expect(chart2dInsets(chart, layout, size)).not.toEqual(none);
+    expect(chart2dInsets(chart, layout, size, { ...bare, furniture: "full" })).toEqual(
+      chart2dInsets(chart, layout, size),
+    );
+    expect(chart2dInsets(chart, layout, size, bare)).toEqual(none);
+    for (const [band, width] of Object.entries(chart2dBands(chart, layout, size, bare))) {
+      expect(width, band).toBe(0);
+    }
+    // A pie gives up its value-label pad too, so the disc fills the rect.
+    expect(chart2dInsets(chartOf(values), layoutOf("pie", values), size, bare)).toEqual(none);
+  });
 });
 
 describe("legend packing", () => {
@@ -611,6 +632,16 @@ describe("appearance surface", () => {
     // Never the catalogue's own object.
     expect(look).not.toBe(boardroom.twod);
     expect(boardroom.twod.areaOpacity).not.toBe(0.1);
+  });
+
+  it("carries the surface's furniture and line finish, so a mount reserves what the renderer draws", () => {
+    expect(chart2dLook(boardroom)).toMatchObject({ furniture: "full", lineFinish: "solid" });
+    const trail = CHART_STYLE_PRESETS.lightTrail.surface;
+    expect(chart2dLook(trail, { points: true })).toMatchObject({
+      furniture: "none",
+      lineFinish: "trail",
+      points: true,
+    });
   });
 
   it("folds the preset's pie gap scale into the gap both dimensions cut with", () => {

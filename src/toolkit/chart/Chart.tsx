@@ -276,15 +276,27 @@ function Hero3D({ chart, layout, colours, surface, reveal, enter, title, opacity
   const format = useFormat();
   const theme = useTheme();
   const available = useMemo(() => chartHeroRect(format, theme, title), [format, theme, title]);
+  const { furniture, lineFinish, legendChrome } = surface;
+  const trailDepth = surface.threed.trailDepth;
   const fit = useMemo(() => {
+    const bare = furniture === "none";
+    // A light trail's start recedes behind the plot plane, which a tilt turns into the frame.
+    const depthReach = chart.type === "line" && lineFinish === "trail" ? trailDepth : 0;
+    const options = bare || depthReach > 0 ? { bare, depthReach } : undefined;
+    if (bare) return fitChart3d(chart.style, available, undefined, options);
     const size = { width: available.width, height: available.height };
     const space = chart3dSpace(chart.style.depth, size.width, size.height);
-    const stack = chart3dBelowStack(chart, layout, space, surface.legendChrome);
-    return fitChart3d(chart.style, available, {
-      below: stack.depth * CHART_3D_STACK_PERSPECTIVE,
-      top: stack.top * CHART_3D_STACK_PERSPECTIVE,
-    });
-  }, [chart, layout, surface.legendChrome, available]);
+    const stack = chart3dBelowStack(chart, layout, space, legendChrome);
+    return fitChart3d(
+      chart.style,
+      available,
+      {
+        below: stack.depth * CHART_3D_STACK_PERSPECTIVE,
+        top: stack.top * CHART_3D_STACK_PERSPECTIVE,
+      },
+      options,
+    );
+  }, [chart, layout, furniture, lineFinish, legendChrome, trailDepth, available]);
   const ground = chartHeroPose(fit, chart.style.scale, available);
   const groupRef = useRef<Group>(null);
   useHeroGizmoTarget(groupRef, fit.size, enter * fit.size.height);

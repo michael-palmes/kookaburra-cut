@@ -11,6 +11,7 @@ import {
   CHART_2D_Z_STEP,
   type Chart2DAppearance,
   type Chart2DBands,
+  type Chart2DDrawLook,
   type Chart2DMetrics,
   type ChartSize,
   chart2dBands,
@@ -41,8 +42,8 @@ import type {
   ChartLayout,
   ChartRendererProps,
   ChartStyleSurface,
-  ChartStyleSurface2D,
   ChartValueFormat,
+  ChartValueLabels,
 } from "./types";
 
 /** SDF edges soften over about this many export pixels. */
@@ -63,12 +64,18 @@ export function Chart2D(props: Chart2DProps) {
   const theme = useTheme();
   const format = useFormat();
   const surface = props.surface ?? CHART_STYLE_PRESETS[CHART_STYLE_DEFAULT_ID].surface;
-  const look = useMemo<ChartStyleSurface2D>(
+  const look = useMemo<Chart2DDrawLook>(
     () => chart2dLook(surface, props.look),
     [surface, props.look],
   );
   const metrics = useMemo(() => chart2dMetrics(size, look), [size, look]);
   const bands = useMemo(() => chart2dBands(chart, layout, size, look), [chart, layout, size, look]);
+  // No furniture means the marks alone, whatever the block's own axis and label switches say.
+  const bare = look.furniture === "none";
+  const values = useMemo<ChartValueLabels>(
+    () => (bare ? { ...chart.labels.values, visible: false } : chart.labels.values),
+    [bare, chart.labels.values],
+  );
 
   // Pixels per world unit at the export frame: fixed per aspect, so a stroke or an SDF edge is the same fraction of the frame in preview and in export.
   const pixelsPerUnit = format.height / format.frame.height;
@@ -96,7 +103,7 @@ export function Chart2D(props: Chart2DProps) {
 
   return (
     <group>
-      {!pie && gridOpacity > 0 && (
+      {!bare && !pie && gridOpacity > 0 && (
         <Gridlines2D
           layout={layout}
           size={size}
@@ -105,7 +112,7 @@ export function Chart2D(props: Chart2DProps) {
           opacity={gridOpacity * opacity}
         />
       )}
-      {!pie && look.axisLine && (
+      {!bare && !pie && look.axisLine && (
         <AxisLine2D
           layout={layout}
           size={size}
@@ -121,7 +128,7 @@ export function Chart2D(props: Chart2DProps) {
           size={size}
           metrics={metrics}
           cornerRadius={cornerRadius}
-          labels={chart.labels.values}
+          labels={values}
           pill={valuePill}
           bold={bold}
           reveal={reveal}
@@ -137,7 +144,7 @@ export function Chart2D(props: Chart2DProps) {
           size={size}
           metrics={metrics}
           look={look}
-          labels={chart.labels.values}
+          labels={values}
           pill={valuePill}
           bold={bold}
           reveal={reveal}
@@ -154,7 +161,7 @@ export function Chart2D(props: Chart2DProps) {
           colours={colours}
           metrics={metrics}
           look={look}
-          labels={chart.labels.values}
+          labels={values}
           pill={valuePill}
           bold={bold}
           reveal={reveal}
@@ -163,7 +170,7 @@ export function Chart2D(props: Chart2DProps) {
           z={CHART_2D_Z_STEP * 2}
         />
       )}
-      {!pie && (
+      {!bare && !pie && (
         <AxisFurniture
           layout={layout}
           size={size}
@@ -174,19 +181,21 @@ export function Chart2D(props: Chart2DProps) {
           opacity={opacity}
         />
       )}
-      <Legend
-        chart={props.chart}
-        layout={layout}
-        colours={colours}
-        size={size}
-        metrics={metrics}
-        bands={bands}
-        chrome={surface.legendChrome}
-        pillColour={pillColour}
-        bold={bold}
-        feather={feather}
-        opacity={opacity}
-      />
+      {!bare && (
+        <Legend
+          chart={props.chart}
+          layout={layout}
+          colours={colours}
+          size={size}
+          metrics={metrics}
+          bands={bands}
+          chrome={surface.legendChrome}
+          pillColour={pillColour}
+          bold={bold}
+          feather={feather}
+          opacity={opacity}
+        />
+      )}
     </group>
   );
 }
