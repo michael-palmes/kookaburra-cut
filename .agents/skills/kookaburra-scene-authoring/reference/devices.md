@@ -281,6 +281,7 @@ Side A is the scene as authored; `compare.b` overrides side B; a mask reveals B.
 | `chrome.grip` | `true` or `{ style: chevrons \| dot \| bar \| arrows, size }`; linear masks only |
 | `chrome.chips` | Before/After labels; copy in `text.beforeLabel` / `text.afterLabel` |
 | `chrome.tint` | `{ a, b, amount (0.08) }` per-side tints (token or hex) |
+| `chrome.glass` | `true` or `{ width (150, in 1080p px), strength (1, 0 to 2) }`: a refracting glass bar along the edge, bending each side with a rim light; linear and circle masks. Pair it with no `line` |
 
 Track presets (`./kb catalog compare.presets --json` has the exact keys for a 4 s scene): `reveal`,
 `sweep-settle`, `peek`, `hold`. Set `animatedTrack: "compare"` so the app's lane edits

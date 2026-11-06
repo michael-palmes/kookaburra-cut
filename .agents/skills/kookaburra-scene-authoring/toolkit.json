@@ -1593,6 +1593,11 @@
     "signature": "type FormatShape = \"wide\" | \"square\" | \"tall\";",
     "doc": "How a frame reads for layout, from `FormatInfo.aspect`: \"wide\" at 1.2 and up (16:9, 3:2, 5:4), \"tall\" at 0.85 and below (9:16, 2:3, 4:5, phone), \"square\" between (1:1)."
   },
+  "GlyphBox": {
+    "kind": "type",
+    "signature": "interface GlyphBox { text: string; index: number; line: number; x: number; width: number; baseline: number; capHeight: number; ink: readonly [number, number, number, number] | null; }",
+    "doc": "One glyph of a measured block, in the text's own space: world units from its `position` under the measured anchors, y up."
+  },
   "Gradient": {
     "kind": "component",
     "summary": "A frame-filling blend, linear or radial; inside a ScreenLayer.",
@@ -1892,7 +1897,7 @@
   },
   "MeasureTextOptions": {
     "kind": "type",
-    "signature": "interface MeasureTextOptions { font: FontRef | string; fontSize: number; letterSpacing?: number; lineHeight?: number; }"
+    "signature": "interface MeasureTextOptions { font: FontRef | string; fontSize: number; letterSpacing?: number; lineHeight?: number; anchorX?: \"left\" | \"center\" | \"right\"; anchorY?: \"top\" | \"middle\" | \"bottom\"; textAlign?: \"left\" | \"center\" | \"right\"; }"
   },
   "MeasuredText": {
     "kind": "type",
@@ -2865,6 +2870,31 @@
     "kind": "type",
     "signature": "interface StampScaleOptions { from?: number; peak?: number; inMs?: number; settleMs?: number; }"
   },
+  "SteppedTime": {
+    "kind": "component",
+    "summary": "SteppedTime fps: its subtree's time steps at a whole fps (12 is the hand-made look) while the camera moves every frame.",
+    "signature": "function SteppedTime(props: { fps?: number; children: ReactNode }): ReactElement;",
+    "doc": "Steps its subtree's time at a whole `fps` (default 12, the hand-made look), counted from the scene's first frame: every pose holds for whole frames while the camera, and anything outside, moves every frame. 60 or more runs every frame.",
+    "props": [
+      {
+        "name": "fps",
+        "type": "number",
+        "required": false,
+        "default": "12"
+      },
+      {
+        "name": "children",
+        "type": "ReactNode",
+        "required": true
+      }
+    ],
+    "example": "<SteppedTime fps={12}><AnimatedHeadline text={title} preset=\"fade-up\" /></SteppedTime>",
+    "timing": [
+      "Steps count whole frames from the scene's first frame: 12 fps holds each pose 5 frames at 60 fps, and every frame of a step shows that step's first frame exactly.",
+      "A 30 fps export can't split 12 fps evenly, so poses alternate 3 and 2 frames there (10 and 15 fps stay even). The camera, and anything outside, moves every frame; fps 60 runs every frame, so a nested one opts a child out.",
+      "Motion blur smears a held pose around its own instant, never into the next step."
+    ]
+  },
   "TEXT_PRESET_NAMES": {
     "kind": "constant",
     "summary": "Every text motion preset name.",
@@ -2926,13 +2956,13 @@
   },
   "TextMetrics": {
     "kind": "type",
-    "signature": "interface TextMetrics { width: number; height: number; ascent: number; descent: number; lines: number; }",
+    "signature": "interface TextMetrics { width: number; height: number; ascent: number; descent: number; lines: number; glyphs: GlyphBox[]; }",
     "doc": "A typeset block in world units: `ascent` runs from the block top to the first baseline and `descent` from the last baseline to the block bottom, so one line has `ascent + descent === height`."
   },
   "TextMetricsOptions": {
     "kind": "type",
-    "signature": "interface TextMetricsOptions { fontSize?: number; face?: \"headline\" | \"body\"; fontRef?: FontRef; lineHeight?: number; letterSpacing?: number; styleKey?: string; }",
-    "doc": "The AnimatedHeadline props that shape the measured block; pass the same values the headline gets."
+    "signature": "interface TextMetricsOptions { fontSize?: number; face?: \"headline\" | \"body\"; fontRef?: FontRef; lineHeight?: number; letterSpacing?: number; styleKey?: string; anchorX?: \"left\" | \"center\" | \"right\"; anchorY?: \"top\" | \"middle\" | \"bottom\"; textAlign?: \"left\" | \"center\" | \"right\"; }",
+    "doc": "The AnimatedHeadline props that shape the measured block; pass the same values the headline gets. The anchors and `textAlign` only place the glyph boxes."
   },
   "TextPresetName": {
     "kind": "type",
@@ -3057,7 +3087,7 @@
   },
   "VideoClip": {
     "kind": "component",
-    "summary": "Deterministic video plane (pre-extracted 60 fps frames).",
+    "summary": "Deterministic video plane (pre-extracted 60 fps frames); radius and opacity make it a card.",
     "signature": "function VideoClip(props: VideoClipProps): ReactElement;",
     "doc": "Embedded video clip: the ffmpeg sidecar pre-extracts the source to a CFR frame sequence, and frame selection is a pure function of the timeline (never `HTMLVideoElement` seeking) so preview and export pick the identical frame; the sampling/binding core lives in `engine/clipTexture.ts` (shared with the Device screen), and this primitive is the plane-mesh consumer, sized via `fit`. See docs/determinism.md.",
     "props": [
@@ -3092,13 +3122,30 @@
         "type": "number",
         "required": false,
         "default": "1"
+      },
+      {
+        "name": "radius",
+        "type": "number",
+        "required": false,
+        "doc": "Rounds the corners, as a fraction of the short edge (0 to 0.5), so a clip reads as a card."
+      },
+      {
+        "name": "opacity",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "units": "0..1",
+        "doc": "0..1 (default 1), so a card can fade as it rides a carousel."
       }
     ],
-    "example": "<VideoClip src=\"...\" startMs={1} />"
+    "example": "<VideoClip src=\"assets/clip.mp4\" startMs={0} scale={0.3} radius={0.06} opacity={0.8} position={[1.2, 0, 0]} />",
+    "timing": [
+      "Holds the first frame before startMs and the last after the end. radius is a fraction of the short edge; with radius or opacity set it draws as a card, blended and without a depth write."
+    ]
   },
   "VideoClipProps": {
     "kind": "type",
-    "signature": "interface VideoClipProps { src: string; startMs: number; fit?: \"cover\" | \"contain\"; position?: V3; scale?: number; }"
+    "signature": "interface VideoClipProps { src: string; startMs: number; fit?: \"cover\" | \"contain\"; position?: V3; scale?: number; radius?: number; opacity?: number; }"
   },
   "VideoWindow": {
     "kind": "component",
@@ -3374,7 +3421,7 @@
   },
   "measureText": {
     "kind": "function",
-    "summary": "measureText(text, { font, fontSize, letterSpacing?, lineHeight? }): { width, height, ascent, descent, lines } in world units, or null.",
+    "summary": "measureText(text, { font, fontSize, letterSpacing?, lineHeight?, anchorX?, anchorY?, textAlign? }): { width, height, ascent, descent, lines, glyphs } in world units, or null.",
     "signature": "function measureText(text: string, opts: MeasureTextOptions): TextMetrics | null;",
     "doc": "Metrics for one string; null until its face has been parsed."
   },
@@ -3502,6 +3549,22 @@
     "signature": "function useGroupAnimation(): GroupAnimationState | null;",
     "doc": "The enclosing group's animation state, or null outside groups; the hook custom primitives use to participate (multiply `alpha` into your own opacity CPU-side)."
   },
+  "useHeldLocalMs": {
+    "kind": "hook",
+    "summary": "useHeldLocalMs(localMs): the time pinned at the scene's Present hold; raw in video.",
+    "signature": "function useHeldLocalMs(rawLocalMs: number): number;",
+    "doc": "The scene-local time staged primitives animate from: the raw timeline unless this scene is held."
+  },
+  "usePresentTiming": {
+    "kind": "hook",
+    "summary": "usePresentTiming(toMs, outAtMs?): Present and automatic stills hold the scene once a set piece settles.",
+    "signature": "function usePresentTiming(toMs: number, outAtMs?: number): void;",
+    "doc": "Tells Present and the automatic stills when a hand-built set piece settles: the scene holds after `toMs` (scene-local) and before `outAtMs`, its outro. Drive the piece from `useHeldLocalMs` so it pauses there too. Video export never reads it.",
+    "example": "const { localMs: raw } = useTimeline();\nconst localMs = useHeldLocalMs(raw);\nusePresentTiming(2400);",
+    "timing": [
+      "Present and the automatic stills hold the scene 150 ms after the latest toMs any element reports, and before the earliest outAtMs; useHeldLocalMs pins the time there. Video export always runs the raw time."
+    ]
+  },
   "useProjectShared": {
     "kind": "hook",
     "summary": "useProjectShared(path?, fallback?): project.json shared constants, e.g. \"palette.accent\".",
@@ -3524,7 +3587,7 @@
     "kind": "hook",
     "summary": "The scene camera's pose this frame: { position, lookAt, fov }.",
     "signature": "function useSceneCamera(): SceneCamera;",
-    "doc": "The scene camera's current pose: the scene's free-flight rig or orbit track at this scene time, else the project camera track, else the base camera."
+    "doc": "The scene camera's current pose: the scene's free-flight rig or orbit track at this scene time, else the project camera track, else the base camera. It moves every frame inside `SteppedTime` too, as the camera does."
   },
   "useSceneChart": {
     "kind": "hook",
@@ -3570,12 +3633,13 @@
   },
   "useTextMetrics": {
     "kind": "hook",
-    "summary": "useTextMetrics(textKey, text, opts?): the block an AnimatedHeadline with those props typesets, sidecar overrides included, plus fitFontSize(maxWidth); null until its face has loaded.",
+    "summary": "useTextMetrics(textKey, text, opts?): the block an AnimatedHeadline with those props typesets, sidecar overrides included, with each glyph's box and fitFontSize(maxWidth); null until its face has loaded.",
     "signature": "function useTextMetrics(key: string | undefined, text: string, opts?: TextMetricsOptions): MeasuredText | null;",
-    "doc": "The world-size block an `AnimatedHeadline` with this `textKey`, text and options typesets (sidecar Font, Size and LineHeight overrides included), or null until its face has loaded and it has measured real ink: never a 0-wide first measure, so a scene can divide by `width` once it has one. Captures wait for it, so exported frames always see the measured layout.",
-    "example": "const metrics = useTextMetrics(\"title\", title, { fontSize: 0.6 });\nconst size = metrics?.fitFontSize(2) ?? 0.6;",
+    "doc": "The world-size block an `AnimatedHeadline` with this `textKey`, text and options typesets (sidecar Font, Size and LineHeight overrides included), or null until its face has loaded and it has measured real ink: never a 0-wide first measure, so a scene can divide by `width` once it has one. Its `glyphs` sit where the headline draws each one relative to its `position`, sidecar OffsetX and OffsetY included (a tilt is not). Captures wait for it, so exported frames always see the measured layout.",
+    "example": "const metrics = useTextMetrics(\"title\", title, { fontSize: 0.6 });\nconst size = metrics?.fitFontSize(2) ?? 0.6;\nconst slots = metrics?.glyphs.filter((g) => g.ink) ?? [];",
     "timing": [
-      "Null until the face has loaded, so never divide by a width you haven't checked. Captures wait for the measure."
+      "Null until the face has loaded, so never divide by a width you haven't checked. Captures wait for the measure.",
+      "glyphs sit where the headline draws each one, from its position (pass the same anchorX, anchorY and textAlign), at the measured size: scale them by fitFontSize(w) / fontSize when you fit."
     ]
   },
   "useTheme": {
@@ -3588,6 +3652,6 @@
     "kind": "hook",
     "summary": "{ localMs, globalMs, progress }; progress is PROJECT-wide.",
     "signature": "function useTimeline(scale?: number): SceneTime;",
-    "doc": "Reactive scene time for the active scrub position. `localMs` is relative to the enclosing scene's start (supplied by `<SceneHost>` via `SceneContext`); with no scene context it falls back to project time so a lone scene anchored at t=0 keeps `localMs === globalMs` (the v0 contract). `progress` stays project-global per the `SceneTime` type; authors derive scene-local progress from `localMs / scene.durationMs`. Inside a motion blur sample the time moves by the scene's shutter offset times `scale` (default: the `MotionBlurContext`); 0 never moves and never re-renders for a sample."
+    "doc": "Reactive scene time for the active scrub position. `localMs` is relative to the enclosing scene's start (supplied by `<SceneHost>` via `SceneContext`); with no scene context it falls back to project time so a lone scene anchored at t=0 keeps `localMs === globalMs` (the v0 contract). `progress` stays project-global per the `SceneTime` type; authors derive scene-local progress from `localMs / scene.durationMs`. Inside a motion blur sample the time moves by the scene's shutter offset times `scale` (default: the `MotionBlurContext`); 0 never moves and never re-renders for a sample. Inside `SteppedTime` the frame instant steps BEFORE that offset, so a held pose blurs around itself and never ghosts into the next step."
   }
 }

@@ -563,7 +563,13 @@ const EFFECTS: Record<keyof EffectsConfig, { summary: string; fields: Record<str
     summary: "3D LUT colour grade; every LUT in a project must share one LUT_3D_SIZE.",
     fields: { url: "project-relative .cube path", intensity: "0..1 blend" },
   },
-  grain: { summary: "Seeded film grain.", fields: { intensity: "0 turns it off" } },
+  grain: {
+    summary: "Seeded film grain.",
+    fields: {
+      intensity: "0 turns it off",
+      hold: "frames each pattern holds, the paper boil (5 is 12 fps; default 1)",
+    },
+  },
 };
 
 const DOF_MODES: Record<DofMode, { label: string; summary: string; fields: string[] }> = {
@@ -756,9 +762,16 @@ export const TOOLKIT_SUMMARIES: Record<
   Ribbon: { summary: "Seeded tube that grows along a curve." },
   SceneStage: { summary: "Theme lighting, backdrop and real shadows for the scene." },
   StagedObject: { summary: "One sidecar objects entry, auto-fitted." },
+  SteppedTime: {
+    summary:
+      "SteppedTime fps: its subtree's time steps at a whole fps (12 is the hand-made look) while the camera moves every frame.",
+  },
   TEXT_PRESET_NAMES: { summary: "Every text motion preset name." },
   TitleBlock: { summary: "Title + optional subtitle, theme-scaled, safe-area aligned." },
-  VideoClip: { summary: "Deterministic video plane (pre-extracted 60 fps frames)." },
+  VideoClip: {
+    summary:
+      "Deterministic video plane (pre-extracted 60 fps frames); radius and opacity make it a card.",
+  },
   VideoWindow: { summary: "Shim over a window-hosted media entry.", legacy: true },
   WORKSPACE_OBJECT_PREFIX: { summary: "ws: prefix of workspace object ids.", internal: true },
   WireGrid: { summary: "Travelling-wave wire grid on the clock." },
@@ -827,6 +840,13 @@ export const TOOLKIT_SUMMARIES: Record<
       '{ width, height, aspect, shape, frame, safe }: frame and safe in world units at z=0, shape "wide", "square" or "tall".',
   },
   useGroupAnimation: { summary: "Lets a custom child join an AnimatedGroup's alpha and shine." },
+  useHeldLocalMs: {
+    summary: "useHeldLocalMs(localMs): the time pinned at the scene's Present hold; raw in video.",
+  },
+  usePresentTiming: {
+    summary:
+      "usePresentTiming(toMs, outAtMs?): Present and automatic stills hold the scene once a set piece settles.",
+  },
   useRigTrack: { summary: "The scene's normalised camera rig track, or null." },
   useSceneChart: { summary: "The resolved sidecar chart block, or null." },
   useSceneDevices: { summary: "Sidecar devices as Device props, layout resolved." },
@@ -867,11 +887,11 @@ export const TOOLKIT_SUMMARIES: Record<
   },
   measureText: {
     summary:
-      "measureText(text, { font, fontSize, letterSpacing?, lineHeight? }): { width, height, ascent, descent, lines } in world units, or null.",
+      "measureText(text, { font, fontSize, letterSpacing?, lineHeight?, anchorX?, anchorY?, textAlign? }): { width, height, ascent, descent, lines, glyphs } in world units, or null.",
   },
   useTextMetrics: {
     summary:
-      "useTextMetrics(textKey, text, opts?): the block an AnimatedHeadline with those props typesets, sidecar overrides included, plus fitFontSize(maxWidth); null until its face has loaded.",
+      "useTextMetrics(textKey, text, opts?): the block an AnimatedHeadline with those props typesets, sidecar overrides included, with each glyph's box and fitFontSize(maxWidth); null until its face has loaded.",
   },
   useSceneCamera: { summary: "The scene camera's pose this frame: { position, lookAt, fov }." },
   frameAtDepth: {

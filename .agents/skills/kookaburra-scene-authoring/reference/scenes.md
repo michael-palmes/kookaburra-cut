@@ -73,8 +73,9 @@ needs no React import. Consequences:
 | `useBeatGrid()` | The project's `audio.grid` in this scene's time, or null without one: `at(13, 3)`, `bar(13, 3)`, `at("cue:drop")`, `position(localMs)` (`{ bar, beat, sixteenth, beatPhase, barPhase }`), `local(projectMs)`, `project(localMs)`, `beatMs`, `barMs`, `bpm`, `beatsPerBar`. Times are integer scene-local ms (negative before the scene), the same frames a sidecar `"at": "bar:13"` lands on; `at()` throws on a position that can't resolve |
 | `useCues()` | `audio.cues` as `{ id: scene-local ms }`; `{}` without any |
 | `useProjectShared(path?, fallback?)` | `project.json` `shared` constants: `useProjectShared("palette.accent", theme.colors.accent)`; no path returns the whole block (reference/project.md) |
-| `useTextMetrics(textKey, text, opts?)` | `{ width, height, ascent, descent, lines }` of the block an `AnimatedHeadline` with those props draws (sidecar overrides included), or null for a frame while its font loads; size pills and underlines with it (reference/text.md) |
-| `useSceneCamera()` | The scene camera's pose this frame: `{ position, lookAt, fov, rollDeg? }` |
+| `useTextMetrics(textKey, text, opts?)` | `{ width, height, ascent, descent, lines, glyphs }` of the block an `AnimatedHeadline` with those props draws (sidecar overrides included), or null for a frame while its font loads; size pills and underlines with it, or place things on its letters (reference/text.md) |
+| `useHeldLocalMs(localMs)`, `usePresentTiming(toMs, outAtMs?)` | A set piece's time pinned at the scene's Present hold, and where it settles (Motion helpers above) |
+| `useSceneCamera()` | The scene camera's pose this frame: `{ position, lookAt, fov, rollDeg? }`, every frame even inside `SteppedTime` |
 | `useCameraFrame(z?)` | `{ width, height, center }`: the world rectangle the scene camera sees on the plane at depth `z` this frame (reference/camera.md) |
 
 Plain helpers: `measureText(text, { font, fontSize })` measures without a text key, and
@@ -209,6 +210,23 @@ export default defineScene({
   return <mesh scale={1 + glow * 0.06}>{/* geometry, material */}</mesh>;
   ```
 
+- A hand-made passage: `<SteppedTime fps={12}>...</SteppedTime>` steps its subtree's
+  time, so every pose holds for whole frames (12 fps holds 5 frames) while the camera,
+  and anything outside, moves every frame. Wrap a whole scene or one layer; leave live
+  footage outside it. Steps count from the scene's first frame. A 30 fps export can't
+  split 12 fps evenly, so poses alternate 3 and 2 frames there; 10 and 15 fps stay
+  even. Pair it with a grain `hold` for paper that boils at the same rate
+  (reference/project.md).
+- Present holds for a hand-built set piece: `usePresentTiming(settledMs, outAtMs?)`
+  tells Present and the automatic stills where the piece settles, and
+  `useHeldLocalMs(localMs)` pins its time there (video export runs the raw time):
+
+  ```tsx
+  const { localMs: raw } = useTimeline();
+  const localMs = useHeldLocalMs(raw);
+  usePresentTiming(2400);
+  ```
+
 - Randomness: `createSeededRandom(seed)` at module scope, for example
   `const rand = createSeededRandom(7); const DOTS = Array.from({ length: 40 }, () => [rand() * 2 - 1, rand()]);`.
   Never `Math.random`, `Date`, `performance.now`, timers or `requestAnimationFrame`.
@@ -239,6 +257,7 @@ export default defineScene({
 | `SplitField` | The frame split into image, video or colour tiles (the sidecar `mosaic`, reference/media.md) |
 | `TapRing`, `Cursor` | Tap pulses and a travelling, clicking pointer (the sidecar `taps`, reference/media.md) |
 | `Stamp` | Stamps its children in (Motion helpers above) |
+| `SteppedTime` | A 12 fps hand-made passage: poses hold while the camera moves (Motion helpers above) |
 | `ScreenLayer`, `Vignette`, `Scrim`, `Gradient` | A camera-locked layer in frame units and the fills for it (below) |
 | `Room`, `RoomFlood` | A camera-locked room colour and a flood of colour from a frame point, for floods the scene times itself (the sidecar `room` block draws its own) |
 | `SceneStage`, `DepthStage`, `LightRig` | Staging and light |

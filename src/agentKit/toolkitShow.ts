@@ -82,9 +82,30 @@ export const TOOLKIT_SHOW: Readonly<
     ],
   },
   useTextMetrics: {
-    example: `const metrics = useTextMetrics("title", title, { fontSize: 0.6 });\nconst size = metrics?.fitFontSize(2) ?? 0.6;`,
+    example: `const metrics = useTextMetrics("title", title, { fontSize: 0.6 });\nconst size = metrics?.fitFontSize(2) ?? 0.6;\nconst slots = metrics?.glyphs.filter((g) => g.ink) ?? [];`,
     timing: [
       "Null until the face has loaded, so never divide by a width you haven't checked. Captures wait for the measure.",
+      "glyphs sit where the headline draws each one, from its position (pass the same anchorX, anchorY and textAlign), at the measured size: scale them by fitFontSize(w) / fontSize when you fit.",
+    ],
+  },
+  SteppedTime: {
+    example: `<SteppedTime fps={12}><AnimatedHeadline text={title} preset="fade-up" /></SteppedTime>`,
+    timing: [
+      "Steps count whole frames from the scene's first frame: 12 fps holds each pose 5 frames at 60 fps, and every frame of a step shows that step's first frame exactly.",
+      "A 30 fps export can't split 12 fps evenly, so poses alternate 3 and 2 frames there (10 and 15 fps stay even). The camera, and anything outside, moves every frame; fps 60 runs every frame, so a nested one opts a child out.",
+      "Motion blur smears a held pose around its own instant, never into the next step.",
+    ],
+  },
+  usePresentTiming: {
+    example: `const { localMs: raw } = useTimeline();\nconst localMs = useHeldLocalMs(raw);\nusePresentTiming(2400);`,
+    timing: [
+      "Present and the automatic stills hold the scene 150 ms after the latest toMs any element reports, and before the earliest outAtMs; useHeldLocalMs pins the time there. Video export always runs the raw time.",
+    ],
+  },
+  VideoClip: {
+    example: `<VideoClip src="assets/clip.mp4" startMs={0} scale={0.3} radius={0.06} opacity={0.8} position={[1.2, 0, 0]} />`,
+    timing: [
+      "Holds the first frame before startMs and the last after the end. radius is a fraction of the short edge; with radius or opacity set it draws as a card, blended and without a depth write.",
     ],
   },
   useFormat: {

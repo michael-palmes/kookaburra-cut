@@ -3,6 +3,8 @@
 // Named eases (the camera and text presets' curves) for code-authored motion.
 export { EASE_NAMES, type EaseOptions, ease, easeFn, isEaseName } from "../engine/ease";
 export { frameAtDepth, useFormat } from "../engine/format";
+// The scene-local time a set piece animates from: its raw time, pinned while Present holds the scene.
+export { useHeldLocalMs } from "../engine/presentHold";
 // project.json `shared`: author constants every scene reads.
 export { type ProjectShared, useProjectShared } from "../engine/projectShared";
 // Seeded RNG for generative geometry; scenes must never call Math.random.
@@ -37,8 +39,13 @@ export {
 // Time / format / theme hooks
 export { useTimeline } from "../engine/timeline";
 export { useTheme } from "../theme";
-// Text metrics from the parsed faces: size a pill or underline to a headline without capturing frames.
-export { type MeasureTextOptions, measureText, type TextMetrics } from "../theme/fontMetrics";
+// Text metrics from the parsed faces: size a pill or underline to a headline, or place things on its letters, without capturing frames.
+export {
+  type GlyphBox,
+  type MeasureTextOptions,
+  measureText,
+  type TextMetrics,
+} from "../theme/fontMetrics";
 export type { Theme } from "../theme/tokens";
 // Data charts: `<Chart />` draws the sidecar block, flat or as staged 3D solids; the fallback covers scenes that never mount it.
 export { Chart, type ChartProps } from "./chart/Chart";
@@ -132,9 +139,13 @@ export { VideoWindow, type VideoWindowProps } from "./media/VideoWindow";
 export { MotionBlur } from "./motion/MotionBlur";
 // Motion helpers: eased ramps, keyed tracks and the stamp pop, all pure functions of the clock.
 export { clamp01, lerp, ramp } from "./motion/math";
+// Present holds for hand-built set pieces: report when one settles (read the held time with useHeldLocalMs).
+export { usePresentTiming } from "./motion/presentTiming";
 // Attack, hold, release levels fired at given times (beats, cues); overlapping pulses take the max.
 export { type PulseOptions, pulse } from "./motion/pulse";
 export { Stamp, type StampProps } from "./motion/Stamp";
+// A hand-made passage: its subtree's time steps at a low frame rate while the camera moves every frame.
+export { SteppedTime } from "./motion/SteppedTime";
 export { type MotionKey, type SampleKeysOptions, sampleKeys } from "./motion/sampleKeys";
 export { type StampScaleOptions, stampScale } from "./motion/stampScale";
 // Musical time from the authored audio.grid and audio.cues: null and {} without them.
