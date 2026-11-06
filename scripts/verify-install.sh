@@ -13,7 +13,8 @@
 #     --version   the release (its tag is v<version>)
 #     --dir       the folder holding the downloaded release files
 #     --app       an installed app to check in place (default: the app inside the DMG)
-#     --bundle    verify the build provenance offline, against this .intoto.jsonl from the release page
+#     --bundle    verify the build provenance offline against this bundle (default: the release page's
+#                 KookaburraCut-<version>.intoto.jsonl when it is in --dir)
 #     --previous  print how the release's SECURITY.md differs from this version's (through gh api)
 #   With rust-audit-info on PATH (cargo install rust-audit-info) it also counts the crates the
 #   binary carries in its .dep-v0 section.
@@ -40,7 +41,7 @@ while [[ $# -gt 0 ]]; do
     --app) APP="${2:?--app needs a path}"; shift 2 ;;
     --bundle) BUNDLE="${2:?--bundle needs a file}"; shift 2 ;;
     --previous) PREVIOUS="${2:?--previous needs a version}"; shift 2 ;;
-    --help | -h) sed -n '2,20p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    --help | -h) sed -n '2,21p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) die "unknown argument '$1' (--help)" ;;
   esac
 done
@@ -58,6 +59,7 @@ SECURITY="$DIR/SECURITY.md"
 for f in "$SUMS" "$DMG" "$INFO" "$SBOM" "$SECURITY"; do
   [[ -f "$f" ]] || die "missing $f; fetch the release first: gh release download $TAG --repo $REPO --dir \"$DIR\" (the SBOM ships from 0.23.0)"
 done
+[[ -n "$BUNDLE" || ! -f "$DIR/KookaburraCut-$VERSION.intoto.jsonl" ]] || BUNDLE="$DIR/KookaburraCut-$VERSION.intoto.jsonl"
 [[ -z "$BUNDLE" || -f "$BUNDLE" ]] || die "no bundle at $BUNDLE"
 [[ -z "$APP" || -d "$APP" ]] || die "no app at $APP"
 for tool in gh codesign shasum spctl jq hdiutil plutil; do
