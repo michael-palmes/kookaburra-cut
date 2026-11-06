@@ -40,6 +40,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and `proc-macro-error` (RUSTSEC-2024-0370) sit in the Linux GTK stack the Mac
   app never builds, and `src-tauri/osv-scanner.toml` records them as ignored
   with the reason.
+- A shared folder's git can no longer run a program through Claude's own git
+  commands. Hooks a folder arrives with move into `.git` on its first open and
+  are listed before Claude starts. Where a folder's git settings name a program,
+  or a hook is still there, Claude's git is turned off for that project, and
+  checkpoints carry on through `./kb`.
 
 ## [0.22.2] - 2026-11-05
 

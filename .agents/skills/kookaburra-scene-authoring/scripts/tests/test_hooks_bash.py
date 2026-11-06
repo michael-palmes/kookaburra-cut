@@ -207,6 +207,26 @@ class BashPreTests(BashHookCase):
         out = json.loads(proc.stdout)["hookSpecificOutput"]
         return out["permissionDecisionReason"] if out.get("permissionDecision") == "deny" else None
 
+    def test_bash_pre_denies_git_in_a_folder_whose_git_is_refused(self) -> None:
+        if not git.git_available():
+            self.skipTest("git is not available")
+        commands = ("git status", "git commit -m x", "cd scenes && git add -A", "FOO=1 /usr/bin/git log", "bash -c 'git diff'", "echo $(git rev-parse HEAD)")
+        for command in commands:
+            self.assertIsNone(self.denial(command), command)
+        run_git(self.root, ["config", "core.fsmonitor", "/bin/true"])
+        for command in commands:
+            reason = self.denial(command) or ""
+            self.assertIn("core.fsmonitor", reason, command)
+            self.assertIn("./kb checkpoint refuses here too", reason)
+        for command in ("./kb status", "cat .git/config", "echo github", "ls scenes"):
+            self.assertIsNone(self.denial(command), command)
+        run_git(self.root, ["config", "--unset", "core.fsmonitor"])
+        hook = self.root / ".git" / "hooks" / "pre-commit"
+        write(hook, "#!/bin/sh\n")
+        self.assertIn(".git/hooks/pre-commit would run under git", self.denial("git commit -m x") or "")
+        hook.unlink()
+        self.assertIsNone(self.denial("git commit -m x"))
+
     def test_hand_writes_to_asset_records_are_denied(self) -> None:
         write_json(self.root / "assets" / "_meta.json", {"version": 1, "assets": {}})
         write_json(self.root / "assets" / "rec.timing.json", {"version": 1})

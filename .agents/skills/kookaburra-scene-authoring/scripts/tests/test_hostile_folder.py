@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 import types
 from typing import List
 
@@ -236,6 +237,28 @@ class HostileFolder(KbTestCase):
         exclude.unlink()
         exclude.symlink_to(self.victim / "thesis.txt")
         self.assertExit(self.kb(["note", "hello"], cwd=self.project), 0)
+        self.untouched()
+
+    def test_a_planted_pre_commit_hook_never_runs_under_a_checkpoint(self) -> None:
+        if not shutil.which("git"):
+            self.skipTest("git is not available")
+        git_init(self.project)
+        marker = self.tmp / "ran"
+        hook = self.project / ".git" / "hooks" / "pre-commit"
+        hook.parent.mkdir(parents=True, exist_ok=True)
+        hook.write_text(f"#!/bin/sh\ntouch '{marker}'\nexit 0\n")
+        hook.chmod(0o755)
+        for name in ("commit-msg", "post-commit", "reference-transaction"):
+            (hook.parent / name).symlink_to(hook)
+        env = dict(os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null", GIT_TERMINAL_PROMPT="0")
+        control = subprocess.run(["git", "-C", str(self.project), "-c", "user.name=T", "-c", "user.email=t@example.com", "commit", "-q", "--allow-empty", "-m", "control"],
+                                 capture_output=True, text=True, env=env)
+        self.assertEqual(control.returncode, 0, control.stderr)
+        self.assertTrue(marker.exists(), "the control commit fires the hook")
+        marker.unlink()
+        (self.project / "scenes" / "01-intro.json").write_text('{"version": 1, "name": "Changed"}\n')
+        self.assertExit(self.kb(["checkpoint", "changed"], cwd=self.project), 0)
+        self.assertFalse(marker.exists(), "a planted hook ran under kb's git")
         self.untouched()
 
     def test_real_folders_still_work(self) -> None:
