@@ -48,16 +48,16 @@ function visibleColours({ theme }: ThemeCatalogueEntry): string[] {
 }
 
 describe("bundled theme lineup", () => {
-  it("ships twenty-two visible themes across Essentials, Studio, Colour and Retro", () => {
-    expect(lineup).toHaveLength(22);
+  it("ships thirty-five visible themes across Essentials, Studio, Colour and Retro", () => {
+    expect(lineup).toHaveLength(35);
     const sizes = Object.fromEntries(
       THEME_CATEGORIES.map(({ id }) => [
         id,
         lineup.filter(({ catalogue }) => catalogue.category === id).length,
       ]),
     );
-    expect(sizes).toEqual({ essentials: 4, studio: 6, colour: 6, retro: 6 });
-    expect(lineup.filter(({ theme }) => theme.mode === "light")).toHaveLength(14);
+    expect(sizes).toEqual({ essentials: 7, studio: 14, colour: 8, retro: 6 });
+    expect(lineup.filter(({ theme }) => theme.mode === "light")).toHaveLength(21);
     for (const { id, theme, catalogue } of lineup) {
       expect(catalogue.stage, id).toBe("lighting-only");
       expect(theme.lighting, id).toBeDefined();

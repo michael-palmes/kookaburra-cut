@@ -1,0 +1,99 @@
+{
+  "version": 2,
+  "id": "kookaburra-obsidian-stage",
+  "name": "Obsidian Stage",
+  "mode": "dark",
+  "catalogue": {
+    "category": "studio",
+    "useLabel": "Hero product reveals",
+    "tags": ["dark", "keynote", "cinematic", "product", "reveal", "launch"],
+    "stage": "lighting-only",
+    "order": 70
+  },
+  "colors": {
+    "background": "#0b0c0f",
+    "text": "#efe9df",
+    "accent": "#e8a867",
+    "muted": "#c2bbaf"
+  },
+  "gradients": {
+    "brand": {
+      "type": "linear",
+      "angleDeg": 135,
+      "stops": [["#221b15", 0], ["#111113", 0.45], ["#0b0c0f", 1]],
+      "space": "oklch"
+    }
+  },
+  "chartColors": ["#e8a867", "#5da9e9", "#efe9df", "#8c8577", "#f06c5b", "#7fb28a"],
+  "typography": {
+    "headline": {
+      "family": "Inter Tight",
+      "weight": 800
+    },
+    "body": "Inter",
+    "scale": 1.25
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 560,
+      "slow": 1000
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "tracking",
+    "out": "fade",
+    "staggerMs": 0,
+    "staggerExact": true
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -55,
+      "elevationDeg": 32,
+      "intensity": 2.8,
+      "color": "#ffc888"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 120,
+        "elevationDeg": 18,
+        "intensity": 2.0,
+        "color": "#6fb6f2"
+      },
+      {
+        "azimuthDeg": 30,
+        "elevationDeg": 6,
+        "intensity": 0.2,
+        "color": "#3a3f4a"
+      }
+    ],
+    "ambient": 0.12
+  },
+  "environment": {
+    "source": "kookaburra:monochrome-studio",
+    "intensity": 0.38,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "scene3d",
+    "look": "clerestory-shafts",
+    "colors": ["#33271a", "#1a1612", "#0e0d0c", "#32261a"],
+    "speed": 1,
+    "params": {
+      "shaftCount": 5,
+      "tilt": 30,
+      "sweep": 8,
+      "haze": 0.7,
+      "dust": 0.4,
+      "poolSoftness": 0.45
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0b0c0f"
+    }
+  }
+}

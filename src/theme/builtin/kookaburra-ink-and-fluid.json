@@ -1,0 +1,94 @@
+{
+  "version": 2,
+  "id": "kookaburra-ink-and-fluid",
+  "name": "Ink and Fluid",
+  "mode": "light",
+  "catalogue": {
+    "category": "essentials",
+    "useLabel": "Concept and finance explainers",
+    "tags": ["minimal", "explainer", "finance", "numbers", "calm", "teal"],
+    "stage": "lighting-only",
+    "order": 70
+  },
+  "colors": {
+    "background": "#fbfaf7",
+    "text": "#0e0e10",
+    "accent": "#0f6e6e",
+    "muted": "#5c5c58"
+  },
+  "gradients": {
+    "brand": {
+      "type": "radial",
+      "angleDeg": 0,
+      "stops": [["#fdfcfa", 0], ["#f3f1ec", 1]],
+      "space": "oklch"
+    },
+    "fluid": {
+      "type": "radial",
+      "angleDeg": 0,
+      "stops": [["#9be8c8", 0], ["#2fa08a", 0.5], ["#0f6e6e", 1]],
+      "space": "oklch"
+    }
+  },
+  "chartColors": ["#0f6e6e", "#0e0e10", "#23876a", "#767672", "#b8572a", "#3a5a9a"],
+  "typography": {
+    "headline": {
+      "family": "Inter Tight",
+      "weight": 300
+    },
+    "body": "Inter",
+    "scale": 1.25
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 520,
+      "slow": 940
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outBack"
+    }
+  },
+  "textAnimation": {
+    "in": "spring-pop",
+    "out": "fade",
+    "staggerMs": 40,
+    "stagger": "word"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 35,
+      "elevationDeg": 55,
+      "intensity": 1.9,
+      "color": "#ffffff"
+    },
+    "fills": [
+      {
+        "azimuthDeg": -120,
+        "elevationDeg": 18,
+        "intensity": 0.8,
+        "color": "#eef4f2"
+      }
+    ],
+    "ambient": 0.9,
+    "shadow": {
+      "technique": "map",
+      "softness": 0.8,
+      "opacity": 0.2,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#1f2a28"
+    }
+  },
+  "environment": {
+    "source": "kookaburra:softbox",
+    "intensity": 0.8,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "gradient",
+    "gradient": "brand",
+    "parallax": 0.03
+  }
+}

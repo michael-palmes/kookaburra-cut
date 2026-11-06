@@ -1,0 +1,88 @@
+{
+  "version": 2,
+  "id": "kookaburra-colour-studio",
+  "name": "Colour Studio",
+  "mode": "dark",
+  "catalogue": {
+    "category": "colour",
+    "useLabel": "Release reels and what's new",
+    "tags": ["bold", "blue", "release", "update", "energetic", "launch"],
+    "stage": "lighting-only",
+    "order": 70
+  },
+  "colors": {
+    "background": "#1129b4",
+    "text": "#ffffff",
+    "accent": "#ff9457",
+    "muted": "#dde2ff"
+  },
+  "gradients": {
+    "brand": {
+      "type": "radial",
+      "angleDeg": 0,
+      "stops": [["#122cb8", 0], ["#0e22a0", 1]],
+      "space": "oklch"
+    }
+  },
+  "chartColors": ["#ff9457", "#f7f5f0", "#3ed6a6", "#b69cff", "#ffd43b", "#ff8fc0"],
+  "typography": {
+    "headline": {
+      "family": "Inter Tight",
+      "weight": 900
+    },
+    "body": "JetBrains Mono",
+    "scale": 1.25
+  },
+  "motion": {
+    "durations": {
+      "fast": 180,
+      "base": 460,
+      "slow": 860
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outBack"
+    }
+  },
+  "textAnimation": {
+    "in": "slam",
+    "out": "fade",
+    "staggerMs": 50,
+    "stagger": "word"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 35,
+      "elevationDeg": 55,
+      "intensity": 2,
+      "color": "#f4f6ff"
+    },
+    "fills": [
+      {
+        "azimuthDeg": -120,
+        "elevationDeg": 18,
+        "intensity": 0.8,
+        "color": "#c9d2ff"
+      }
+    ],
+    "ambient": 0.85,
+    "shadow": {
+      "technique": "map",
+      "softness": 0.7,
+      "opacity": 0.3,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#08135c"
+    }
+  },
+  "environment": {
+    "source": "kookaburra:cyclorama",
+    "intensity": 0.9,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "gradient",
+    "gradient": "brand",
+    "parallax": 0.03
+  }
+}

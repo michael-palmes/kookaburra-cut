@@ -1,0 +1,85 @@
+{
+  "version": 2,
+  "id": "kookaburra-blueprint",
+  "name": "Blueprint",
+  "mode": "dark",
+  "catalogue": {
+    "category": "studio",
+    "useLabel": "Developer releases and changelogs",
+    "tags": ["developer", "code", "dark", "grid", "technical", "release"],
+    "stage": "lighting-only",
+    "order": 140
+  },
+  "colors": {
+    "background": "#0a1022",
+    "text": "#e6edf7",
+    "accent": "#4fd8f5",
+    "muted": "#b4bfd1"
+  },
+  "chartColors": ["#4fd8f5", "#9be564", "#e6edf7", "#ffb454", "#c792ea", "#ff7a90"],
+  "typography": {
+    "headline": {
+      "family": "JetBrains Mono",
+      "weight": 400
+    },
+    "body": "Space Grotesk",
+    "scale": 1.25
+  },
+  "motion": {
+    "durations": {
+      "fast": 160,
+      "base": 420,
+      "slow": 800
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "typewriter",
+    "out": "fade",
+    "staggerMs": 0
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -30,
+      "elevationDeg": 42,
+      "intensity": 1.9,
+      "color": "#e6f4ff"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 140,
+        "elevationDeg": 12,
+        "intensity": 0.5,
+        "color": "#1a2747"
+      },
+      {
+        "azimuthDeg": 165,
+        "elevationDeg": 38,
+        "intensity": 0.9,
+        "color": "#4fd8f5"
+      }
+    ],
+    "ambient": 0.38
+  },
+  "environment": {
+    "source": "kookaburra:monochrome-studio",
+    "intensity": 0.55,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "shader",
+    "shader": "graph-grid",
+    "colors": ["#0a1022", "#172447", "#1a2950", "#0e1630"],
+    "speed": 0.3,
+    "params": {
+      "density": 26,
+      "lineWeight": 0.32,
+      "highlightWidth": 0.12,
+      "fillDensity": 0,
+      "cadence": 0.12
+    }
+  }
+}

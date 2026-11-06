@@ -1,0 +1,86 @@
+{
+  "version": 2,
+  "id": "kookaburra-paper-and-ink",
+  "name": "Paper and Ink",
+  "mode": "light",
+  "catalogue": {
+    "category": "essentials",
+    "useLabel": "Editorial launch stories",
+    "tags": ["paper", "handmade", "journal", "warm", "print", "storytelling"],
+    "stage": "lighting-only",
+    "order": 60
+  },
+  "colors": {
+    "background": "#f4efe4",
+    "text": "#111111",
+    "accent": "#b01e17",
+    "muted": "#55504a"
+  },
+  "chartColors": ["#b01e17", "#111111", "#1f4f7a", "#8a6d00", "#3f6b4a", "#7a4a8a"],
+  "typography": {
+    "headline": {
+      "family": "Instrument Serif",
+      "weight": 400
+    },
+    "body": "Inter",
+    "scale": 1.333
+  },
+  "motion": {
+    "durations": {
+      "fast": 220,
+      "base": 560,
+      "slow": 1000
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "mask-reveal",
+    "out": "fade",
+    "staggerMs": 0
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 22,
+      "elevationDeg": 30,
+      "intensity": 1.8,
+      "color": "#fff3df"
+    },
+    "fills": [
+      {
+        "azimuthDeg": -140,
+        "elevationDeg": 30,
+        "intensity": 0.6,
+        "color": "#f1ece2"
+      }
+    ],
+    "ambient": 0.8,
+    "shadow": {
+      "technique": "map",
+      "softness": 1,
+      "opacity": 0.22,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#4a3a28"
+    }
+  },
+  "environment": {
+    "source": "kookaburra:story-studio",
+    "intensity": 0.8,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "shader",
+    "shader": "mesh-gradient",
+    "colors": ["#f4efe4", "#ece2cc", "#f0e8d8", "#e8dcc4"],
+    "speed": 0.05,
+    "params": {
+      "distortion": 0.4,
+      "swirl": 0.05,
+      "grainMixer": 0.12,
+      "grainOverlay": 0.2
+    }
+  }
+}
