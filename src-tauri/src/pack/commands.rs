@@ -888,10 +888,12 @@ pub async fn stage_pack(
             "[pack] {shown}: publisher \"{}\", key {}, {}, {} items",
             crate::audit::field(&manifest_publisher.name),
             key::key_id_of(&manifest_publisher.public_key).unwrap_or_else(|| "unreadable".into()),
-            verdict_kind(&publisher::publisher_verdict(
-                &publisher::known_publishers(&app, &settings)?,
-                manifest_publisher,
-            )),
+            publisher::known_publishers(&app, &settings)
+                .map(|known| verdict_kind(&publisher::publisher_verdict(
+                    &known,
+                    manifest_publisher
+                )))
+                .unwrap_or("unknown"),
             inspection.manifest.contents.item_count()
         );
         deny_managed_publisher(&inspection.manifest.publisher)?;
