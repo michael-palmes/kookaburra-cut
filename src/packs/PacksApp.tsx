@@ -2,7 +2,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useCallback, useEffect, useState } from "react";
+import { useManagedPolicy } from "../engine/managed";
 import { revealApp } from "../engine/reveal";
+import { ManagedLock } from "../ui/ManagedLock";
 import { useNativeTextUndo } from "../ui/useNativeTextUndo";
 import { ExportView } from "./ExportView";
 import { ImportFlow } from "./import/ImportFlow";
@@ -16,6 +18,7 @@ export function PacksApp() {
   useNativeTextUndo();
   const [target, setTarget] = useState<PacksTarget | null>(null);
   const [dropError, setDropError] = useState<string | null>(null);
+  const managed = useManagedPolicy();
 
   useEffect(() => {
     revealApp();
@@ -59,7 +62,8 @@ export function PacksApp() {
     void getCurrentWindow().close();
   }, []);
 
-  if (!target) return <div className="packs-shell" />;
+  // Export waits for the policy so a locked fleet never sees the picker flash open.
+  if (!target || (target.mode === "export" && !managed)) return <div className="packs-shell" />;
 
   return (
     <div className="packs-shell">
@@ -70,10 +74,24 @@ export function PacksApp() {
         </div>
       )}
       {target.mode === "export" ? (
-        <ExportView onClose={close} />
+        managed?.disablePackExport ? (
+          <ExportLocked />
+        ) : (
+          <ExportView onClose={close} />
+        )
       ) : (
         <ImportFlow initialPath={target.path ?? null} queued={target.queued} onClose={close} />
       )}
+    </div>
+  );
+}
+
+/** What the window shows if it opens in export mode on a Mac whose profile turns pack export off. */
+export function ExportLocked() {
+  return (
+    <div className="packs-export-locked" role="status">
+      <p>Pack export is turned off by your organisation.</p>
+      <ManagedLock detail="A configuration profile turns pack export off (DisablePackExport)." />
     </div>
   );
 }

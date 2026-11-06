@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Four managed preferences for fleets: `DisableAgentKit` (no agent files in
+  projects and no agent bridge), `DisablePackExport`, `ExportsInProject` (no
+  exports in Downloads) and `UpdateEndpoint` (update checks ask your own
+  server). Settings shows a lock on each row they govern, and Settings ▸ Claude
+  gains an Agent kit row. See `docs/mdm.md`.
+
 ## [0.22.2] - 2026-11-05
 
 ### Fixed

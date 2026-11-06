@@ -24,6 +24,20 @@
   font-size: 13px;
 }
 
+.packs-export-locked {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.packs-export-locked p {
+  margin: 0;
+}
+
 .packs-body {
   display: flex;
   flex: 1 1 auto;
