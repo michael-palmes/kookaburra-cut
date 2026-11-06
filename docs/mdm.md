@@ -148,8 +148,8 @@ and add `UpdateEndpoint` beside the other keys:
 3. `~/Library/Application Support/com.mpalmes.kookaburracut/logs/app.log`
    shows `[managed] configuration profile forces: DisableClaude` at boot, plus
    one line per malformed key and a `[managed] refused:` line naming the key
-   each time a command is refused (`src-tauri/src/managed.rs`, written by
-   `audit.rs`). A dev build prints the same lines in the terminal that runs
+   the first time it refuses a command in a launch (`src-tauri/src/managed.rs`,
+   `refusal`, written by `audit.rs`). A dev build prints the same lines in the terminal that runs
    `pnpm tauri dev`.
 4. Under `DisableAgentKit`, a project created after launch has no `./kb`,
    `.kb/`, `.claude/` or `CLAUDE.md`, and `ls ~/"Kookaburra Cut"/_bridge` finds
