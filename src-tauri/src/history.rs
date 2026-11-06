@@ -140,17 +140,73 @@ pub(crate) fn live_hooks(dir: &Path) -> Vec<PathBuf> {
     live
 }
 
-/// Whether the agent's own plain `git` may run here: only where the app would run git itself and no hook would fire under it.
+/// The first `.git` below the project's own, links never followed: git run in that folder uses its hooks and settings instead.
+fn nested_repo(dir: &Path) -> Option<PathBuf> {
+    let mut stack = vec![PathBuf::new()];
+    while let Some(rel) = stack.pop() {
+        for entry in std::fs::read_dir(dir.join(&rel))
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
+            let child = rel.join(entry.file_name());
+            if entry.file_name() == ".git" {
+                if !rel.as_os_str().is_empty() {
+                    return Some(child);
+                }
+            } else if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                stack.push(child);
+            }
+        }
+    }
+    None
+}
+
+/// Whether git runs without macOS offering to install the developer tools, as kb's `git_available` decides.
+fn git_usable() -> bool {
+    static USABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *USABLE.get_or_init(|| {
+        let Some(exe) = std::env::var_os("PATH").and_then(|path| {
+            std::env::split_paths(&path)
+                .map(|dir| dir.join("git"))
+                .find(|candidate| candidate.is_file())
+        }) else {
+            return false;
+        };
+        if std::fs::canonicalize(&exe).ok().as_deref() != Some(Path::new("/usr/bin/git")) {
+            return true;
+        }
+        Command::new("xcode-select")
+            .arg("-p")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success())
+    })
+}
+
+fn shown(rel: &Path) -> String {
+    crate::clean_text::clean_text_with_cap(
+        &crate::clean_text::clean_name(&rel.to_string_lossy()),
+        80,
+    )
+}
+
+/// Whether the agent's own plain `git` may run here: only where the app would run git itself, no hook would fire under it and no repository sits below it.
 pub(crate) fn agent_git_verdict(dir: &Path) -> Result<(), String> {
+    if let Some(nested) = nested_repo(dir) {
+        return Err(format!("{} is another repository", shown(&nested)));
+    }
+    if std::fs::symlink_metadata(dir.join(".git")).is_err() {
+        return Ok(());
+    }
+    if !git_usable() {
+        return Err("git isn't set up on this Mac".into());
+    }
     refuse_foreign(dir)?;
     match live_hooks(dir).first() {
-        Some(hook) => Err(format!(
-            "{} would run under git",
-            crate::clean_text::clean_text_with_cap(
-                &crate::clean_text::clean_name(&hook.to_string_lossy()),
-                80
-            )
-        )),
+        Some(hook) => Err(format!("{} would run under git", shown(hook))),
         None => Ok(()),
     }
 }
@@ -723,7 +779,16 @@ mod tests {
         set_config(&dir, "core.fsmonitor", "/bin/true");
         let withheld = agent_git_verdict(&dir).unwrap_err();
         assert!(withheld.contains("core.fsmonitor"), "{withheld}");
+
+        let nested = temp("agent-git-nested");
+        std::fs::create_dir_all(nested.join("scenes/shared/.git/hooks")).unwrap();
+        assert_eq!(
+            agent_git_verdict(&nested).unwrap_err(),
+            "scenes/shared/.git is another repository",
+            "cd into it and git uses its hooks, with no root repository at all"
+        );
         let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&nested);
     }
 
     #[test]

@@ -41,7 +41,7 @@ const MANAGED_HOOK_MARKER: &str = "kookaburra-scene-authoring/scripts/kb.py hook
 /// Takes the template's git rules' place where `history::agent_git_verdict` withholds the agent's git.
 const AGENT_GIT_DENY: &str = "Bash(git:*)";
 /// Where a hook a folder arrived with goes on its first open: inside `.git`, so packs, the trust hash and the sweep never see it.
-const HOOKS_ASIDE: &str = ".git/hooks.moved-aside";
+pub(crate) const HOOKS_ASIDE: &str = ".git/hooks.moved-aside";
 /// Credential folders under the home directory, and credential files by name anywhere: `reach.py` refuses the same set, `bridge.rs` never takes these folders as a write root, and the managed deny rules are built from them (a test holds all three together).
 pub(crate) const CREDENTIAL_DIRS: [&str; 9] = [
     ".ssh", ".aws", ".config", ".gnupg", "Library/Keychains", ".docker", ".kube", ".azure", ".claude",

@@ -1946,10 +1946,14 @@ fn agent_files_sheet_body(unreviewed: &[String], folder: &str) -> String {
     let listed: Vec<String> = unreviewed.iter().take(12).map(|line| format!("• {line}")).collect();
     let more = unreviewed.len() - listed.len();
     let more = if more > 0 { format!("\nand {more} more, named in the log") } else { String::new() };
-    format!(
+    let mut body = format!(
         "These could have steered Claude, so Kookaburra Cut moved them:\n\n{}{more}\n\nThe text is in NOTES.md, which Claude reads as notes, not instructions. If a CLAUDE.md was your own, copy back what you want.\n\nFolder: {folder}",
         listed.join("\n")
-    )
+    );
+    if unreviewed.iter().any(|line| line.contains(crate::kit::HOOKS_ASIDE)) {
+        body.push_str(&format!("\n\nGit hooks are in {}: move one back into .git/hooks if it was yours.", crate::kit::HOOKS_ASIDE));
+    }
+    body
 }
 
 /// Show the person what moved out of the folder on a native sheet a webview can't answer. `true` starts the session; Return and Not now leave it off.
@@ -3085,6 +3089,8 @@ mod tests {
         assert!(agent_files_block(Some(record), &present).unwrap().contains("what moved"));
         let body = agent_files_sheet_body(&record.unreviewed, "~/w/p");
         assert!(body.contains(&format!("• {line}")), "{body}");
+        assert!(body.contains("move one back into .git/hooks"), "{body}");
+        assert!(!agent_files_sheet_body(&["AGENTS.md → NOTES.md".into()], "~/w/p").contains("hooks"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
