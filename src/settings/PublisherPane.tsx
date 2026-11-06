@@ -1,6 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
+import { useManagedPolicy } from "../engine/managed";
 import type { PublisherKey, PublisherProfile, PublisherProfileView } from "../engine/packs";
+import { ManagedLock } from "../ui/ManagedLock";
+
+const EXPORT_LOCK_DETAIL = "A configuration profile turns pack export off (DisablePackExport).";
 
 /** Settings panes for packs: who this install says it is on the packs it signs, and the publishers it has already imported from. The private key is never shown and there is no reveal; see src-tauri/src/pack/publisher.rs. */
 
@@ -54,6 +58,7 @@ export function PublisherPane() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [confirmRotate, setConfirmRotate] = useState(false);
+  const exportLocked = useManagedPolicy()?.disablePackExport ?? false;
 
   const apply = useCallback((next: PublisherProfileView) => {
     setView(next);
@@ -124,84 +129,102 @@ export function PublisherPane() {
               Shown on every pack you export. People see it, they never verify it.
             </span>
           </div>
-          <input
-            className="modal-input"
-            type="text"
-            size={18}
-            aria-label="Publisher name"
-            placeholder={view?.effectiveName ?? "Asked for on your first pack export"}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onBlur={save}
-          />
+          {exportLocked ? (
+            <ManagedLock detail={EXPORT_LOCK_DETAIL} />
+          ) : (
+            <input
+              className="modal-input"
+              type="text"
+              size={18}
+              aria-label="Publisher name"
+              placeholder={view?.effectiveName ?? "Asked for on your first pack export"}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onBlur={save}
+            />
+          )}
         </div>
         <div className="settings-row">
           <div className="settings-row-text">
             <span className="settings-row-title">Organisation</span>
             <span className="muted settings-row-detail">Optional.</span>
           </div>
-          <input
-            className="modal-input"
-            type="text"
-            size={18}
-            aria-label="Organisation"
-            value={organisation}
-            onChange={(e) => setOrganisation(e.target.value)}
-            onBlur={save}
-          />
+          {exportLocked ? (
+            <ManagedLock detail={EXPORT_LOCK_DETAIL} />
+          ) : (
+            <input
+              className="modal-input"
+              type="text"
+              size={18}
+              aria-label="Organisation"
+              value={organisation}
+              onChange={(e) => setOrganisation(e.target.value)}
+              onBlur={save}
+            />
+          )}
         </div>
         <div className="settings-row">
           <div className="settings-row-text">
             <span className="settings-row-title">Website</span>
             <span className="muted settings-row-detail">Optional, http:// or https://</span>
           </div>
-          <input
-            className="modal-input"
-            type="text"
-            size={18}
-            aria-label="Website"
-            placeholder="https://"
-            value={website}
-            onChange={(e) => setWebsite(e.target.value)}
-            onBlur={save}
-          />
+          {exportLocked ? (
+            <ManagedLock detail={EXPORT_LOCK_DETAIL} />
+          ) : (
+            <input
+              className="modal-input"
+              type="text"
+              size={18}
+              aria-label="Website"
+              placeholder="https://"
+              value={website}
+              onChange={(e) => setWebsite(e.target.value)}
+              onBlur={save}
+            />
+          )}
         </div>
         <div className="settings-row">
           <div className="settings-row-text">
             <span className="settings-row-title">Signing key</span>
             <span className="muted settings-row-detail settings-path">
-              {view?.key
-                ? `${view.key.keyIdDisplay} · ${
-                    view.key.storedIn === "keychain"
-                      ? "in your login Keychain, never synchronised"
-                      : "in a file only your account can read"
-                  }`
-                : "Your fingerprint shows here after your next pack export."}
+              {exportLocked
+                ? "Pack export is turned off by your organisation."
+                : view?.key
+                  ? `${view.key.keyIdDisplay} · ${
+                      view.key.storedIn === "keychain"
+                        ? "in your login Keychain, never synchronised"
+                        : "in a file only your account can read"
+                    }`
+                  : "Your fingerprint shows here after your next pack export."}
             </span>
           </div>
-          {view?.key && (
-            <>
-              <button
-                type="button"
-                className="btn"
-                onClick={() => {
-                  const id = view.key?.keyIdDisplay;
-                  if (!id) return;
-                  void navigator.clipboard?.writeText(id);
-                  setCopied(true);
-                }}
-              >
-                {copied ? "Copied" : "Copy"}
-              </button>
-              <button
-                type="button"
-                className="btn"
-                onClick={() => (confirmRotate ? rotate() : setConfirmRotate(true))}
-                title="Packs you export after rotating will look like they came from a new publisher"
-              >
-                {confirmRotate ? "Rotate key?" : "Rotate"}
-              </button>
-            </>
+          {exportLocked ? (
+            <ManagedLock detail={EXPORT_LOCK_DETAIL} />
+          ) : (
+            view?.key && (
+              <>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    const id = view.key?.keyIdDisplay;
+                    if (!id) return;
+                    void navigator.clipboard?.writeText(id);
+                    setCopied(true);
+                  }}
+                >
+                  {copied ? "Copied" : "Copy"}
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => (confirmRotate ? rotate() : setConfirmRotate(true))}
+                  title="Packs you export after rotating will look like they came from a new publisher"
+                >
+                  {confirmRotate ? "Rotate key?" : "Rotate"}
+                </button>
+              </>
+            )
           )}
         </div>
         {confirmRotate && (

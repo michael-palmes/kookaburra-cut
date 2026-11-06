@@ -450,8 +450,10 @@ and the DMG, and signs the updater tar bound to the version. Tauri's own
 signing would need the identity at build time, and its notarisation can't use a
 keychain profile or an API key file and never notarises the DMG, which is why
 the script owns both. A verify job on a fresh runner checks the result and runs
-the signed binary's headless CLI; publish writes `SHA256SUMS`, attests
-provenance and drafts the release. `scripts/make-dmg.sh` still builds the
+the signed binary's headless CLI; publish writes `SHA256SUMS` (the updater
+`.sig` included), attests provenance and drafts the release with that
+attestation's bundle (`KookaburraCut-<version>.intoto.jsonl`) and the updater
+`.sig` among its assets. `scripts/make-dmg.sh` still builds the
 styled Retina DMG for local use (`bundle.targets` is `["app"]`, since Tauri's
 DMG bundler accepts only a png/jpg/gif background and cannot set a volume
 icon); CI ships a plain `hdiutil` DMG because a headless runner has no Finder.

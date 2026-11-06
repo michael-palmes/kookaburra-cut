@@ -52,6 +52,15 @@ gh attestation verify KookaburraCut-<version>.dmg --repo michael-palmes/kookabur
   --source-ref refs/tags/v<version> --deny-self-hosted-runners
 ```
 
+Offline, against the release's provenance bundle:
+
+```bash
+gh attestation verify KookaburraCut-<version>.dmg --bundle KookaburraCut-<version>.intoto.jsonl \
+  --repo michael-palmes/kookaburra-cut \
+  --signer-workflow michael-palmes/kookaburra-cut/.github/workflows/release.yml \
+  --source-ref refs/tags/v<version> --deny-self-hosted-runners
+```
+
 > Status: early release, in active development. Nothing leaves your Mac
 > unless you start it: the opt-in update check (asked once on the first-run
 > welcome, recommended there; Escape declines; Settings changes it any time)

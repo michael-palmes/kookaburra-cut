@@ -10,9 +10,12 @@ import { useEscapeClose } from "./useEscapeClose";
 export function WelcomeDialog({
   onAnswer,
   updatesManaged = false,
+  organisationServer = false,
 }: {
   onAnswer: (on: boolean) => void;
   updatesManaged?: boolean;
+  /** A profile points update checks at the organisation's own server (UpdateEndpoint). */
+  organisationServer?: boolean;
 }) {
   const [checkUpdates, setCheckUpdates] = useState(!updatesManaged);
   useEscapeClose(() => onAnswer(false));
@@ -53,7 +56,7 @@ export function WelcomeDialog({
             <span className="settings-row-detail muted">
               {updatesManaged
                 ? "Turned off by your organisation's configuration profile."
-                : "An anonymous check with GitHub. Nothing installs without asking."}
+                : `An anonymous check with ${organisationServer ? "your organisation's update server" : "GitHub"}. Nothing installs without asking.`}
             </span>
           </span>
           {updatesManaged ? (

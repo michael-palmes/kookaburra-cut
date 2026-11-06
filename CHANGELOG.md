@@ -6,6 +6,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Four managed preferences for fleets: `DisableAgentKit` (no agent files in
+  projects and no agent bridge), `DisablePackExport`, `ExportsInProject` (no
+  exports in Downloads) and `UpdateEndpoint` (update checks ask your own
+  server). Settings shows a lock on each row they govern, and Settings ▸ Claude
+  gains an Agent kit row. See `docs/mdm.md`.
+
+### Security
+
+- `anyhow` moves to 1.0.104 (RUSTSEC-2026-0190) and `webpki-root-certs` to
+  1.0.11 (RUSTSEC-2026-0383, distrusted emSign roots). `glib` (RUSTSEC-2024-0429)
+  and `proc-macro-error` (RUSTSEC-2024-0370) sit in the Linux GTK stack the Mac
+  app never builds, and `src-tauri/osv-scanner.toml` records them as ignored
+  with the reason.
+
 ## [0.22.2] - 2026-11-05
 
 ### Fixed

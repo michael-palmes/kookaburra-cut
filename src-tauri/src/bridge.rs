@@ -651,6 +651,8 @@ pub struct BridgeRole {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct RoleInputs<'a> {
     pub autorun: bool,
+    /// A configuration profile forces `DisableAgentKit`: nothing, not even `KOOKABURRA_BRIDGE=1`, turns the bridge on.
+    pub managed_off: bool,
     /// `KOOKABURRA_BRIDGE`, trimmed.
     pub bridge_env: Option<&'a str>,
     pub root_overridden: bool,
@@ -667,6 +669,9 @@ pub(crate) fn bridge_role(inputs: &RoleInputs) -> BridgeRole {
     };
     if inputs.autorun {
         return off("autorun".into());
+    }
+    if inputs.managed_off {
+        return off("turned off by your organisation (DisableAgentKit)".into());
     }
     match inputs.bridge_env {
         Some("0") => return off("turned off by KOOKABURRA_BRIDGE=0".into()),
@@ -724,6 +729,7 @@ pub fn init(app: &AppHandle) {
         }
         let role = bridge_role(&RoleInputs {
             autorun: crate::is_autorun(),
+            managed_off: crate::managed::deny_agent_kit().is_err(),
             bridge_env,
             root_overridden: workspace::root_override().is_some(),
             bundle_id: &bundle_id,
@@ -1115,7 +1121,7 @@ static HEARTBEAT_STOPPED: AtomicBool = AtomicBool::new(false);
 
 /// Keep the heartbeat fresh from a native thread: the editor's one-second tick runs in the webview, whose timers macOS throttles while the app is hidden (App Nap, an occluded window), and a stale heartbeat reads as "not running" to kb.
 pub fn spawn_heartbeat(app: AppHandle) {
-    if crate::is_autorun() {
+    if crate::is_autorun() || crate::managed::deny_agent_kit().is_err() {
         return;
     }
     std::thread::spawn(move || loop {
@@ -1142,7 +1148,10 @@ fn write_heartbeat(
     settings: &State<'_, workspace::SettingsState>,
     context: Option<&EditorContext>,
 ) {
-    if crate::is_autorun() || HEARTBEAT_STOPPED.load(Ordering::Relaxed) {
+    if crate::is_autorun()
+        || HEARTBEAT_STOPPED.load(Ordering::Relaxed)
+        || crate::managed::deny_agent_kit().is_err()
+    {
         return;
     }
     let Some(instance) = instance() else {
@@ -1248,6 +1257,7 @@ pub fn get_editor_context(state: State<EditorContextState>) -> Option<EditorCont
 /// Unclaimed requests for the render window: the editor's cheap pending probe (no claims). Native kinds and other instances' requests never count, so they never spawn (or keep alive) this instance's window.
 #[tauri::command]
 pub fn bridge_pending_count(app: AppHandle) -> Result<usize, String> {
+    crate::managed::deny_agent_kit()?;
     Ok(served_pending_count(&app))
 }
 
@@ -1421,8 +1431,9 @@ fn bridge_dir_env() -> Option<&'static PathBuf> {
     .as_ref()
 }
 
-/// Always beside `_autorun` under the fixed home location, unaffected by a relocated workspace root; `KOOKABURRA_BRIDGE_DIR` redirects it in debug builds, for tests.
+/// Always beside `_autorun` under the fixed home location, unaffected by a relocated workspace root; `KOOKABURRA_BRIDGE_DIR` redirects it in debug builds, for tests. Refused under `DisableAgentKit`, so no writer can create the folder.
 pub(crate) fn bridge_root(app: &AppHandle) -> Result<PathBuf, String> {
+    crate::managed::deny_agent_kit()?;
     if let Some(dir) = bridge_dir_env() {
         return Ok(dir.clone());
     }
@@ -1624,7 +1635,8 @@ pub(crate) fn claim_render_request_ordered(
 /// The render window's claim: the next pending request this instance serves, in the capture service's fair order; old responses are pruned. `None` = nothing to serve.
 #[tauri::command]
 pub fn bridge_claim_request(app: AppHandle) -> Result<Option<BridgeRequest>, String> {
-    if !serving() {
+    // Nothing to claim rather than a refusal: the render window's tick goes on to serve thumbs.
+    if !serving() || crate::managed::deny_agent_kit().is_err() {
         return Ok(None);
     }
     let root = bridge_root(&app)?;
@@ -1700,6 +1712,7 @@ pub(crate) fn stamped_response(
 /// Answer one claimed request (atomic tmp + rename; the client polls for this file).
 #[tauri::command]
 pub fn bridge_write_response(app: AppHandle, id: String, json_text: String) -> Result<(), String> {
+    crate::managed::deny_agent_kit()?;
     if !valid_id(&id) {
         return Err(format!("invalid bridge id {id:?}"));
     }
@@ -1887,7 +1900,7 @@ pub fn bridge_check_assets(
 
 /// Claim and serve the native kinds from Rust, never the render window: poll `requests/` every 300 ms, oldest first, claiming only what `claimable` gives this instance, each served on the async runtime. Writes `_bridge/cli.json` first; serving interactive instances only, and it stops with the heartbeat.
 pub fn spawn_native_bridge(app: AppHandle) {
-    if crate::is_autorun() || !serving() {
+    if crate::is_autorun() || !serving() || crate::managed::deny_agent_kit().is_err() {
         return;
     }
     write_cli_marker(&app);
@@ -2984,6 +2997,22 @@ mod tests {
                 },
                 false,
                 "autorun",
+            ),
+            (
+                RoleInputs {
+                    managed_off: true,
+                    ..with(&main, Some("1"))
+                },
+                false,
+                "DisableAgentKit",
+            ),
+            (
+                RoleInputs {
+                    managed_off: true,
+                    ..with(&stray, Some("1"))
+                },
+                false,
+                "your organisation",
             ),
             (with(&main, Some("0")), false, "KOOKABURRA_BRIDGE=0"),
             (with(&stray, Some("1")), true, "KOOKABURRA_BRIDGE=1"),

@@ -698,10 +698,26 @@ pub(crate) struct ExportOutput {
     pub(crate) base: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExportDir {
     Project,
     Downloads,
     Autorun,
+}
+
+/// The folder kind a destination names. `exports_in_project` (the managed key) routes "downloads" to the project rather than refusing, so the person's export still lands.
+fn export_dir_kind(
+    destination: Option<&str>,
+    exports_in_project: bool,
+    allow_autorun: bool,
+) -> Result<ExportDir, String> {
+    match destination {
+        Some("downloads") if exports_in_project => Ok(ExportDir::Project),
+        Some("downloads") => Ok(ExportDir::Downloads),
+        Some("autorun") if allow_autorun => Ok(ExportDir::Autorun),
+        Some(other) => Err(format!("unknown export destination: {other}")),
+        None => Ok(ExportDir::Project),
+    }
 }
 
 /// Validates the name parts, picks the folder and de-dupes in Downloads; `allow_autorun` admits the stills-only "autorun" destination (the run's result dir).
@@ -717,12 +733,11 @@ fn resolve_export_output(
     workspace::validate_slug(target.aspect)?;
 
     // Workspace projects render into their own exports/ folder (self-contained projects); bundled/gate projects keep the legacy ~/Kookaburra Cut/<project>/ path so baseline tooling and hashes stay put (moved out of ~/Documents since macOS TCC guards Documents and kept breaking headless gates); both paths are built HERE, the frontend never supplies a path. "downloads" (app-triggered exports honouring the setting) routes only the FINAL file to ~/Downloads; terminal autoruns never send it.
-    let destination = match target.destination {
-        Some("downloads") => ExportDir::Downloads,
-        Some("autorun") if allow_autorun => ExportDir::Autorun,
-        Some(other) => return Err(format!("unknown export destination: {other}")),
-        None => ExportDir::Project,
-    };
+    let destination = export_dir_kind(
+        target.destination,
+        managed::exports_in_project(),
+        allow_autorun,
+    )?;
     let dir = match destination {
         ExportDir::Downloads => app.path().download_dir().map_err(|e| e.to_string())?,
         ExportDir::Autorun => {
@@ -1790,7 +1805,7 @@ pub fn run() {
                 let mut project = SubmenuBuilder::new(app, "Project")
                     .item(&find_action)
                     .item(&find_project);
-                if !managed.disable_claude {
+                if !managed.disable_claude && !managed.disable_agent_kit {
                     project = project.item(&edit_in_claude);
                 }
                 let project = project.item(&shortcuts).build()?;
@@ -1811,11 +1826,14 @@ pub fn run() {
                     MenuItemBuilder::with_id("export-pdf", "Export PDF…").build(app)?;
                 let export_images =
                     MenuItemBuilder::with_id("export-images", "Export Images…").build(app)?;
-                let file = SubmenuBuilder::new(app, "File")
+                let mut file = SubmenuBuilder::new(app, "File")
                     .item(&new_project)
                     .separator()
-                    .item(&import_pack)
-                    .item(&export_pack)
+                    .item(&import_pack);
+                if !managed.disable_pack_export {
+                    file = file.item(&export_pack);
+                }
+                let file = file
                     .separator()
                     .item(&export_video)
                     .item(&export_pdf)
@@ -1848,9 +1866,11 @@ pub fn run() {
                             pred.set_text(format!("Quit {APP_NAME}"))?;
                         }
                     }
-                    // Default macOS app submenu: About(0), ─(1), Services…; per the HIG the order becomes About, Check for Updates, ─, Settings, ─, Services. Check for Updates is left out where a profile turns update checks off.
+                    // Default macOS app submenu: About(0), ─(1), Services…; per the HIG the order becomes About, Check for Updates, ─, Settings, ─, Services. Check for Updates is left out where a profile turns update checks off or names a server the app can't use.
                     let mut at = 1;
-                    if !managed.disable_update_check {
+                    let update_checks = !managed.disable_update_check
+                        && managed::managed_update_endpoint_in(managed).is_ok();
+                    if update_checks {
                         app_menu.insert(&check_updates_item, at)?;
                         at += 1;
                     }
@@ -2032,6 +2052,26 @@ mod tests {
         assert_eq!(srgb_hex(1.0, 1.0, 1.0), "#ffffff");
         assert_eq!(srgb_hex(0.5, 0.5, 0.5), "#808080");
         assert_eq!(srgb_hex(1.4, -0.2, 0.5), "#ff0080");
+    }
+
+    #[test]
+    fn export_dir_kind_routes_downloads_to_the_project_when_the_organisation_says_so() {
+        assert_eq!(
+            export_dir_kind(Some("downloads"), false, false),
+            Ok(ExportDir::Downloads)
+        );
+        assert_eq!(
+            export_dir_kind(Some("downloads"), true, false),
+            Ok(ExportDir::Project)
+        );
+        assert_eq!(export_dir_kind(None, true, false), Ok(ExportDir::Project));
+        assert_eq!(export_dir_kind(None, false, false), Ok(ExportDir::Project));
+        assert_eq!(
+            export_dir_kind(Some("autorun"), true, true),
+            Ok(ExportDir::Autorun)
+        );
+        assert!(export_dir_kind(Some("autorun"), false, false).is_err());
+        assert!(export_dir_kind(Some("desktop"), true, true).is_err());
     }
 
     // F-002: start_export validates project_id/aspect with this same helper before they become filename components.

@@ -72,6 +72,11 @@ describe("managed policy read", () => {
       true,
     );
     expect(policy.allowedPublisherKeyIds).toEqual([]);
+    expect(policy.disableAgentKit && policy.disablePackExport && policy.exportsInProject).toBe(
+      true,
+    );
+    expect(m.updateChecksLocked(policy)).toBe(true);
+    expect(m.claudeLocked(policy)).toBe(true);
     warn.mockRestore();
   });
 
@@ -83,5 +88,36 @@ describe("managed policy read", () => {
     expect(policy.disableClaude).toBe(false);
     expect(policy.workspaceRootLocked).toBe(false);
     expect(policy.allowedPublisherKeyIds).toBeNull();
+    expect(policy.disableAgentKit || policy.disablePackExport || policy.exportsInProject).toBe(
+      false,
+    );
+    expect(m.claudeLocked(policy)).toBe(false);
+    expect(m.updateChecksLocked(policy)).toBe(false);
+    expect(m.updateServerHost(policy)).toBeNull();
+  });
+});
+
+describe("managed policy helpers", () => {
+  it("closes every Claude entry point under either key", async () => {
+    const m = await fresh();
+    expect(m.claudeLocked({ ...m.UNMANAGED, disableClaude: true })).toBe(true);
+    expect(m.claudeLocked({ ...m.UNMANAGED, disableAgentKit: true })).toBe(true);
+    expect(m.claudeLocked(m.UNMANAGED)).toBe(false);
+  });
+
+  it("locks update checks for DisableUpdateCheck or a forced server it can't use", async () => {
+    const m = await fresh();
+    const usable = {
+      ...m.UNMANAGED,
+      updateEndpoint: "https://updates.example.com/kc/latest.json",
+      updateEndpointLocked: true,
+    };
+    expect(m.updateChecksLocked(usable)).toBe(false);
+    expect(m.updateServerHost(usable)).toBe("updates.example.com");
+    const broken = { ...m.UNMANAGED, updateEndpointLocked: true };
+    expect(m.updateEndpointUnusable(broken)).toBe(true);
+    expect(m.updateChecksLocked(broken)).toBe(true);
+    expect(m.updateServerHost(broken)).toBeNull();
+    expect(m.updateChecksLocked({ ...m.UNMANAGED, disableUpdateCheck: true })).toBe(true);
   });
 });
