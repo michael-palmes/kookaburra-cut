@@ -4,6 +4,7 @@
 mod acl;
 mod asset_meta;
 mod asset_reach;
+mod audit;
 mod brands;
 mod bridge;
 mod bridge_export;
@@ -1738,8 +1739,12 @@ pub fn run() {
                     park_background_window(&main);
                 }
             }
+            let app_data = app.path().app_data_dir().ok();
+            if let Err(e) = app.handle().plugin(audit::builder(app_data.as_deref()).build()) {
+                eprintln!("[audit] the app log could not start: {e}");
+            }
             // Confidential work on disk is the user's alone: the app's own folders go owner-only before anything writes.
-            if let Ok(app_data) = app.path().app_data_dir() {
+            if let Some(app_data) = app_data {
                 let sinks = app
                     .path()
                     .home_dir()
@@ -1770,13 +1775,6 @@ pub fn run() {
             // Staging and backup trees from a crashed or killed import; harmless but they accumulate.
             if let Ok(root) = workspace::require_root(&app.handle().clone(), &app.state()) {
                 pack::read::sweep_stale(&root);
-            }
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
             }
             // Native menu: the stock menus (Edit must stay, webview copy/paste rides on it) plus a Project menu whose "Edit with Claude" toggles the Claude launcher, and "⚙ Settings…" (⌘,) in the app submenu's native spot (after About + ─).
             {
