@@ -31,6 +31,7 @@ import { runPackRoundTrip } from "./packRoundTrip";
 import { clipColdMetric, runPerfProbe } from "./perfProbe";
 import { listPresets, presetPreviewFrame } from "./presets";
 import { type LoadedProject, loadProject, previewLabProjectIds, sceneFileStem } from "./project";
+import { renderRange } from "./rangeRender";
 import type { RenderStateFingerprint } from "./renderFingerprint";
 import { assertScenesLoaded, sceneErrorRefusal } from "./sceneErrors";
 import { stage } from "./stageHandle";
@@ -43,7 +44,13 @@ import {
   type StillsSize,
 } from "./stills";
 import { exportStills, type StillsDivergence, verifyStills } from "./stillsExport";
-import { findTemplate, listTemplates } from "./templates";
+import {
+  findTemplate,
+  listTemplates,
+  loopRangeInSlots,
+  TEMPLATE_PREVIEW_WIDTH,
+  templateLoopTimes,
+} from "./templates";
 import {
   awaitProjectCommitted,
   captureThemePreviewFrames,
@@ -809,6 +816,39 @@ export async function runAutoRun(
           project: templateId,
           path: `template-previews/${templateId}`,
         });
+        // The card loop renders through the export path too, staged as frames the wrapper encodes into `<id>-loop.mp4`.
+        const loop = entry.manifest.preview.loop;
+        if (loop) {
+          const range = loopRangeInSlots(created.slots, created.totalMs, loop);
+          if (!range)
+            throw new Error(
+              `template-previews: ${templateId}'s preview.loop falls outside the film`,
+            );
+          const times = templateLoopTimes(range);
+          if (times.length > 600)
+            throw new Error(`template-previews: ${templateId}'s loop runs past 20 s`);
+          useEditorStore.getState().setFormat(FORMATS["16:9"]);
+          await nextCommit();
+          await renderRange({ ...opts, format: FORMATS["16:9"] }, times, async (frame) => {
+            const jpeg = await rgbaToJpeg(
+              frame.rgba,
+              frame.width,
+              frame.height,
+              TEMPLATE_PREVIEW_WIDTH,
+            );
+            await invoke("write_option_preview", jpeg, {
+              headers: {
+                "x-kookaburra-set": `template-loop-${templateId}`,
+                "x-kookaburra-index": String(frame.index + 1),
+              },
+            });
+          });
+          results.push({
+            aspect: "16:9",
+            project: templateId,
+            path: `template-previews/${templateId}-loop`,
+          });
+        }
       }
     } catch (e) {
       ok = false;

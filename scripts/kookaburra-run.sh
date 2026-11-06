@@ -625,7 +625,9 @@ if [[ "$ACTION" == "theme-previews" ]]; then
 fi
 
 # template-previews: promote the staged card art into the repo (the theme-previews pattern,
-# no stale ledger: the action re-renders whatever --project selects).
+# no stale ledger: the action re-renders whatever --project selects). A template whose
+# manifest declares preview.loop also stages loop frames (option-previews/template-loop-<id>),
+# encoded here into <id>-loop.mp4 at 30fps (TEMPLATE_LOOP_FPS in engine/templates.ts).
 if [[ "$ACTION" == "template-previews" ]]; then
   SRC="$RUN_DIR/template-previews"
   DEST="$ROOT/src/assets/template-previews"
@@ -642,6 +644,24 @@ if [[ "$ACTION" == "template-previews" ]]; then
         exit 1
       fi
     done
+    # A declared loop must arrive whole; it is encoded now, so a failure changes nothing in src/assets.
+    want=$(node -e 'const l=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).preview?.loop; console.log(l ? Math.round(l.durationMs * 30 / 1000) : 0)' "$ROOT/projects/$tpl/template.json")
+    loop_dir="$RUN_DIR/option-previews/template-loop-$tpl"
+    if [[ "$want" -gt 0 ]]; then
+      for ((i = 1; i <= want; i++)); do
+        if [[ ! -f "$(printf '%s/%03d.jpg' "$loop_dir" "$i")" ]]; then
+          echo "kookaburra:run: incomplete card loop for $tpl (frame $i of $want missing)" >&2
+          exit 1
+        fi
+      done
+      "$SIDECAR" -y -hide_banner -loglevel error \
+        -framerate 30 -i "$loop_dir/%03d.jpg" -frames:v "$want" \
+        -vf "scale=in_range=pc:out_range=tv:out_color_matrix=bt709,format=yuv420p" \
+        -c:v libx264 -crf 26 -preset slow \
+        -x264-params "colorprim=bt709:transfer=bt709:colormatrix=bt709:range=tv" \
+        -an -movflags +faststart \
+        "$RUN_DIR/$tpl-loop.mp4"
+    fi
     PROMOTED+=("$tpl")
   done
   if [[ "${#PROMOTED[@]}" -eq 0 ]]; then
@@ -657,6 +677,15 @@ if [[ "$ACTION" == "template-previews" ]]; then
       mv -f "$tmp" "$DEST/$tpl-$i.jpg"
       copied=$((copied + 1))
     done
+    if [[ -f "$RUN_DIR/$tpl-loop.mp4" ]]; then
+      tmp="$DEST/.template-preview-$tpl-loop.tmp.mp4"
+      cp "$RUN_DIR/$tpl-loop.mp4" "$tmp"
+      mv -f "$tmp" "$DEST/$tpl-loop.mp4"
+      copied=$((copied + 1))
+    else
+      # No loop declared any more: drop the old one, or the card keeps playing scenes that may be gone.
+      rm -f "$DEST/$tpl-loop.mp4"
+    fi
   done
   node "$ROOT/scripts/preset-preview-stale.mjs" commit template "${PROMOTED[@]}"
   echo "kookaburra:run: promoted $copied preview(s) → src/assets/template-previews/"
