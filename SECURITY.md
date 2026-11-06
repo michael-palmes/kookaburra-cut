@@ -644,10 +644,12 @@ builds it in separate jobs, each on a fresh runner.
   app equals the build job's record with signatures stripped, file list
   included, so a file the sign job adds or changes fails it. Only the seal and
   the notarisation ticket that signing adds are left out.
-- **Publish.** `SHA256SUMS` over the DMG, the zip, the updater tar,
-  `latest.json`, `build-info.txt` and a copy of this file as it stood at the
-  tag; a GitHub build provenance attestation over the DMG, zip, tar and
-  `build-info.txt`; a static notes body naming the Team ID; a draft release a
+- **Publish.** `SHA256SUMS` over the DMG, the zip, the updater tar and its
+  `.sig`, `latest.json`, `build-info.txt` and a copy of this file as it stood
+  at the tag; a GitHub build provenance attestation over the DMG, zip, tar and
+  `build-info.txt`, kept by GitHub and uploaded beside them as
+  `KookaburraCut-<version>.intoto.jsonl`, with the updater's `.sig` as its own
+  asset; a static notes body naming the Team ID; a draft release a
   person publishes. The in-app updater sees a release only once it is
   published.
 - **Updater.** `plugins.updater.requireSignedVersion` is on: the app refuses a
@@ -669,10 +671,18 @@ builds it in separate jobs, each on a fresh runner.
   `Signed head`, a check run of a GitHub App that holds only Checks write. Its
   private key lives in the `signed-head` environment, which only `main` can
   use, so a workflow a pull request adds can't post as the app. Only the
-  head commit is checked, `main` requires no approving review, and everything
-  else, including `src/`, `build.rs` and `vite.config.ts`, changes under the
-  commit key and is built into what the sign job signs.
-  `CODEOWNERS` names the maintainer; `audit.yml` runs
+  head commit is checked, and everything else, including `src/`, `build.rs`
+  and `vite.config.ts`, changes under the commit key and is built into what
+  the sign job signs. `main` requires one approving review, approval of the
+  last push and a code owner's review; the maintainer, as the one admin, can
+  bypass those on a pull request (every status check still has to pass,
+  `Signed head` among them, pinned to the app's ID so no job a pull request
+  adds can answer for it), which is how a single-maintainer project merges and why the OpenSSF
+  Scorecard's Code-Review score counts only the reviewed share.
+  `CODEOWNERS` names the maintainer everywhere and a second reviewer
+  (`@FromeCloned`) on the surfaces this file is about: the pack reader, the
+  asset server, the updater, managed preferences, the capabilities, the
+  workflows and the release scripts. `audit.yml` runs
   `pnpm audit` and `cargo deny check advisories` on every pull request
   and weekly. Every workflow but `scorecard.yml` starts from `permissions: {}` or
   `contents: read` (`scorecard.yml` starts from `read-all`, and its one job
@@ -687,6 +697,8 @@ builds it in separate jobs, each on a fresh runner.
       --signer-workflow michael-palmes/kookaburra-cut/.github/workflows/release.yml \
       --source-ref refs/tags/v<version> --deny-self-hosted-runners
   done
+  # offline, from the release's own copy of the attestation:
+  #   add --bundle KookaburraCut-<version>.intoto.jsonl to either command
   grep '^commit=' build-info.txt                          # the same commit as the next line
   git ls-remote https://github.com/michael-palmes/kookaburra-cut 'refs/tags/v<version>^{}'
   codesign -dvv "/Applications/Kookaburra Cut.app"       # flags=0x10000(runtime), Authority=Developer ID Application
@@ -716,9 +728,11 @@ admin can change it and approve the run.
 
 Deliberately deferred, recorded so nobody mistakes them for done:
 
-- Fuzzing of the Rust parsers (the pack reader, `allsorts` font parsing, PNG
-  and glTF inputs, the edit documents); they are bounded and tested on hostile
-  fixtures, not fuzzed.
+- Fuzzing beyond the weekly cargo-fuzz run (`.github/workflows/fuzz.yml`:
+  pack archive paths, manifests and signatures, the edit documents, SFNT
+  faces, the mp4 `moov` reader, PNG decode): `allsorts` shaping, glTF inputs,
+  the image facts readers and the `.kbpack` archive reader as a whole are
+  bounded and tested on hostile fixtures, not fuzzed.
 - A strict pass over every `unsafe` block (the objc2 bridges in `native_alert.rs`,
   `website.rs` and the AVFoundation conform path).
 - A Homebrew cask, so MDM fleets can install and pin versions without the DMG.
@@ -736,9 +750,6 @@ Deliberately deferred, recorded so nobody mistakes them for done:
   its own tools and ask a person; a script a misled agent runs can still read a
   file.
 - The still checks on app icons: `import_app_icon` takes only the extension list.
-- A second reviewer on the `release` environment, a required review on `main` and
-  a pinned runner image and Xcode (`build-info.txt` records both).
-- Requiring the app's `Signed head` check. Until the `main` ruleset requires it,
-  pinned to the app, in place of `Head commit signed`, a job a pull request adds
-  can report under that name, GitHub doesn't say which result counts, and a
-  stolen commit key may get past the tag-key rule.
+- A second reviewer on the `release` environment, a review on `main` the admin
+  cannot bypass, and a pinned runner image and Xcode (`build-info.txt` records
+  both).

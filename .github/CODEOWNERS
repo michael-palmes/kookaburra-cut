@@ -1,1 +1,13 @@
 * @michael-palmes
+
+# Security surfaces: a second reviewer is requested on every change here.
+/src-tauri/src/pack/ @michael-palmes @FromeCloned
+/src-tauri/src/asset_reach.rs @michael-palmes @FromeCloned
+/src-tauri/src/updater.rs @michael-palmes @FromeCloned
+/src-tauri/src/managed.rs @michael-palmes @FromeCloned
+/src-tauri/capabilities/ @michael-palmes @FromeCloned
+/src-tauri/tauri.conf.json @michael-palmes @FromeCloned
+/.github/ @michael-palmes @FromeCloned
+/scripts/release.sh @michael-palmes @FromeCloned
+/scripts/sign-and-notarize.sh @michael-palmes @FromeCloned
+/scripts/verify-release.sh @michael-palmes @FromeCloned
