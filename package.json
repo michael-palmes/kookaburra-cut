@@ -78,7 +78,7 @@
     "postprocessing": "6.39.5",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "three": "^0.186.1",
+    "three": "^0.187.0",
     "troika-three-text": "0.52.5",
     "troika-three-utils": "0.52.5",
     "zustand": "^5.0.15"
