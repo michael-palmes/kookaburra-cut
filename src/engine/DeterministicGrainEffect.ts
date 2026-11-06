@@ -38,7 +38,7 @@ export class DeterministicGrainEffect extends Effect {
     this.intensityUniform = intensityUniform;
   }
 
-  /** The per-frame seed, set to the integer frame index (grainSeed) before each render. */
+  /** The per-frame seed, set to the integer frame index (grainSeed, held by `heldGrainSeed`) before each render. */
   set seed(value: number) {
     this.seedUniform.value = value;
   }

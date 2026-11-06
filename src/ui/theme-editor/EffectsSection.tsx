@@ -52,8 +52,11 @@ const EFFECTS: Record<
   grain: {
     label: "Grain",
     icon: "grain",
-    hint: "Film grain, seeded from the frame index so it stays deterministic.",
-    fields: [{ key: "intensity", label: "Intensity", min: 0, max: 1, step: 0.01 }],
+    hint: "Film grain, seeded from the frame index so it stays deterministic. Hold keeps each pattern for that many frames, a hand-made boil.",
+    fields: [
+      { key: "intensity", label: "Intensity", min: 0, max: 1, step: 0.01 },
+      { key: "hold", label: "Hold", min: 1, max: 12, step: 1 },
+    ],
   },
 };
 
@@ -92,7 +95,9 @@ export function EffectsSection({
                     key={field.key}
                     label={`${spec.label} ${field.label.toLocaleLowerCase("en-AU")}`}
                     value={
-                      typeof values[field.key] === "number" ? (values[field.key] as number) : 0
+                      typeof values[field.key] === "number"
+                        ? (values[field.key] as number)
+                        : field.min
                     }
                     min={field.min}
                     max={field.max}

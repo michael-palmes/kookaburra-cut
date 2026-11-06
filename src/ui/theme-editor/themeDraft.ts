@@ -669,6 +669,9 @@ export const EFFECT_DEFAULTS: Record<EffectKey, Record<string, number | string>>
   grain: { intensity: 0.08 },
 };
 
+/** Optional numeric fields: read when present, never written by switching the effect on. */
+const EFFECT_OPTIONAL: Partial<Record<EffectKey, readonly string[]>> = { grain: ["hold"] };
+
 export function readEffect(doc: ThemeDoc, key: EffectKey): Record<string, number | string> | null {
   const block = getIn(doc, ["effects", key]);
   if (!isRecord(block)) return null;
@@ -677,6 +680,10 @@ export function readEffect(doc: ThemeDoc, key: EffectKey): Record<string, number
     const value = block[field];
     if (typeof out[field] === "string" && typeof value === "string") out[field] = value;
     if (typeof out[field] === "number" && isNum(value)) out[field] = value;
+  }
+  for (const field of EFFECT_OPTIONAL[key] ?? []) {
+    const value = block[field];
+    if (isNum(value)) out[field] = value;
   }
   return out;
 }

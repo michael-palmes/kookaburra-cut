@@ -428,6 +428,23 @@ describe("parseSceneDoc", () => {
     warn.mockRestore();
   });
 
+  it("keeps the glass edge's boolean and sized form, dropping a bad field alone", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const glass = (raw: unknown) =>
+      parseSceneDoc({ version: 1, compare: { chrome: { glass: raw } } }, "test")?.compare?.chrome
+        ?.glass;
+    expect(glass(true)).toBe(true);
+    expect(glass(false)).toBe(false);
+    expect(glass({})).toBe(true);
+    expect(glass({ width: 90, strength: 0.6 })).toEqual({ width: 90, strength: 0.6 });
+    expect(warn).not.toHaveBeenCalled();
+    expect(glass({ width: 0 })).toBe(true);
+    expect(glass({ width: 90, strength: -1 })).toEqual({ width: 90 });
+    expect(glass("on")).toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(3);
+    warn.mockRestore();
+  });
+
   it("keeps a divider colour that is a theme token or a #rrggbb hex, dropping anything else", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const colour = (raw: unknown) =>

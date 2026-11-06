@@ -39,7 +39,12 @@ import { DeterministicGrainEffect } from "./DeterministicGrainEffect";
 import { asDisplayTarget } from "./displayTarget";
 import type { DofUnion, ResolvedDof } from "./dof";
 import { ExposureEffect } from "./ExposureEffect";
-import { blendEffectParams, resolveEffectParams, sceneBaseEffects } from "./effectParams";
+import {
+  blendEffectParams,
+  heldGrainSeed,
+  resolveEffectParams,
+  sceneBaseEffects,
+} from "./effectParams";
 import { useEffectsStore } from "./effectsStore";
 import { MSAA_SAMPLES } from "./format";
 import { type CubeLut, parseCubeLut } from "./lutCube";
@@ -493,7 +498,7 @@ function applyEffectUniforms(cs: ComposerState, cfg: EffectsConfig, seed: number
     cs.vignette.darkness = cfg.vignette?.darkness ?? 0; // 0 = no vignette
   }
   if (cs.grain) {
-    cs.grain.seed = seed;
+    cs.grain.seed = heldGrainSeed(seed, cfg.grain?.hold);
     cs.grain.intensity = cfg.grain?.intensity ?? 0; // 0 = no grain
   }
   if (cs.lut) {

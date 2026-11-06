@@ -8,7 +8,7 @@ import type { CompareGripStyle, CompareMaskType } from "../../engine/sceneCompar
 export type ComparePresetIconId = ComparePreset["id"] | "manual";
 
 /** Divider-chrome toggles: the line itself, its grip, and the before/after label chips. */
-export type CompareToggleIconId = "line" | "grip" | "chips";
+export type CompareToggleIconId = "line" | "grip" | "chips" | "glass";
 
 export const COMPARE_MASK_GLYPHS: Record<CompareMaskType, ReactNode> = {
   linear: (
@@ -107,6 +107,13 @@ export const COMPARE_TOGGLE_GLYPHS: Record<CompareToggleIconId, ReactNode> = {
     <>
       <rect x="2" y="3.4" width="7" height="4" rx="2" />
       <rect x="7" y="8.6" width="7" height="4" rx="2" />
+    </>
+  ),
+  glass: (
+    <>
+      <rect x="5.4" y="2.6" width="5.2" height="10.8" rx="1.4" />
+      <path d="M7.1 4.6v6.8" opacity="0.45" />
+      <path d="M2.6 6.2h1.4M2.6 9.8h1.4M12 6.2h1.4M12 9.8h1.4" opacity="0.45" />
     </>
   ),
 };

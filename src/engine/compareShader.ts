@@ -143,3 +143,70 @@ ${BODY_GLSL.replace("SAMPLE_A", "tm(sampleHdr(texA, vUv))")
   .replace("SAMPLE_B", "tm(sampleHdr(texB, vUv))")
   .replace("OUTPUT_LINE", "gl_FragColor = vec4(tmInv(outC), 1.0);")}
 `;
+
+const PLAIN_SIDES = `    vec3 colA = mix(SAMPLE_A, tintA, tintAmountA);
+    vec3 colB = mix(SAMPLE_B, tintB, tintAmountB);
+    vec3 outC = mix(colB, colA, m);`;
+
+// The glass sweep transition's optics held still on the edge: a cylinder profile across a bar of `glassWidth` (height fraction, full width), refracting each side along the edge normal with per-channel dispersion, plus its rim light. The lens magnifies about 2x at strength 1 and folds only past 2.25, above the cap; refraction and rim fade over the bar's last pixel and a half, so the edge stays antialiased. Its own programs, so the plain ones stay source-identical.
+const GLASS_SIDES = `    float gHalf = glassWidth * 0.5 * lineScale;
+    float gT = gHalf > 0.0 ? (field - value) / gHalf : 2.0;
+    float gAa = max(fwidth(gT), 1e-5);
+    vec2 gOff = vec2(0.0);
+    float rim = 0.0;
+    if (abs(gT) < 1.0) {
+      vec2 gq = vec2((vUv.x - center.x) * aspect, vUv.y - center.y);
+      float gLen = length(gq);
+      vec2 gDir = maskType == 0 ? dir : (gLen > 1e-5 ? gq / gLen : vec2(0.0));
+      float gEdge = 1.0 - smoothstep(1.0 - 1.5 * gAa, 1.0, abs(gT));
+      float h = cos(1.5707963 * gT);
+      float slope = -sin(1.5707963 * gT) * 1.5707963;
+      gOff = vec2(gDir.x / aspect, gDir.y) * (slope * 0.09 * glassWidth * glassStrength * gEdge);
+      rim = pow(1.0 - h, 6.0) * glassStrength * 0.45 * gEdge;
+    }
+    vec3 colA = mix(vec3(GLASS(texA, gOff * 0.96).r, GLASS(texA, gOff).g, GLASS(texA, gOff * 1.04).b), tintA, tintAmountA);
+    vec3 colB = mix(vec3(GLASS(texB, gOff * 0.96).r, GLASS(texB, gOff).g, GLASS(texB, gOff * 1.04).b), tintB, tintAmountB);
+    vec3 outC = clamp(mix(colB, colA, m) + rim, 0.0, 1.0);`;
+
+const GLASS_UNIFORMS_GLSL = /* glsl */ `
+  uniform float glassWidth;    // height-fraction full width; 0 = off
+  uniform float glassStrength;
+`;
+
+/** The compare program with the refracting glass edge (`chrome.glass`), SDR: raw display samples, like the plain one. */
+export const compareFragmentShaderGlass = /* glsl */ `
+  precision highp float;
+${UNIFORMS_GLSL}${GLASS_UNIFORMS_GLSL}
+  vec3 sampleDisplay(sampler2D t, vec2 uv) {
+    return texture2D(t, clamp(uv, 0.0, 1.0)).rgb;
+  }
+${BODY_GLSL.replace(PLAIN_SIDES, GLASS_SIDES)
+  .replaceAll("GLASS(texA, ", "sampleDisplay(texA, vUv + ")
+  .replaceAll("GLASS(texB, ", "sampleDisplay(texB, vUv + ")
+  .replace("OUTPUT_LINE", "gl_FragColor = vec4(outC, 1.0);")}
+`;
+
+/** The glass edge's HDR program: each refracted sample tone-maps before the display-domain composite, then inverts back. */
+export const compareFragmentShaderGlassHdr = /* glsl */ `
+  precision highp float;
+${UNIFORMS_GLSL}${GLASS_UNIFORMS_GLSL}
+  vec3 srgbToLinear(vec3 c) {
+    return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
+  }
+  vec3 linearToSrgb(vec3 c) {
+    c = clamp(c, 0.0, 1.0);
+    return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
+  }
+  ${ACES_FORWARD_GLSL}
+  ${ACES_INVERSE_GLSL}
+  vec3 sampleHdr(sampler2D t, vec2 uv) {
+    return texture2D(t, clamp(uv, 0.0, 1.0)).rgb;
+  }
+  vec3 tm(vec3 x) { return linearToSrgb(acesForward(x)); }
+  vec3 tmInv(vec3 e) { return acesInverse(srgbToLinear(clamp(e, 0.0, 0.999))); }
+  vec3 sampleGlass(sampler2D t, vec2 uv) { return tm(sampleHdr(t, uv)); }
+${BODY_GLSL.replace(PLAIN_SIDES, GLASS_SIDES)
+  .replaceAll("GLASS(texA, ", "sampleGlass(texA, vUv + ")
+  .replaceAll("GLASS(texB, ", "sampleGlass(texB, vUv + ")
+  .replace("OUTPUT_LINE", "gl_FragColor = vec4(tmInv(outC), 1.0);")}
+`;

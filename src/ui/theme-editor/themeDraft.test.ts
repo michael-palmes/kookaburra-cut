@@ -545,6 +545,12 @@ describe("effects blocks", () => {
     });
     expect(getIn(writeEffect(on, "bloom", null), ["effects"])).toBeUndefined();
   });
+  it("reads the grain hold only when the theme has one, and never writes it on enable", () => {
+    const on = writeEffect(base(), "grain", { ...EFFECT_DEFAULTS.grain });
+    expect(readEffect(on, "grain")).toEqual({ intensity: 0.08 });
+    const held = writeEffect(on, "grain", { intensity: 0.08, hold: 5 });
+    expect(readEffect(held, "grain")).toEqual({ intensity: 0.08, hold: 5 });
+  });
 });
 
 describe("duplicateThemeDoc", () => {

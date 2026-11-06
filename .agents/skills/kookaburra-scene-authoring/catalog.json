@@ -23582,7 +23582,8 @@
       "id": "grain",
       "summary": "Seeded film grain.",
       "fields": {
-        "intensity": "0 turns it off"
+        "intensity": "0 turns it off",
+        "hold": "frames each pattern holds, the paper boil (5 is 12 fps; default 1)"
       }
     }
   ],
@@ -25788,6 +25789,11 @@
         "summary": "<Stamp at|hitAt rotateDeg? position rotation scale>: stamps children in at `at` ms (or landing on `hitAt`) with the stampScale pop and an optional rotation settle."
       },
       {
+        "id": "SteppedTime",
+        "kind": "component",
+        "summary": "SteppedTime fps: its subtree's time steps at a whole fps (12 is the hand-made look) while the camera moves every frame."
+      },
+      {
         "id": "TEXT_PRESET_NAMES",
         "kind": "constant",
         "summary": "Every text motion preset name."
@@ -25811,7 +25817,7 @@
       {
         "id": "VideoClip",
         "kind": "component",
-        "summary": "Deterministic video plane (pre-extracted 60 fps frames)."
+        "summary": "Deterministic video plane (pre-extracted 60 fps frames); radius and opacity make it a card."
       },
       {
         "id": "VideoWindow",
@@ -25956,7 +25962,7 @@
       {
         "id": "measureText",
         "kind": "function",
-        "summary": "measureText(text, { font, fontSize, letterSpacing?, lineHeight? }): { width, height, ascent, descent, lines } in world units, or null."
+        "summary": "measureText(text, { font, fontSize, letterSpacing?, lineHeight?, anchorX?, anchorY?, textAlign? }): { width, height, ascent, descent, lines, glyphs } in world units, or null."
       },
       {
         "id": "mediaPixelToScreenUv",
@@ -26094,6 +26100,16 @@
         "summary": "Lets a custom child join an AnimatedGroup's alpha and shine."
       },
       {
+        "id": "useHeldLocalMs",
+        "kind": "hook",
+        "summary": "useHeldLocalMs(localMs): the time pinned at the scene's Present hold; raw in video."
+      },
+      {
+        "id": "usePresentTiming",
+        "kind": "hook",
+        "summary": "usePresentTiming(toMs, outAtMs?): Present and automatic stills hold the scene once a set piece settles."
+      },
+      {
         "id": "useProjectShared",
         "kind": "hook",
         "summary": "useProjectShared(path?, fallback?): project.json shared constants, e.g. \"palette.accent\"."
@@ -26151,7 +26167,7 @@
       {
         "id": "useTextMetrics",
         "kind": "hook",
-        "summary": "useTextMetrics(textKey, text, opts?): the block an AnimatedHeadline with those props typesets, sidecar overrides included, plus fitFontSize(maxWidth); null until its face has loaded."
+        "summary": "useTextMetrics(textKey, text, opts?): the block an AnimatedHeadline with those props typesets, sidecar overrides included, with each glyph's box and fitFontSize(maxWidth); null until its face has loaded."
       },
       {
         "id": "useTheme",
@@ -26326,6 +26342,9 @@
       },
       {
         "id": "FormatShape"
+      },
+      {
+        "id": "GlyphBox"
       },
       {
         "id": "GradientProps"

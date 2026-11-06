@@ -697,6 +697,19 @@ describe("parseThemeDoc degrade behaviour", () => {
     expect(theme?.effects?.vignette).toEqual({ offset: 0.3, darkness: 0.55 });
   });
 
+  it("rounds and caps a grain hold, and drops a bad one but keeps the grain", () => {
+    const grainOf = (hold: unknown) =>
+      parseThemeDoc({ ...validDoc(), effects: { grain: { intensity: 0.06, hold } } }, "t")?.effects
+        ?.grain;
+    expect(grainOf(4.6)).toEqual({ intensity: 0.06, hold: 5 });
+    expect(grainOf(500)).toEqual({ intensity: 0.06, hold: 60 });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(grainOf(0)).toEqual({ intensity: 0.06 });
+    expect(grainOf("5")).toEqual({ intensity: 0.06 });
+    expect(warn).toHaveBeenCalledTimes(2);
+    warn.mockRestore();
+  });
+
   it("parses textAnimation with a stagger default", () => {
     const doc = { ...validDoc(), textAnimation: { in: "fade-up", out: "fade" } };
     expect(parseThemeDoc(doc, "t")?.textAnimation).toEqual({

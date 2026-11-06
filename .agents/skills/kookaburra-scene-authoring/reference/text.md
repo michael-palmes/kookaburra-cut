@@ -276,6 +276,36 @@ so an underline sits a little below that. `measureText(text, { font, fontSize, l
 the plain version (`font` is a theme `FontRef` or `"Family@weight"`). Explicit `\n`
 breaks count; `maxWidth` wrapping is not measured; `*word*` markup is stripped first.
 
+### Glyph boxes
+
+`box.glyphs` places every glyph where the headline draws it, in world units from the
+headline's `position` (sidecar OffsetX and OffsetY included; a tilt is not):
+`{ text, index, line, x, width, baseline, capHeight, ink }`. `x` and `width` are the
+pen cell (spaces have one, so a run of spaces holds a slot), `baseline` the line's,
+`capHeight` the face's above it, and `ink` the outline's `[left, bottom, right, top]`
+(null for a space). Pass the headline's `anchorX`, `anchorY` and `textAlign` when it
+sets them (defaults centre, middle, left), and scale the boxes by
+`fitFontSize(w) / fontSize` when you fit. Use them for a wordmark built letter by
+letter, an image flashing in each letter's slot, a device parked in a headline as a
+letter, or an inline icon. They read left to right, so right-to-left copy is not placed:
+
+```tsx
+const at: [number, number, number] = [0, 0.6, 0];
+const line = useTextMetrics("line", "Meet    the app", { fontSize: 0.42 });
+const gap = line?.glyphs.filter((g) => g.text === " ") ?? [];
+const left = gap[0];
+const right = gap[gap.length - 1];
+// ...
+<AnimatedHeadline text="Meet    the app" textKey="line" fontSize={0.42} position={at} />
+{left && right && (
+  <ImageCard
+    src="assets/icon.png"
+    width={Math.min(right.x + right.width - left.x, left.capHeight * 1.2)}
+    position={[at[0] + (left.x + right.x + right.width) / 2, at[1] + left.baseline + left.capHeight / 2, 0.02]}
+  />
+)}
+```
+
 ## Text looks (`textLook`)
 
 ```json

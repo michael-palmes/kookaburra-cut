@@ -12,7 +12,7 @@ import {
 } from "three";
 import { WebGLPrograms } from "three/src/renderers/webgl/WebGLPrograms.js";
 import { describe, expect, it } from "vitest";
-import { compareFragmentShader } from "./compareShader";
+import { compareFragmentShader, compareFragmentShaderGlass } from "./compareShader";
 import { asDisplayTarget, encodesSrgbOnStore, isDisplayTarget } from "./displayTarget";
 import { overlayFragmentShader } from "./overlayShader";
 import {
@@ -121,6 +121,7 @@ describe("SDR composites over display targets", () => {
     ["ext3", fragmentShaderExt3],
     ["mask", fragmentShaderMask],
     ["compare", compareFragmentShader],
+    ["compare glass", compareFragmentShaderGlass],
   ] as const;
 
   it.each(sdr)("%s samples its targets raw", (_name, src) => {

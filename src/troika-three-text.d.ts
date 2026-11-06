@@ -83,6 +83,11 @@ declare module "troika-three-text/src/FontParser.js" {
   export interface TroikaParsedGlyph {
     index: number;
     advanceWidth: number;
+    /** The outline's bounds in font units (all 0 for an empty glyph). */
+    xMin: number;
+    yMin: number;
+    xMax: number;
+    yMax: number;
     path: string;
   }
   export interface TroikaParsedFont {
@@ -140,6 +145,15 @@ declare module "troika-three-text/src/Typesetter.js" {
   export interface TroikaTypesetResult {
     topBaseline: number;
     blockBounds: [number, number, number, number];
+    /** The layout outputs, absent under `metricsOnly`. */
+    glyphIds: Uint16Array;
+    glyphFontIndices: Uint8Array;
+    glyphPositions: Float32Array;
+    glyphData: Record<string, Record<number, { pathBounds: [number, number, number, number] }>>;
+    fontData: { src: string; unitsPerEm: number }[];
+    fontSize: number;
+    /** `[start, end, bottom, top]` per character, with `includeCaretPositions`. */
+    caretPositions: Float32Array;
   }
   export function createTypesetter(
     resolveFonts: unknown,

@@ -26,7 +26,7 @@ import { isExporting } from "./exportState";
 import { noteClipBound, perfClipsFrozen } from "./perfProbe";
 import { previewClipStride, previewPlaybackActive, subscribePreviewPlayback } from "./previewMedia";
 import { useSceneContext } from "./sceneContext";
-import { useTimeline } from "./timeline";
+import { useSteppedLocalMs, useTimeline } from "./timeline";
 
 /** Shared clip-texture binding, the frame-sampling core extracted from `VideoClip` so any consumer can drive a material from the deterministic pre-extracted frame pipeline and publish `userData.videoFrameReady` for the export loop's `awaitVideoFramesReady` barrier. See docs/determinism.md. The bound frame is pinned in the shared ClipFrames LRU (unpinned on unmount) since an evicted frame's closed ImageBitmap throws WebGL INVALID_VALUE if uploaded; consumers must not mutate the bound texture, it's shared. */
 export interface ClipTextureBinding {
@@ -74,6 +74,7 @@ export function useClipTexture(binding: ClipTextureBinding): ClipTextureState {
   const { src, startMs, loop, frameAt, material, readyObjectRef, onPending, onBound } = binding;
   // Screen media holds the frame instant's clip frame across a motion blur shutter.
   const { localMs } = useTimeline(0);
+  const stepLocal = useSteppedLocalMs();
   const sceneCtx = useSceneContext();
   const invalidate = useThree((s) => s.invalidate);
   const gl = useThree((s) => s.gl);
@@ -112,7 +113,7 @@ export function useClipTexture(binding: ClipTextureBinding): ClipTextureState {
   const demandRef = useRef<ClipDemand | null>(null);
   demandRef.current = {
     window: sceneCtx ? [-CLIP_ACTIVE_LEAD_MS, sceneCtx.durationMs + CLIP_ACTIVE_LEAD_MS] : null,
-    frameAt: mapFrame,
+    frameAt: stepLocal ? (ms, clip) => mapFrame(stepLocal(ms), clip) : mapFrame,
     sceneStartMs: sceneCtx?.startMs ?? 0,
   };
   useLayoutEffect(

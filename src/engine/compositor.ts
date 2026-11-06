@@ -27,7 +27,12 @@ import { cutoutPixelRect, type FrameLayout, frameLayout } from "../toolkit/frame
 import { fixedCoverCrop } from "../toolkit/stage/fixedMath";
 import { applyCameraPose, baseCameraPose } from "./cameraTrack";
 import { useClockStore } from "./clock";
-import { compareFragmentShader, compareFragmentShaderHdr } from "./compareShader";
+import {
+  compareFragmentShader,
+  compareFragmentShaderGlass,
+  compareFragmentShaderGlassHdr,
+  compareFragmentShaderHdr,
+} from "./compareShader";
 import { asDisplayTarget, encodesSrgbOnStore, isDisplayTarget } from "./displayTarget";
 import type { DofUnion, ResolvedDof } from "./dof";
 import { grainSeed } from "./effectParams";
@@ -131,6 +136,9 @@ interface CompositorState {
   /** The comparison mask pair (before/after split), its own generation so it never recompiles the transition programs. */
   compareMaterial: ShaderMaterial;
   compareMaterialHdr: ShaderMaterial;
+  /** The same with the refracting glass edge, so a plain comparison keeps its program. */
+  compareMaterialGlass: ShaderMaterial;
+  compareMaterialGlassHdr: ShaderMaterial;
   /** The fullscreen quad, so the compositor can swap its material per frame. */
   mesh: Mesh;
   /** Overlay ("frame") compositing: the scene renders here at the cutout aspect, sized lazily to the cutout's pixel rect (null until the first framed scene). */
@@ -202,9 +210,10 @@ function makeCompositeMaterial(fragment: string, glsl3 = false): ShaderMaterial 
 }
 
 /** The comparison mask material: blends the side-A/side-B targets under the mask family with its SDF chrome (see compareShader.ts). Display-domain GLSL1 like the legacy composite pair. */
-function makeCompareMaterial(fragment: string): ShaderMaterial {
+function makeCompareMaterial(fragment: string, glass = false): ShaderMaterial {
   return new ShaderMaterial({
     uniforms: {
+      ...(glass ? { glassWidth: { value: 0 }, glassStrength: { value: 0 } } : {}),
       texA: { value: null },
       texB: { value: null },
       value: { value: 0.5 },
@@ -323,6 +332,8 @@ function ensureState(w: number, h: number, outputColorSpace: string): Compositor
   const materialMaskHdr = withMaskUniforms(makeCompositeMaterial(fragmentShaderMaskHdr, true));
   const compareMaterial = makeCompareMaterial(compareFragmentShader);
   const compareMaterialHdr = makeCompareMaterial(compareFragmentShaderHdr);
+  const compareMaterialGlass = makeCompareMaterial(compareFragmentShaderGlass, true);
+  const compareMaterialGlassHdr = makeCompareMaterial(compareFragmentShaderGlassHdr, true);
   const quadScene = new Scene();
   const mesh = new Mesh(new PlaneGeometry(2, 2), material);
   mesh.frustumCulled = false;
@@ -359,6 +370,8 @@ function ensureState(w: number, h: number, outputColorSpace: string): Compositor
     materialMaskHdr,
     compareMaterial,
     compareMaterialHdr,
+    compareMaterialGlass,
+    compareMaterialGlassHdr,
     mesh,
     sceneTarget: null,
     slideScene,
@@ -708,6 +721,17 @@ function setCompareUniforms(
   (u.tintB.value as Vector3).set(...hexToSrgb(spec.chrome.tintB ?? "#000000"));
   u.tintAmountA.value = spec.chrome.tintA ? spec.chrome.tintAmount : 0;
   u.tintAmountB.value = spec.chrome.tintB ? spec.chrome.tintAmount : 0;
+  if (u.glassWidth) {
+    u.glassWidth.value = spec.chrome.glassWidth / 1080;
+    u.glassStrength.value = spec.chrome.glassStrength;
+  }
+}
+
+/** The program a plan composites through: the glass one only when its edge has glass. */
+function compareMaterialFor(st: CompositorState, plan: CompareFrame, hdr: boolean): ShaderMaterial {
+  const glass = plan.spec.chrome.glassWidth > 0;
+  if (hdr) return glass ? st.compareMaterialGlassHdr : st.compareMaterialHdr;
+  return glass ? st.compareMaterialGlass : st.compareMaterial;
 }
 
 /** One comparison side render on the frame's active lane: hdr side-dof through the side composer, dof-only through the scratch chain, else a plain render into the target. */
@@ -874,7 +898,7 @@ export function renderComposited(
 
     gl.toneMapping = prevToneMapping;
 
-    const activeMaterial = hdrLane ? st.compareMaterialHdr : st.compareMaterial;
+    const activeMaterial = compareMaterialFor(st, soloCompare, hdrLane);
     st.mesh.material = activeMaterial;
     setCompareUniforms(
       activeMaterial,
@@ -1002,7 +1026,6 @@ export function renderComposited(
   const compSecond = hdrLane ? st.targetComp2Hdr : st.targetComp2;
   const compA = planA ? compFirst : null;
   const compB = planB ? (planA ? compSecond : compFirst) : null;
-  const compareMat = hdrLane ? st.compareMaterialHdr : st.compareMaterial;
 
   // The whole slide (panel + cutout) goes into each target, so a transition crossfades framed slides exactly as it does full-bleed scenes. Overlays don't compose through the fx (HDR) targets yet, so a framed scene under effects falls back to the plain scene render here; the dof-only lane keeps SDR targets, so framed scenes compose exactly as they do with no effects.
   const overlayA = !hdrLane ? (overlays?.[tr.fromIndex] ?? null) : null;
@@ -1047,6 +1070,7 @@ export function renderComposited(
         dofOnly,
         hdrLane,
       );
+      const compareMat = compareMaterialFor(st, planA, hdrLane);
       st.mesh.material = compareMat;
       setCompareUniforms(compareMat, planA, sideA, tgt.texture, st.size.x / st.size.y);
       gl.setRenderTarget(compA);
@@ -1125,6 +1149,7 @@ export function renderComposited(
         dofOnly,
         hdrLane,
       );
+      const compareMat = compareMaterialFor(st, planB, hdrLane);
       st.mesh.material = compareMat;
       setCompareUniforms(compareMat, planB, sideA, tgt.texture, st.size.x / st.size.y);
       gl.setRenderTarget(compB);

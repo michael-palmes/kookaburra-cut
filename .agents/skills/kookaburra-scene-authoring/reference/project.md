@@ -329,7 +329,7 @@ project. A scene can override fields in its manifest entry:
 | `bloom` | `intensity` (0 off), `luminanceThreshold`, `luminanceSmoothing` |
 | `vignette` | `offset`, `darkness` (0 off) |
 | `lut` | `url` (project `.cube`), `intensity` 0..1; all LUTs in a project share one size |
-| `grain` | `intensity` (0 off) |
+| `grain` | `intensity` (0 off), `hold` (frames each pattern stays, default 1: 5 is a 12 fps paper boil, 1 to 60) |
 
 Overrides merge field by field onto the theme's effect. When the theme lacks that
 effect, give every field. Effects blend across transitions. A LUT that fails to load is

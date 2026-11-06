@@ -5,7 +5,7 @@ import { frameOnPlane, type PlaneFrame } from "../../engine/frustum";
 import { hasSceneCameraTracks, sceneCameraPose } from "../../engine/sceneCamera";
 import { SceneCameraTracksContext } from "../../engine/sceneCameraContext";
 import { useSceneContext } from "../../engine/sceneContext";
-import { useTimeline } from "../../engine/timeline";
+import { useFrameTimeline } from "../../engine/timeline";
 import type { V3 } from "../types";
 
 /** The scene camera's pose this frame, as the render applies it. */
@@ -18,11 +18,11 @@ export interface SceneCamera {
   rollDeg?: number;
 }
 
-/** The scene camera's current pose: the scene's free-flight rig or orbit track at this scene time, else the project camera track, else the base camera. */
+/** The scene camera's current pose: the scene's free-flight rig or orbit track at this scene time, else the project camera track, else the base camera. It moves every frame inside `SteppedTime` too, as the camera does. */
 export function useSceneCamera(): SceneCamera {
   const ctx = useContext(SceneCameraTracksContext);
   const scene = useSceneContext();
-  const { localMs, globalMs } = useTimeline();
+  const { localMs, globalMs } = useFrameTimeline();
   const fallback = sampleCameraTrack(ctx?.projectTrack ?? [], globalMs);
   const tracks = ctx?.tracks();
   const pose =

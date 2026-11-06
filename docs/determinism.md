@@ -181,6 +181,14 @@ Determinism rules specific to the composite path:
   measures each crossfade's midpoint against the solo frames either side (the
   outgoing scene's least-squares weight must sit within 0.15 of the eased
   progress); `pnpm ready` runs it whenever the compositor or timeline changes.
+- **A glass edge is its own program.** `compare.chrome.glass` composites through
+  `compareFragmentShaderGlass` / `...GlassHdr`, picked per plan (solo and both
+  pre-composites), so a plain comparison keeps the plain program, whose SDR and
+  HDR sources are SHA-256 pinned in `compareShader.test.ts`. The bar is the
+  glass sweep transition's optics held still: a cylinder profile across the
+  edge, per-channel offsets along the edge normal and a rim light, every value a
+  CPU uniform; refraction and rim fade over the bar's last pixel and a half
+  (`fwidth`), so the edge stays antialiased.
 
 - **Tone-map once, encode once, per path.** No-effects: every SDR target is a
   **display target** (`engine/displayTarget.ts`): three (r185, r186) applies tone
@@ -400,7 +408,10 @@ the field lands.
 
 Layout uses `fit` (`contain` letterboxes, `cover` fills+crops) computed from
 `useFormat().frame` and the clip aspect. One clip serves every aspect. Clips are
-picture-only; sound belongs to the project soundtrack (below).
+picture-only; sound belongs to the project soundtrack (below). A clip given
+`radius` or `opacity` draws as a card: blended, no depth write, and the shared
+rounded-card mask program for the corners; both unset keep the opaque legacy
+plane and its program.
 
 ## Audio
 
@@ -557,6 +568,13 @@ allow-listed time-free effects exist (film grain is `DeterministicGrainEffect`,
 seeded from the frame index). The composer owns the project's **single** ACES
 tone-map + sRGB encode; on transition frames the scenes reach the A/B targets
 un-tone-mapped and the composite feeds the composer linear.
+
+**Grain hold (the paper boil).** `grain.hold` keeps one pattern for N frames:
+`heldGrainSeed` integer-divides the frame seed (`floor(frame / hold)`, never a
+floored time), so the pattern changes on whole frames of the 60 grid from frame
+0. A 30 fps lane sees the even frames, so a hold of 5 alternates 3 and 2 output
+frames there. Absent or 1 is the frame seed exactly; across a transition `hold`
+snaps at the midpoint instead of lerping (`blendEffectParams`).
 
 **Colour-grade (3D LUT).** The ordering decision and its invariants:
 
@@ -865,6 +883,30 @@ own shutter window, never earlier frames, so it stays a pure function of t.
 - **Memory.** The lane holds about 370 MB at 4K (two RGBA32F targets plus two
   copies); export frees it on any frame that does not blur and with the
   compositor pools between legs.
+
+## Stepped time
+
+`<SteppedTime fps>` (`SteppedTimeContext`, `engine/timeline.ts`) is a hand-made
+passage: its subtree's `useTimeline` steps while the camera, which the
+compositor applies from the raw clock, moves every frame.
+
+- **Null for legacy.** No context means `useTimeline` runs the original
+  expressions on the original values; a rate of 60 or more runs every frame.
+- **Integer steps.** `steppedTimeMs` counts the integer frame index from the
+  scene's first frame (`ceil(startMs * FPS / 1000)`, so a start off the grid
+  still opens a step) and holds `floor(frames * fps / FPS)` steps, each showing
+  exactly its first frame's instant: `(first + ceil(step * FPS / fps)) * 1000 /
+  FPS`, the same float the exporter steps the clock to, so a held frame is
+  bit-identical to the frame it holds and never a pose ahead. 12 fps holds 5
+  frames; rates that don't divide 60 alternate (8 fps: 8 then 7).
+- **30 fps lanes** render the 60 grid's even frames, so 12 fps alternates 3 and 2
+  output frames there (10 and 15 fps stay even): documented, not corrected.
+- **Motion blur steps first.** The shutter offset is added AFTER the step, so a
+  held pose smears around its own instant and never ghosts into the next step.
+- **Planners follow the step.** A stepped clip consumer's extraction demand maps
+  the barrier's times through `useSteppedLocalMs`, so a one-frame capture
+  extracts the chunk the held frame binds. `useSceneCamera` reads the full-rate
+  clock (`useFrameTimeline`), as the camera does.
 
 ## Layered screenshot
 
@@ -1929,6 +1971,7 @@ Verify ×2 here (the 2026-10-23 note):
 | `ws:rooms-spike` (room cuts, a flood with a tokened light, a wipe while both sides flood; machine-local, never gated) | `fee706ac…` | `219c3507…` | — | — | — | — | — | — | — |
 | `ws:mask-fx-spike` (an image-mask seam between two bloom scenes on the effects lane; machine-local, never gated) | `6555ff7f…` | — | — | — | — | — | — | — | — |
 | `ws:motion-toolkit-spike` (the toolkit primitives: shapes, device anchors, text metrics and presets, stamps, dashes, mosaic, taps; machine-local, gated when motion or shape primitives change) | `06b79ae2…` | `fa64bced…` | — | — | — | — | — | — | — |
+| `ws:fx-spike` (the effects chain: bloom, vignette, LUT, grain; machine-local, gated when effects change; first recorded 2026-11-07 from a Verify ×2 on the grain-hold branch, which leaves an unheld grain's seed as it was) | `6abcbe67…` | — | — | — | — | — | — | — | — |
 
 > **2026-10-31 (five machine-local cells re-recorded, four with no known cause):**
 > `ws:overlay-spike` 16:9 `f3d115a5…` → `ef78da55…` is #268's floor shift: `23e4c58b`

@@ -21,9 +21,10 @@ export interface LutParams {
   intensity: number;
 }
 
-/** Film-grain params. `intensity` 0 = no grain. Seeded from the frame only (see grainSeed). */
+/** Film-grain params. `intensity` 0 = no grain. Seeded from the frame only (see grainSeed); `hold` keeps each pattern for that many frames, the paper boil (5 is 12 fps). */
 export interface GrainParams {
   intensity: number;
+  hold?: number;
 }
 
 /** The postprocessing stack: every field is a plain number/string set on the CPU, never time-derived, so effect frames stay a pure function of the timeline. Omitting a key omits that effect. A theme with NO `effects` keeps the byte-identical (composer-free) render path. See docs/determinism.md. */

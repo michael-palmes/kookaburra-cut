@@ -758,6 +758,24 @@ declare module "@kookaburra/toolkit" {
   /** How a frame reads for layout, from `FormatInfo.aspect`: "wide" at 1.2 and up (16:9, 3:2, 5:4), "tall" at 0.85 and below (9:16, 2:3, 4:5, phone), "square" between (1:1). */
   export type FormatShape = "wide" | "square" | "tall";
 
+  /** One glyph of a measured block, in the text's own space: world units from its `position` under the measured anchors, y up. */
+  export interface GlyphBox {
+    /** What it draws: one character (a surrogate pair stays whole), or a ligature's whole run. */
+    text: string;
+    /** Where that starts in the displayed text (`*word*` markup stripped, an emoji as one placeholder). */
+    index: number;
+    /** Its line, 0 first. */
+    line: number;
+    /** The pen cell's left edge and advance; a space has one too, so spaces can hold a slot. */
+    x: number;
+    width: number;
+    /** Its line's baseline, and the face's cap height above it. */
+    baseline: number;
+    capHeight: number;
+    /** The outline's bounds `[left, bottom, right, top]`; null for whitespace. */
+    ink: readonly [number, number, number, number] | null;
+  }
+
   /** A frame-filling blend between two colours, linear or radial. Mount inside a `ScreenLayer`. */
   export function Gradient(props: GradientProps): ReactElement;
 
@@ -892,6 +910,11 @@ declare module "@kookaburra/toolkit" {
     letterSpacing?: number;
     /** Line advance as a multiple of the font size; absent is the face's own "normal". */
     lineHeight?: number;
+    /** Where the text's `position` sits on the block; glyph boxes measure from there (default the headline's, centre and middle). */
+    anchorX?: "left" | "center" | "right";
+    anchorY?: "top" | "middle" | "bottom";
+    /** Per-line alignment inside the block, visible on multi-line text (default left). */
+    textAlign?: "left" | "center" | "right";
   }
 
   /** A measured block, plus the size that makes it fit a width. */
@@ -1470,6 +1493,9 @@ declare module "@kookaburra/toolkit" {
     settleMs?: number;
   }
 
+  /** Steps its subtree's time at a whole `fps` (default 12, the hand-made look), counted from the scene's first frame: every pose holds for whole frames while the camera, and anything outside, moves every frame. 60 or more runs every frame. */
+  export function SteppedTime(props: { fps?: number; children: ReactNode }): ReactElement;
+
   /** Text-animation presets, the library behind `theme.textAnimation` and `AnimatedHeadline`'s `preset`/`ease`/`stagger` props: everything here is PURE math over the local scene clock so preview and the deterministic export loop agree byte-for-byte, and easing goes through the golden-tested `engine/ease` table, never an animation runtime. IMPORTANT (the null-for-legacy contract): when nothing is configured, `resolveTextAnimation` returns null and AnimatedHeadline runs its original v0 linear-ramp code verbatim, so committed projects on legacy themes must not change by a byte. */
   export const TEXT_PRESET_NAMES: readonly ["none", "fade", "fade-up", "blur-in", "slide", "mask-reveal", "fade-scale", "twist-scale", "scatter-scale", "tracking", "slam", "dolly", "chromatic", "line-stretch", "highlight-wipe", "rise-mask", "word-cycle", "ribbon", "stand-up", "spring-pop", "spotlight", "underline-draw", "orbit", "weight-build", "develop", "flip-cascade", "converge", "glint-wipe", "vapor", "stamp", "build", "typewriter"];
 
@@ -1496,9 +1522,11 @@ declare module "@kookaburra/toolkit" {
     ascent: number;
     descent: number;
     lines: number;
+    /** Every glyph in reading order, line breaks left out. */
+    glyphs: GlyphBox[];
   }
 
-  /** The AnimatedHeadline props that shape the measured block; pass the same values the headline gets. */
+  /** The AnimatedHeadline props that shape the measured block; pass the same values the headline gets. The anchors and `textAlign` only place the glyph boxes. */
   export interface TextMetricsOptions {
     fontSize?: number;
     face?: "headline" | "body";
@@ -1506,6 +1534,9 @@ declare module "@kookaburra/toolkit" {
     lineHeight?: number;
     letterSpacing?: number;
     styleKey?: string;
+    anchorX?: "left" | "center" | "right";
+    anchorY?: "top" | "middle" | "bottom";
+    textAlign?: "left" | "center" | "right";
   }
 
   export type TextPresetName = (typeof TEXT_PRESET_NAMES)[number] | typeof STATIC_TEXT_PRESET;
@@ -1611,6 +1642,10 @@ declare module "@kookaburra/toolkit" {
     fit?: "cover" | "contain";
     position?: V3;
     scale?: number;
+    /** Rounds the corners, as a fraction of the short edge (0 to 0.5), so a clip reads as a card. */
+    radius?: number;
+    /** 0..1 (default 1), so a card can fade as it rides a carousel. */
+    opacity?: number;
   }
 
   /** The scene document's windowed media: a screen recording (or a still) presented as a floating rounded window with a drop shadow, over whatever the scene stages behind it; sits in world space so the per-scene camera moves around it with real parallax. Registers the scene as the window family's consumer so the host-side fallback stands down. */
@@ -1777,6 +1812,12 @@ declare module "@kookaburra/toolkit" {
   /** The enclosing group's animation state, or null outside groups; the hook custom primitives use to participate (multiply `alpha` into your own opacity CPU-side). */
   export function useGroupAnimation(): GroupAnimationState | null;
 
+  /** The scene-local time staged primitives animate from: the raw timeline unless this scene is held. */
+  export function useHeldLocalMs(rawLocalMs: number): number;
+
+  /** Tells Present and the automatic stills when a hand-built set piece settles: the scene holds after `toMs` (scene-local) and before `outAtMs`, its outro. Drive the piece from `useHeldLocalMs` so it pauses there too. Video export never reads it. */
+  export function usePresentTiming(toMs: number, outAtMs?: number): void;
+
   export function useProjectShared(path?: string, fallback?: unknown): unknown;
 
   /** The scene's normalised rig track, or null when it has no rig. Derived from the scene doc already in context, so preview and export resolve it identically by construction rather than by a plumbing rule. */
@@ -1785,7 +1826,7 @@ declare module "@kookaburra/toolkit" {
   /** The scene's room at the frame instant (its colour, any flood in progress and the room's lighting pose), or null when the scene has no sidecar `room`. */
   export function useRoom(): RoomSample | null;
 
-  /** The scene camera's current pose: the scene's free-flight rig or orbit track at this scene time, else the project camera track, else the base camera. */
+  /** The scene camera's current pose: the scene's free-flight rig or orbit track at this scene time, else the project camera track, else the base camera. It moves every frame inside `SteppedTime` too, as the camera does. */
   export function useSceneCamera(): SceneCamera;
 
   /** The scene document's chart block, fully resolved (defaults baked, data track sorted), or null when absent; registers the scene as a consumer so a host-mounted `ChartFallback` stands down (the useSceneMedia pattern). */
@@ -1809,13 +1850,13 @@ declare module "@kookaburra/toolkit" {
   /** Resolves code-owned or embedded copy, plus the matching item while a managed scaffold retains its template layout. */
   export function useSceneText(key: string, fallback?: string, managedTextRole?: ManagedTextRenderRole): string;
 
-  /** The world-size block an `AnimatedHeadline` with this `textKey`, text and options typesets (sidecar Font, Size and LineHeight overrides included), or null until its face has loaded and it has measured real ink: never a 0-wide first measure, so a scene can divide by `width` once it has one. Captures wait for it, so exported frames always see the measured layout. */
+  /** The world-size block an `AnimatedHeadline` with this `textKey`, text and options typesets (sidecar Font, Size and LineHeight overrides included), or null until its face has loaded and it has measured real ink: never a 0-wide first measure, so a scene can divide by `width` once it has one. Its `glyphs` sit where the headline draws each one relative to its `position`, sidecar OffsetX and OffsetY included (a tilt is not). Captures wait for it, so exported frames always see the measured layout. */
   export function useTextMetrics(key: string | undefined, text: string, opts?: TextMetricsOptions): MeasuredText | null;
 
   /** The active theme: inside `<SceneHost>` it's the scene's resolved theme (project theme unless the sidecar overrides `themeId`); elsewhere it falls back to the editor store's theme, since r3f's reconciler doesn't bridge context outside the `<Canvas>` boundary. */
   export function useTheme(): Theme;
 
-  /** Reactive scene time for the active scrub position. `localMs` is relative to the enclosing scene's start (supplied by `<SceneHost>` via `SceneContext`); with no scene context it falls back to project time so a lone scene anchored at t=0 keeps `localMs === globalMs` (the v0 contract). `progress` stays project-global per the `SceneTime` type; authors derive scene-local progress from `localMs / scene.durationMs`. Inside a motion blur sample the time moves by the scene's shutter offset times `scale` (default: the `MotionBlurContext`); 0 never moves and never re-renders for a sample. */
+  /** Reactive scene time for the active scrub position. `localMs` is relative to the enclosing scene's start (supplied by `<SceneHost>` via `SceneContext`); with no scene context it falls back to project time so a lone scene anchored at t=0 keeps `localMs === globalMs` (the v0 contract). `progress` stays project-global per the `SceneTime` type; authors derive scene-local progress from `localMs / scene.durationMs`. Inside a motion blur sample the time moves by the scene's shutter offset times `scale` (default: the `MotionBlurContext`); 0 never moves and never re-renders for a sample. Inside `SteppedTime` the frame instant steps BEFORE that offset, so a held pose blurs around itself and never ghosts into the next step. */
   export function useTimeline(scale?: number): SceneTime;
 
   /** Bloom / glow params (see engine/effects.ts). `intensity` 0 = no bloom. */
@@ -2476,9 +2517,10 @@ declare module "@kookaburra/toolkit" {
     space?: "oklch";
   }
 
-  /** Film-grain params. `intensity` 0 = no grain. Seeded from the frame only (see grainSeed). */
+  /** Film-grain params. `intensity` 0 = no grain. Seeded from the frame only (see grainSeed); `hold` keeps each pattern for that many frames, the paper boil (5 is 12 fps). */
   interface GrainParams {
     intensity: number;
+    hold?: number;
   }
 
   /** A shine band along `SHINE_AXIS`, in the space of whoever holds it. */
@@ -2716,7 +2758,19 @@ declare module "@kookaburra/toolkit" {
     width: number;
     lineHeight: number;
     baseline: number;
-    glyphs: { x: number; width: number; space: boolean; face: FaceLine }[];
+    glyphs: LineGlyph[];
+  }
+
+  interface LineGlyph {
+    x: number;
+    width: number;
+    space: boolean;
+    face: FaceLine;
+    index: number;
+    capHeight: number;
+    /** The outline relative to the pen and baseline, or null for an empty glyph. */
+    ink: [number, number, number, number] | null;
+    newline: boolean;
   }
 
   /** Colour-grade params: `url` is a project-relative `.cube` 3D LUT (e.g. "assets/grade.cube"), resolved by loadProject to a project asset key. `intensity` 0 = no grade, 1 = full grade (drives blend opacity). All LUTs in one project must share one LUT_3D_SIZE (see preloadEffectLuts). */
@@ -2979,18 +3033,25 @@ declare module "@kookaburra/toolkit" {
     chrome?: SceneDocCompareChrome;
   }
 
-  /** The exported chrome: a divider line along the mask edge, a grip riding a linear divider, label chips per half, per-side tints. `line.colour` and both tints are each a THEME TOKEN NAME (background | text | accent | muted) resolved against the scene's theme at plan build, or a `#rrggbb` hex used as authored. Absent sub-blocks are off, and `grip: true` is the legacy chevrons handle at size 1. */
+  /** The exported chrome: a divider line along the mask edge, a grip riding a linear divider, label chips per half, per-side tints, and a refracting glass bar along a linear or circle edge. `line.colour` and both tints are each a THEME TOKEN NAME (background | text | accent | muted) resolved against the scene's theme at plan build, or a `#rrggbb` hex used as authored. Absent sub-blocks are off, `grip: true` is the legacy chevrons handle at size 1, and `glass: true` the default bar. */
   interface SceneDocCompareChrome {
     line?: { width?: number; colour?: string; softness?: number };
     grip?: boolean | SceneDocCompareGrip;
     chips?: boolean;
     tint?: { a?: string; b?: string; amount?: number };
+    glass?: boolean | SceneDocCompareGlass;
   }
 
   /** The narrow device appearance surface side B may override. Device identity, pose and motion remain shared. */
   interface SceneDocCompareDeviceAppearance {
     colour?: string;
     shadow?: DeviceShadowMode;
+  }
+
+  /** The glass edge as authored: `width` is the bar's full width in 1080-tall reference pixels, `strength` scales its refraction and rim light. */
+  interface SceneDocCompareGlass {
+    width?: number;
+    strength?: number;
   }
 
   /** The grip as authored: `size` is a multiplier on the reference radius, `style` picks the handle. */

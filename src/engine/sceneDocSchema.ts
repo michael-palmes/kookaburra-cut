@@ -837,12 +837,19 @@ export interface SceneDocCompareGrip {
   style?: SceneDocCompareGripStyle;
 }
 
-/** The exported chrome: a divider line along the mask edge, a grip riding a linear divider, label chips per half, per-side tints. `line.colour` and both tints are each a THEME TOKEN NAME (background | text | accent | muted) resolved against the scene's theme at plan build, or a `#rrggbb` hex used as authored. Absent sub-blocks are off, and `grip: true` is the legacy chevrons handle at size 1. */
+/** The glass edge as authored: `width` is the bar's full width in 1080-tall reference pixels, `strength` scales its refraction and rim light. */
+export interface SceneDocCompareGlass {
+  width?: number;
+  strength?: number;
+}
+
+/** The exported chrome: a divider line along the mask edge, a grip riding a linear divider, label chips per half, per-side tints, and a refracting glass bar along a linear or circle edge. `line.colour` and both tints are each a THEME TOKEN NAME (background | text | accent | muted) resolved against the scene's theme at plan build, or a `#rrggbb` hex used as authored. Absent sub-blocks are off, `grip: true` is the legacy chevrons handle at size 1, and `glass: true` the default bar. */
 export interface SceneDocCompareChrome {
   line?: { width?: number; colour?: string; softness?: number };
   grip?: boolean | SceneDocCompareGrip;
   chips?: boolean;
   tint?: { a?: string; b?: string; amount?: number };
+  glass?: boolean | SceneDocCompareGlass;
 }
 
 /** The comparison block. `mask.type`: `linear` (a straight divider, `angleDeg` is the LINE's angle, 90 = vertical), `circle` (the after inside a growing circle at `center`), `radial` (the after sweeps around `center`), `blend` (the after fades over the before). `softness` feathers the edge; `value` is the static divider position when no track keys exist (default 0.5). `mask.angleDeg` is the STATIC angle: a track key carrying its own `pose.angleDeg` overrides it and rides the track. */
@@ -1620,6 +1627,27 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
           t.amount = Math.min(1, Math.max(0, tint.amount));
         }
         chrome.tint = t;
+      }
+      if (typeof raw.glass === "boolean") chrome.glass = raw.glass;
+      else if (raw.glass && typeof raw.glass === "object" && !Array.isArray(raw.glass)) {
+        const g = raw.glass as { width?: unknown; strength?: unknown };
+        const glass: SceneDocCompareGlass = {};
+        if (typeof g.width === "number" && Number.isFinite(g.width) && g.width > 0) {
+          glass.width = g.width;
+        } else if (g.width !== undefined) {
+          parseWarn(
+            `[sceneDoc] ${source}: compare.chrome.glass.width isn't a positive number, dropped`,
+          );
+        }
+        if (typeof g.strength === "number" && Number.isFinite(g.strength) && g.strength >= 0) {
+          glass.strength = g.strength;
+        } else if (g.strength !== undefined) {
+          parseWarn(`[sceneDoc] ${source}: compare.chrome.glass.strength isn't a number, dropped`);
+        }
+        // Like the grip: a glass block that loses every field stays on at the defaults.
+        chrome.glass = glass.width === undefined && glass.strength === undefined ? true : glass;
+      } else if (raw.glass !== undefined) {
+        parseWarn(`[sceneDoc] ${source}: compare.chrome.glass is malformed, dropped`);
       }
       out.chrome = chrome;
     } else {
