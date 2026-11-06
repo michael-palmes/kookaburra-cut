@@ -2,7 +2,7 @@
 // Scene files import from "@kookaburra/toolkit"; `kb toolkit show <Name>` reads the same source.
 declare module "@kookaburra/toolkit" {
   import type { ComponentType, ReactElement, ReactNode } from "react";
-  import type { Color, DirectionalLight, Group, InstancedMesh, Light, Material, Mesh, MeshStandardMaterial, Object3D, PerspectiveCamera, SkinnedMesh, Vector3 } from "three";
+  import type { Color, DirectionalLight, Group, InstancedBufferAttribute, InstancedMesh, Light, Material, Mesh, MeshStandardMaterial, Object3D, PerspectiveCamera, SkinnedMesh, Vector3 } from "three";
 
   /** Devices this build can render with their own model and screen contract. */
   export const AVAILABLE_DEVICE_IDS: DeviceId[];
@@ -102,6 +102,8 @@ declare module "@kookaburra/toolkit" {
     hitAt?: number;
     /** 0..1, multiplied into every fade (default 1). */
     opacity?: number;
+    /** Scene ms a shaped emphasis (`textStyle.<key>Emphasis` ending in `pill` or `battery`) starts drawing on; default when the line has landed. */
+    emphasisAt?: number;
     /** Per-char / per-word stagger granularity. Paragraph delivery is spelled through `delivery`, never here. */
     stagger?: "char" | "word";
     /** Per-unit stagger delay, ms. Defaults to the theme's `textAnimation.staggerMs`. */
@@ -431,6 +433,8 @@ declare module "@kookaburra/toolkit" {
 
   export const DEVICE_IDS: DeviceId[];
 
+  export const DOT_ORDERS: readonly DotOrder[];
+
   /** A dashed bracket marking a span: a long run with an end tick at each side. The draw-on grows out from the middle to both ticks. */
   export function DashedBracket(props: DashedBracketProps): ReactElement;
 
@@ -702,6 +706,152 @@ declare module "@kookaburra/toolkit" {
     fold?: DeviceFoldSpec;
   }
 
+  /** What the per-dot callback may change. */
+  export interface DotAdjust {
+    /** World units added to the position. */
+    offset?: readonly [number, number];
+    /** Multiplies the size. */
+    scale?: number;
+    /** Multiplies the opacity. */
+    alpha?: number;
+  }
+
+  /** A run of dots recoloured in order: `value` dots (fractional values blend the next one) take `color`. Several runs stack one after another. */
+  export interface DotCount {
+    value: number;
+    /** Theme token or hex (default `muted`). */
+    color?: string;
+    /** Read from the first run (default `reading`). */
+    order?: DotOrder;
+    /** Read from the first run, for `random` (default 1). */
+    seed?: number;
+  }
+
+  /** Hundreds of dots in ONE instanced draw, laid out as a grid or waffle, each dot's size, place and colour a pure function of the authored fields: a pop-in, a halftone wave, a window that clears for a hero number, counts recolouring dots in order as a counter rolls, a funnel, a gather into one dot and a merge into a solid tile. Flat and colour-exact like `RoundedRect`, or filled with the fluid gradient. Drive every field from `useTimeline()`; the field itself reads no clock. */
+  export function DotField(props: DotFieldProps): ReactElement;
+
+  export interface DotFieldProps {
+    /** Dots across (default 10). */
+    columns?: number;
+    /** Dots down (default 10). */
+    rows?: number;
+    /** Centre-to-centre spacing in world units, or [across, down] (default 0.3). */
+    pitch?: number | readonly [number, number];
+    /** Dot diameter as a fraction of the pitch (default 0.72). */
+    size?: number;
+    /** "circle" (default) or "square", a waffle cell. */
+    shape?: "circle" | "square";
+    /** A square's corner radius, 0..1 of half its side (default 0.25). */
+    roundness?: number;
+    /** Theme token (`text`, `muted`, `accent`, `background`) or hex (default `text`). */
+    color?: string;
+    /** A fluid gradient instead of the flat colour, sampled in screen space so the dots and any filled `RoundedRect` share one gradient; `true` takes colours from the theme accent. */
+    fill?: FluidFill | boolean;
+    opacity?: number;
+    /** Dots pop in one by one. */
+    reveal?: DotReveal;
+    /** A travelling wave of dot sizes. */
+    wave?: DotWave;
+    /** A clearing that opens for a hero number. */
+    window?: DotWindow;
+    /** Dots recoloured in order as a value rolls: one run, or several stacked. */
+    count?: DotCount | readonly DotCount[];
+    /** Columns narrowing into an arrow. */
+    funnel?: DotFunnel;
+    /** Every dot drawn into one. */
+    gather?: DotGather;
+    /** 0..1: the dots swell and merge into one solid tile covering the grid (displaced dots return home first). */
+    merge?: number;
+    /** The merged tile's corner radius, world units (default half the pitch). */
+    tileRadius?: number;
+    /** Per-dot adjustment, called for every dot every frame: keep it a pure function of its argument and the clock. */
+    dot?: (info: DotInfo) => DotAdjust | undefined;
+    position?: V3;
+    /** Radians. */
+    rotation?: V3;
+    scale?: number;
+    renderOrder?: number;
+  }
+
+  /** Columns narrowing into an arrow: each column keeps fewer slots than the one before and the extra dots stack onto them. */
+  export interface DotFunnel {
+    /** 0..1 through the narrowing. */
+    progress: number;
+    /** Dots left in the last column (default 1). */
+    to?: number;
+    /** 0..1: how far the columns follow one another rather than moving together (default 0.5). */
+    stagger?: number;
+  }
+
+  /** Every dot drawn to one point, merging into one dot. */
+  export interface DotGather {
+    /** 0..1 (an eased value past 1 swells the final dot past its size). */
+    progress: number;
+    /** World units from the field centre (default [0, 0]). */
+    to?: readonly [number, number];
+    /** The final dot's diameter in world units (default one dot's). */
+    size?: number;
+  }
+
+  /** What the per-dot callback sees: the dot after the reveal, wave, window and funnel. */
+  export interface DotInfo {
+    index: number;
+    col: number;
+    row: number;
+    x: number;
+    y: number;
+    /** Half the dot's size, world units. */
+    radius: number;
+    alpha: number;
+  }
+
+  /** Which dot goes first: `reading` (left to right, top row down), `rows-up` (left to right, bottom row up, the waffle-chart fill), `columns` (top to bottom, left column first), `centre` (nearest the middle first) or `random` (seeded). */
+  export type DotOrder = "reading" | "rows-up" | "columns" | "centre" | "random";
+
+  /** Dots popping in one after another. */
+  export interface DotReveal {
+    /** 0..1 through the whole reveal. */
+    progress: number;
+    /** Default `random`. */
+    order?: DotOrder;
+    /** Seed for the `random` order (default 1). */
+    seed?: number;
+    /** Fraction of the reveal each dot takes to pop (default 0.3). */
+    span?: number;
+    /** The pop's `outBack` overshoot (default 1.70158; 0 lands without one). */
+    overshoot?: number;
+  }
+
+  /** A travelling wave of dot sizes (the halftone wave). */
+  export interface DotWave {
+    /** 0..1: how far the wave reshapes the sizes (default 1). */
+    amount?: number;
+    /** The direction the crests travel, degrees anticlockwise from +x (default -45, the reading diagonal). */
+    angleDeg?: number;
+    /** Crest to crest, in dots (default 6). */
+    wavelength?: number;
+    /** Cycles travelled: drive it from the clock, e.g. `localMs / 1000` (default 0). */
+    phase?: number;
+    /** Size at a trough, as a fraction of the full dot (default 0.15). */
+    min?: number;
+  }
+
+  /** A clearing that opens from a point: the dots there shrink away, the nearest first, leaving a window for a hero number. */
+  export interface DotWindow {
+    /** 0..1: closed to fully open. */
+    open: number;
+    /** Radius of the cleared middle, in dots (default 2). */
+    radius?: number;
+    /** Width of the fall-off ring beyond it, in dots (default 1.5). */
+    softness?: number;
+    /** Centre in dots from the field centre, x right and y up (default [0, 0]). */
+    centre?: readonly [number, number];
+    /** Shape of the clearing: 2 is round, higher is squarer (default 2). */
+    roundness?: number;
+    /** 0..1: how far the opening ripples outward from the centre rather than shrinking all at once (default 0.6). */
+    ripple?: number;
+  }
+
   /** Every valid ease name (stable order: linear, jump, then in/out/inOut per family). */
   export const EASE_NAMES: readonly EaseName[];
 
@@ -739,6 +889,20 @@ declare module "@kookaburra/toolkit" {
   }
 
   export const FALLBACK_DEVICE_ID: DeviceId;
+
+  /** A fluid fill for `RoundedRect`, `Pill` and `DotField`. Every field is optional: `true` (or `{}`) is the mesh gradient in colours drawn from the theme accent. */
+  export interface FluidFill {
+    /** A shader background id (`kb catalog backgrounds`); default "mesh-gradient", the fluid one. */
+    shader?: string;
+    /** Hex colours or theme tokens (`text`, `muted`, `accent`, `background`); absent derives deep, mid and highlight shades from the theme accent. */
+    colors?: readonly string[];
+    /** The shader's own params by name (the background inspector's sliders); absent takes each default. */
+    params?: Readonly<Record<string, number>>;
+    /** Flow speed on the project clock (default 0.4). */
+    speed?: number;
+    /** Pattern zoom, 1 being the background's own: lower shows more of the gradient inside a small shape (default 0.6). */
+    scale?: number;
+  }
 
   export interface FormatInfo {
     /** Output pixel width. */
@@ -991,6 +1155,8 @@ declare module "@kookaburra/toolkit" {
     strokeWidth?: number;
     /** Border colour; defaults to the theme text colour. */
     strokeColor?: string;
+    /** A fluid gradient fill sampled in screen space, so several shapes look through one gradient; `true` takes colours from the theme accent. Replaces `color`. */
+    fill?: FluidFill | boolean;
     position?: V3;
     /** Radians. */
     rotation?: V3;
@@ -1143,7 +1309,7 @@ declare module "@kookaburra/toolkit" {
     pose: LightingPose;
   }
 
-  /** An unlit, antialiased rounded rectangle with an optional border ring; colour-exact like ImageCard, and size, radius and colours animate without rebuilding geometry. */
+  /** An unlit, antialiased rounded rectangle with an optional border ring; colour-exact like ImageCard, and size, radius and colours animate without rebuilding geometry. With `fill` it shows a fluid gradient instead of a flat colour. */
   export function RoundedRect(props: RoundedRectProps): ReactElement;
 
   export interface RoundedRectProps extends PillProps {
@@ -1184,7 +1350,7 @@ declare module "@kookaburra/toolkit" {
     text?: Record<string, string>;
     /** Layout for the scene's text block; consumed by TitleBlock (inert when a scene positions text by hand, the `backdrop` precedent). */
     textLayout?: { align?: SceneTextAlign };
-    /** Per-text-element overrides keyed `<textKey><Suffix>`: `Color` (raw hex fill, the one narrow exception to "colours stay tokens"), `Font` ("Family" or "Family@weight"), `Size` (multiplier of the element's default, 1 = unchanged), `OffsetX`/`OffsetY` (world-unit nudges from the scene's layout), `LineHeight` (line spacing as a multiple of the font size, clamped 0.8..2; absent means troika's own "normal") `RotationDeg` (clockwise tilt in degrees about the block's anchor; absent or 0 is upright) and `Emphasis` (`*word*` emphasis: "<colour>" or "<colour>@<weight>", a token or hex and a CSS weight; absent is the accent one weight step bolder); consumed by text primitives given a matching `textKey`, inert otherwise. */
+    /** Per-text-element overrides keyed `<textKey><Suffix>`: `Color` (raw hex fill, the one narrow exception to "colours stay tokens"), `Font` ("Family" or "Family@weight"), `Size` (multiplier of the element's default, 1 = unchanged), `OffsetX`/`OffsetY` (world-unit nudges from the scene's layout), `LineHeight` (line spacing as a multiple of the font size, clamped 0.8..2; absent means troika's own "normal") `RotationDeg` (clockwise tilt in degrees about the block's anchor; absent or 0 is upright) and `Emphasis` (`*word*` emphasis: "<colour>" or "<colour>@<weight>", a token or hex and a CSS weight, optionally followed by a `pill` or `battery` shape; absent is the accent one weight step bolder); consumed by text primitives given a matching `textKey`, inert otherwise. */
     textStyle?: Record<string, string | number>;
     /** Header icon for a plain (non-overlay) scene's text: an emoji or an `assets/` image path, drawn above the headline by `TextFallback`/`TitleBlock`. Overlay scenes carry their icon on `frame.icon` instead; both scale by `textStyle.iconSize`. */
     headerIcon?: string;
@@ -1693,6 +1859,9 @@ declare module "@kookaburra/toolkit" {
     rotation?: V3;
   }
 
+  /** Deep, mid, highlight and a hue-shifted shade of the theme accent: the cobalt-to-ice value material, in any brand colour. */
+  export function accentFluidColours(accent: string): string[];
+
   /** Clamps to [0, 1]; NaN reads as 0. */
   export function clamp01(x: number): number;
 
@@ -1901,6 +2070,12 @@ declare module "@kookaburra/toolkit" {
     pieRadius: number;
   }
 
+  /** The flat facet as one chart draws it, with the shared treatments the flat path reads carried alongside. */
+  type Chart2DDrawLook = ChartStyleSurface2D & {
+    furniture: ChartFurniture;
+    lineFinish: ChartLineFinish;
+  };
+
   interface Chart3DProps extends ChartRendererProps {
     /** The resolved appearance; absent takes the catalogue's default preset, so the primitive still stands alone. */
     surface?: ChartStyleSurface;
@@ -1958,6 +2133,9 @@ declare module "@kookaburra/toolkit" {
   /** Which theme face chart numerals and labels take. */
   type ChartFontEmphasis = "body" | "headline";
 
+  /** "none" draws the marks alone (no axes, gridlines, tick or category labels, axis names, legend or value labels), whatever the block asks for, and the mounts reserve nothing for it. */
+  type ChartFurniture = "full" | "none";
+
   type ChartGridlineStyle = "hair" | "dashed" | "none";
 
   interface ChartGridlines {
@@ -1974,6 +2152,9 @@ declare module "@kookaburra/toolkit" {
   type ChartLegendChrome = "plain" | "chips";
 
   type ChartLegendPosition = "top" | "bottom" | "trailing";
+
+  /** "solid" is the flat stroke and the extruded 3D ribbon; "trail" draws a line as light: a bright core in a soft halo with a glowing head (`trailMath.ts`). */
+  type ChartLineFinish = "solid" | "trail";
 
   /** A vertex on a line or area: one per category at its band centre, plus the vertices the axis trim inserts where a segment crosses a bound. */
   interface ChartLinePoint extends ChartPoint {
@@ -2058,6 +2239,10 @@ declare module "@kookaburra/toolkit" {
     fontEmphasis: ChartFontEmphasis;
     /** OKLCH lightness step per series index, away from the background (`chartSeriesTint`); 0 leaves the palette as resolved. */
     seriesLightnessStep: number;
+    /** Axis furniture in both renderers and every mount's fit; "none" outranks the block's own axis and label switches. */
+    furniture: ChartFurniture;
+    /** The stroke a line (and a flat area's edge) draws with. */
+    lineFinish: ChartLineFinish;
   }
 
   /** The flat facet of an appearance preset: every `Chart2DAppearance` fraction the 2D metrics resolve, plus the treatments only a preset asks for. A superset, so `chart2dMetrics` takes it as is. */
@@ -2095,6 +2280,8 @@ declare module "@kookaburra/toolkit" {
     floorShadow: boolean;
     /** Stack segments take the matte finish `chartStackSurface` returns, so a tall stack is not a column of highlights. */
     interiorFlatStacks: boolean;
+    /** How far a light trail's start recedes behind the plot plane its leading end lands on, as a fraction of the plot's short side; read only under `lineFinish: "trail"`. */
+    trailDepth: number;
   }
 
   /** A value-axis tick. Labels are NOT formatted here: callers run `value` through the chart formatter so axis labels, value labels and counters all agree. */
@@ -2277,6 +2464,19 @@ declare module "@kookaburra/toolkit" {
 
   /** The blur families a scene can pick (track-level, first authored key wins). Depth and split read scene depth through the CoC; the rest are screen-space. */
   type DofMode = "depth" | "tilt" | "soft" | "radial" | "directional" | "split";
+
+  /** A count run with its colour resolved to linear RGB. */
+  interface DotCountRun {
+    value: number;
+    rgb: readonly [number, number, number];
+  }
+
+  /** One frame of the field: per dot `dots` holds (x, y, radius, alpha) and `tints` (linear r, g, b, weight). */
+  interface DotFieldFrame {
+    count: number;
+    dots: Float32Array;
+    tints: Float32Array;
+  }
 
   /** The easing families exposed to the UI/scene documents (each as in / out / inOut). */
   const EASE_FAMILIES: readonly ["Sine", "Quad", "Cubic", "Quart", "Quint", "Expo", "Circ", "Back"];
@@ -3623,6 +3823,13 @@ declare module "@kookaburra/toolkit" {
 
   /** Website scene content: field-level parsing, secure URL normalisation, capture freshness and shared frame geometry. The live native view and deterministic WebGL poster both consume this pure contract. */
   type SceneWebsiteViewportPreset = "desktop" | "tablet" | "mobile" | "custom";
+
+  /** A line drawn as a light trail instead of a ribbon: its halo half width and depth travel in chart units, and the stage it glows (or inks) against. */
+  interface Series3DTrail {
+    reach: number;
+    travel: number;
+    background: string;
+  }
 
   /** The device pose the silhouette is built from: everything the inner animated group applies, so a float lifts the shadow off the floor and a turntable spin narrows it. */
   interface ShadowPose {

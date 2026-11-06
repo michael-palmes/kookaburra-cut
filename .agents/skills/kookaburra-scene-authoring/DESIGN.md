@@ -97,7 +97,12 @@ unit is about 261 px. The safe inset is 0.249 units (65 px).
 - Two families at most (the theme's headline and body). Contrast by weight and size,
   not by a third font.
 - Tighten long titles with `textStyle.<key>LineHeight` 1.05 to 1.15.
-- Numbers: big, single, with the unit smaller beside or below.
+- Numbers: big, single, with the unit smaller beside or below. A stat that lives in its
+  icon takes a shaped emphasis: `"Up to *24 hours* of battery"` with
+  `textStyle.<key>Emphasis: "accent battery"`.
+- Ideas with no screen to show (a price, a fund, a protocol): let one `DotField` carry
+  the numbers (a waffle that greys as a counter rolls, a window clearing for the hero
+  figure, dots merging into a `fill`ed tile) rather than a slide of figures.
 
 ## Colour
 

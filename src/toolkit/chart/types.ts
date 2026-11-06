@@ -348,6 +348,12 @@ export type ChartLegendChrome = "plain" | "chips";
 /** Which theme face chart numerals and labels take. */
 export type ChartFontEmphasis = "body" | "headline";
 
+/** "none" draws the marks alone (no axes, gridlines, tick or category labels, axis names, legend or value labels), whatever the block asks for, and the mounts reserve nothing for it. */
+export type ChartFurniture = "full" | "none";
+
+/** "solid" is the flat stroke and the extruded 3D ribbon; "trail" draws a line as light: a bright core in a soft halo with a glowing head (`trailMath.ts`). */
+export type ChartLineFinish = "solid" | "trail";
+
 /** The flat facet of an appearance preset: every `Chart2DAppearance` fraction the 2D metrics resolve, plus the treatments only a preset asks for. A superset, so `chart2dMetrics` takes it as is. */
 export interface ChartStyleSurface2D extends Chart2DAppearance {
   /** Value labels sit in a filled pill rather than floating over the mark. */
@@ -383,6 +389,8 @@ export interface ChartStyleSurface3D {
   floorShadow: boolean;
   /** Stack segments take the matte finish `chartStackSurface` returns, so a tall stack is not a column of highlights. */
   interiorFlatStacks: boolean;
+  /** How far a light trail's start recedes behind the plot plane its leading end lands on, as a fraction of the plot's short side; read only under `lineFinish: "trail"`. */
+  trailDepth: number;
 }
 
 /** The resolved appearance BOTH renderers consume: one flat facet, one lit facet, and the treatments that cross both. `resolveChartStyle` is its only maker, and nothing downstream of it reads `style.preset`. */
@@ -401,6 +409,10 @@ export interface ChartStyleSurface {
   fontEmphasis: ChartFontEmphasis;
   /** OKLCH lightness step per series index, away from the background (`chartSeriesTint`); 0 leaves the palette as resolved. */
   seriesLightnessStep: number;
+  /** Axis furniture in both renderers and every mount's fit; "none" outranks the block's own axis and label switches. */
+  furniture: ChartFurniture;
+  /** The stroke a line (and a flat area's edge) draws with. */
+  lineFinish: ChartLineFinish;
 }
 
 /** What every chart renderer takes, 2D and 3D alike: the resolved block, its computed layout, one colour per series (one per CATEGORY for pie), the plot area in WORLD units, and the optional build state. */

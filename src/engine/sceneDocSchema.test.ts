@@ -226,13 +226,24 @@ describe("parseSceneDoc", () => {
     warn.mockRestore();
   });
 
-  it("parses textStyle emphasis as <colour> or <colour>@<weight>, dropping the rest", () => {
+  it("parses textStyle emphasis as <colour> or <colour>@<weight>, then an optional shape, dropping the rest", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const good = parseSceneDoc(
-      { version: 1, textStyle: { titleEmphasis: "accent@700", subtitleEmphasis: " #ff8800 " } },
+      {
+        version: 1,
+        textStyle: {
+          titleEmphasis: "accent@700",
+          subtitleEmphasis: " #ff8800 ",
+          statEmphasis: "text@600 battery",
+        },
+      },
       "test",
     );
-    expect(good?.textStyle).toEqual({ titleEmphasis: "accent@700", subtitleEmphasis: "#ff8800" });
+    expect(good?.textStyle).toEqual({
+      titleEmphasis: "accent@700",
+      subtitleEmphasis: "#ff8800",
+      statEmphasis: "text@600 battery",
+    });
     const bad = parseSceneDoc({ version: 1, textStyle: { titleEmphasis: "bold" } }, "test");
     expect(bad?.textStyle).toBeUndefined();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("textStyle.titleEmphasis"));

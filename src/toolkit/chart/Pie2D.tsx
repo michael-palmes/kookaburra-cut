@@ -6,6 +6,7 @@ import { useTheme } from "../../theme";
 import {
   CHART_2D_ORDER,
   CHART_2D_Z_STEP,
+  type Chart2DDrawLook,
   type Chart2DMetrics,
   type ChartValuePill,
   contrastPick,
@@ -24,7 +25,7 @@ import { formatChartValue } from "./format";
 import { chartColourAt } from "./palette";
 import { revealAt } from "./reveal";
 import { type ChartRevealSource, chartRevealFn } from "./revealSource";
-import type { ChartLayout, ChartPieSlice, ChartStyleSurface2D, ChartValueLabels } from "./types";
+import type { ChartLayout, ChartPieSlice, ChartValueLabels } from "./types";
 
 /** Label radius as a fraction of the outer radius, by where the author wants the value. */
 const LABEL_RADIUS = { above: 1.12, inside: 0.66, below: 1.12 } as const;
@@ -35,7 +36,7 @@ export interface Pie2DProps {
   layout: ChartLayout;
   colours: string[];
   metrics: Chart2DMetrics;
-  look: ChartStyleSurface2D;
+  look: Chart2DDrawLook;
   labels: ChartValueLabels;
   /** The chip behind every value label (the preset's pill or the block's background); null draws them bare. */
   pill: ChartValuePill | null;
@@ -132,7 +133,8 @@ export function Pie2D(props: Pie2DProps) {
           </mesh>
         );
       })}
-      {layout.category.labels &&
+      {look.furniture !== "none" &&
+        layout.category.labels &&
         slices.map((slice) => (
           <SliceLabel
             key={slice.categoryIndex}

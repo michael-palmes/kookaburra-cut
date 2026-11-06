@@ -28,8 +28,8 @@ SUPPORTED_ASSET_EXTS = {
 AUDIO_EXTS = {"mp3", "wav", "m4a", "aac", "flac", "ogg"}
 TEXT_STYLE_SUFFIXES = ("Color", "Font", "Size", "OffsetX", "OffsetY", "LineHeight", "RotationDeg", "Emphasis")
 HEX_RE = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
-# textStyle.<key>Emphasis: "<colour>" or "<colour>@<weight>" (toolkit/text/emphasis.ts).
-EMPHASIS_RE = re.compile(r"^(text|muted|accent|#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6})(?:@(\d{1,4}))?$")
+# textStyle.<key>Emphasis: "<colour>" or "<colour>@<weight>", optionally then "pill" or "battery" (toolkit/text/emphasis.ts).
+EMPHASIS_RE = re.compile(r"^(text|muted|accent|#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6})(?:@(\d{1,4}))?(?:\s+(pill|battery))?$")
 FALLBACK_BACKGROUND_TYPES = ["none", "color", "gradient", "image", "video", "scene3d", "shader"]
 BACKDROP_TYPES = ["none", "floor", "gradient", "image"]
 PATH_KEYS = {"src", "file", "poster"}
@@ -988,7 +988,7 @@ class Checker:
             elif suffix == "Emphasis":
                 m = EMPHASIS_RE.match(value.strip()) if isinstance(value, str) else None
                 if not m or (m.group(2) is not None and not 1 <= int(m.group(2)) <= 1000):
-                    rep.error(file, path, 'must be "<colour>" or "<colour>@<weight>", e.g. "accent@700" (the app drops it)')
+                    rep.error(file, path, 'must be "<colour>" or "<colour>@<weight>", optionally then "pill" or "battery", e.g. "accent@700" or "accent pill" (the app drops it)')
             elif not is_number(value):
                 rep.error(file, path, "must be a finite number")
 

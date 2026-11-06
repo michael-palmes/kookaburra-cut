@@ -5,7 +5,7 @@ import type { SceneDoc, SceneDocChart } from "../../engine/sceneDocSchema";
 import { builtinThemes } from "../../theme/registry";
 import { buildChartRevealSampler, CHART_ENTER_LIFT, type ChartRevealDims } from "./animation";
 import { chart3dBelowStack } from "./axes3d";
-import { chart2dInsets } from "./chart2dMath";
+import { chart2dInsets, chart2dLook } from "./chart2dMath";
 import { computeChartLayout } from "./layout";
 import {
   CHART_3D_PLOT_HEIGHT,
@@ -29,6 +29,7 @@ import {
 } from "./mount";
 import { CHART_PALETTE_SCHEMES } from "./paletteSchemes";
 import { chart3dSpace } from "./space3d";
+import { resolveChartStyle } from "./stylePresets";
 import type { ChartLayout } from "./types";
 
 const theme = builtinThemes["kookaburra-default"];
@@ -438,6 +439,49 @@ describe("fitChart3d", () => {
     const flat = fitChart3d({ ...style, rotation: [0, 0] }, available);
     const tilted = fitChart3d({ ...style, rotation: [35, -35] }, available);
     expect(tilted.scale).toBeLessThan(flat.scale);
+  });
+});
+
+describe("furniture none", () => {
+  const available = { x: 0.2, y: -0.1, width: 7.3, height: 4.1 };
+  const bare = chart2dLook(resolveChartStyle("lightTrail", columns().style, theme));
+  const furniture = { below: 0.4, top: 0.2 };
+  const tilted = { ...columns().style, rotation: [18.5, -18.1] as [number, number] };
+
+  it("hands a flat chart its whole rect, centred", () => {
+    const chart = columns();
+    const fit = fitChart2d(chart, layoutOf(chart), available, bare);
+    expect(fit.size).toEqual({ width: available.width, height: available.height });
+    expect(fit.centre).toEqual([available.x, available.y]);
+  });
+
+  it("builds a 3D plot at the whole rect, with no label allowance on any side", () => {
+    const fit = fitChart3d(columns().style, available, furniture, { bare: true });
+    expect(fit.size).toEqual({ width: available.width, height: available.height });
+    expect(fit.below).toBe(0);
+    expect(fit.top).toBe(0);
+    expect(fit.scale).toBe(1);
+    expect(chartHeroPose(fit, 1, available).y).toBeCloseTo(available.y, 12);
+  });
+
+  it("reserves a trail's depth only where a tilt turns it into the frame", () => {
+    const flat = columns().style;
+    expect(fitChart3d(flat, available, furniture, { depthReach: 0.5 }).scale).toBe(
+      fitChart3d(flat, available, furniture).scale,
+    );
+    expect(fitChart3d(tilted, available, furniture, { depthReach: 0.5 }).scale).toBeLessThan(
+      fitChart3d(tilted, available, furniture).scale,
+    );
+  });
+
+  it("is the furnished fit exactly without options, or with options that change nothing", () => {
+    for (const style of [columns().style, tilted]) {
+      const plain = fitChart3d(style, available, furniture);
+      expect(fitChart3d(style, available, furniture, {})).toEqual(plain);
+      expect(fitChart3d(style, available, furniture, { bare: false, depthReach: 0 })).toEqual(
+        plain,
+      );
+    }
   });
 });
 

@@ -233,23 +233,37 @@ export interface Chart3DFit {
   top: number;
 }
 
-/** The tilted 3D plot: built at the available size, then scaled so its rotated bounding box (plot plus a symmetric furniture allowance, plus the extrusion depth) fits the frame again. */
+/** What a furniture-free chart and a deep light trail change in the 3D fit; absent is the furnished fit exactly. */
+export interface Chart3DFitOptions {
+  /** Furniture "none": the plot builds at the whole rect, with no label allowance on any side. */
+  bare?: boolean;
+  /** How far the marks reach in z either side of the plot plane, as a fraction of the plot's short side, where that runs deeper than the extrusion (a light trail's travel). */
+  depthReach?: number;
+}
+
+/** The tilted 3D plot: built at the available size, then scaled so its rotated bounding box (plot plus a symmetric furniture allowance, plus the extrusion depth or a trail's reach) fits the frame again. */
 export function fitChart3d(
   style: ChartStyle,
   available: ChartRect,
   furniture?: { below: number; top: number },
+  options?: Chart3DFitOptions,
 ): Chart3DFit {
+  const bare = options?.bare === true;
   const size: ChartSize = {
     width: available.width,
-    height: available.height * CHART_3D_PLOT_HEIGHT,
+    height: available.height * (bare ? 1 : CHART_3D_PLOT_HEIGHT),
   };
   const space = chart3dSpace(style.depth, size.width, size.height);
-  const margin = CHART_3D_FURNITURE * space.unit;
-  const below = furniture?.below ?? margin;
-  const top = furniture?.top ?? margin;
+  const margin = bare ? 0 : CHART_3D_FURNITURE * space.unit;
+  const below = bare ? 0 : (furniture?.below ?? margin);
+  const top = bare ? 0 : (furniture?.top ?? margin);
   const hx = size.width / 2 + margin;
   const hy = size.height / 2;
-  const hz = space.halfDepth;
+  const reach = options?.depthReach;
+  const hz =
+    reach !== undefined && Number.isFinite(reach)
+      ? Math.max(space.halfDepth, reach * space.unit)
+      : space.halfDepth;
   const rx = style.rotation[0] * DEG2RAD;
   const ry = style.rotation[1] * DEG2RAD;
   const sx = Math.sin(rx);

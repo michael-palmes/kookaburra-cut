@@ -57,7 +57,7 @@ Keys are `<textKey><Suffix>`; a primitive must carry `textKey` (or be managed te
 | `OffsetX`, `OffsetY` | World-unit nudges from the layout position |
 | `LineHeight` | Multiple of font size, 0.8..2; absent is the font's own |
 | `RotationDeg` | Clockwise tilt about the anchor |
-| `Emphasis` | `*word*` styling: `"<colour>"` or `"<colour>@<weight>"` (token or hex, CSS weight), e.g. `"accent@700"`; absent is the accent one step bolder |
+| `Emphasis` | `*word*` styling: `"<colour>"` or `"<colour>@<weight>"` (token or hex, CSS weight), e.g. `"accent@700"`, optionally then a shape: `"accent pill"`, `"accent@600 battery"`; absent is the accent one step bolder |
 
 Also `iconSize`, `frameIconSize` and `chipSize` scale icons and chips. Layered
 screenshot text items use `ls-<itemId>` keys.
@@ -72,6 +72,14 @@ an SDF weight so every face works). Markdown's flanking rules decide what counts
 emphasis; emphasis never crosses a blank line. It works in every motion and look
 (`PromptBar` strips it and types the words plain). Emphasis is always on: to show a
 literal pair, add spaces or use `∗` (U+2217).
+
+A shape wraps each emphasised range in its own token: `"titleEmphasis": "accent pill"`
+traces a capsule round the words once the line has landed, then floods it while the
+words turn the background colour; `battery` does the same in a rounded body with a
+terminal, for a stat that lives in its icon (`"Up to *24 hours* of battery"`). Shaped
+words gain a space either side for the outline. `AnimatedHeadline`'s `emphasisAt`
+(scene ms) starts the trace on a beat instead. Keep it to one or two short tokens per
+line, on a line that holds still while the pill draws.
 
 ## Primitives
 

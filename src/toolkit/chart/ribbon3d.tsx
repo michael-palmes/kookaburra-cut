@@ -1,4 +1,4 @@
-/** 3D lines and areas: an extruded ribbon swept along the value curve, or the solid between that curve and its baseline (the zero line, or the stack layer below). The build channels are separate, exactly as in the flat renderer: `grow` rides each point up out of its baseline and `drop` displaces it and its fill boundary together (the solid rebuilds only when its coordinates actually move), while `draw` is a fragment X-clip against a uniform, so a draw-on never rebuilds geometry. Line and area families are always vertically oriented, so the category axis is x and the clip runs left to right. */
+/** 3D lines and areas: an extruded ribbon swept along the value curve (or, under the light trail finish, a camera-facing glowing strip receding in depth, `Trail.tsx`), or the solid between that curve and its baseline (the zero line, or the stack layer below). The build channels are separate, exactly as in the flat renderer: `grow` rides each point up out of its baseline and `drop` displaces it and its fill boundary together (the solid rebuilds only when its coordinates actually move), while `draw` is a fragment X-clip against a uniform, so a draw-on never rebuilds geometry. Line and area families are always vertically oriented, so the category axis is x and the clip runs left to right. */
 
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { Color } from "three";
@@ -10,7 +10,22 @@ import { revealAt } from "./reveal";
 import { type ChartRevealSource, chartRevealFn, chartSeriesReveal } from "./revealSource";
 import { type Chart3DSpace, chartWorldX, chartWorldY } from "./space3d";
 import { makeChartMaterial } from "./surface3d";
+import { ChartSeriesTrail } from "./Trail";
+import {
+  CHART_TRAIL_FEATHER,
+  CHART_TRAIL_RENDER_ORDER,
+  chartTrailRuns,
+  chartTrailTone,
+  chartTrailZ,
+} from "./trailMath";
 import type { ChartLayout, ChartPoint, ChartStyleSurface3D } from "./types";
+
+/** A line drawn as a light trail instead of a ribbon: its halo half width and depth travel in chart units, and the stage it glows (or inks) against. */
+export interface Series3DTrail {
+  reach: number;
+  travel: number;
+  background: string;
+}
 
 export interface Series3DProps {
   layout: ChartLayout;
@@ -23,6 +38,8 @@ export interface Series3DProps {
   opacity: number;
   shadows: boolean;
   finish: ChartStyleSurface3D;
+  /** Lines only: draw each run as a light trail; absent keeps the ribbon. */
+  trail?: Series3DTrail | null;
 }
 
 /** Line ribbon thickness as a fraction of the plot's short side. */
@@ -169,6 +186,7 @@ export function Series3D(props: Series3DProps) {
   const { layout, space, filled, colours, fallbackColour, reveal, opacity, shadows, finish } =
     props;
   const at = chartRevealFn(reveal);
+  const trail = filled ? null : (props.trail ?? null);
   return (
     <>
       {layout.series.flatMap((series) => {
@@ -176,9 +194,36 @@ export function Series3D(props: Series3DProps) {
         const grows = builds.map((b) => b.grow);
         const drops = builds.map((b) => b.drop);
         const points = revealedPoints(series.points, series.baseline, grows, drops);
+        const build = chartSeriesReveal(reveal, series.seriesIndex, layout.categoryCount);
+        if (trail) {
+          return [
+            <ChartSeriesTrail
+              key={`${series.seriesIndex}-trail`}
+              points={points}
+              runs={chartTrailRuns(series.points)}
+              place={(p) => [
+                chartWorldX(space, p.x),
+                chartWorldY(space, p.y),
+                chartTrailZ(p.x, trail.travel),
+              ]}
+              draw={build.draw}
+              pulseAt={(i) => builds[i]?.pulse ?? 0}
+              tone={chartTrailTone(
+                chartColourAt(colours, series.seriesIndex, fallbackColour),
+                trail.background,
+              )}
+              reach={trail.reach}
+              flat={false}
+              framePixels={0}
+              feather={trail.reach * CHART_TRAIL_FEATHER}
+              alpha={build.alpha * opacity}
+              order={{ strip: CHART_TRAIL_RENDER_ORDER, head: CHART_TRAIL_RENDER_ORDER + 1 }}
+              headLift={0}
+            />,
+          ];
+        }
         // The fill boundary rides the same build out of the same origin, so a trimmed edge arrives with the curve above it and a falling series still translates as one band.
         const baseline = revealedPoints(series.fillBaseline, series.baseline, grows, drops);
-        const build = chartSeriesReveal(reveal, series.seriesIndex, layout.categoryCount);
         // An area is one solid between the two clamped curves; a line sweeps a ribbon along each run the trim left standing.
         const spans: [number, number][] = filled
           ? [[0, points.length]]
