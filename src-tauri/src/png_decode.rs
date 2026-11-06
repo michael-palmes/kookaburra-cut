@@ -1,6 +1,6 @@
 //! Byte-exact PNG decoding for the stage worker: WebKit's `createImageBitmap` premultiplies and unmultiplies a PNG with alpha on the way in, so every semi-transparent texel lands off the file, while the window's `<img>` upload was the file's bytes. The worker sends a PNG's bytes here and gets straight RGBA8 back, no gamma or colour profile applied (what `UNPACK_COLORSPACE_CONVERSION_WEBGL = NONE` gave the window), 16-bit samples kept to their high byte.
 
-/// Decoded, 8 MP-class inputs stay well under this; a hostile scene cannot ask for more.
+/// RGBA8 out: 8 MP-class inputs stay well under this; a hostile scene cannot ask for more.
 const MAX_INPUT_BYTES: usize = 256 * 1024 * 1024;
 const MAX_OUTPUT_BYTES: usize = 1024 * 1024 * 1024;
 
@@ -11,6 +11,15 @@ pub(crate) fn decode_png_rgba(bytes: &[u8]) -> Result<(Vec<u8>, u32, u32), Strin
     let mut reader = decoder
         .read_info()
         .map_err(|e| format!("not a valid PNG: {e}"))?;
+    // The ceiling is on the RGBA8 output: a one-bit image grows thirty-two-fold on the way there.
+    let (width, height) = (reader.info().width, reader.info().height);
+    let fits = u64::from(width)
+        .checked_mul(u64::from(height))
+        .and_then(|value| value.checked_mul(4))
+        .is_some_and(|value| value <= MAX_OUTPUT_BYTES as u64);
+    if !fits {
+        return Err("PNG is too large to decode".into());
+    }
     let output_size = reader
         .output_buffer_size()
         .filter(|size| *size <= MAX_OUTPUT_BYTES)
@@ -124,5 +133,32 @@ mod tests {
     #[test]
     fn a_non_png_is_refused() {
         assert!(decode_png_rgba(b"\xff\xd8\xff\xe0 not a png").is_err());
+    }
+
+    /// A 31 KB one-bit image can claim a gigabyte of RGBA; it is refused on its header, before anything is allocated.
+    #[test]
+    fn an_image_past_the_rgba_ceiling_is_refused_on_its_header() {
+        fn crc(bytes: &[u8]) -> u32 {
+            let step = |c: u32| (c >> 1) ^ (0xEDB8_8320 & 0u32.wrapping_sub(c & 1));
+            !bytes.iter().fold(u32::MAX, |crc, &byte| {
+                (0..8).fold(crc ^ u32::from(byte), |c, _| step(c))
+            })
+        }
+        fn chunk(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
+            let mut out = (data.len() as u32).to_be_bytes().to_vec();
+            out.extend_from_slice(kind);
+            out.extend_from_slice(data);
+            out.extend_from_slice(&crc(&[kind.as_slice(), data].concat()).to_be_bytes());
+            out
+        }
+        let mut ihdr = Vec::new();
+        ihdr.extend_from_slice(&20_000u32.to_be_bytes());
+        ihdr.extend_from_slice(&20_000u32.to_be_bytes());
+        ihdr.extend_from_slice(&[1, 0, 0, 0, 0]);
+        let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
+        png.extend(chunk(b"IHDR", &ihdr));
+        png.extend(chunk(b"IDAT", &[0x78, 0x9c, 0x63, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01]));
+        png.extend(chunk(b"IEND", &[]));
+        assert_eq!(decode_png_rgba(&png).unwrap_err(), "PNG is too large to decode");
     }
 }
