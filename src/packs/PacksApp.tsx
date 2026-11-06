@@ -75,7 +75,7 @@ export function PacksApp() {
       )}
       {target.mode === "export" ? (
         managed?.disablePackExport ? (
-          <ExportLocked onClose={close} />
+          <ExportLocked />
         ) : (
           <ExportView onClose={close} />
         )
@@ -87,14 +87,11 @@ export function PacksApp() {
 }
 
 /** What the window shows if it opens in export mode on a Mac whose profile turns pack export off. */
-export function ExportLocked({ onClose }: { onClose: () => void }) {
+export function ExportLocked() {
   return (
     <div className="packs-export-locked" role="status">
       <p>Pack export is turned off by your organisation.</p>
       <ManagedLock detail="A configuration profile turns pack export off (DisablePackExport)." />
-      <button type="button" className="btn" onClick={onClose}>
-        Close
-      </button>
     </div>
   );
 }

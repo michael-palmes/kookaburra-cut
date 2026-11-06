@@ -205,8 +205,9 @@ backup. Everything else is backed up like any document: projects with their own
   progress for up to an hour and 2 GiB in all; `requests/.claimed/` the claimed
   requests; `apps/<pid>.json` and `app.json` heartbeats carry the executable
   path, workspace root, open project, playhead and the folders picked this
-  session; `cli.json` the headless CLI's location. Never created under
-  `DisableAgentKit`: `bridge_root` refuses first. Control: `bridge.rs`
+  session; `cli.json` the headless CLI's location. The app never creates it
+  under `DisableAgentKit` (`bridge_root` refuses first), though kb in a kit
+  stamped earlier can still write requests nobody answers. Control: `bridge.rs`
   (`bridge_root`, the caps at its head, `prune`).
 - **`~/Kookaburra Cut/_autorun/`**: terminal-triggered runs (`runs/<id>/` with
   `last-run.json`, `dev.log`, screenshots and preview batches), the gate cache
@@ -336,8 +337,9 @@ key, sends nothing to Anthropic itself and starts no Claude Code, and no shell
 but the updater's administrator install, so no credential passes through it and
 no window can type into a session. A profile forcing `DisableAgentKit` turns off
 everything below: no kit is stamped or healed (`stamp_claude_provisioning` in
-`workspace.rs`), the bridge never serves and `_bridge` is never created
-(`bridge_role`, `bridge_root`), and the handoff refuses (`open_in_claude`).
+`workspace.rs`), the bridge never serves and the app never creates `_bridge`
+(`bridge_role`, `bridge_root`), and the handoff refuses (`open_in_claude`). A kit
+stamped before the profile stays in its folder, and its kb still runs.
 
 - **The `claude://` handoff** (`claude_app.rs`): `open claude://code/new?folder=<project>&q=<prompt>`,
   the prompt capped at the Claude app's limit, opened only when LaunchServices

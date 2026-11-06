@@ -1256,8 +1256,8 @@ Several app instances can run on one machine (the packaged app, a dev build, acc
 bundles, autoruns). Each decides once at start whether it serves the bridge, in order:
 
 1. An autorun never serves, and neither does a Mac whose profile forces `DisableAgentKit`,
-   whatever `KOOKABURRA_BRIDGE` says; there `bridge_root` refuses, so `_bridge` is never
-   created and no heartbeat is written.
+   whatever `KOOKABURRA_BRIDGE` says; there `bridge_root` refuses, so the app never creates
+   `_bridge` and writes no heartbeat.
 2. `KOOKABURRA_BRIDGE=0` turns serving off; `KOOKABURRA_BRIDGE=1` turns it on (any other
    value is ignored with a warning).
 3. An overridden workspace root (`KOOKABURRA_WORKSPACE_ROOT`), a non-production bundle id
