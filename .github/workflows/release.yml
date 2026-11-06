@@ -475,7 +475,7 @@ jobs:
       - name: Check SECURITY.md names the Team ID the signatures carry
         run: |
           set -euo pipefail
-          published="$(grep -Eo 'TeamIdentifier=[A-Z0-9]+' SECURITY.md | sort -u)"
+          published="$(grep -Eo 'TeamIdentifier=[A-Z0-9]+' SECURITY.md | sort -u || true)"
           [ "$published" = "TeamIdentifier=${KOOKABURRA_TEAM_ID}" ] \
             || { echo "::error::SECURITY.md names '${published:-no Team ID}', the signatures carry TeamIdentifier=${KOOKABURRA_TEAM_ID}"; exit 1; }
 

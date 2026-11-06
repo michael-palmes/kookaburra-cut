@@ -87,8 +87,8 @@ attest() {
 bundle_args=()
 [[ -z "$BUNDLE" ]] || bundle_args=(--bundle "$BUNDLE")
 log "Build provenance: the DMG and build-info.txt${BUNDLE:+ (offline, from $BUNDLE)}"
-attest "$DMG" "${bundle_args[@]}"
-attest "$INFO" "${bundle_args[@]}"
+attest "$DMG" ${bundle_args[@]+"${bundle_args[@]}"}
+attest "$INFO" ${bundle_args[@]+"${bundle_args[@]}"}
 log "SBOM attestation on the DMG"
 attest "$DMG" --predicate-type https://cyclonedx.org/bom
 

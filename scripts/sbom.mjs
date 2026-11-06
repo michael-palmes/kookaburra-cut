@@ -64,8 +64,7 @@ function pins(text) {
   return out;
 }
 
-const bySortedRef = (a, b) =>
-  a["bom-ref"] < b["bom-ref"] ? -1 : a["bom-ref"] > b["bom-ref"] ? 1 : 0;
+const byKey = (key) => (a, b) => (a[key] < b[key] ? -1 : a[key] > b[key] ? 1 : 0);
 
 function npmComponents(tree, licenseList) {
   const licenseOf = new Map();
@@ -260,12 +259,12 @@ export function buildSbom({
     ...rust.components,
     ...sidecar.components,
     ...model.components,
-  ].sort(bySortedRef);
+  ].sort(byKey("bom-ref"));
   const refs = new Set(components.map((c) => c["bom-ref"]));
   if (refs.size !== components.length) throw new Error("duplicate component references");
   const dependencies = [...edges.entries()]
     .map(([ref, on]) => ({ ref, dependsOn: [...on].sort() }))
-    .sort(bySortedRef_);
+    .sort(byKey("ref"));
   return {
     bomFormat: "CycloneDX",
     specVersion: "1.5",
@@ -302,8 +301,6 @@ export function buildSbom({
     dependencies,
   };
 }
-
-const bySortedRef_ = (a, b) => (a.ref < b.ref ? -1 : a.ref > b.ref ? 1 : 0);
 
 export function render(sbom) {
   return `${JSON.stringify(sbom, null, 2)}\n`;

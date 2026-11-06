@@ -44,4 +44,5 @@ for f in "${FILES[@]}"; do
   [[ -f "$f" ]] || { echo "ERROR: missing $f" >&2; exit 1; }
 done
 shasum -a 256 "${FILES[@]}" > SHA256SUMS
-shasum -a 256 -c SHA256SUMS
+cat SHA256SUMS
+shasum -a 256 -c SHA256SUMS >/dev/null
