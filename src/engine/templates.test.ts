@@ -73,6 +73,12 @@ const LAUNCH_FILM_BAND: Band = { scenes: [8, 20], totalMs: [15_000, 60_000] };
 const V2_CATEGORY_BANDS: Record<string, Band> = Object.fromEntries(
   TEMPLATE_CATEGORIES.map(({ id }) => [id, LAUNCH_FILM_BAND]),
 );
+/** One-take films: a single long scene is the form, so they keep the runtime band only. */
+const ONE_TAKE_BAND: Band = { scenes: [1, 1], totalMs: LAUNCH_FILM_BAND.totalMs };
+const V2_BAND_EXCEPTIONS: Record<string, Band> = {
+  exhibition: ONE_TAKE_BAND,
+  "one-dot": ONE_TAKE_BAND,
+};
 /** Apple's window, armed by `storeLegal`. */
 const STORE_LEGAL_BAND: Band = { scenes: [4, 8], totalMs: [15_000, 30_000] };
 /** The documented floor: Blank is one headline scene and belongs to no category. */
@@ -208,7 +214,13 @@ function aspectsFor(entry: TemplateFolder): string[] {
 
 function bandFor(entry: TemplateFolder): Band {
   if (entry.id === BLANK_TEMPLATE_ID) return BLANK_BAND;
-  if (isV2(entry)) return V2_CATEGORY_BANDS[entry.manifest?.category ?? ""] ?? LAUNCH_FILM_BAND;
+  if (isV2(entry)) {
+    return (
+      V2_BAND_EXCEPTIONS[entry.id] ??
+      V2_CATEGORY_BANDS[entry.manifest?.category ?? ""] ??
+      LAUNCH_FILM_BAND
+    );
+  }
   if (entry.manifest?.storeLegal) return STORE_LEGAL_BAND;
   const raw = entry.raw as { category?: unknown } | undefined;
   const authored = typeof raw?.category === "string" ? raw.category : "";
