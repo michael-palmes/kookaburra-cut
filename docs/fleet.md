@@ -29,8 +29,9 @@ checked against Anthropic's documentation on 6 November 2026.
 
 ## Verify a release
 
-Download the DMG, `SHA256SUMS`, `build-info.txt`, the SBOM and `SECURITY.md`
-from the release page. Then:
+Download the DMG, `SHA256SUMS`, `build-info.txt`, the SBOM, the provenance
+bundle (`KookaburraCut-<version>.intoto.jsonl`) and `SECURITY.md` from the
+release page. Then:
 
 ```bash
 V=<version>
@@ -40,6 +41,10 @@ for f in "KookaburraCut-$V.dmg" build-info.txt; do
     --signer-workflow michael-palmes/kookaburra-cut/.github/workflows/release.yml \
     --source-ref "refs/tags/v$V" --deny-self-hosted-runners
 done
+gh attestation verify "KookaburraCut-$V.dmg" --bundle "KookaburraCut-$V.intoto.jsonl" \
+  --repo michael-palmes/kookaburra-cut \
+  --signer-workflow michael-palmes/kookaburra-cut/.github/workflows/release.yml \
+  --source-ref "refs/tags/v$V" --deny-self-hosted-runners        # offline, from the release's own bundle
 gh attestation verify "KookaburraCut-$V.dmg" --repo michael-palmes/kookaburra-cut \
   --predicate-type https://cyclonedx.org/bom                    # the SBOM attestation
 grep '^commit=' build-info.txt                                  # the same commit as the next line
@@ -64,10 +69,12 @@ git diff v<previous> v<version> -- SECURITY.md docs/mdm.md src-tauri/src/managed
 ```
 
 `scripts/verify-install.sh --version <version> --previous <previous>` runs
-all of the above from a checkout of the tag, including the `SECURITY.md` diff.
-`SHA256SUMS` alone catches a broken download; the attestations are the check
-that counts, since they tie the DMG, `build-info.txt` and the SBOM to this
-repository's release workflow at that tag, on GitHub's own runners
+all of the above from a checkout of the tag, including the `SECURITY.md` diff
+and a check of the updater archive against its published `.tar.gz.sig` and
+the key built into the app. `SHA256SUMS` alone catches a broken download; the
+attestations are the check that counts, since they tie the DMG,
+`build-info.txt` and the SBOM to this repository's release workflow at that
+tag, on GitHub's own runners
 ([SECURITY.md, "Release integrity"](../SECURITY.md#release-integrity)). None of
 it proves anyone reviewed the code ([Updates](#updates-in-app-or-mdm-delivery)).
 Pin Team ID `Q4B8N8ZKA2` in your application control and treat a change as an
@@ -176,7 +183,8 @@ Pressing Allow on a project means
 
 What is left: a WebKit or GPU driver bug reached through scene code, and the
 media parsers (ffmpeg, AVFoundation, `sips`, the font, glTF and PNG readers),
-which are bounded and tested on hostile files but not fuzzed
+which are bounded and tested on hostile files; fuzzing of the Rust parsers is
+in flight on the `test/fuzz-harness` branch at the time of writing
 ([SECURITY.md, "Not yet"](../SECURITY.md#not-yet)). Allow no longer runs code
 with the person's account, which it did on 0.21.1.
 

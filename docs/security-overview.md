@@ -143,9 +143,10 @@ The same steps as [privacy.md, "Uninstalling"](./privacy.md#uninstalling):
 ## Verify it yourself
 
 Every release's page carries the DMG, `SHA256SUMS`, `build-info.txt`, the
-SBOM and a copy of `SECURITY.md` at the tag
-([SECURITY.md, "Release integrity"](../SECURITY.md#release-integrity)). On a
-Mac with the app installed and the release's files downloaded:
+SBOM, the provenance bundle (`KookaburraCut-<version>.intoto.jsonl`), the
+updater archive's signature (`.tar.gz.sig`) and a copy of `SECURITY.md` at
+the tag ([SECURITY.md, "Release integrity"](../SECURITY.md#release-integrity)).
+On a Mac with the app installed and the release's files downloaded:
 
 ```bash
 V=<version>; P=<previous version>
@@ -155,6 +156,10 @@ for f in "KookaburraCut-$V.dmg" build-info.txt; do
     --signer-workflow michael-palmes/kookaburra-cut/.github/workflows/release.yml \
     --source-ref "refs/tags/v$V" --deny-self-hosted-runners
 done
+gh attestation verify "KookaburraCut-$V.dmg" --bundle "KookaburraCut-$V.intoto.jsonl" \
+  --repo michael-palmes/kookaburra-cut \
+  --signer-workflow michael-palmes/kookaburra-cut/.github/workflows/release.yml \
+  --source-ref "refs/tags/v$V" --deny-self-hosted-runners        # offline, from the release's own bundle
 gh attestation verify "KookaburraCut-$V.dmg" --repo michael-palmes/kookaburra-cut \
   --predicate-type https://cyclonedx.org/bom                    # the SBOM attestation
 grep '^commit=' build-info.txt                                  # the same commit as the next line
@@ -166,7 +171,8 @@ git diff "v$P" "v$V" -- SECURITY.md docs/mdm.md src-tauri/src/managed.rs   # wha
 ```
 
 `scripts/verify-install.sh --version "$V" --previous "$P"` runs the same
-checks from a checkout. The Team ID in every signature is `Q4B8N8ZKA2`,
+checks from a checkout, and checks the updater archive against its published
+signature and the key built into the app. The Team ID in every signature is `Q4B8N8ZKA2`,
 printed in each release's notes and in
 [SECURITY.md, "Verify an install"](../SECURITY.md#release-integrity).
 `SHA256SUMS` alone catches a broken download; the attestations are the check
@@ -221,9 +227,10 @@ Each line is one job or control in
    file in the signed app against the build job's own record
    (`scripts/verify-release.sh`).
 5. **Publish:** `SHA256SUMS`, GitHub build provenance attestations over the
-   DMG, zip, updater archive, `build-info.txt` and the SBOM, release notes built
-   from `CHANGELOG.md`, and a copy of `SECURITY.md` at the tag; a draft a person
-   publishes.
+   DMG, zip, updater archive, `build-info.txt` and the SBOM, with the
+   attestation's bundle and the updater archive's signature published as
+   release assets for offline checks, release notes built from `CHANGELOG.md`,
+   and a copy of `SECURITY.md` at the tag; a draft a person publishes.
 6. **The repository:** every pull request's head commit signed by a listed key;
    CodeQL over JavaScript and TypeScript, Rust, Actions and Python; `cargo deny`
    for advisories, licences, bans and sources and `pnpm audit` on every pull
@@ -297,9 +304,10 @@ place to check.
 | Third parties | GitHub for the update check and downloads; Anthropic through the person's own Claude Code; each only when a person acts. |
 | Security contact and response window | GitHub private vulnerability reporting; an acknowledgement within 14 days ([Reporting a vulnerability](#reporting-a-vulnerability)). |
 | Secure development | Every pull request head signed; CodeQL over four languages; `cargo deny` and `pnpm audit` on every pull request and weekly; dependency review with a severity floor; Dependabot; `unsafe` denied crate-wide and allowed per file with a SAFETY line on every block; hostile-input tests over packs, images, fonts and the agent's inputs; a leak check for workspace names; a high-effort code review before every pull request ([SECURITY.md, "Release integrity"](../SECURITY.md#release-integrity) and ["Process"](../SECURITY.md#process)). |
+| Signed releases | Yes. Developer ID signed with the hardened runtime and notarised by Apple; a GitHub build provenance attestation per release, with its bundle published as a release asset (`KookaburraCut-<version>.intoto.jsonl`) so it can be checked offline, and the updater archive's ed25519 signature (`.tar.gz.sig`) published beside it ([Verify it yourself](#verify-it-yourself)). |
 | Software bill of materials | Yes: a CycloneDX JSON per release (`KookaburraCut-<version>.cdx.json`) covering the Rust and npm dependencies, the ffmpeg, x264 and x265 sources and the beat model, attested; the binary also carries its Rust dependency list (`cargo auditable`) ([Verify it yourself](#verify-it-yourself)). |
 | Penetration test | None. The maintainer's own audit in November 2026 drove the changes from 0.22.0 on; no third-party test has been done. |
-| Fuzzing | Not yet: the parsers are bounded and tested on hostile fixtures, not fuzzed ([Not yet](#not-yet)). |
+| Fuzzing | In flight at the time of writing: a cargo-fuzz crate with targets over the pack reader, its manifest and signature, PNG decoding, font faces and the edit documents, run weekly, is on the `test/fuzz-harness` branch. Until it merges, the parsers are bounded and tested on hostile fixtures, not fuzzed ([Not yet](#not-yet)). |
 | Certifications | None: no SOC 2, ISO 27001 or similar. |
 | Sandboxing | Scene code runs in a Web Worker with no DOM, no IPC and no network; a live website runs in a child webview with no app capability; the app itself has the hardened runtime, no entitlements and no App Sandbox; the agent is bounded by rules and asks, not a sandbox ([SECURITY.md, "Scene code and the trust boundary"](../SECURITY.md#scene-code-and-the-trust-boundary)). |
 | Supported versions | Only the latest release receives security fixes ([SECURITY.md, "Supported versions"](../SECURITY.md#supported-versions)). |
