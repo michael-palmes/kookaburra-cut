@@ -72,8 +72,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   unsafe block says why it is sound.
 - CodeQL now scans the Python kit and scripts too, and `pnpm install` refuses a
   dependency that would run an install script until someone reviews it.
-- `SECURITY.md` records why the app isn't App Sandboxed, and what would change
-  that.
+- `SECURITY.md` records why the app isn't App Sandboxed, and `docs/decisions.md`
+  what would change that.
 
 ## [0.22.2] - 2026-11-05
 

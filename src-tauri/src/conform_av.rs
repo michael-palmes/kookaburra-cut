@@ -301,7 +301,7 @@ impl Iterator for Frames {
 }
 
 fn reader_error(reader: &AVAssetReader) -> String {
-    // SAFETY: a property read on a reader that has stopped.
+    // SAFETY: a property read, valid in any reader state.
     unsafe { reader.error() }.map_or_else(
         || "AVFoundation stopped reading the video".to_owned(),
         |e| {

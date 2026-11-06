@@ -786,12 +786,13 @@ builds it in separate jobs, each on a fresh runner.
   narrows to `security-events` and `id-token`). Every workflow
   pins actions to a commit SHA and sets `persist-credentials: false`.
   `codeql.yml` scans JavaScript/TypeScript, Rust, Actions and Python. `unsafe`
-  is denied crate-wide and allowed only per file or function, every block with
-  a one-line SAFETY comment (`[lints]` in `src-tauri/Cargo.toml`, which CI's
-  clippy enforces). pnpm runs no dependency's install script (`allowBuilds: {}`
-  in `pnpm-workspace.yaml`), and with `strictDepBuilds` a lock that adds one
-  fails `pnpm install --frozen-lockfile` until someone reviews it; no
-  dependency has one today, so the empty list changes nothing yet.
+  is denied crate-wide and allowed only per file or function, every block with a
+  one-line SAFETY comment (`[lints]` in `src-tauri/Cargo.toml`: every cargo
+  build refuses an unallowed block, and CI's clippy one without its comment).
+  pnpm runs no dependency's install script (`allowBuilds: {}` in
+  `pnpm-workspace.yaml`), and with `strictDepBuilds` a lock that adds one fails
+  `pnpm install --frozen-lockfile` until someone reviews it; no dependency has
+  one today, so the empty list changes nothing yet.
 - **Verify an install.** On the release page's files. `scripts/verify-install.sh`
   runs all of this on a downloaded release, plus the sidecars' signatures and a
   diff of this file against the previous release's, and downloads nothing:
