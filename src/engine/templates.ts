@@ -13,8 +13,11 @@ import { buildSceneTimeline, timelineTotalMs } from "./sceneTimeline";
 
 /** The template registry. A bundled project is a template iff it ships `projects/<slug>/template.json`, so spikes and preview labs self-exclude with no hand-maintained allowlist. The manifest carries only what cannot be derived: duration, scene count, aspects and the default theme come from the sibling `project.json`, which is the drift class this design exists to kill. Card art is globbed (not imported) so a template shipped before its previews degrades to a swatch instead of failing the build, the theme-preview precedent. Everything here is synchronous, so the picker has no metadata loading state. */
 
-/** Newest manifest schema this build understands (newer files are ignored with a warning). */
-export const TEMPLATE_MANIFEST_VERSION = 1;
+/** Newest manifest schema this build understands (newer files are ignored with a warning). Version 2 adds `bring`, `song`, `looks` and `preview.loop`. */
+export const TEMPLATE_MANIFEST_VERSION = 2;
+
+/** The fields only a version 2 manifest may carry. */
+const V2_FIELDS = ["bring", "song", "looks"] as const;
 
 /** Committed stills per template, in hover order. */
 export const TEMPLATE_PREVIEW_COUNT = 4;
@@ -25,17 +28,25 @@ export const TEMPLATE_PREVIEW_WIDTH = 640;
 /** Pinned first in every view, outside the category rail, and the picker's default selection. */
 export const BLANK_TEMPLATE_ID = "blank";
 
-/** The six shipped categories, in rail order. Explainers fold into `app-updates` for v1. */
+/** The shipped categories, in rail order. */
 export const TEMPLATE_CATEGORIES = [
-  { id: "app-updates", label: "App updates" },
-  { id: "product-launch", label: "Product launch" },
-  { id: "marketing-social", label: "Marketing & social" },
-  { id: "presentations", label: "Presentations" },
-  { id: "finance-crypto", label: "Finance & crypto" },
+  { id: "launch", label: "Launch" },
+  { id: "feature", label: "Feature" },
+  { id: "update", label: "Update" },
+  { id: "proof", label: "Proof" },
   { id: "ai-developer", label: "AI & developer" },
 ] as const;
 
 export type TemplateCategoryId = (typeof TEMPLATE_CATEGORIES)[number]["id"];
+
+/** Version 1 category ids, read as their successors so older user templates and packs still load. */
+export const TEMPLATE_CATEGORY_ALIASES: Readonly<Record<string, TemplateCategoryId>> = {
+  "app-updates": "update",
+  "product-launch": "launch",
+  "marketing-social": "launch",
+  presentations: "feature",
+  "finance-crypto": "proof",
+};
 
 export const TEMPLATE_PERSONAS = ["marketer", "co-founder", "pm", "developer", "finance"] as const;
 export type TemplatePersona = (typeof TEMPLATE_PERSONAS)[number];
@@ -91,6 +102,19 @@ export const TEMPLATE_USE_LABELS: Record<TemplateUse, string> = {
 /** A capture point: a scene index (that scene's middle) or an explicit scene-local time. */
 export type TemplatePreviewFrame = LibraryPreviewPoint;
 
+/** The film window a card's motion loop shows: a start inside one scene, running on across cuts. */
+export interface TemplatePreviewLoop {
+  scene: number;
+  atMs: number;
+  durationMs: number;
+}
+
+/** The song chip: the bundled track `project.json`'s `audio` plays, on its tempo grid. */
+export interface TemplateSong {
+  title: string;
+  bpm: number;
+}
+
 /** `projects/<slug>/template.json`. The folder name is the id, never restated here, and the file is never copied into a created project (`create_project` copies `scenes/` and `assets/` only). */
 export interface TemplateManifest {
   version: number;
@@ -105,9 +129,15 @@ export interface TemplateManifest {
   tier: TemplateTier;
   storeLegal?: boolean;
   uses: TemplateUse[];
-  /** Up to 3, shown on the selected card only. */
+  /** Up to 3, shown in the selected template's detail strip. */
   highlights?: string[];
-  preview: { poster: number; frames: TemplatePreviewFrame[] };
+  /** Version 2: what the user brings to the film, in the order it asks for them. */
+  bring?: string[];
+  /** Version 2: present exactly when `project.json` carries `audio`. */
+  song?: TemplateSong;
+  /** Version 2: theme ids tested with this template, default first (`project.json`'s `themeId`). */
+  looks?: string[];
+  preview: { poster: number; frames: TemplatePreviewFrame[]; loop?: TemplatePreviewLoop };
   /** Within-category sort; ties break on name. */
   order: number;
   status: TemplateStatus;
@@ -142,6 +172,7 @@ const KNOWN_FIELDS = new Set([
   "storeLegal",
   "uses",
   "highlights",
+  ...V2_FIELDS,
   "preview",
   "order",
   "status",
@@ -150,6 +181,10 @@ const KNOWN_FIELDS = new Set([
 ]);
 
 const CATEGORY_IDS: readonly string[] = TEMPLATE_CATEGORIES.map((c) => c.id);
+const CATEGORY_ALIASES = new Map(Object.entries(TEMPLATE_CATEGORY_ALIASES));
+
+/** The tempo range a song chip may claim, the one `sanitiseAudioMusic` allows a grid. */
+const SONG_BPM_RANGE = [30, 300] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -193,6 +228,80 @@ function enumArray<T extends string>(
   return out;
 }
 
+function unknownKeys(
+  value: Record<string, unknown>,
+  known: readonly string[],
+  path: string,
+  issues: TemplateManifestIssue[],
+): void {
+  for (const key of Object.keys(value)) {
+    if (!known.includes(key)) issues.push({ path: `${path}.${key}`, message: "unknown field" });
+  }
+}
+
+function previewLoop(
+  value: unknown,
+  issues: TemplateManifestIssue[],
+): TemplatePreviewLoop | undefined {
+  if (!isRecord(value)) {
+    issues.push({ path: "preview.loop", message: "must be { scene, atMs, durationMs }" });
+    return undefined;
+  }
+  unknownKeys(value, ["scene", "atMs", "durationMs"], "preview.loop", issues);
+  const { scene, atMs, durationMs } = value;
+  const sceneOk = isIndex(scene);
+  const startOk = typeof atMs === "number" && Number.isFinite(atMs) && atMs >= 0;
+  const lengthOk = typeof durationMs === "number" && Number.isFinite(durationMs) && durationMs > 0;
+  if (!sceneOk) issues.push({ path: "preview.loop.scene", message: "must be a scene index" });
+  if (!startOk) issues.push({ path: "preview.loop.atMs", message: "must be ms >= 0" });
+  if (!lengthOk) issues.push({ path: "preview.loop.durationMs", message: "must be ms > 0" });
+  return sceneOk && startOk && lengthOk ? { scene, atMs, durationMs } : undefined;
+}
+
+function songField(value: unknown, issues: TemplateManifestIssue[]): TemplateSong | undefined {
+  if (!isRecord(value)) {
+    issues.push({ path: "song", message: "must be { title, bpm }" });
+    return undefined;
+  }
+  unknownKeys(value, ["title", "bpm"], "song", issues);
+  const { title, bpm } = value;
+  const titleOk = typeof title === "string" && title.trim().length > 0;
+  const [slowest, fastest] = SONG_BPM_RANGE;
+  const bpmOk = typeof bpm === "number" && Number.isFinite(bpm) && bpm >= slowest && bpm <= fastest;
+  if (!titleOk) issues.push({ path: "song.title", message: "must be a non-empty string" });
+  if (!bpmOk) issues.push({ path: "song.bpm", message: `must be ${slowest} to ${fastest}` });
+  return titleOk && bpmOk ? { title, bpm } : undefined;
+}
+
+function lookIds(value: unknown, issues: TemplateManifestIssue[]): string[] {
+  if (value === undefined || (Array.isArray(value) && value.length === 0)) {
+    issues.push({ path: "looks", message: "must list at least one theme id" });
+    return [];
+  }
+  const looks = stringArray(value, "looks", issues) ?? [];
+  const seen = new Set<string>();
+  for (const id of looks) {
+    if (seen.has(id)) issues.push({ path: "looks", message: `repeats ${id}` });
+    seen.add(id);
+  }
+  return looks;
+}
+
+function categoryField(
+  value: unknown,
+  v2: boolean,
+  issues: TemplateManifestIssue[],
+): TemplateCategoryId | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value === "string" && CATEGORY_IDS.includes(value)) {
+    return value as TemplateCategoryId;
+  }
+  const alias = typeof value === "string" && !v2 ? CATEGORY_ALIASES.get(value) : undefined;
+  if (alias) return alias;
+  issues.push({ path: "category", message: `must be one of ${CATEGORY_IDS.join(", ")}` });
+  return undefined;
+}
+
 function previewFrames(value: unknown, issues: TemplateManifestIssue[]): TemplatePreviewFrame[] {
   if (!Array.isArray(value)) {
     issues.push({ path: "preview.frames", message: "must be an array" });
@@ -231,13 +340,22 @@ function validateManifest(raw: unknown): TemplateManifestResult {
     if (!KNOWN_FIELDS.has(key)) issues.push({ path: key, message: "unknown field" });
   }
 
-  if (typeof raw.version !== "number" || raw.version < 1) {
-    issues.push({ path: "version", message: "must be a number >= 1" });
+  if (typeof raw.version !== "number" || !Number.isInteger(raw.version) || raw.version < 1) {
+    issues.push({ path: "version", message: "must be a whole number >= 1" });
   } else if (raw.version > TEMPLATE_MANIFEST_VERSION) {
     issues.push({
       path: "version",
       message: `version ${raw.version} is newer than this Kookaburra Cut understands`,
     });
+  }
+  const v2 = typeof raw.version === "number" && raw.version >= 2;
+  if (!v2) {
+    for (const key of V2_FIELDS) {
+      if (raw[key] !== undefined) issues.push({ path: key, message: "needs version 2" });
+    }
+    if (isRecord(raw.preview) && raw.preview.loop !== undefined) {
+      issues.push({ path: "preview.loop", message: "needs version 2" });
+    }
   }
   if (typeof raw.name !== "string" || raw.name.trim().length === 0) {
     issues.push({ path: "name", message: "must be a non-empty string" });
@@ -245,9 +363,7 @@ function validateManifest(raw: unknown): TemplateManifestResult {
   if (typeof raw.tagline !== "string") {
     issues.push({ path: "tagline", message: "must be a string" });
   }
-  if (raw.category !== undefined && !CATEGORY_IDS.includes(raw.category as string)) {
-    issues.push({ path: "category", message: `must be one of ${CATEGORY_IDS.join(", ")}` });
-  }
+  const category = categoryField(raw.category, v2, issues);
   const tags = stringArray(raw.tags, "tags", issues) ?? [];
   const personas = enumArray(raw.personas, TEMPLATE_PERSONAS, "personas", issues) ?? [];
   if (!TEMPLATE_LEVELS.includes(raw.level as TemplateLevel)) {
@@ -264,6 +380,17 @@ function validateManifest(raw: unknown): TemplateManifestResult {
   if (highlights && highlights.length > 3) {
     issues.push({ path: "highlights", message: "holds at most 3 entries" });
   }
+  let bring: string[] | undefined;
+  let song: TemplateSong | undefined;
+  let looks: string[] | undefined;
+  if (v2) {
+    if (raw.bring === undefined) {
+      issues.push({ path: "bring", message: "must be an array of strings" });
+    }
+    bring = stringArray(raw.bring, "bring", issues) ?? [];
+    song = raw.song === undefined ? undefined : songField(raw.song, issues);
+    looks = lookIds(raw.looks, issues);
+  }
   let preview: TemplateManifest["preview"] = { poster: 0, frames: [] };
   if (!isRecord(raw.preview)) {
     issues.push({ path: "preview", message: "must be an object" });
@@ -275,6 +402,10 @@ function validateManifest(raw: unknown): TemplateManifestResult {
       poster: isIndex(raw.preview.poster) ? raw.preview.poster : 0,
       frames: previewFrames(raw.preview.frames, issues),
     };
+    if (v2 && raw.preview.loop !== undefined) {
+      const loop = previewLoop(raw.preview.loop, issues);
+      if (loop) preview.loop = loop;
+    }
   }
   if (typeof raw.order !== "number" || !Number.isFinite(raw.order)) {
     issues.push({ path: "order", message: "must be a finite number" });
@@ -306,9 +437,12 @@ function validateManifest(raw: unknown): TemplateManifestResult {
     order: raw.order as number,
     status: raw.status as TemplateStatus,
   };
-  if (raw.category !== undefined) manifest.category = raw.category as TemplateCategoryId;
+  if (category !== undefined) manifest.category = category;
   if (raw.storeLegal !== undefined) manifest.storeLegal = raw.storeLegal as boolean;
   if (highlights) manifest.highlights = highlights;
+  if (bring) manifest.bring = bring;
+  if (song) manifest.song = song;
+  if (looks) manifest.looks = looks;
   if (raw.minAppVersion !== undefined) manifest.minAppVersion = raw.minAppVersion as string;
   if (raw.source !== undefined) manifest.source = raw.source as TemplateSource;
   return { success: true, data: manifest };
@@ -351,6 +485,16 @@ const posterGlob = import.meta.glob<string>("/projects/*/poster.{png,jpg}", {
   import: "default",
   eager: true,
 });
+const loopGlob = import.meta.glob<string>("../assets/template-previews/*-loop.mp4", {
+  query: "?url",
+  import: "default",
+  eager: true,
+});
+
+/** The committed six-second card loop for a bundled template, or null (the card keeps its stills). */
+export function bundledTemplateLoop(templateId: string): string | null {
+  return loopGlob[`../assets/template-previews/${templateId}-loop.mp4`] ?? null;
+}
 
 /** The committed preview URLs for a template, all 4 in hover order, or null. */
 export function bundledTemplatePreviews(templateId: string): (string | null)[] | null {
@@ -424,6 +568,11 @@ export interface TemplateEntry {
   storeLegal: boolean;
   uses: readonly TemplateUse[];
   highlights: readonly string[];
+  /** What the user brings; empty before version 2. */
+  bring: readonly string[];
+  song: TemplateSong | null;
+  /** Tested theme ids, default first; empty leaves the Look step on its own default. */
+  looks: readonly string[];
   order: number;
   status: TemplateStatus;
   sceneCount: number;
@@ -434,6 +583,8 @@ export interface TemplateEntry {
   themeId: string;
   /** The 4 committed stills in hover order, or null while the art doesn't exist yet. */
   previews: (string | null)[] | null;
+  /** The card's motion loop, or null. */
+  loop: string | null;
   /** Lowercased search index: name, tagline, tags, personas, category label, uses. */
   haystack: string;
 }
@@ -449,16 +600,32 @@ export function formatTemplateDuration(durationMs: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-function projectDurationMs(project: ProjectManifest): number {
+function projectSlots(project: ProjectManifest) {
   const transitions = outgoingSceneTransitions(project);
-  const slots = buildSceneTimeline(
-    project.scenes.map((scene, i) => ({
+  return buildSceneTimeline(
+    (project.scenes ?? []).map((scene, i) => ({
       id: scene.file,
       durationMs: scene.durationMs,
       transition: transitions[i],
     })),
   );
-  return timelineTotalMs(slots);
+}
+
+function projectDurationMs(project: ProjectManifest): number {
+  return timelineTotalMs(projectSlots(project));
+}
+
+/** A loop window in film time, or null when it starts outside its scene or runs past the end. */
+export function templateLoopRange(
+  project: ProjectManifest,
+  loop: TemplatePreviewLoop,
+): { startMs: number; endMs: number } | null {
+  const slots = projectSlots(project);
+  const slot = slots[loop.scene];
+  if (!slot || loop.atMs >= slot.durationMs) return null;
+  const startMs = slot.startMs + loop.atMs;
+  const endMs = startMs + loop.durationMs;
+  return endMs <= timelineTotalMs(slots) ? { startMs, endMs } : null;
 }
 
 /** The editor project id for a catalogue id: `blank` → `template:blank`, `ws:mine` → `ws-template:mine`. */
@@ -473,6 +640,7 @@ export interface TemplateEntryOverrides {
   sceneCount?: number;
   durationMs?: number;
   previews?: (string | null)[] | null;
+  loop?: string | null;
 }
 
 function toEntry(
@@ -503,6 +671,9 @@ function toEntry(
     storeLegal: manifest.storeLegal === true,
     uses: manifest.uses,
     highlights: manifest.highlights ?? [],
+    bring: manifest.bring ?? [],
+    song: manifest.song ?? null,
+    looks: manifest.looks ?? [],
     order: manifest.order,
     status: manifest.status,
     sceneCount: overrides.sceneCount ?? (project.scenes ?? []).length,
@@ -511,6 +682,7 @@ function toEntry(
     primaryAspect: aspects[0] ?? "16:9",
     themeId: project.themeId,
     previews: overrides.previews !== undefined ? overrides.previews : bundledTemplatePreviews(slug),
+    loop: overrides.loop !== undefined ? overrides.loop : bundledTemplateLoop(slug),
     haystack: [
       manifest.name,
       manifest.tagline,
@@ -597,6 +769,7 @@ function toUserEntry(info: LibraryItemInfo): TemplateEntry | null {
     sceneCount: info.sceneCount,
     durationMs: info.durationMs,
     previews: userTemplatePreviews(info),
+    loop: null,
   });
 }
 

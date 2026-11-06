@@ -10,6 +10,7 @@ import {
 import { nameCollision, nameCollisionWarning } from "../engine/nameCollision";
 import {
   BLANK_TEMPLATE_ID,
+  formatTemplateDuration,
   listAllTemplates,
   refreshUserTemplates,
   searchTemplates,
@@ -27,14 +28,16 @@ import {
   THEME_CATEGORY_ICONS,
 } from "./libraryIcons";
 import {
+  availableLooks,
   CLAUDE_START_ID,
   claudeStartMatches,
-  DEFAULT_THEME_ID,
   defaultProjectName,
   gridColumnCount,
   initialLookThemeId,
   type LookFilter,
   lookChoices,
+  lookSelection,
+  type ShownLook,
   selectionAfterFilter,
   startGridStep,
 } from "./newProjectFlow";
@@ -68,6 +71,28 @@ const SEARCH_ICON = railIcon(
     <path d="m16 16 4 4" />
   </>,
 );
+
+const SONG_ICON = railIcon(
+  <>
+    <path d="M9 17.5V6l10-2v11.5" />
+    <circle cx="6.5" cy="17.5" r="2.5" />
+    <circle cx="16.5" cy="15.5" r="2.5" />
+  </>,
+);
+
+const BRING_ICON = railIcon(
+  <>
+    <path d="M4 13.5h4.5l1.5 2.5h4l1.5-2.5H20" />
+    <path d="M5.5 7.5L4 13.5V18a1.5 1.5 0 0 0 1.5 1.5h13A1.5 1.5 0 0 0 20 18v-4.5l-1.5-6" />
+    <path d="M12 3.5v7m0 0l-2.5-2.5M12 10.5l2.5-2.5" />
+  </>,
+);
+
+const HIGHLIGHT_ICON = railIcon(
+  <path d="M12 4l1.7 4.3L18 10l-4.3 1.7L12 16l-1.7-4.3L6 10l4.3-1.7L12 4z" />,
+);
+
+const NO_LOOKS: readonly string[] = [];
 
 const CHECK_ICON = (
   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
@@ -225,6 +250,7 @@ function startCards(
 
 /** Step one: Create with Claude, recommended and first, then the template catalogue behind category chips and a search. The blank template sits behind the Claude card, so it is not listed on its own. */
 function StartGallery({
+  entries,
   value,
   onChange,
   chip,
@@ -233,6 +259,7 @@ function StartGallery({
   onQueryChange,
   claudeStart,
 }: {
+  entries: readonly TemplateEntry[];
   value: string;
   onChange: (id: string) => void;
   /** Chip and search are owned by the dialog, so Back returns to the same view and Escape can clear the search first. */
@@ -242,7 +269,6 @@ function StartGallery({
   onQueryChange: (query: string) => void;
   claudeStart: boolean;
 }) {
-  const entries = useSyncExternalStore(subscribeTemplates, listAllTemplates);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -308,7 +334,7 @@ function StartGallery({
   };
 
   return (
-    <div className="new-project-step">
+    <div className="new-project-step new-project-start">
       {libraryError && (
         <p className="modal-error" role="alert">
           {libraryError}
@@ -371,19 +397,94 @@ function StartGallery({
   );
 }
 
-/** Step two: four across, the user's own themes first, narrowed by All / Yours / Light / Dark and a search. */
+function DetailList({
+  icon,
+  label,
+  items,
+}: {
+  icon: ReactElement;
+  label: string;
+  items: readonly string[];
+}) {
+  return (
+    <div className="new-project-details-row" title={items.join(" · ")}>
+      {icon}
+      <span className="new-project-details-label">{label}</span>
+      <ul className="new-project-details-items">
+        {[...new Set(items)].map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** What the selection will make, under the grid at a fixed height so the wizard never resizes: the song, what to bring and the highlights. */
+function StartDetails({ entry, claude }: { entry: TemplateEntry | undefined; claude: boolean }) {
+  if (claude) {
+    return (
+      <section className="new-project-details" aria-label="Create with Claude">
+        <div className="new-project-details-head">
+          <span className="new-project-details-name">
+            <ClaudeSpark />
+            Create with Claude
+          </span>
+          <span className="new-project-details-tagline">
+            Describe the video and Claude builds it, on the look you pick next.
+          </span>
+        </div>
+      </section>
+    );
+  }
+  if (!entry) return <section className="new-project-details" aria-hidden="true" />;
+  return (
+    <section className="new-project-details" aria-label={`${entry.name} details`}>
+      <div className="new-project-details-head">
+        <span className="new-project-details-name">{entry.name}</span>
+        {entry.tagline && (
+          <span className="new-project-details-tagline" title={entry.tagline}>
+            {entry.tagline}
+          </span>
+        )}
+        <span className="new-project-details-meta">
+          {`${entry.sceneCount} ${entry.sceneCount === 1 ? "scene" : "scenes"} · ${formatTemplateDuration(entry.durationMs)}`}
+        </span>
+        {entry.song && (
+          <span className="template-chip song">
+            {SONG_ICON}
+            {`${entry.song.title} · ${entry.song.bpm} BPM`}
+          </span>
+        )}
+      </div>
+      {entry.bring.length > 0 && (
+        <DetailList icon={BRING_ICON} label="You'll need" items={entry.bring} />
+      )}
+      {entry.highlights.length > 0 && (
+        <DetailList icon={HIGHLIGHT_ICON} label="Highlights" items={entry.highlights} />
+      )}
+    </section>
+  );
+}
+
+/** Step two: four across, the template's looks first (the first preselected), then the user's own themes, narrowed by All / Yours / Light / Dark and a search. */
 function LookStep({
   choices,
+  looks,
   value,
-  onChange,
+  onPick,
+  onAutoSelect,
   filter,
   onFilterChange,
   query,
   onQueryChange,
 }: {
   choices: readonly ThemeChoice[];
+  looks: readonly string[];
   value: string;
-  onChange: (id: string) => void;
+  /** The user chose a look. */
+  onPick: (id: string) => void;
+  /** A filter chip moved the selection off a hidden card, which is not a pick. */
+  onAutoSelect: (id: string) => void;
   filter: LookFilter;
   onFilterChange: (filter: LookFilter) => void;
   query: string;
@@ -392,18 +493,20 @@ function LookStep({
   const searchRef = useRef<HTMLInputElement>(null);
   useSlashFocus(searchRef);
   const hasOwn = choices.some(({ source }) => source === "workspace");
-  const listed = (next: LookFilter) => lookChoices(filterThemeChoices(choices, "all", query), next);
+  const listed = (next: LookFilter) =>
+    lookChoices(filterThemeChoices(choices, "all", query), next, looks);
   const visible = useMemo(
-    () => lookChoices(filterThemeChoices(choices, "all", query), filter),
-    [choices, filter, query],
+    () => lookChoices(filterThemeChoices(choices, "all", query), filter, looks),
+    [choices, filter, query, looks],
   );
+  const suggested = useMemo(() => availableLooks(choices, looks), [choices, looks]);
   const pickFilter = (next: LookFilter) => {
     onFilterChange(next);
     const id = selectionAfterFilter(
       value,
       listed(next).map((choice) => choice.id),
     );
-    if (id !== value) onChange(id);
+    if (id !== value) onAutoSelect(id);
   };
   return (
     <div className="new-project-step new-project-look">
@@ -429,7 +532,13 @@ function LookStep({
           {query ? `No themes match “${query}”.` : "No themes here yet."}
         </p>
       ) : (
-        <ThemeGrid choices={visible} value={value} onChange={onChange} markOwn />
+        <ThemeGrid
+          choices={visible}
+          value={value}
+          onChange={onPick}
+          markOwn
+          suggestedIds={suggested}
+        />
       )}
     </div>
   );
@@ -583,6 +692,7 @@ export function NewProjectDialog({
   onCancel: () => void;
 }) {
   const [step, setStep] = useState<Step>("start");
+  const entries = useSyncExternalStore(subscribeTemplates, listAllTemplates);
   const [startId, setStartId] = useState(
     !initialTemplateId || initialTemplateId === BLANK_TEMPLATE_ID
       ? claudeStart
@@ -592,10 +702,23 @@ export function NewProjectDialog({
   );
   const [templateChip, setTemplateChip] = useState<StartChip>(null);
   const [templateQuery, setTemplateQuery] = useState("");
-  const [themeId, setThemeId] = useState(DEFAULT_THEME_ID);
-  // Once the Look step has shown a selection, a late listing must never swap it.
-  const themeSettled = useRef(false);
+  const templateId = startId === CLAUDE_START_ID ? BLANK_TEMPLATE_ID : startId;
+  const template = useMemo(
+    () => entries.find((entry) => entry.id === templateId),
+    [entries, templateId],
+  );
   const [themes, setThemes] = useState<ThemeChoice[]>(builtinThemeChoices);
+  const looks = template?.looks ?? NO_LOOKS;
+  const looksKey = JSON.stringify(looks);
+  // The look follows the template until the user picks one; once shown, a late listing never swaps it.
+  const [pickedThemeId, setPickedThemeId] = useState<string | null>(null);
+  const [shownLook, setShownLook] = useState<ShownLook | null>(null);
+  const themeId = lookSelection(
+    pickedThemeId,
+    shownLook,
+    looksKey,
+    initialLookThemeId(themes, looks),
+  );
   const [lookFilter, setLookFilter] = useState<LookFilter>("all");
   const [themeQuery, setThemeQuery] = useState("");
   const [name, setName] = useState(() => defaultProjectName(new Date(), []));
@@ -610,10 +733,6 @@ export function NewProjectDialog({
   const slug = slugifyName(name);
   const collides = nameCollision(name, takenSlugs).collides;
   const stepIndex = STEPS.findIndex(({ id }) => id === step);
-
-  useEffect(() => {
-    if (step !== "start") themeSettled.current = true;
-  }, [step]);
 
   // Escape clears an active search first, then closes.
   useEscapeClose(() => {
@@ -632,9 +751,7 @@ export function NewProjectDialog({
   useEffect(() => {
     let cancelled = false;
     void listThemeChoices().then((choices) => {
-      if (cancelled) return;
-      setThemes(choices);
-      if (!themeSettled.current) setThemeId(initialLookThemeId(choices));
+      if (!cancelled) setThemes(choices);
     });
     void listProjects()
       .then((list) => {
@@ -656,7 +773,18 @@ export function NewProjectDialog({
 
   const goTo = (index: number) => {
     setError(null);
-    setStep(STEPS[index].id);
+    const next = STEPS[index].id;
+    if (next === "look" && shownLook?.looksKey !== looksKey) {
+      setShownLook({ looksKey, id: themeId });
+      // A fresh seed is always on screen: a filter or search left from another template gives way.
+      const listed = lookChoices(filterThemeChoices(themes, "all", themeQuery), lookFilter, looks);
+      const hidden = !listed.some((choice) => choice.id === themeId);
+      if (hidden && themes.some((choice) => choice.id === themeId)) {
+        setLookFilter("all");
+        setThemeQuery("");
+      }
+    }
+    setStep(next);
   };
 
   const submit = async () => {
@@ -685,7 +813,6 @@ export function NewProjectDialog({
         setName(finalName);
       }
     }
-    const templateId = startId === CLAUDE_START_ID ? BLANK_TEMPLATE_ID : startId;
     try {
       await recordSuccessfulThemeUse(themeId, () =>
         onCreate(finalName, templateId, themeId, group.trim() || null),
@@ -712,21 +839,29 @@ export function NewProjectDialog({
           </button>
         </div>
         {step === "start" && (
-          <StartGallery
-            value={startId}
-            onChange={setStartId}
-            chip={templateChip}
-            onChipChange={setTemplateChip}
-            query={templateQuery}
-            onQueryChange={setTemplateQuery}
-            claudeStart={claudeStart}
-          />
+          <>
+            <StartGallery
+              entries={entries}
+              value={startId}
+              onChange={setStartId}
+              chip={templateChip}
+              onChipChange={setTemplateChip}
+              query={templateQuery}
+              onQueryChange={setTemplateQuery}
+              claudeStart={claudeStart}
+            />
+            <StartDetails entry={template} claude={startId === CLAUDE_START_ID} />
+          </>
         )}
         {step === "look" && (
           <LookStep
             choices={themes}
+            looks={looks}
             value={themeId}
-            onChange={setThemeId}
+            onPick={setPickedThemeId}
+            onAutoSelect={(id) =>
+              pickedThemeId === null ? setShownLook({ looksKey, id }) : setPickedThemeId(id)
+            }
             filter={lookFilter}
             onFilterChange={setLookFilter}
             query={themeQuery}

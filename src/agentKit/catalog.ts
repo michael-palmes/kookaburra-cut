@@ -1496,6 +1496,9 @@ function templates(): Entry[] {
       tier: t.tier,
       uses: [...t.uses],
       highlights: [...t.highlights],
+      bring: [...t.bring],
+      song: t.song,
+      looks: [...t.looks],
       sceneCount: t.sceneCount,
       durationMs: t.durationMs,
       aspects: [...t.aspects],
@@ -1510,11 +1513,11 @@ function templates(): Entry[] {
   });
 }
 
-/** workspace.rs SAMPLE_MEDIA_EXTENSIONS: what `ensure_sample_assets` restores, so the unused sweep keeps these names. */
+/** workspace.rs SAMPLE_MEDIA_EXTENSIONS: the pool `ensure_sample_assets` seeds from, whose names the unused sweep keeps. */
 const SAMPLE_POOL_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "mp4", "mov", "m4a"];
 const samplePoolFiles = Object.keys(import.meta.glob("/projects/_samples/*", { query: "?url" }));
 
-/** The shared sample pool (`projects/_samples/`), so kb's `assets unused` keeps the restored samples offline. */
+/** The shared sample pool (`projects/_samples/`), so kb's `assets unused` keeps the bundled samples offline. */
 function samplePool(): Entry[] {
   return samplePoolFiles
     .map((path) => path.slice(path.lastIndexOf("/") + 1))

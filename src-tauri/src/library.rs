@@ -377,7 +377,7 @@ pub fn save_scene_as_preset(
     ) {
         workspace::copy_missing_sample_assets(
             &workspace::samples_root(&app),
-            &Path::new(&item.path).join("assets"),
+            Path::new(&item.path),
         )?;
     }
     Ok(item)
@@ -541,7 +541,7 @@ fn duplicate_to_workspace(
     if !id.starts_with("ws:") {
         workspace::copy_missing_sample_assets(
             &workspace::samples_root(app),
-            &Path::new(&item.path).join("assets"),
+            Path::new(&item.path),
         )?;
         let art_root = if cfg!(debug_assertions) {
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../src/assets")

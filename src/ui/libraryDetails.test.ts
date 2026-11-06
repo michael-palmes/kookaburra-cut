@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PresetManifest } from "../engine/presets";
-import type { TemplateManifest } from "../engine/templates";
+import { type TemplateManifest, templateManifestSchema } from "../engine/templates";
 import {
   cleanTags,
   itemDetailsJson,
@@ -14,7 +14,7 @@ const template: TemplateManifest = {
   version: 1,
   name: "Launch film",
   tagline: "One handset, one claim.",
-  category: "app-updates",
+  category: "update",
   tags: ["launch"],
   personas: ["marketer"],
   level: "standard",
@@ -108,6 +108,33 @@ describe("manifest serialisation", () => {
       "status",
       "source",
     ]);
+  });
+
+  it("writes a version 2 manifest's bring, song and looks after the highlights", () => {
+    const v2: TemplateManifest = {
+      ...template,
+      version: 2,
+      bring: ["Logo"],
+      song: { title: "First light", bpm: 128 },
+      looks: ["kookaburra-onyx"],
+    };
+    const keys = Object.keys(JSON.parse(templateManifestJson(v2)));
+    expect(keys.slice(keys.indexOf("highlights"), keys.indexOf("preview") + 1)).toEqual([
+      "highlights",
+      "bring",
+      "song",
+      "looks",
+      "preview",
+    ]);
+  });
+
+  it("keeps an edited version 1 manifest readable as version 1", () => {
+    const parsed = templateManifestSchema.parse({ ...template, category: "app-updates" });
+    const text = templateManifestJson(patchTemplateManifest(parsed, templateDetailsDraft(parsed)));
+    const written = JSON.parse(text);
+    expect(written.version).toBe(1);
+    expect(written.category).toBe("update");
+    expect(templateManifestSchema.safeParse(written).success).toBe(true);
   });
 
   it("routes a preset through the preset field order", () => {

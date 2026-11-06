@@ -1,8 +1,9 @@
 # Shared sample pool
 
-Seeded into every new project's `assets/` by `create_project` (media files only,
-ancient-stamped so they sort below the user's own media). Templates reference
-these by name and never ship a copy.
+`create_project` seeds the samples a project names into its `assets/`, plus
+`app-icon.png` (media files only, ancient-stamped so they sort below the user's
+own media), and a load restores a named one that has gone missing. Templates
+reference these by name and never ship a copy.
 
 The Kooka set is filler UI for the app-update templates: one consistent
 fictional day-planning app so every screenshot shares a design language.

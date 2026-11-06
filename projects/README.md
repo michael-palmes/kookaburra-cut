@@ -22,7 +22,7 @@ everything in it reaches customers:
 | `blank/`, and every folder with a `template.json` | The New project picker creates from them |
 | `showcase-tour/` | The shipped demo, the rolling gate project and the packaged-parity project |
 | `preview-lab-theme/` | The theme-preview fixture: every user theme's previews render from it at runtime. Its scene bytes are FROZEN, a content change invalidates all 40 committed previews in `src/assets/theme-previews/` |
-| `_samples/` | The shared sample media pool. `create_project` seeds these into every new project's `assets/`, so a template references them by name and ships no copy |
+| `_samples/` | The shared sample media pool. `create_project` seeds the ones a project names (plus `app-icon.png`) into its `assets/`, so a template references them by name and ships no copy |
 
 Dev-only projects (the gate spikes and the `preview-lab-*` option-preview
 fixtures) live in the sibling [`fixtures/`](../fixtures) tree instead. They load
@@ -30,6 +30,10 @@ by the same bare id in dev and are never bundled.
 
 A **template** is any folder here carrying a `template.json`. That file is the
 only discriminator: no allowlist, and `create_project` refuses an id without one.
+Its fields, categories and test bands are the template contract in
+[`docs/content-library.md`](../docs/content-library.md). A template's own
+`assets/` holds only what is its alone, such as a song; shared media comes from
+`_samples/` by name.
 
 ## project.json
 
