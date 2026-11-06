@@ -22,8 +22,11 @@ const V2_FIELDS = ["bring", "song", "looks"] as const;
 /** Committed stills per template, in hover order. */
 export const TEMPLATE_PREVIEW_COUNT = 4;
 
-/** Capture width of a committed still (16:9, so 640x360; the theme-preview size). */
+/** Capture width of a committed still or loop (16:9, so 640x360; the theme-preview size). */
 export const TEMPLATE_PREVIEW_WIDTH = 640;
+
+/** Frame rate of a committed card loop; `scripts/kookaburra-run.sh` encodes at the same rate. */
+export const TEMPLATE_LOOP_FPS = 30;
 
 /** Pinned first in every view, outside the category rail, and the picker's default selection. */
 export const BLANK_TEMPLATE_ID = "blank";
@@ -621,11 +624,29 @@ export function templateLoopRange(
   loop: TemplatePreviewLoop,
 ): { startMs: number; endMs: number } | null {
   const slots = projectSlots(project);
+  return loopRangeInSlots(slots, timelineTotalMs(slots), loop);
+}
+
+/** `templateLoopRange` over an already-built timeline, as a loaded project holds it. */
+export function loopRangeInSlots(
+  slots: readonly { startMs: number; durationMs: number }[],
+  totalMs: number,
+  loop: TemplatePreviewLoop,
+): { startMs: number; endMs: number } | null {
   const slot = slots[loop.scene];
   if (!slot || loop.atMs >= slot.durationMs) return null;
   const startMs = slot.startMs + loop.atMs;
   const endMs = startMs + loop.durationMs;
-  return endMs <= timelineTotalMs(slots) ? { startMs, endMs } : null;
+  return endMs <= totalMs ? { startMs, endMs } : null;
+}
+
+/** Project times for a card loop at `TEMPLATE_LOOP_FPS`, start inclusive, end exclusive. */
+export function templateLoopTimes(range: { startMs: number; endMs: number }): number[] {
+  const times: number[] = [];
+  const count = Math.round(((range.endMs - range.startMs) * TEMPLATE_LOOP_FPS) / 1000);
+  for (let i = 0; i < count; i++)
+    times.push(Math.round(range.startMs + (i * 1000) / TEMPLATE_LOOP_FPS));
+  return times;
 }
 
 /** The editor project id for a catalogue id: `blank` → `template:blank`, `ws:mine` → `ws-template:mine`. */

@@ -71,7 +71,8 @@ pnpm kookaburra:run --action stillsverify --project showcase-tour --stills png
 pnpm kookaburra:run --action create --project blank
 
 # Template card art: create each template in the throwaway root, capture its manifest's
-# four preview frames (16:9, 640px JPEG), promote into src/assets/template-previews/.
+# four preview frames (16:9, 640px JPEG) and its preview.loop as a 6 s H.264 card loop,
+# promote into src/assets/template-previews/.
 pnpm kookaburra:run --action template-previews          # --project <id,...> selects
 
 # Scene-preset card art: load each bundled preset through its scoped id, capture its

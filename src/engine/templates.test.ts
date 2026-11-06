@@ -7,6 +7,7 @@ import { resolveSceneDocMedia } from "./sceneMedia";
 import {
   BLANK_TEMPLATE_ID,
   findTemplate,
+  loopRangeInSlots,
   TEMPLATE_CATEGORIES,
   TEMPLATE_CATEGORY_ALIASES,
   TEMPLATE_PERSONAS,
@@ -14,6 +15,7 @@ import {
   type TemplateManifest,
   type TemplateManifestResult,
   templateLoopRange,
+  templateLoopTimes,
   templateManifestSchema,
   templateProjectId,
 } from "./templates";
@@ -480,6 +482,25 @@ describe("template loop window", () => {
     expect(templateLoopRange(film, { scene: 3, atMs: 0, durationMs: 1000 })).toBeNull();
     expect(templateLoopRange(film, { scene: 0, atMs: 4000, durationMs: 1000 })).toBeNull();
     expect(templateLoopRange(film, { scene: 2, atMs: 0, durationMs: 9000 })).toBeNull();
+  });
+
+  it("agrees with a loaded project's timeline", () => {
+    const slots = [
+      { startMs: 0, durationMs: 4000 },
+      { startMs: 3500, durationMs: 4000 },
+      { startMs: 7500, durationMs: 4000 },
+    ];
+    expect(loopRangeInSlots(slots, 11_500, { scene: 1, atMs: 500, durationMs: 6000 })).toEqual(
+      templateLoopRange(film, { scene: 1, atMs: 500, durationMs: 6000 }),
+    );
+  });
+
+  it("samples a six-second loop as 180 frames on the 30 fps clock", () => {
+    const times = templateLoopTimes({ startMs: 4000, endMs: 10_000 });
+    expect(times).toHaveLength(180);
+    expect(times[0]).toBe(4000);
+    expect(times[1]).toBe(4033);
+    expect(times.at(-1)).toBe(9967);
   });
 });
 
