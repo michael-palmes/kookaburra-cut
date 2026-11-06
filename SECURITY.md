@@ -221,7 +221,10 @@ backup. Everything else is backed up like any document: projects with their own
   `knownPublishers` (the TOFU store), `websiteOriginGrants` per project path,
   `agentFiles` (per folder, what a stamp moved and whether a person has seen it),
   the publisher profile and the Claude preferences; per-project entries other
-  than the trust grant outlive a project delete. Written through a temporary file that is 0600 from its first byte, then
+  than the trust grant outlive a project delete. Settings ▸ Allowed projects
+  lists `trustedProjects` and forgets one grant, stored and session alike
+  (`forget_allowed_project` in `settings_win.rs`, settings window only, through
+  `forget_project_trust`). Written through a temporary file that is 0600 from its first byte, then
   a rename, under one lock. Control: `workspace.rs` (`AppSettings`,
   `settings_path`), `privacy::atomic_write_private`.
 - **The pack signing key**: 32 raw bytes created on the first pack export, a
@@ -252,12 +255,25 @@ backup. Everything else is backed up like any document: projects with their own
   or asset delete drops its entries and path stamps),
   `theme-previews/`, `beats/` (song analysis, which can include a track's lyric
   tags), `loudness/`, `font-embedding.json`, `tapdot/` and `export-mezz/` (the
-  two-pass mezzanine, removed when the export ends). The last six have no
-  Settings clear. Control: `src-tauri/src/clip_cache.rs`, `media.rs`,
+  two-pass mezzanine, removed when the export ends). Settings ▸ Storage ▸
+  Clear all app data (`clear_app_data` in `settings_win.rs`, settings window
+  only) asks on a native sheet whose Return is Cancel and is refused while an
+  export, a pack import, an editor render or another terminal run is going.
+  It clears `clips/` and `media/` through their own clears, every other entry
+  of `cache/` but its Spotlight marker, the Website data store's records,
+  `_bridge/responses`, `requests` and `apps`, `_autorun/runs` and
+  `.window-state.json`; drops every session grant (Allow, loopback websites,
+  bridge projects); resets `settings.json` to the workspace location and
+  `updateCheckConsent` (`reset_settings` in `workspace.rs`); and re-seals the
+  cache roots (`privacy::seal_cache_roots`). `pack-key/`, `pack-key-dev/`, the
+  Keychain item, `logs/`, the projects and the workspace stay. Control:
+  `src-tauri/src/clip_cache.rs`, `media.rs`,
   `theme.rs`, `song/mod.rs`, `loudness.rs`, `fonts.rs`, `edit.rs`, `lib.rs`.
-- **`$APPDATA/.window-state.json`**: window positions (`tauri-plugin-window-state`).
+- **`$APPDATA/.window-state.json`**: window positions (`tauri-plugin-window-state`),
+  written again at quit, so a clear resets them only for that launch's windows.
   The webview's `localStorage` holds font, colour and icon recents and UI
-  toggles, nothing from a project's content.
+  toggles, nothing from a project's content; the settings window empties it
+  when Clear all app data finishes (`src/settings/SettingsApp.tsx`).
 - **`$APPDATA/logs/`**: `app.log`, the app's own record, kept by release and
   dev builds alike (`src-tauri/src/audit.rs`, `audit::builder`): what a stamp
   moved or stripped and where the agent's git is off (`[kit]`), footage trims
@@ -486,7 +502,10 @@ drop a request, which is the out-of-scope case above.
   (`KOOKABURRA_ACTION` set) mints its nonce without a sheet, and in a release
   build that grant lasts for the launch and never reaches `trustedProjects`. All three commands
   are in the `trust` set, main window only. Deleting a project removes its
-  grant. Declining stamps nothing. `copy_scene_to_project` (main and render
+  grant. Settings ▸ Allowed projects forgets one grant, stored and session
+  alike, and Clear all app data forgets every one (`forget_allowed_project`,
+  `clear_app_data` in `settings_win.rs`, settings window only); either only
+  narrows what runs, and the next open asks. Declining stamps nothing. `copy_scene_to_project` (main and render
   windows) refuses a workspace project, user template or user preset as its
   source unless that source's grant matches its content or this session
   allowed it (`require_source_allowed`); bundled templates and presets ship
@@ -506,14 +525,16 @@ drop a request, which is the out-of-scope case above.
   library, library, export, capture host, studio, Claude launcher, updater,
   website editor. Present: project read, render, its own window and
   website show. Render: project read, render, bridge serving. Settings: its
-  caches, the workspace location, updater and publisher. Packs: pack commands
+  caches, the workspace location, updater, publisher, forgetting an Allow,
+  clearing all app data and showing the log folder. Packs: pack commands
   and the dialog. Editor and theme editor: theirs. Dev-only commands are
   `cfg(debug_assertions)` and granted only by `capabilities/dev/`, which
   `build.rs` includes in debug builds alone. `src-tauri/src/acl.rs` lists each
   window's commands and fails on a new command until it is placed, on any
   window but main reaching the trust commands, `start_export`,
   `delete_project`, `website_grant_origin` or `init_default_workspace`, and on
-  any window but settings reaching `init_workspace` or `move_workspace`.
+  any window but settings reaching `init_workspace`, `move_workspace`,
+  `forget_allowed_project`, `clear_app_data` or `reveal_app_logs`.
   `website::guard_invoke` is the second layer: any label outside the seven app
   windows gets no command at all.
 - **Worker isolation** (`src/stage/`): every scene tree runs in a Web Worker on

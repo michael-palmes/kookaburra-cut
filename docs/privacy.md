@@ -98,7 +98,9 @@ imported never travel.
 - **Settings**: your preferences, which publishers' keys you have imported from,
   which projects you allowed to run. The key that signs your own packs lives
   in your login Keychain and never synchronises; macOS may ask once, when you
-  export a pack or rotate the key, to let the app use it.
+  export a pack or rotate the key, to let the app use it. Settings ▸ Allowed
+  projects lists each project you allowed, and Forget makes it ask again on its
+  next open (`forget_allowed_project` in `src-tauri/src/settings_win.rs`).
 - **A log** of what the app did, in `logs/` under the same folder
   (`src-tauri/src/audit.rs`): which projects you allowed or declined, which
   websites, packs and updates, what moved out of a shared folder, and what your
@@ -118,6 +120,43 @@ Your projects stay as readable to other accounts on the Mac as any file in
 your home folder is. The app's own caches, settings, log and the agent's `_bridge`
 and `_autorun` folders are readable by your account alone, and Spotlight skips
 them. FileVault and your account password are the protection at rest.
+
+Settings ▸ Storage ▸ Clear all app data empties every cache and the Website
+data, the agent's queues in `_bridge` and the terminal runs in `_autorun`, and
+forgets the projects and websites you allowed, your recent projects and your
+preferences (`clear_app_data` in `src-tauri/src/settings_win.rs`). A macOS sheet
+asks first, and Return cancels. It keeps your projects, the workspace location,
+your answer about update checks, the pack signing key and the log. Settings ▸
+About ▸ Activity log shows that log in Finder (`reveal_app_logs`).
+
+## Uninstalling
+
+1. Open Settings ▸ Storage ▸ Clear all app data while the app is still
+   installed. It is the one step that empties the website profile through
+   WebKit itself (`website::clear_stored_data` in `src-tauri/src/website.rs`).
+2. Quit Kookaburra Cut.
+3. In Keychain Access, delete "Kookaburra Cut pack signing key" (the item
+   `src-tauri/src/pack/key.rs` creates). Packs you already signed stay valid,
+   since their signature carries the public key; packs you sign after a
+   reinstall come from a new key.
+4. Delete `~/Library/Application Support/com.mpalmes.kookaburracut` (settings,
+   caches, the log and any file key) and `~/Library/WebKit/com.mpalmes.kookaburracut`
+   (the app's own and the website profile's storage). Then run
+   `find ~/Library -iname '*kookaburracut*'` and delete what it lists: macOS
+   can add `Caches/com.mpalmes.kookaburracut` (WebKit's own cache) and
+   `Preferences/com.mpalmes.kookaburracut.plist` (the open and save panels'
+   last folder and size).
+5. Delete `~/Kookaburra Cut/_bridge` and `~/Kookaburra Cut/_autorun`, the agent
+   bridge and terminal run folders (`src-tauri/src/bridge.rs`,
+   `scripts/kookaburra-run.sh`).
+6. Your projects in `~/Kookaburra Cut` are yours: keep them, move them or
+   delete them. In a project you keep, the agent kit is safe to delete:
+   `.claude/`, `./kb`, `.kb/` and, unless you wrote in it, `CLAUDE.md` (the
+   layout is in `docs/agent-kit.md`).
+7. Move Kookaburra Cut from Applications to the Trash last.
+
+`~/.claude` belongs to Claude Code, not this app (`docs/agent-kit.md`); remove
+it only through Claude Code.
 
 ## For organisations
 

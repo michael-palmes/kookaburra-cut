@@ -504,6 +504,16 @@ pub struct BridgeGrants {
 
 const DECLINE_HOLD: Duration = Duration::from_secs(60);
 
+/// Settings ▸ Clear all app data: the next cross-project request asks again.
+pub(crate) fn forget_session_grants(app: &AppHandle) {
+    let grants = app.state::<BridgeGrants>();
+    grants
+        .allowed
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clear();
+}
+
 fn access_verb(kind: &str) -> &'static str {
     match kind {
         "capture" | "range" => "render frames of",

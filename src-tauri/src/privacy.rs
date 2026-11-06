@@ -155,13 +155,12 @@ pub(crate) fn seal_tree(root: &Path) -> Sealed {
     sealed
 }
 
-/// The startup check: the roots are created and sealed at once, the decoded-footage caches leave Time Machine, then the
-/// whole trees in the background (a clip cache holds hundreds of thousands of frames). One log line names what had to be corrected.
-pub(crate) fn seal_at_startup(app_data: PathBuf, sinks: Vec<PathBuf>) {
+/// `$APPDATA`, `cache/`, `cache/clips` and `cache/media` made private, the cache unindexed and the decoded-footage caches out of Time Machine; at startup and after Settings clears the caches.
+pub(crate) fn seal_cache_roots(app_data: &Path) {
     let cache = app_data.join("cache");
     let clips = cache.join("clips");
     let media = cache.join("media");
-    for dir in [&app_data, &cache, &clips, &media] {
+    for dir in [app_data, &cache, &clips, &media] {
         if let Err(e) = private_dir(dir) {
             log::warn!("[privacy] could not seal {}: {e}", dir.display());
         }
@@ -177,6 +176,12 @@ pub(crate) fn seal_at_startup(app_data: PathBuf, sinks: Vec<PathBuf>) {
             ),
         }
     }
+}
+
+/// The startup check: the roots are created and sealed at once, the decoded-footage caches leave Time Machine, then the
+/// whole trees in the background (a clip cache holds hundreds of thousands of frames). One log line names what had to be corrected.
+pub(crate) fn seal_at_startup(app_data: PathBuf, sinks: Vec<PathBuf>) {
+    seal_cache_roots(&app_data);
     for sink in &sinks {
         if sink.is_dir() {
             let _ = set_mode(sink, DIR_MODE);

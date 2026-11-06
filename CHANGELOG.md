@@ -41,6 +41,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   exports in Downloads) and `UpdateEndpoint` (update checks ask your own
   server). Settings shows a lock on each row they govern, and Settings ▸ Claude
   gains an Agent kit row. See `docs/mdm.md`.
+- Settings ▸ Allowed projects lists the projects you allowed to run, and Forget
+  makes one ask again on its next open.
+- Settings ▸ Storage ▸ Clear all app data empties every cache and the Website
+  data and forgets what you allowed, your recent projects and your preferences.
+  Your projects, workspace and pack signing key stay.
+- Settings ▸ About ▸ Activity log shows the app's log in Finder, and
+  `docs/privacy.md` now says how to uninstall the app completely.
 
 ### Security
 

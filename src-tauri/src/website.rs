@@ -1386,6 +1386,13 @@ pub fn close_owner(state: &State<'_, WebsiteState>, owner: &str) {
     }
 }
 
+/// The loopback origins allowed until the app quits; stored grants live in settings.
+pub(crate) fn forget_session_grants(state: &State<'_, WebsiteState>) {
+    if let Ok(mut registry) = state.0.lock() {
+        registry.loopback_grants.clear();
+    }
+}
+
 fn close_all(state: &State<'_, WebsiteState>) {
     let children = {
         let Ok(mut registry) = state.0.lock() else {
@@ -1998,7 +2005,16 @@ pub async fn website_clear_data(
     if display_name.as_ref().is_some_and(|value| value.is_empty()) {
         return Err("Website data record name cannot be empty".into());
     }
-    close_all(&state);
+    clear_stored_data(&app, &state, display_name).await
+}
+
+/// Close every live website, then clear the store's records: one site's by display name, or all of them.
+pub(crate) async fn clear_stored_data(
+    app: &AppHandle,
+    state: &State<'_, WebsiteState>,
+    display_name: Option<String>,
+) -> Result<(), String> {
+    close_all(state);
     let (sender, receiver) = tokio::sync::oneshot::channel();
     app.run_on_main_thread(move || macos::clear_data(display_name, sender))
         .map_err(|error| error.to_string())?;
