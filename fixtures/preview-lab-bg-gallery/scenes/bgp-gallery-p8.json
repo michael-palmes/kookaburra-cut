@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"gallery\" 3D background (\"Gidgee\")",
+  "background": {
+    "type": "scene3d",
+    "look": "gallery",
+    "colors": ["#2b322c", "#2f231b", "#0e110e", "#66523a", "#a5845a"],
+    "speed": 1.1,
+    "params": {
+      "bayWidth": 9,
+      "pierDepth": 0.4,
+      "lampHeight": 2.6,
+      "pools": 1,
+      "daylight": 0.15,
+      "clouds": 0.2,
+      "boards": 0.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0b0d0b"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

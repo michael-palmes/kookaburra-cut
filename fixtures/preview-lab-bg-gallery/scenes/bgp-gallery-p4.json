@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"gallery\" 3D background (\"Blackbutt\")",
+  "background": {
+    "type": "scene3d",
+    "look": "gallery",
+    "colors": ["#bcc2b0", "#c4a988", "#a2a796", "#c3a46c", "#fbf3df"],
+    "speed": 1,
+    "params": {
+      "bayWidth": 9,
+      "pierDepth": 0.35,
+      "lampHeight": 2.6,
+      "pools": 0.55,
+      "daylight": 0.9,
+      "clouds": 0.75,
+      "boards": 0.65
+    },
+    "backing": {
+      "type": "color",
+      "color": "#e3e6dc"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

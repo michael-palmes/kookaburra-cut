@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"gallery\" 3D background (\"Celery Top\")",
+  "background": {
+    "type": "scene3d",
+    "look": "gallery",
+    "colors": ["#ddd3c3", "#c9a774", "#b3a690", "#c6a466", "#fff3d8"],
+    "speed": 0.9,
+    "params": {
+      "bayWidth": 9,
+      "pierDepth": 0.45,
+      "lampHeight": 2.6,
+      "pools": 0.65,
+      "daylight": 0.8,
+      "clouds": 0.65,
+      "boards": 0.34
+    },
+    "backing": {
+      "type": "color",
+      "color": "#ece5d9"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

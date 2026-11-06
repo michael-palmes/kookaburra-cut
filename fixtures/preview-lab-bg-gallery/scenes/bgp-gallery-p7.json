@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"gallery\" 3D background (\"Buloke\")",
+  "background": {
+    "type": "scene3d",
+    "look": "gallery",
+    "colors": ["#2f3540", "#3a2e26", "#111317", "#6c5839", "#a0875f"],
+    "speed": 0.9,
+    "params": {
+      "bayWidth": 9,
+      "pierDepth": 0.8,
+      "lampHeight": 2.6,
+      "pools": 0.75,
+      "daylight": 0.35,
+      "clouds": 0.3,
+      "boards": 0.36
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0d0f12"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
