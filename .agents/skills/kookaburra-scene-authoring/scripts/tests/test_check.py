@@ -204,15 +204,23 @@ class CheckTests(KbTestCase):
         doc = {
             "version": 1,
             "text": {"title": "Ship *twice*\nas fast", "tag": "One line", "sub": "Two\nlines"},
-            "textStyle": {"titleEmphasis": "accent@700", "tagEmphasis": "bold", "subEmphasis": "#fff@2000"},
+            "textStyle": {
+                "titleEmphasis": "accent@700",
+                "tagEmphasis": "bold",
+                "subEmphasis": "#fff@2000",
+                "capEmphasis": "accent battery",
+                "kickerEmphasis": "accent blob",
+            },
             "textAnimation": {"in": "build", "out": "none", "staggerMs": 200, "buildShiftEm": "far"},
             "textAnimationOverrides": {"sub": {"in": "fade", "out": "none", "staggerMs": 0}},
             "textLook": {"preset": "offset-print", "offsetDir": "left", "offsetOpacity": 2},
         }
         write_json(self.root / "scenes" / "02-hero.json", doc)
         report = self.run_check(["scenes/02-hero.json"])
-        self.assertHasError(report, "textStyle.tagEmphasis", "textStyle.subEmphasis", "buildShiftEm", "textLook.offsetDir")
-        self.assertFalse(any("titleEmphasis" in e for e in messages(report)))
+        self.assertHasError(
+            report, "textStyle.tagEmphasis", "textStyle.subEmphasis", "textStyle.kickerEmphasis", "buildShiftEm", "textLook.offsetDir"
+        )
+        self.assertFalse(any("titleEmphasis" in e or "capEmphasis" in e for e in messages(report)))
         warnings = messages(report, "warning")
         self.assertTrue(any("text.title" in w and "build is single line" in w for w in warnings))
         self.assertFalse(any("text.sub" in w and "build is single line" in w for w in warnings))

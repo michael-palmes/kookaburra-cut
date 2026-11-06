@@ -48,7 +48,15 @@ import {
   EmojiQuads,
   sweepCoverage,
 } from "./EmojiQuads";
-import { computeEmphasisRects, type ResolvedEmphasis, resolveEmphasis } from "./emphasis";
+import { EmphasisPills, pillMotionsFromUnits } from "./EmphasisPills";
+import {
+  computeEmphasisRects,
+  emphasisPillPhase,
+  padEmphasisRanges,
+  parseEmphasisValue,
+  type ResolvedEmphasis,
+  resolveEmphasis,
+} from "./emphasis";
 import { materialProp, useExactText, useExactTextBase } from "./exactText";
 import { computeUnitYExtents, HighlightQuads } from "./HighlightQuads";
 import { resolveHeadlineType } from "./headlineType";
@@ -145,6 +153,8 @@ export interface AnimatedHeadlineProps {
   hitAt?: number;
   /** 0..1, multiplied into every fade (default 1). */
   opacity?: number;
+  /** Scene ms a shaped emphasis (`textStyle.<key>Emphasis` ending in `pill` or `battery`) starts drawing on; default when the line has landed. */
+  emphasisAt?: number;
   /** Per-char / per-word stagger granularity. Paragraph delivery is spelled through `delivery`, never here. */
   stagger?: "char" | "word";
   /** Per-unit stagger delay, ms. Defaults to the theme's `textAnimation.staggerMs`. */
@@ -209,7 +219,11 @@ export interface AnimatedHeadlineProps {
 const UNDER_LAYER_ALPHA_EXP = 6;
 
 /** What the renderer takes beyond the public props: `underLayer` marks a depth layer, which keeps the motion but drops the look, the emoji and the registries. */
-export type HeadlineRenderProps = AnimatedHeadlineProps & { underLayer?: boolean };
+export type HeadlineRenderProps = AnimatedHeadlineProps & {
+  underLayer?: boolean;
+  /** When a shaped emphasis starts drawing: the authored `emphasisAt`, else the line's settle. */
+  pillAtMs?: number;
+};
 
 /** A surface's final alpha: `opacity` multiplies in, and an under-layer's curve applies last. Exact when neither is set. */
 function surfaceAlpha(alpha: number, props: HeadlineRenderProps): number {
@@ -288,7 +302,18 @@ export function AnimatedHeadline(props: AnimatedHeadlineProps) {
 /** `fit="width"`: measures the block from the parsed face, the same maths troika typesets with, and hands the renderer the size that fits; captures wait for the measure, so no frame sees the unfitted size. A face that can't parse keeps the authored size. */
 function FittedHeadline({ fit: _fit, maxWidth, ...props }: AnimatedHeadlineProps) {
   const format = useFormat();
-  const metrics = useTextMetrics(props.textKey, props.text, {
+  const doc = useContext(SceneDocContext);
+  const styleKey = props.styleKey ?? props.textKey;
+  const shaped = parseEmphasisValue(
+    styleKey ? doc?.textStyle?.[`${styleKey}Emphasis`] : undefined,
+  )?.shape;
+  // A shaped emphasis typesets with room either side of its words, so the fit measures that string.
+  const measured = useMemo(() => {
+    if (!shaped) return props.text;
+    const { text, ranges } = parseEmphasisMarkup(props.text);
+    return padEmphasisRanges({ text, emphasis: ranges, clusters: [] }, shaped).text;
+  }, [shaped, props.text]);
+  const metrics = useTextMetrics(props.textKey, measured, {
     fontSize: props.fontSize,
     face: props.face,
     fontRef: props.fontRef,
@@ -625,6 +650,12 @@ function AnimatedHeadlineRenderer(rawProps: HeadlineRenderProps) {
     resolvedEmphasis && underLayer
       ? { ...resolvedEmphasis, color: resolveFill(theme, fill ?? "text") }
       : resolvedEmphasis;
+  // A shaped emphasis gets room for its pill on every layer, so a depth stack still lines up; plain emphasis keeps the exact text.
+  const shapedText = useMemo(
+    () =>
+      resolvedEmphasis?.shape ? padEmphasisRanges(prepared, resolvedEmphasis.shape) : prepared,
+    [prepared, resolvedEmphasis?.shape],
+  );
   const look =
     !underLayer && lookResolved !== null && lookResolved.preset !== "none" ? lookResolved : null;
   const look3d = look !== null && lookIs3d(look.preset);
@@ -701,8 +732,9 @@ function AnimatedHeadlineRenderer(rawProps: HeadlineRenderProps) {
           anim={anim ?? lookOnlyAnim}
           lookSpec={activeLook}
           legacyReveal
-          prepared={prepared}
+          prepared={shapedText}
           emphasis={emphasis}
+          pillAtMs={props.emphasisAt}
           meshRef={meshRef}
           rotZ={rotZ}
         />
@@ -714,8 +746,9 @@ function AnimatedHeadlineRenderer(rawProps: HeadlineRenderProps) {
         color={fill}
         theme={theme}
         lookSpec={activeLook}
-        prepared={prepared}
+        prepared={shapedText}
         emphasis={emphasis}
+        pillAtMs={props.emphasisAt ?? holdToMs}
         meshRef={meshRef}
         rotZ={rotZ}
       />
@@ -736,8 +769,9 @@ function AnimatedHeadlineRenderer(rawProps: HeadlineRenderProps) {
         theme={theme}
         anim={anim}
         lookSpec={activeLook}
-        prepared={prepared}
+        prepared={shapedText}
         emphasis={emphasis}
+        pillAtMs={props.emphasisAt}
         meshRef={meshRef}
         rotZ={rotZ}
       />
@@ -750,8 +784,9 @@ function AnimatedHeadlineRenderer(rawProps: HeadlineRenderProps) {
       theme={theme}
       anim={anim}
       lookSpec={activeLook}
-      prepared={prepared}
+      prepared={shapedText}
       emphasis={emphasis}
+      pillAtMs={props.emphasisAt ?? holdToMs}
       meshRef={meshRef}
       rotZ={rotZ}
     />
@@ -775,6 +810,26 @@ function useEmphasis(
   const colour = useMemo(() => new Color(hex), [hex]);
   return { rects, colour };
 }
+
+/** A shaped emphasis this frame: how far its pill has drawn and filled from `startMs`, and the words' colour, crossfading to the filled colour as the pill floods. Null for plain emphasis and under-layers (only the face draws pills). */
+function emphasisShapeFrame(
+  emphasis: ResolvedEmphasis | null,
+  underLayer: boolean | undefined,
+  localMs: number,
+  startMs: number,
+) {
+  if (!emphasis?.shape || underLayer) return null;
+  const phase = emphasisPillPhase(localMs, startMs);
+  // Scratch, safe because writeEmphasisUniforms copies it in the same render.
+  const glyph = SHAPE_GLYPH.set(emphasis.color).lerp(
+    SHAPE_FILLED.set(emphasis.filledColor ?? emphasis.color),
+    phase.fill,
+  );
+  return { ...phase, glyph, shape: emphasis.shape, color: emphasis.color };
+}
+
+const SHAPE_GLYPH = new Color();
+const SHAPE_FILLED = new Color();
 
 /** Type a typewriter preset through the mask on every holder: the head after this frame's keystroke count, from the typeset's carets. Returns the last shown code unit (the emoji quads' twin), or null when the mask is off. */
 function useTypewriter(
@@ -862,12 +917,13 @@ function LegacyHeadline(
   useEffect(() => () => holder?.dispose(), [holder]);
   if (holder) writeShineBand(holder, foldBandToChild(group, position));
   const emphasised = useEmphasis(emphasis, prepared, carets);
+  const shaped = emphasisShapeFrame(emphasis, props.underLayer, localMs, props.pillAtMs ?? to);
   if (holder && emphasis) {
     writeEmphasisUniforms(
       holder,
       emphasised.rects,
       emphasis.weightEm * fontSize,
-      emphasised.colour,
+      shaped?.glyph ?? emphasised.colour,
     );
   }
 
@@ -939,6 +995,19 @@ function LegacyHeadline(
           <EmojiQuads clusters={prepared.clusters} states={states} fontSize={fontSize} />
         </group>
       )}
+      {shaped && emphasised.rects && (
+        <group position={position} {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}>
+          <EmphasisPills
+            rects={emphasised.rects}
+            shape={shaped.shape}
+            color={shaped.color}
+            fontSize={fontSize}
+            draw={shaped.draw}
+            fill={shaped.fill}
+            motions={[{ dx: 0, dy: 0, scale: 1, alpha }]}
+          />
+        </group>
+      )}
     </>
   );
 }
@@ -1005,12 +1074,18 @@ function BlockHeadline(
     else writeShineBand(holder, foldBandToChild(group, position));
   }
   const emphasised = useEmphasis(emphasis, prepared, carets);
+  const shaped = emphasisShapeFrame(
+    emphasis,
+    props.underLayer,
+    localMs,
+    props.pillAtMs ?? textAnimationEndMs(from, to, anim),
+  );
   if (holder && emphasis) {
     writeEmphasisUniforms(
       holder,
       emphasised.rects,
       emphasis.weightEm * fontSize,
-      emphasised.colour,
+      shaped?.glyph ?? emphasised.colour,
     );
   }
 
@@ -1118,6 +1193,17 @@ function BlockHeadline(
         {prepared.text}
       </Text>
       {hasEmoji && <EmojiQuads clusters={prepared.clusters} states={states} fontSize={fontSize} />}
+      {shaped && emphasised.rects && (
+        <EmphasisPills
+          rects={emphasised.rects}
+          shape={shaped.shape}
+          color={shaped.color}
+          fontSize={fontSize}
+          draw={shaped.draw}
+          fill={shaped.fill}
+          motions={[{ dx: 0, dy: 0, scale: 1, alpha }]}
+        />
+      )}
     </group>
   );
 }
@@ -1403,12 +1489,20 @@ function StaggeredHeadline(
   if (offsetHolder) writeStaggerUniforms(offsetHolder, units, samples, fontSize, packFrame);
   // Emphasis on every layer (the offset under-layer keeps its own colour, gaining only the weight); the typewriter head masks them all alike.
   const emphasised = useEmphasis(emphasis, prepared, carets);
+  // A shaped emphasis draws once the whole line has landed, the last unit included, unless `emphasisAt` places it.
+  const shaped = emphasisShapeFrame(
+    emphasis,
+    props.underLayer,
+    localMs,
+    props.pillAtMs ?? settleToMs + (spreadMs ?? 0),
+  );
   if (emphasis) {
     const weight = emphasis.weightEm * fontSize;
-    writeEmphasisUniforms(holder, emphasised.rects, weight, emphasised.colour);
+    const glyph = shaped?.glyph ?? emphasised.colour;
+    writeEmphasisUniforms(holder, emphasised.rects, weight, glyph);
     if (echoHolders) {
       for (const echo of echoHolders) {
-        writeEmphasisUniforms(echo, emphasised.rects, weight, emphasised.colour);
+        writeEmphasisUniforms(echo, emphasised.rects, weight, glyph);
       }
     }
     if (offsetHolder) {
@@ -1661,6 +1755,19 @@ function StaggeredHeadline(
       {hasEmoji && (
         <group position={position} {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}>
           <EmojiQuads clusters={prepared.clusters} states={states} fontSize={fontSize} />
+        </group>
+      )}
+      {shaped && emphasised.rects && units && (
+        <group position={position} {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}>
+          <EmphasisPills
+            rects={emphasised.rects}
+            shape={shaped.shape}
+            color={shaped.color}
+            fontSize={fontSize}
+            draw={shaped.draw}
+            fill={shaped.fill}
+            motions={pillMotionsFromUnits(emphasised.rects, units, samples, axis, fontSize)}
+          />
         </group>
       )}
     </>
