@@ -1,3 +1,4 @@
+#![allow(unsafe_code)]
 //! The capture service behind the hidden render window (docs/agent-kit.md, "The capture service"): what a request costs, the fair order the render window claims in, throttling, the GPU stall recycle state machine and its watchdog, response retention, and the `health` block of the serving heartbeat. The pure parts take their state explicitly and are tested below; the app glue reads one process-wide `SERVICE`.
 
 use std::collections::VecDeque;
@@ -1475,6 +1476,7 @@ pub(crate) fn fetch_web_content_pid(
 ) {
     use objc2::runtime::{AnyObject, Bool};
     use objc2::{msg_send, sel};
+    // SAFETY: with_webview runs this on the main thread with Tauri's live WKWebView, and the private selector is sent only once it answers respondsToSelector.
     let _ = window.with_webview(move |webview| unsafe {
         let wk: *mut AnyObject = webview.inner().cast();
         let responds: Bool = msg_send![wk, respondsToSelector: sel!(_webProcessIdentifier)];

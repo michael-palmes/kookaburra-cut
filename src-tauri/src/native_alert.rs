@@ -1,3 +1,4 @@
+#![allow(unsafe_code)]
 //! Native confirmations a webview cannot answer: an `NSAlert` sheet issued from Rust on the window that asked, so a compromised webview can show the question but never press the button (docs/decisions.md, "Native consent").
 
 use tauri::AppHandle;
@@ -27,7 +28,7 @@ pub async fn ask(app: &AppHandle, parent: &str, prompt: Prompt<'_>) -> Result<bo
     let parent = parent.to_owned();
     let handle = app.clone();
     app.run_on_main_thread(move || {
-        // run_on_main_thread guarantees the marker AppKit requires.
+        // SAFETY: run_on_main_thread runs this closure on the main thread.
         let mtm = unsafe { MainThreadMarker::new_unchecked() };
         let alert = NSAlert::new(mtm);
         alert.setMessageText(&NSString::from_str(&title));
@@ -42,6 +43,7 @@ pub async fn ask(app: &AppHandle, parent: &str, prompt: Prompt<'_>) -> Result<bo
         match (window, ns_window) {
             (Some(window), Some(ptr)) => {
                 let _ = window.set_focus();
+                // SAFETY: ns_window() is the window's live NSWindow, and nothing can close it while this main-thread closure runs.
                 let ns_window: &NSWindow = unsafe { &*(ptr as *const NSWindow) };
                 let tx = std::sync::Mutex::new(Some(tx));
                 let handler = block2::RcBlock::new(move |response: NSModalResponse| {

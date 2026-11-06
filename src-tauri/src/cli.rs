@@ -1,3 +1,4 @@
+#![allow(unsafe_code)]
 //! The headless edit CLI (`<app binary> edit <command>`): the same Rust cores as the editor's Tauri commands, so an agent's edit saves and renders exactly like the editor's. stdout carries one JSON object (JSON lines for `render`), stderr only diagnostics; nothing Tauri or AppKit starts on this path. Contract: docs/agent-kit.md (headless CLI).
 
 use std::collections::BTreeMap;
@@ -702,6 +703,7 @@ extern "C" fn on_signal(_signal: libc::c_int) {
 /// SIGINT/SIGTERM only raise the cancel flag; the render loop kills ffmpeg and removes its staging.
 pub(crate) fn install_signal_handlers() {
     let handler = on_signal as extern "C" fn(libc::c_int) as libc::sighandler_t;
+    // SAFETY: on_signal only stores to an atomic, which is async-signal-safe.
     unsafe {
         libc::signal(libc::SIGINT, handler);
         libc::signal(libc::SIGTERM, handler);

@@ -1,3 +1,4 @@
+#![allow(unsafe_code)]
 //! Confidential work at rest belongs to its user alone. The app data folder (`settings.json`, `cache/`, `pack-key/`) and
 //! the workspace sinks the app owns (`_bridge/`, `_autorun/`) are held at 0700 for directories and 0600 for files,
 //! checked and corrected once at startup, and carry a `.metadata_never_index` marker so Spotlight never indexes a frame of
@@ -64,6 +65,7 @@ pub(crate) fn exclude_from_backup(dir: &Path) -> std::io::Result<bool> {
     let path = std::ffi::CString::new(dir.as_os_str().as_bytes())
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
     let mut current = [0u8; 64];
+    // SAFETY: the path and name are NUL-terminated, and current's length is passed beside it.
     let read = unsafe {
         libc::getxattr(
             path.as_ptr(),
@@ -77,6 +79,7 @@ pub(crate) fn exclude_from_backup(dir: &Path) -> std::io::Result<bool> {
     if read >= 0 && &current[..read as usize] == BACKUP_EXCLUDE_VALUE {
         return Ok(false);
     }
+    // SAFETY: the path and name are NUL-terminated, and the value's length is passed beside it.
     let wrote = unsafe {
         libc::setxattr(
             path.as_ptr(),

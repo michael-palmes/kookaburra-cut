@@ -87,8 +87,11 @@ pub(crate) struct Civil {
     pub(crate) offset_minutes: i32,
 }
 
+#[allow(unsafe_code)]
 pub(crate) fn local_now() -> Civil {
+    // SAFETY: tm is plain C data, so all zeroes is a valid value.
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+    // SAFETY: time takes a null out-pointer, and localtime_r writes only into tm.
     unsafe {
         let now = libc::time(std::ptr::null_mut());
         libc::localtime_r(&now, &mut tm);

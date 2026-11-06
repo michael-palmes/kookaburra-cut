@@ -1,3 +1,4 @@
+#![allow(unsafe_code)]
 //! The user workspace: a folder of self-contained projects, chosen at first run (default `~/Kookaburra Cut`, moved out of ~/Documents for TCC) and remembered in `$APPDATA/settings.json`; commands are custom `#[tauri::command]`s that bypass the webview fs ACL, each re-asserting the on-disk layout first (`ensure_layout`) so a user deleting or rearranging folders mid-session degrades gracefully instead of crashing.
 
 use std::collections::{HashMap, HashSet};
@@ -303,9 +304,11 @@ fn stamp_crtime(path: &Path, at: std::time::SystemTime) {
         tv_sec: dur.as_secs() as libc::time_t,
         tv_nsec: dur.subsec_nanos() as _,
     };
+    // SAFETY: attrlist is plain C data, so all zeroes is a valid value.
     let mut attrs: libc::attrlist = unsafe { std::mem::zeroed() };
     attrs.bitmapcount = libc::ATTR_BIT_MAP_COUNT;
     attrs.commonattr = libc::ATTR_CMN_CRTIME;
+    // SAFETY: cpath is NUL-terminated, and attrs asks for the creation time alone, which ts holds.
     unsafe {
         libc::setattrlist(
             cpath.as_ptr(),

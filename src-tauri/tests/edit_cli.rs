@@ -441,6 +441,7 @@ fn edit_cli_end_to_end_create_validate_render_both_lanes() {
 
 #[test]
 #[ignore = "runs the dev ffmpeg sidecar (pnpm setup:ffmpeg)"]
+#[allow(unsafe_code)]
 fn edit_cli_sigterm_interrupts_and_keeps_the_good_output() {
     let sb = media_sandbox("sigterm", 60);
     let p = sb.p();
@@ -464,6 +465,7 @@ fn edit_cli_sigterm_interrupts_and_keeps_the_good_output() {
         let progress = value["event"] == "progress";
         events.push(value);
         if progress {
+            // SAFETY: kill takes plain integers, and the pid is this test's own child, still running.
             unsafe { libc::kill(child.id() as i32, libc::SIGTERM) };
             break;
         }

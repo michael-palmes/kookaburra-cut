@@ -1,3 +1,4 @@
+#![allow(unsafe_code)]
 //! AVFoundation through objc2, the ingest conform's only unsafe module: a video track's facts without decoding (`probe`), and a decode to 8-bit NV12 in presentation time with the partly covered first sample kept (`Frames`), optionally converted to BT.709 primaries with the IEC sRGB transfer (never the ITU_R_709_2 transfer, which gives the wrong values for the sRGB texture path). Everything around it is pure (conform.rs).
 
 use std::path::Path;
@@ -260,7 +261,7 @@ impl Frames {
                 // SAFETY: status reads on the reader this output belongs to.
                 return match unsafe { self.reader.status() } {
                     AVAssetReaderStatus::Completed => Ok(None),
-                    _ => Err(unsafe { reader_error(&self.reader) }),
+                    _ => Err(reader_error(&self.reader)),
                 };
             };
             // SAFETY: timing and image-buffer reads on a live sample buffer.
@@ -299,8 +300,9 @@ impl Iterator for Frames {
     }
 }
 
-unsafe fn reader_error(reader: &AVAssetReader) -> String {
-    reader.error().map_or_else(
+fn reader_error(reader: &AVAssetReader) -> String {
+    // SAFETY: a property read on a reader that has stopped.
+    unsafe { reader.error() }.map_or_else(
         || "AVFoundation stopped reading the video".to_owned(),
         |e| {
             format!(

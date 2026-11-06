@@ -90,13 +90,14 @@ use encode::{
 };
 
 #[tauri::command]
+#[allow(unsafe_code)]
 fn show_character_palette(app: AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         app.run_on_main_thread(|| {
             use objc2_app_kit::NSApp;
             use objc2_foundation::MainThreadMarker;
-            // run_on_main_thread guarantees the marker required by AppKit.
+            // SAFETY: run_on_main_thread runs this closure on the main thread.
             let mtm = unsafe { MainThreadMarker::new_unchecked() };
             NSApp(mtm).orderFrontCharacterPalette(None);
         })
@@ -117,6 +118,7 @@ fn srgb_hex(red: f64, green: f64, blue: f64) -> String {
 
 /// The eyedropper: AppKit's screen colour sampler (no Screen Recording permission, unlike a screen capture), resolved to sRGB hex; `None` means the user cancelled. Async because the sampler returns at once and the user may take seconds to click.
 #[tauri::command]
+#[allow(unsafe_code)]
 async fn sample_screen_colour(app: AppHandle) -> Result<Option<String>, String> {
     #[cfg(target_os = "macos")]
     {
@@ -127,6 +129,7 @@ async fn sample_screen_colour(app: AppHandle) -> Result<Option<String>, String> 
             use objc2_app_kit::{NSColor, NSColorSampler, NSColorSpace};
             let sampler = NSColorSampler::new();
             let handler = RcBlock::new(move |colour: *mut NSColor| {
+                // SAFETY: the sampler passes a live NSColor for this call, or null when the person cancels.
                 let hex = unsafe { colour.as_ref() }.and_then(|colour| {
                     // A sampled NSColor carries the display's space (often Display P3), so convert.
                     let srgb = colour.colorUsingColorSpace(&NSColorSpace::sRGBColorSpace())?;
@@ -140,6 +143,7 @@ async fn sample_screen_colour(app: AppHandle) -> Result<Option<String>, String> 
                     let _ = tx.send(hex);
                 }
             });
+            // SAFETY: a main-thread call, and the handler holds only a Mutex-guarded sender, so any thread may call it.
             unsafe { sampler.showSamplerWithSelectionHandler(&handler) };
         })
         .map_err(|error| error.to_string())?;
@@ -303,11 +307,13 @@ fn export_flash_report(state: State<'_, FlashState>) -> Option<FlashOutcome> {
 
 /// Kills the WKWebView's own white pre-paint layer: Tauri's `backgroundColor` covers only the NSWindow on macOS, so the flash on window open is the webview painting white before first content; sets `underPageBackgroundColor` (public API) plus the `drawsBackground` KVC flag (private-API-adjacent, fine for direct distribution, revisit only if App Store ever matters), async on the main thread.
 #[cfg(target_os = "macos")]
+#[allow(unsafe_code)]
 pub(crate) fn deflash_webview(window: &tauri::WebviewWindow) {
     use objc2::msg_send;
     use objc2::runtime::AnyObject;
     use objc2_app_kit::NSColor;
     use objc2_foundation::{ns_string, NSNumber};
+    // SAFETY: with_webview runs this on the main thread with Tauri's live WKWebView, which answers both setters.
     let _ = window.with_webview(|webview| unsafe {
         // --surface-window (#0d1016) from the design tokens.
         let wk: *mut AnyObject = webview.inner().cast();
@@ -427,7 +433,9 @@ impl ExportState {
     }
 }
 
+#[allow(unsafe_code)]
 fn kill_pid(pid: u32) {
+    // SAFETY: kill takes plain integers, and pid is this export's own ffmpeg child.
     unsafe {
         libc::kill(pid as libc::pid_t, libc::SIGKILL);
     }
@@ -965,10 +973,13 @@ async fn run_ffmpeg_to_completion(
 pub(crate) const DISK_FLOOR: u64 = 2 * 1024 * 1024 * 1024;
 
 /// Free bytes on the volume holding `path` (macOS statvfs): the mezzanine, clip-extraction and pack-staging disk guards.
+#[allow(unsafe_code)]
 pub(crate) fn free_disk_bytes(path: &std::path::Path) -> Result<u64, String> {
     use std::os::unix::ffi::OsStrExt;
     let c = std::ffi::CString::new(path.as_os_str().as_bytes()).map_err(|e| e.to_string())?;
+    // SAFETY: statvfs is plain C data, so all zeroes is a valid value.
     let mut vfs: libc::statvfs = unsafe { std::mem::zeroed() };
+    // SAFETY: c is a NUL-terminated path, and vfs is a live statvfs for the call to fill.
     if unsafe { libc::statvfs(c.as_ptr(), &mut vfs) } != 0 {
         return Err(format!("statvfs failed for {}", path.display()));
     }

@@ -1,3 +1,4 @@
+#![allow(unsafe_code)]
 //! System-font pinning: themes may reference any installed font family; the first reference pins it, copying (or extracting from a .ttc collection) the face into `<workspaceRoot>/fonts/` and recording it in `fonts.json`, so exports depend on the pinned bytes rather than the OS font that drifts with macOS updates; enumeration/lookup runs through Core Text, the frontend owns resolution and fallback (`src/theme/fonts.ts`), and troika only consumes ttf/otf/woff, hence the .ttc extraction.
 //! Variable fonts: troika parses no `fvar`, so a pinned VF file silently renders its default instance; pinning therefore instances a true static (allsorts) at the picked descriptor's coordinates, matched by PostScript name with a `wght`-only fallback, and refuses with a readable error rather than mis-render (CFF2 flavour, GSUB feature variations, no matchable instance), with provenance landing in `fonts.json`.
 
@@ -119,6 +120,7 @@ fn enumerate_faces() -> Vec<FaceInfo> {
         return Vec::new();
     };
     // Named instances of variable fonts enumerate as ordinary descriptors carrying a variation attribute, present-but-empty on the default instance, absent on statics.
+    // SAFETY: kCTFontVariationAttribute is a constant CFString that Core Text keeps for the life of the process.
     let variation_key = unsafe {
         CFString::wrap_under_get_rule(core_text::font_descriptor::kCTFontVariationAttribute)
     };

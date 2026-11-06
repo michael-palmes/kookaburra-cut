@@ -3836,6 +3836,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(unsafe_code)]
     fn cancelling_kills_ffmpeg_and_keeps_the_previous_output() {
         let dir = render_project("cancel");
         let pid_file = dir.join("ffmpeg.pid");
@@ -3863,6 +3864,7 @@ mod tests {
             .trim()
             .parse()
             .unwrap();
+        // SAFETY: signal 0 only checks that the process exists.
         assert_eq!(unsafe { libc::kill(pid, 0) }, -1, "ffmpeg {pid} still runs");
         assert_eq!(
             std::fs::read(dir.join("assets/cut-edited.mp4")).unwrap(),

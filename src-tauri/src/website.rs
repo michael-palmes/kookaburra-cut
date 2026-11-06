@@ -1,3 +1,4 @@
+#![allow(unsafe_code)]
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
@@ -1413,6 +1414,7 @@ fn close_all(state: &State<'_, WebsiteState>) {
 fn set_native_zoom(webview: &Webview, zoom: f64) -> Result<(), String> {
     use objc2_web_kit::WKWebView;
 
+    // SAFETY: with_webview runs this on the main thread, and platform.inner() is Tauri's live WKWebView.
     webview
         .with_webview(move |platform| unsafe {
             let native = &*(platform.inner() as *mut WKWebView);
@@ -1481,6 +1483,7 @@ mod macos {
         on_state: LoadStateHandler,
     }
 
+    // SAFETY: NSObject sets no rules for subclasses, and each method matches its WebKit protocol declaration.
     define_class!(
         #[unsafe(super(NSObject))]
         #[thread_kind = MainThreadOnly]
@@ -1497,6 +1500,7 @@ mod macos {
                 action: &WKNavigationAction,
                 decision_handler: &Block<dyn Fn(WKNavigationActionPolicy)>,
             ) {
+                // SAFETY: property reads on the action WebKit passes for this call, on the main thread.
                 let policy = unsafe {
                     if action.shouldPerformDownload() {
                         WKNavigationActionPolicy::Cancel
@@ -1527,6 +1531,7 @@ mod macos {
                 response: &WKNavigationResponse,
                 decision_handler: &Block<dyn Fn(WKNavigationResponsePolicy)>,
             ) {
+                // SAFETY: a property read on the response WebKit passes for this call, on the main thread.
                 let policy = unsafe {
                     if !response.canShowMIMEType() {
                         WKNavigationResponsePolicy::Cancel
@@ -1590,6 +1595,7 @@ mod macos {
                 >,
             ) {
                 let method = challenge.protectionSpace().authenticationMethod();
+                // SAFETY: NSURLAuthenticationMethodServerTrust is an immutable Foundation constant.
                 let disposition = if &*method == unsafe { NSURLAuthenticationMethodServerTrust } {
                     NSURLSessionAuthChallengeDisposition::PerformDefaultHandling
                 } else {
@@ -1622,12 +1628,14 @@ mod macos {
                     on_state,
                 },
             );
+            // SAFETY: NSObject's init on a fresh allocation whose ivars are set.
             unsafe { msg_send![super(delegate), init] }
         }
     }
 
     struct WebsiteUIDelegateIvars;
 
+    // SAFETY: NSObject sets no rules for subclasses, and each method matches its WebKit protocol declaration.
     define_class!(
         #[unsafe(super(NSObject))]
         #[thread_kind = MainThreadOnly]
@@ -1679,7 +1687,8 @@ mod macos {
                 action: &WKNavigationAction,
                 _window_features: &WKWindowFeatures,
             ) -> Option<Retained<WKWebView>> {
-                webview.loadRequest(&action.request());
+                // SAFETY: WebKit calls this on the main thread with a live view and action, and the popup's request loads in this panel instead.
+                unsafe { webview.loadRequest(&action.request()) };
                 None
             }
         }
@@ -1690,6 +1699,7 @@ mod macos {
             let delegate = mtm
                 .alloc::<WebsiteUIDelegate>()
                 .set_ivars(WebsiteUIDelegateIvars);
+            // SAFETY: NSObject's init on a fresh allocation whose ivars are set.
             unsafe { msg_send![super(delegate), init] }
         }
     }
@@ -1698,6 +1708,7 @@ mod macos {
         on_focus: Box<dyn Fn(bool)>,
     }
 
+    // SAFETY: NSObject sets no rules for subclasses, and each method matches its WebKit protocol declaration.
     define_class!(
         #[unsafe(super(NSObject))]
         #[thread_kind = MainThreadOnly]
@@ -1713,6 +1724,7 @@ mod macos {
                 _controller: &WKUserContentController,
                 message: &WKScriptMessage,
             ) {
+                // SAFETY: a property read on the message WebKit passes for this call, on the main thread.
                 let body = unsafe { message.body() };
                 let Some(value) = body.downcast_ref::<NSString>() else {
                     return;
@@ -1731,6 +1743,7 @@ mod macos {
             let handler = mtm
                 .alloc::<WebsiteMessageHandler>()
                 .set_ivars(WebsiteMessageHandlerIvars { on_focus });
+            // SAFETY: NSObject's init on a fresh allocation whose ivars are set.
             unsafe { msg_send![super(handler), init] }
         }
     }
@@ -1745,6 +1758,7 @@ mod macos {
         let app = app.clone();
         let owner = owner.to_owned();
         let view_id = view_id.to_owned();
+        // SAFETY: with_webview runs this on the main thread with Tauri's live WKWebView, and each delegate is retained on it, since WebKit holds delegates weakly.
         webview
             .with_webview(move |platform| unsafe {
                 let native = &*(platform.inner() as *mut WKWebView);
@@ -1830,8 +1844,8 @@ mod macos {
     }
 
     unsafe fn image_png(image: *mut NSImage) -> Result<Vec<u8>, String> {
-        let image = image
-            .as_ref()
+        // SAFETY: the caller passes what WebKit handed its snapshot block, a live NSImage or null.
+        let image = unsafe { image.as_ref() }
             .ok_or_else(|| "WebKit returned no website snapshot".to_string())?;
         let tiff = image
             .TIFFRepresentation()
@@ -1839,15 +1853,18 @@ mod macos {
         let bitmap = NSBitmapImageRep::imageRepWithData(&tiff)
             .ok_or_else(|| "website snapshot could not be converted".to_string())?;
         let properties = NSDictionary::<NSBitmapImageRepPropertyKey, AnyObject>::new();
-        let data = bitmap
-            .representationUsingType_properties(NSBitmapImageFileType::PNG, &properties)
-            .ok_or_else(|| "website snapshot could not be encoded".to_string())?;
+        // SAFETY: an empty properties dictionary holds no value of the wrong type.
+        let data = unsafe {
+            bitmap.representationUsingType_properties(NSBitmapImageFileType::PNG, &properties)
+        }
+        .ok_or_else(|| "website snapshot could not be encoded".to_string())?;
         let length = data.length();
         let mut bytes = vec![0; length];
         if length > 0 {
             let destination = NonNull::new(bytes.as_mut_ptr().cast::<c_void>())
                 .ok_or_else(|| "website snapshot allocation failed".to_string())?;
-            data.getBytes_length(destination, length);
+            // SAFETY: destination is the start of bytes, which holds exactly length bytes.
+            unsafe { data.getBytes_length(destination, length) };
         }
         Ok(bytes)
     }
@@ -1858,6 +1875,7 @@ mod macos {
         sender: tokio::sync::oneshot::Sender<Result<Vec<u8>, String>>,
     ) -> Result<(), String> {
         let sender = Arc::new(Mutex::new(Some(sender)));
+        // SAFETY: with_webview runs this on the main thread with Tauri's live WKWebView, and image_png takes what WebKit hands the snapshot block.
         webview
             .with_webview(move |platform| unsafe {
                 let native = &*(platform.inner() as *mut WKWebView);
@@ -1885,6 +1903,7 @@ mod macos {
 
     fn website_data_store(mtm: MainThreadMarker) -> Retained<WKWebsiteDataStore> {
         let identifier = NSUUID::from_bytes(WEBSITE_DATA_STORE);
+        // SAFETY: a main-thread call that opens or creates the store for a fixed identifier.
         unsafe { WKWebsiteDataStore::dataStoreForIdentifier(&identifier, mtm) }
     }
 
@@ -1893,15 +1912,19 @@ mod macos {
     ) {
         let mtm = MainThreadMarker::new().expect("Website data runs on the main thread");
         let store = website_data_store(mtm);
+        // SAFETY: a main-thread class method that takes no arguments.
         let types = unsafe { WKWebsiteDataStore::allWebsiteDataTypes(mtm) };
         let sender = Arc::new(Mutex::new(Some(sender)));
         let callback = RcBlock::new(move |records: NonNull<NSArray<WKWebsiteDataRecord>>| {
+            // SAFETY: WebKit passes the block a live array for the length of the call.
             let records = unsafe { records.as_ref() };
             let mut summaries = records
                 .to_vec()
                 .into_iter()
                 .map(|record| WebsiteDataRecordSummary {
+                    // SAFETY: a property read on a record WebKit fetched.
                     display_name: unsafe { record.displayName() }.to_string(),
+                    // SAFETY: a property read on a record WebKit fetched.
                     data_types: unsafe { record.dataTypes() }
                         .to_vec()
                         .into_iter()
@@ -1916,6 +1939,7 @@ mod macos {
                 }
             }
         });
+        // SAFETY: a main-thread call, and WebKit calls the block on the main thread with the records it fetched.
         unsafe { store.fetchDataRecordsOfTypes_completionHandler(&types, &callback) };
     }
 
@@ -1925,17 +1949,20 @@ mod macos {
     ) {
         let mtm = MainThreadMarker::new().expect("Website data runs on the main thread");
         let store = website_data_store(mtm);
+        // SAFETY: a main-thread class method that takes no arguments.
         let types = unsafe { WKWebsiteDataStore::allWebsiteDataTypes(mtm) };
         let fetch_store = store.clone();
         let fetch_types = types.clone();
         let sender = Arc::new(Mutex::new(Some(sender)));
         let fetch_sender = sender.clone();
         let callback = RcBlock::new(move |records: NonNull<NSArray<WKWebsiteDataRecord>>| {
+            // SAFETY: WebKit passes the block a live array for the length of the call.
             let records = unsafe { records.as_ref() };
             let selected = records
                 .to_vec()
                 .into_iter()
                 .filter(|record| match display_name.as_ref() {
+                    // SAFETY: a property read on a record WebKit fetched.
                     Some(name) => unsafe { record.displayName() }.to_string() == *name,
                     None => true,
                 })
@@ -1957,6 +1984,7 @@ mod macos {
                     }
                 }
             });
+            // SAFETY: the types and records came from this store, and WebKit calls the block on the main thread.
             unsafe {
                 fetch_store.removeDataOfTypes_forDataRecords_completionHandler(
                     &fetch_types,
@@ -1965,6 +1993,7 @@ mod macos {
                 )
             };
         });
+        // SAFETY: a main-thread call, and WebKit calls the block on the main thread with the records it fetched.
         unsafe { store.fetchDataRecordsOfTypes_completionHandler(&types, &callback) };
     }
 }
