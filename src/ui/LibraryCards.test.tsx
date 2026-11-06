@@ -102,6 +102,42 @@ describe("library cards", () => {
     expect(html).toContain('aria-checked="true"');
   });
 
+  it("plays the motion loop on the selected card only, never over a pinned still", () => {
+    const looped = {
+      ...template,
+      previews: ["/1.jpg", "/2.jpg", "/3.jpg", "/4.jpg"],
+      loop: "/loop.mp4",
+    };
+    const card = (selected: boolean, previewFrame?: number) =>
+      renderToStaticMarkup(
+        <TemplateCard
+          entry={looped}
+          selected={selected}
+          tabStop
+          onSelect={() => {}}
+          previewFrame={previewFrame}
+        />,
+      );
+    expect(card(true)).toContain('src="/loop.mp4"');
+    expect(card(true)).toContain("muted");
+    expect(card(false)).not.toContain("<video");
+    expect(card(true, 2)).not.toContain("<video");
+    expect(card(true, 2)).toContain('src="/3.jpg"');
+  });
+
+  it("keeps the stills when a template has no loop", () => {
+    const html = renderToStaticMarkup(
+      <TemplateCard
+        entry={{ ...template, previews: ["/1.jpg", "/2.jpg", "/3.jpg", "/4.jpg"] }}
+        selected
+        tabStop
+        onSelect={() => {}}
+      />,
+    );
+    expect(html).not.toContain("<video");
+    expect(html).toContain('src="/2.jpg"');
+  });
+
   it("shows a preset's category, length and drop marker", () => {
     const html = renderToStaticMarkup(
       <PresetCard
