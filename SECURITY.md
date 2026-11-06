@@ -32,8 +32,9 @@ details stay private until a fix ships. Please do not open a public issue for
 anything that looks like a security problem.
 
 Include the app version (Settings ▸ About), your macOS version and steps to
-reproduce. You will get an acknowledgement as soon as practical, and a fix or
-mitigation plan once the report is confirmed.
+reproduce. You will get an acknowledgement within 14 days, usually sooner, and
+a fix or mitigation plan once the report is confirmed. Each fix is listed
+under `### Security` in `CHANGELOG.md` and in the release notes built from it.
 
 ## Supported versions
 
