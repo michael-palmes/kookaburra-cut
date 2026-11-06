@@ -962,6 +962,11 @@ fn perform_workspace_move(app: &AppHandle, from: &Path, to: &Path) -> Result<Str
         retarget_trust(settings, from, to);
     })?;
     crate::asset_reach::set_workspace(app, to);
+    log::info!(
+        "[workspace] moved from {} to {}",
+        crate::audit::path(from),
+        crate::audit::path(to)
+    );
     let _ = app.emit("kookaburra://workspace-moved", to.to_string_lossy());
     Ok(to.to_string_lossy().into_owned())
 }
@@ -1021,6 +1026,7 @@ fn adopt_workspace(
     update_settings(app, state, |settings| {
         settings.workspace_root = Some(root.to_string_lossy().into_owned());
     })?;
+    log::info!("[workspace] now at {}", crate::audit::path(&root));
     Ok(root.to_string_lossy().into_owned())
 }
 
@@ -1346,6 +1352,10 @@ pub async fn delete_project(
             .map_err(|e| e.to_string())?
     };
     trash_path(&dir).map_err(|e| format!("couldn't move the project to the Trash: {e}"))?;
+    log::info!(
+        "[workspace] {slug}: moved to the Trash ({})",
+        crate::audit::path(&dir)
+    );
     // The trust grant dies with the project, so a later same-slug project starts untrusted.
     update_settings(&app, &state, |settings| {
         settings.trusted_projects.remove(&slug);
@@ -2458,7 +2468,15 @@ pub fn check_project_trust(
     };
     match decision {
         SessionTrust::Pass => Ok(true),
-        SessionTrust::Ask => Ok(false),
+        SessionTrust::Ask => {
+            if settings.trusted_projects.contains_key(&slug) {
+                log::info!(
+                    "[trust] {slug}: changed since it was allowed, so the sheet asks again ({})",
+                    crate::audit::path(&dir)
+                );
+            }
+            Ok(false)
+        }
         SessionTrust::Restamp => {
             if !grant_lasts_only_this_session(cfg!(debug_assertions), crate::is_autorun()) {
                 update_settings(&app, &state, |settings| {
@@ -2611,6 +2629,7 @@ pub async fn request_project_trust(
         )
         .await?;
         if declined {
+            log::info!("[trust] {slug}: declined ({})", crate::audit::path(&dir));
             return Ok(None);
         }
     }
@@ -2646,7 +2665,13 @@ pub fn trust_project(
     if fingerprint != consented_for {
         return Err("the project changed while the consent sheet was open; open it again".into());
     }
-    if !grant_lasts_only_this_session(cfg!(debug_assertions), crate::is_autorun()) {
+    let session_only = grant_lasts_only_this_session(cfg!(debug_assertions), crate::is_autorun());
+    log::info!(
+        "[trust] {slug}: allowed{} ({})",
+        if session_only { " for this launch" } else { "" },
+        crate::audit::path(&dir)
+    );
+    if !session_only {
         let allowed_at_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|e| e.to_string())?

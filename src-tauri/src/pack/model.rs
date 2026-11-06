@@ -108,6 +108,21 @@ pub struct PackContents {
     pub screenshots: Vec<PackScreenshot>,
 }
 
+impl PackContents {
+    pub fn item_count(&self) -> usize {
+        self.projects.len()
+            + self.templates.len()
+            + self.presets.len()
+            + self.themes.len()
+            + self.brands.len()
+            + self.fonts.len()
+            + self.objects.len()
+            + self.gradients.len()
+            + self.export_presets.len()
+            + self.screenshots.len()
+    }
+}
+
 /// What every pack item carries. `contentHash` is the conflict key and is over content, never mtime.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

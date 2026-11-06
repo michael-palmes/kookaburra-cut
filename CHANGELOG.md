@@ -21,6 +21,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   are listed before Claude starts. Where a folder's git settings name a program,
   or a hook is still there, Claude's git is turned off for that project, and
   checkpoints carry on through `./kb`.
+- The app now keeps a log in every build, readable by your account alone:
+  which projects and websites you allowed, packs imported, updates, and what
+  your organisation's profile refused. It holds names and paths, never what is
+  in your files, keeps three files of 1 MiB at most and never leaves your Mac.
 
 ## [0.22.2] - 2026-11-05
 

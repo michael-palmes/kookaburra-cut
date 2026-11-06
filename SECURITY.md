@@ -144,8 +144,8 @@ organisation's own server (see "Managed preferences").
 Every location the app writes, with its mode. `$APPDATA`, everything under
 it, `_bridge` and `_autorun` are created 0700 (folders) and 0600 (files),
 every launch re-seals the trees in the background and logs one `[privacy]`
-line when it had to correct anything, and `cache/`, `_bridge/` and
-`_autorun/` carry `.metadata_never_index` (`src-tauri/src/privacy.rs`;
+line when it had to correct anything, and `cache/`, `logs/`, `_bridge/` and
+`_autorun/` carry `.metadata_never_index` (`src-tauri/src/privacy.rs`, `audit.rs`;
 `scripts/kookaburra-run.sh` seals the queue it creates). Projects and the
 workspace folders are the user's documents and take the umask default; pack
 extraction forces 0644/0755 on what it lands. `cache/clips` and
@@ -256,6 +256,24 @@ backup. Everything else is backed up like any document: projects with their own
 - **`$APPDATA/.window-state.json`**: window positions (`tauri-plugin-window-state`).
   The webview's `localStorage` holds font, colour and icon recents and UI
   toggles, nothing from a project's content.
+- **`$APPDATA/logs/`**: `app.log`, the app's own record, kept by release and
+  dev builds alike (`src-tauri/src/audit.rs`, `audit::builder`): what a stamp
+  moved or stripped and where the agent's git is off (`[kit]`), footage trims
+  (`[history]`), Allow given, declined and asked again (`[trust]`), website
+  origins allowed, declined and removed (`[website]`), pack imports with the
+  publisher's key id, verdict, item counts and outcome (`[pack]`), update checks
+  and installs (`[update]`), workspace moves and project deletes
+  (`[workspace]`), managed keys and refusals (`[managed]`) and what the startup
+  seal corrected (`[privacy]`). Lines hold paths, slugs, origins, key ids,
+  versions and counts, never a file's contents or a secret, and a name a pack or
+  page chose is escaped onto one line (`audit::field`). Only the app's own lines
+  reach it, never the webview's or a library's (`own_target`). A file rotates
+  at 1 MiB and three are kept, at most 3 MiB (`ROTATED_KEPT`); the folder is
+  made 0700 with `.metadata_never_index` before the first line (`log_dir`), a
+  file opens at the umask inside it, and every launch re-seals the files to 0600
+  (`privacy::seal_at_startup`). Nothing in it leaves the Mac, and no managed key
+  turns it off (`docs/decisions.md`, "Release builds keep a log"). The headless
+  CLI kb runs never starts it and writes to stderr (`src-tauri/src/main.rs`).
 - **The Website data store**: one WebKit data store for every approved live
   website, identified by a fixed UUID, separate from Safari and from the app's
   own store; Settings ▸ Website data lists and clears its records. Control:
