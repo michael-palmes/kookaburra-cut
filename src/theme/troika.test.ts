@@ -26,14 +26,62 @@ describe("troika is one pinned copy", () => {
     expect(packageDir("troika-three-utils", fromText)).toBe(packageDir("troika-three-utils"));
   });
 
-  it("is 0.52.5, with the wedge patch in the builds the app and tests load", () => {
+  it("is 0.53.0, with the patch in the builds the app and tests load", () => {
     const text = packageDir("troika-three-text");
-    expect(JSON.parse(readFileSync(join(text, "package.json"), "utf8")).version).toBe("0.52.5");
+    expect(JSON.parse(readFileSync(join(text, "package.json"), "utf8")).version).toBe("0.53.0");
     for (const build of ["troika-three-text.esm.js", "troika-three-text.umd.js"]) {
       const src = readFileSync(join(text, "dist", build), "utf8");
       expect(src).toContain("failedFonts.add(fontUrl)");
       expect(src).toContain("fallback font resolution failed; continuing without fallback fonts");
+      expect(src).toContain("const { src, unicodeRange, label } = userFonts[j];");
+      expect(src).toContain("characters.join('\\n') : '' + characters;");
     }
+  });
+});
+
+class StubXhr {
+  status = 0;
+  response: unknown = null;
+  responseType = "";
+  onload: (() => void) | null = null;
+  onerror: ((e: unknown) => void) | null = null;
+  private url = "";
+  open(_method: string, url: string) {
+    this.url = url;
+  }
+  send() {
+    this.status = 200;
+    this.response = this.url;
+    this.onload?.();
+  }
+}
+
+describe("defaultFontURL backs the text's own font", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("resolves a codepoint the text's font lacks through the fallback face", async () => {
+    vi.stubGlobal("XMLHttpRequest", StubXhr);
+    const covers: Record<string, string> = { "/face.woff": "A", "/fallback.otf": "★" };
+    const parse = (url: unknown) => ({
+      src: url,
+      supportsCodePoint: (code: number) =>
+        covers[url as string].includes(String.fromCodePoint(code)),
+    });
+    const result = await new Promise<{ chars: Uint8Array; fonts: unknown[] }>((resolve) =>
+      createFontResolver(parse, {
+        getFontsForString: () => Promise.reject(new Error("no fallback lookup expected")),
+      })("A★", resolve, {
+        fonts: [
+          { label: "system", src: "/fallback.otf" },
+          { label: "default", src: "/face.woff" },
+        ],
+      }),
+    );
+    expect([...result.chars]).toEqual([0, 1]);
+    expect(result.fonts.map((f) => (f as { src: string }).src)).toEqual([
+      "/face.woff",
+      "/fallback.otf",
+    ]);
   });
 });
 

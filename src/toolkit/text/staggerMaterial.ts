@@ -226,7 +226,7 @@ const PACK_OVER_FRAGMENT_EMPH = PACK_OVER_FRAGMENT.replace(
   "uTroikaEdgeOffset + vGanMixWS.y + vGanEmphW",
 );
 
-// Troika discards at zero base coverage BEFORE the over layer runs, which would kill every fragment a bolder weight or outward soft halo needs; pack mounts strip it and re-discard after the re-threshold. Pinned to troika 0.52.5's exact bytes (re-check on any troika upgrade).
+// Troika discards at zero base coverage BEFORE the over layer runs, which would kill every fragment a bolder weight or outward soft halo needs; pack mounts strip it and re-discard after the re-threshold. Pinned to troika 0.53.0's exact bytes (re-check on any troika upgrade).
 const TROIKA_EDGE_DISCARD_RE = /if \(edgeAlpha == 0\.0\) \{\s*discard;\s*\}/;
 function stripTroikaEdgeDiscard(shaders: { vertexShader: string; fragmentShader: string }): {
   vertexShader: string;
@@ -376,7 +376,7 @@ if (vGanEmph > 0.5) {
 }
 `;
 
-// troika 0.52.5's exact edge-offset sites (re-check on any troika upgrade): the quad grow and the edge alpha.
+// troika 0.53.0's exact edge-offset sites (re-check on any troika upgrade): the quad grow and the edge alpha.
 const TROIKA_OUTLINE_BOUNDS_RE =
   /bounds\.xy - uTroikaEdgeOffset - uTroikaBlurRadius,(\s*)bounds\.zw \+ uTroikaEdgeOffset \+ uTroikaBlurRadius/;
 const TROIKA_EDGE_ALPHA_RE =
