@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { Theme } from "../theme/tokens";
 import { COMPARE_GRIP_CATALOG, COMPARE_MASK_CATALOG } from "./compareCatalog";
 import {
+  COMPARE_GLASS_STRENGTH_MAX,
+  COMPARE_GLASS_WIDTH,
   COMPARE_GRIP_ID,
   COMPARE_MASK_ID,
   type CompareSpec,
@@ -62,6 +64,8 @@ const specWith = (parts: Partial<CompareSpec>): CompareSpec => ({
     tintA: null,
     tintB: null,
     tintAmount: 0,
+    glassWidth: 0,
+    glassStrength: 0,
   },
   ...parts,
 });
@@ -108,6 +112,8 @@ describe("compareSpecOf", () => {
       tintA: null,
       tintB: null,
       tintAmount: 0,
+      glassWidth: 0,
+      glassStrength: 0,
     });
   });
 
@@ -205,6 +211,17 @@ describe("compareSpecOf", () => {
     expect(spec?.chrome.gripSize).toBe(0.8);
     expect(spec?.chrome.gripStyle).toBe("bar");
     expect(compareSpecOf(compareDoc({ chrome: {} }))?.chrome.gripStyle).toBe("chevrons");
+  });
+
+  it("bakes the glass bar's defaults, keeps authored fields and caps the strength", () => {
+    const on = compareSpecOf(compareDoc({ chrome: { glass: true } }))?.chrome;
+    expect([on?.glassWidth, on?.glassStrength]).toEqual([COMPARE_GLASS_WIDTH, 1]);
+    const thin = compareSpecOf(compareDoc({ chrome: { glass: { width: 60 } } }))?.chrome;
+    expect([thin?.glassWidth, thin?.glassStrength]).toEqual([60, 1]);
+    const wild = compareSpecOf(compareDoc({ chrome: { glass: { strength: 9 } } }))?.chrome;
+    expect(wild?.glassStrength).toBe(COMPARE_GLASS_STRENGTH_MAX);
+    const off = compareSpecOf(compareDoc({ chrome: { glass: false } }))?.chrome;
+    expect([off?.glassWidth, off?.glassStrength]).toEqual([0, 0]);
   });
 });
 

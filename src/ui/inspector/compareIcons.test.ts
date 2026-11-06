@@ -32,7 +32,9 @@ describe("comparison drill glyphs (structure pin)", () => {
   });
 
   it("one toggle glyph per divider-chrome toggle", () => {
-    expect(sorted(Object.keys(COMPARE_TOGGLE_GLYPHS))).toEqual(sorted(["line", "grip", "chips"]));
+    expect(sorted(Object.keys(COMPARE_TOGGLE_GLYPHS))).toEqual(
+      sorted(["line", "grip", "chips", "glass"]),
+    );
   });
 
   it("one grip glyph per catalogue entry", () => {
@@ -48,7 +50,7 @@ describe("comparison drill glyphs (structure pin)", () => {
       ...Object.values(COMPARE_TOGGLE_GLYPHS),
       ...Object.values(COMPARE_GRIP_GLYPHS),
     ];
-    expect(glyphs).toHaveLength(16);
+    expect(glyphs).toHaveLength(17);
     for (const glyph of glyphs) expect(isValidElement(glyph)).toBe(true);
   });
 

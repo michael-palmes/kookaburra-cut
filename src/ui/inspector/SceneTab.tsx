@@ -53,6 +53,7 @@ import {
 import { readProjectManifestSnapshot, updateSceneTransition } from "../../engine/projectEdit";
 import { defaultOrbitPose } from "../../engine/sceneCamera";
 import { type CameraDoc, nearestKey, type RigDoc, setKeyPose } from "../../engine/sceneCameraEdit";
+import { COMPARE_GLASS_STRENGTH_MAX } from "../../engine/sceneCompare";
 import type { EditRepointSlot } from "../../engine/sceneDoc";
 import { applyBackgroundToAllScenes } from "../../engine/sceneDocPatchQueue";
 import {
@@ -7795,6 +7796,9 @@ export function SceneTab({
     const keyHint = hasKeys ? "Edits the divider key nearest the playhead" : undefined;
     const grip = cmp.chrome?.grip;
     const gripObject = typeof grip === "object" ? grip : undefined;
+    const glass = cmp.chrome?.glass;
+    const glassFields = (c: NonNullable<SceneDoc["compare"]>) =>
+      typeof c.chrome?.glass === "object" ? c.chrome.glass : {};
     const lineColour = resolveCompareColour(cmp.chrome?.line?.colour, sceneTheme);
     // Each token wears its resolved colour, so the choice is the swatch rather than the word.
     const tintOptions: SegmentedOption<CompareTint>[] = [
@@ -8085,6 +8089,41 @@ export function SceneTab({
                     })
                   }
                 />
+              )}
+              {maskEntry?.hasLine && (
+                <ToggleRow
+                  icon={<CompareToggleIcon id="glass" size={17} />}
+                  label="Glass edge"
+                  description="A refracting glass bar along the edge, with a rim of light."
+                  checked={!!glass}
+                  onChange={(on) =>
+                    patchCompare((c) => {
+                      c.chrome = { ...c.chrome, glass: on ? true : undefined };
+                    })
+                  }
+                />
+              )}
+              {maskEntry?.hasLine && glass && (
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Strength</span>
+                  <DebouncedRange
+                    value={(typeof glass === "object" ? glass.strength : undefined) ?? 1}
+                    min={0}
+                    max={COMPARE_GLASS_STRENGTH_MAX}
+                    step={0.05}
+                    label="Glass strength"
+                    onInput={(v) =>
+                      cmpLive((c) => {
+                        c.chrome = { ...c.chrome, glass: { ...glassFields(c), strength: v } };
+                      })
+                    }
+                    onCommit={(v) =>
+                      cmpCommit((c) => {
+                        c.chrome = { ...c.chrome, glass: { ...glassFields(c), strength: v } };
+                      })
+                    }
+                  />
+                </div>
               )}
             </DrillGroup>
           )}
