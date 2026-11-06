@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo } from "react";
 import { type IUniform, PlaneGeometry, Vector2, Vector3 } from "three";
+import { useFormat } from "../../../../../engine/format";
 import { lookColorUniform, lookLuminance, useLookMaterials, useLookTime } from "../../kit";
 import type { Scene3dLookProps } from "../../types";
 import {
@@ -22,6 +23,7 @@ const DARK_LUMINANCE = 0.2;
 /** Sunroom: a warm plaster room round the stage, a low side sun falling through a venetian blind as slatted light across the back wall and on over the floor, drifting as the sun swings. Unlit, every stripe an analytic trace to the blind (F6), so colours stay exact and fill rate stays low. */
 export function Sunroom({ colors, params, speed, backing }: Scene3dLookProps) {
   const t = useLookTime(speed);
+  const { aspect } = useFormat();
   const room = useMemo(() => sunroomRoom(params.wallDistance), [params.wallDistance]);
   const geometry = useMemo(() => {
     const depth = room.wallZ + SUNROOM_FRONT_Z;
@@ -90,8 +92,9 @@ export function Sunroom({ colors, params, speed, backing }: Scene3dLookProps) {
         sunElevationDeg: params.sunHeight,
         wallDistance: params.wallDistance,
         patch: params.patch,
+        aspect,
       }),
-    [params.sunSide, params.sunHeight, params.wallDistance, params.patch],
+    [params.sunSide, params.sunHeight, params.wallDistance, params.patch, aspect],
   );
   useLayoutEffect(() => {
     u.uWinCentre.value.set(...win.centre);

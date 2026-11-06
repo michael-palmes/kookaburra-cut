@@ -5,7 +5,7 @@ import { SUNROOM_FLOOR_Y, SUNROOM_FRONT_Z, SUNROOM_PENUMBRA_REACH, SUNROOM_THROW
 /** Walls and floor give way to the backing between these distances from the stage axis. */
 export const SUNROOM_FADE = { start: 20, end: 38 } as const;
 /** Wall tops give way to the backing between these heights above the floor (no ceiling). */
-export const SUNROOM_TOP_FADE = { start: 9, end: 14 } as const;
+export const SUNROOM_TOP_FADE = { start: 11, end: 15 } as const;
 /** Mullion half width on the blind, world units. */
 export const SUNROOM_MULLION = 0.07;
 /** Penumbra half width: `min` at the blind, widening by `spread` per unit travelled, times Softness. */

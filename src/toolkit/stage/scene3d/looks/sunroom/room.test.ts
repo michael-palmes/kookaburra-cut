@@ -106,6 +106,14 @@ describe("sunroom", () => {
     }
   });
 
+  it("scales the patch with the frame in every aspect", () => {
+    const base = { sunAzimuthDeg: -22, sunElevationDeg: 24, wallDistance: 9, patch: -0.25 };
+    const wide = sunroomWindow(base);
+    const tall = sunroomWindow({ ...base, aspect: 9 / 16 });
+    expect(tall.halfWidth / wide.halfWidth).toBeCloseTo(9 / 16 / (16 / 9), 9);
+    expect(tall.halfHeight).toBe(wide.halfHeight);
+  });
+
   it("filters slats to their exact open share and holds crisp gaps at pixel width", () => {
     for (const g of [0.3, 0.6, 0.85]) {
       for (const x of [0, 0.13, 0.5, 0.77, 3.4]) {

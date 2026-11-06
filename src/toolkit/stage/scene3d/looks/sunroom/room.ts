@@ -21,7 +21,8 @@ const DRIFT_SINK = 0.3;
 
 const DEFAULT_CAMERA_Z = 5;
 const HALF_FOV_TAN = Math.tan((22.5 * Math.PI) / 180);
-const FRAME_ASPECT = 16 / 9;
+/** Widest export aspect: side walls clear its view. */
+const WIDE_ASPECT = 16 / 9;
 const DEG = Math.PI / 180;
 
 export interface SunroomSunPath {
@@ -63,7 +64,7 @@ export interface SunroomRoom {
 /** The room for a wall distance: side walls just outside the default camera's view of the back wall. */
 export function sunroomRoom(wallDistance: number): SunroomRoom {
   const reach = wallDistance + DEFAULT_CAMERA_Z;
-  return { wallZ: wallDistance, sideX: HALF_FOV_TAN * FRAME_ASPECT * reach + 3 };
+  return { wallZ: wallDistance, sideX: HALF_FOV_TAN * WIDE_ASPECT * reach + 3 };
 }
 
 export interface SunroomWindowParams {
@@ -72,6 +73,8 @@ export interface SunroomWindowParams {
   wallDistance: number;
   /** Patch centre across the back wall, -1 (left frame edge) to 1 (right). */
   patch: number;
+  /** Frame width over height; the patch scales with the frame. */
+  aspect?: number;
 }
 
 /** The blind: a rectangle in its own plane (centre, horizontal axis `u`, normal, half extents), with slats along `u`. */
@@ -87,7 +90,7 @@ export interface SunroomWindow {
 export function sunroomWindow(p: SunroomWindowParams): SunroomWindow {
   const { wallZ } = sunroomRoom(p.wallDistance);
   const reach = p.wallDistance + DEFAULT_CAMERA_Z;
-  const halfFrame = HALF_FOV_TAN * FRAME_ASPECT * reach;
+  const halfFrame = HALF_FOV_TAN * (p.aspect ?? WIDE_ASPECT) * reach;
   const frameTop = HALF_FOV_TAN * reach;
   const az = p.sunAzimuthDeg * DEG;
   const el = p.sunElevationDeg * DEG;
