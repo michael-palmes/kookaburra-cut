@@ -973,7 +973,7 @@ fn glide_at(keys: &[GlideKey], f: f64) -> [f64; 4] {
     for pair in keys.windows(2) {
         let (a, b) = (pair[0], pair[1]);
         let p = if b.frame > a.frame {
-            ((f - a.frame as f64) / (b.frame - a.frame) as f64).clamp(0.0, 1.0)
+            ((f - a.frame as f64) / b.frame.saturating_sub(a.frame) as f64).clamp(0.0, 1.0)
         } else if f >= b.frame as f64 {
             1.0
         } else {
@@ -1033,8 +1033,8 @@ fn glide_expr(keys: &[GlideKey], c: usize, f: &str) -> String {
         }
         let p = format!(
             "clip(({f}{:+})/{},0,1)",
-            -a.frame,
-            (b.frame - a.frame).max(1)
+            a.frame.saturating_neg(),
+            b.frame.saturating_sub(a.frame).max(1)
         );
         let e = if a.smooth {
             format!("{p}*{p}*(3-2*{p})")
@@ -1408,7 +1408,7 @@ pub(crate) fn build_render_args_for(
              setpts=PTS-STARTPTS,{fit}[{label}];"
         ));
         labels.push(label);
-        total_frames += frames;
+        total_frames = total_frames.saturating_add(frames);
     }
     for label in &labels {
         filter.push_str(&format!("[{label}]"));
@@ -2524,6 +2524,37 @@ mod tests {
             masks: Vec::new(),
             reference: None,
         }
+    }
+
+    /// A corrupt document's absurd rate or key times saturate the frame maths instead of overflowing it.
+    #[test]
+    fn absurd_rates_and_key_times_saturate_instead_of_overflowing() {
+        let mut fast = doc();
+        fast.settings.fps = 1e15;
+        fast.clips.push(EditClip {
+            id: "c2".into(),
+            in_ms: 1000,
+            out_ms: 2000,
+            start_ms: 1000,
+            ..fast.clips[0].clone()
+        });
+        let (_, total) = build_render_args(&fast, "/out/x.mp4", false, None).unwrap();
+        assert_eq!(total, u32::MAX);
+
+        let mut keyed = doc();
+        keyed.settings.fps = 1e6;
+        let key = |t_ms: i64, rect: [f64; 4]| EditZoomKey {
+            t_ms,
+            rect,
+            ease: None,
+        };
+        keyed.clips[0].zoom = Some(EditZoom {
+            keys: vec![
+                key(i64::MIN / 2, [0.0, 0.0, 1.0, 1.0]),
+                key(i64::MAX / 2, [0.25, 0.25, 0.5, 0.5]),
+            ],
+        });
+        assert!(build_render_args(&keyed, "/out/x.mp4", false, None).is_ok());
     }
 
     #[test]
