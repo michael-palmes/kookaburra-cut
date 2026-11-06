@@ -1,0 +1,39 @@
+{
+  "version": 2,
+  "name": "Release Reel",
+  "tagline": "Every release, cut to the beat: one colour, one word and one screen per new thing.",
+  "category": "update",
+  "tags": ["release", "what's new", "update", "version", "changelog", "music"],
+  "personas": ["pm", "marketer", "developer"],
+  "level": "standard",
+  "tier": "bold",
+  "uses": ["audio"],
+  "highlights": [
+    "The version number slams in on bar 1",
+    "Each feature floods its own colour room on the downbeat",
+    "A cascade of chips covers everything else"
+  ],
+  "bring": [
+    "App icon",
+    "Version number",
+    "Three features: a punch word and a line each",
+    "A recording per feature",
+    "An optional list for And more"
+  ],
+  "song": {
+    "title": "Colour Theory",
+    "bpm": 128
+  },
+  "looks": ["kookaburra-frost", "kookaburra-citrus", "kookaburra-lagoon"],
+  "preview": {
+    "poster": 5,
+    "frames": [0, 5, 11, 12],
+    "loop": {
+      "scene": 2,
+      "atMs": 0,
+      "durationMs": 6000
+    }
+  },
+  "order": 102,
+  "status": "beta"
+}
