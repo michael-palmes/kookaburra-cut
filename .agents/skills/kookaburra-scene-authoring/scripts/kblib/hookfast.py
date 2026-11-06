@@ -52,6 +52,7 @@ NET_ADDRESS = re.compile(r"^(?:tcp|udp|ssl|openssl|socks|proxy|ip|sctp|unix-conn
 FETCH_VALUE_FLAGS = {"-o", "--output", "-O", "--output-document", "-H", "--header", "-X", "--request", "-A", "--user-agent", "-w", "--write-out",
                      "-D", "--dump-header", "-m", "--max-time", "--connect-timeout", "-d", "--data", "--data-binary", "--data-raw", "-F", "--form",
                      "-T", "--upload-file", "-b", "--cookie", "-c", "--cookie-jar", "-e", "--referer", "--retry", "-P", "--directory-prefix"}
+GIT_WORD = re.compile(r"\bgit\b")
 SUBSTITUTION = re.compile(r"\$\(([^()]*)\)|`([^`]*)`")
 NETWORK_CODE = re.compile(r"\b(?:urllib\d?|http\.client|requests|httpx|aiohttp|socket|ftplib|smtplib|paramiko|fetch|https?|net|dgram|tls|XMLHttpRequest|WebSocket)\b")
 
@@ -452,7 +453,8 @@ def _fetch_targets(args: List[str]) -> List[str]:
     return targets
 
 
-def _words_reason(words: List[str], command: str, depth: int) -> Optional[str]:
+def _unwrapped(words: List[str]) -> List[str]:
+    """The words past leading assignments and wrappers (`env`, `sudo`, `xargs` and their flags)."""
     words = list(words)
     while words:
         if ASSIGNMENT.match(words[0]):
@@ -463,6 +465,11 @@ def _words_reason(words: List[str], command: str, depth: int) -> Optional[str]:
                 words.pop(0)
         else:
             break
+    return words
+
+
+def _words_reason(words: List[str], command: str, depth: int) -> Optional[str]:
+    words = _unwrapped(words)
     if not words:
         return None
     head, args = os.path.basename(words[0]), words[1:]
@@ -516,6 +523,43 @@ def send_off_reason(command: str, depth: int = 0) -> Optional[str]:
     return None
 
 
+def runs_git(command: str, depth: int = 0) -> bool:
+    """Whether any simple command in `command` is git, past wrappers, a shell's -c, eval and command substitution."""
+    if depth > 4 or not GIT_WORD.search(re.sub(r"[\"'\\]", "", command)):
+        return False
+    if any(runs_git(m.group(1) or m.group(2) or "", depth + 1) for m in SUBSTITUTION.finditer(command)):
+        return True
+    for words in _command_words(command):
+        words = _unwrapped(words)
+        if not words:
+            continue
+        head, args = os.path.basename(words[0]), words[1:]
+        if head == "git":
+            return True
+        if head in SHELLS and any(a.startswith("-") and "c" in a[1:] and runs_git(args[i + 1], depth + 1) for i, a in enumerate(args[:-1])):
+            return True
+        if head == "eval" and runs_git(" ".join(args), depth + 1):
+            return True
+    return False
+
+
+def git_withheld(root: str) -> Optional[str]:
+    """Why the agent's own git must not run in root, as the app's stamp decides with its Bash(git:*) deny, checked live for a session started in a terminal."""
+    from pathlib import Path
+
+    from . import git
+
+    refused = git.refusal(Path(root))
+    if refused:
+        return (f"{refused}, so git could run a program this folder names. kb denied this command, and ./kb checkpoint refuses here too: "
+                "ask the person to check this folder's .git.")
+    hooks = git.live_hooks(Path(root))
+    if hooks:
+        return (f"{hooks[0]} would run under git. kb denied this command: ./kb checkpoint, ./kb history and ./kb diff never run hooks, "
+                "or ask the person to remove it.")
+    return None
+
+
 def ask_before_send_off(payload: Dict[str, Any], result: Tuple[int, str, str]) -> Tuple[int, str, str]:
     """The bash-pre answer, with `ask` added when the command is a send-off shape. A deny stands."""
     from .util import clean_lines
@@ -562,6 +606,10 @@ def bash_pre(payload: Dict[str, Any]) -> Tuple[int, str, str]:
     command = ti.get("command")
     if root is None or not isinstance(command, str) or not command.strip():
         return 0, "", ""
+    if runs_git(command):
+        withheld = git_withheld(root)
+        if withheld:
+            return deny(withheld)
     caller = hook_caller(payload)
     bind(root, command, caller)
     hits = leased_writes(root, command, caller)

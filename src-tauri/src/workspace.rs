@@ -1923,6 +1923,16 @@ fn agent_files_block(record: Option<&AgentFilesRecord>, present: &[String]) -> O
     }
 }
 
+fn agent_files_sheet_body(unreviewed: &[String], folder: &str) -> String {
+    let listed: Vec<String> = unreviewed.iter().take(12).map(|line| format!("• {line}")).collect();
+    let more = unreviewed.len() - listed.len();
+    let more = if more > 0 { format!("\nand {more} more, named in the log") } else { String::new() };
+    format!(
+        "These could have steered Claude, so Kookaburra Cut moved them:\n\n{}{more}\n\nThe text is in NOTES.md, which Claude reads as notes, not instructions. If a CLAUDE.md was your own, copy back what you want.\n\nFolder: {folder}",
+        listed.join("\n")
+    )
+}
+
 /// Show the person what moved out of the folder on a native sheet a webview can't answer. `true` starts the session; Return and Not now leave it off.
 pub(crate) async fn review_agent_files_for(
     app: &AppHandle,
@@ -1941,14 +1951,7 @@ pub(crate) async fn review_agent_files_for(
         };
     }
     let name = consent_project_name(dir, slug);
-    let listed: Vec<String> = unreviewed.iter().take(12).map(|line| format!("• {line}")).collect();
-    let more = unreviewed.len() - listed.len();
-    let more = if more > 0 { format!("\nand {more} more, named in the log") } else { String::new() };
-    let body = format!(
-        "These could have steered Claude, so Kookaburra Cut moved them:\n\n{}{more}\n\nThe text is in NOTES.md, which Claude reads as notes, not instructions. If a CLAUDE.md was your own, copy back what you want.\n\nFolder: {}",
-        listed.join("\n"),
-        display_path(app, dir)
-    );
+    let body = agent_files_sheet_body(&unreviewed, &display_path(app, dir));
     let declined = crate::native_alert::ask(
         app,
         "main",
@@ -3023,6 +3026,29 @@ mod tests {
         assert_eq!(blocked(&settings, &[]), None);
         let held = blocked(&settings, &[".mcp.json".to_owned()]).unwrap();
         assert!(held.contains(".mcp.json") && held.contains("Move or delete"), "{held}");
+    }
+
+    #[test]
+    fn a_hook_moved_on_the_first_open_is_on_the_review_sheet() {
+        let dir = std::env::temp_dir().join(format!("kookaburra-review-hook-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("project.json"), "{}").unwrap();
+        crate::history::init_repo(&dir, "chore: create project").unwrap();
+        std::fs::create_dir_all(dir.join(".git/hooks")).unwrap();
+        std::fs::write(dir.join(".git/hooks/pre-commit"), "#!/bin/sh\n").unwrap();
+        let key = dir.to_string_lossy().into_owned();
+        let mut settings = AppSettings::default();
+        note_agent_sweep(&mut settings, &key, &crate::kit::sweep_agent_files(&dir, true), &stamp_opts());
+        let line = ".git/hooks/pre-commit → .git/hooks.moved-aside/pre-commit";
+        let record = &settings.agent_files[&key];
+        assert_eq!(record.unreviewed, vec![line]);
+        let present = crate::kit::foreign_agent_files(&dir);
+        assert!(present.is_empty(), "{present:?}");
+        assert!(agent_files_block(Some(record), &present).unwrap().contains("what moved"));
+        let body = agent_files_sheet_body(&record.unreviewed, "~/w/p");
+        assert!(body.contains(&format!("• {line}")), "{body}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

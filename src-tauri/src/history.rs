@@ -117,6 +117,44 @@ fn refuse_foreign(dir: &Path) -> Result<(), String> {
     }
 }
 
+/// What `.git/hooks` holds beyond git's own `.sample` files, of any kind, as paths from `dir`; a `.git/hooks` that isn't a real folder counts as one.
+pub(crate) fn live_hooks(dir: &Path) -> Vec<PathBuf> {
+    let rel = Path::new(".git").join("hooks");
+    let hooks = dir.join(&rel);
+    if std::fs::symlink_metadata(&hooks).is_err() {
+        return Vec::new();
+    }
+    if !crate::real_dir::is_real_dir(&hooks) {
+        return vec![rel];
+    }
+    let Ok(entries) = std::fs::read_dir(&hooks) else {
+        return vec![rel];
+    };
+    let mut live: Vec<PathBuf> = entries
+        .flatten()
+        .map(|entry| entry.file_name())
+        .filter(|name| !name.to_string_lossy().ends_with(".sample"))
+        .map(|name| rel.join(name))
+        .collect();
+    live.sort();
+    live
+}
+
+/// Whether the agent's own plain `git` may run here: only where the app would run git itself and no hook would fire under it.
+pub(crate) fn agent_git_verdict(dir: &Path) -> Result<(), String> {
+    refuse_foreign(dir)?;
+    match live_hooks(dir).first() {
+        Some(hook) => Err(format!(
+            "{} would run under git",
+            crate::clean_text::clean_text_with_cap(
+                &crate::clean_text::clean_name(&hook.to_string_lossy()),
+                80
+            )
+        )),
+        None => Ok(()),
+    }
+}
+
 fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
     git_env(dir, args, &[], None)
 }
@@ -638,6 +676,53 @@ mod tests {
         assert_eq!(refuse_foreign(&dir), Ok(()));
         set_config(&dir, "remote.origin.uploadpack", "/bin/false");
         assert!(refuse_foreign(&dir).unwrap_err().contains("uploadpack"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn live_hooks_ignores_samples_and_counts_links_and_folders() {
+        let dir = app_repo("live-hooks");
+        let hooks = dir.join(".git/hooks");
+        std::fs::create_dir_all(&hooks).unwrap();
+        assert_eq!(
+            live_hooks(&dir),
+            Vec::<PathBuf>::new(),
+            "git init's own samples"
+        );
+        std::fs::write(hooks.join("pre-commit"), "#!/bin/sh\n").unwrap();
+        std::os::unix::fs::symlink("/bin/true", hooks.join("post-checkout")).unwrap();
+        std::fs::create_dir(hooks.join("pre-push.d")).unwrap();
+        std::fs::write(hooks.join("commit-msg.sample"), "").unwrap();
+        assert_eq!(
+            live_hooks(&dir),
+            [
+                ".git/hooks/post-checkout",
+                ".git/hooks/pre-commit",
+                ".git/hooks/pre-push.d"
+            ]
+            .map(PathBuf::from)
+        );
+        std::fs::remove_dir_all(&hooks).unwrap();
+        std::os::unix::fs::symlink(std::env::temp_dir(), &hooks).unwrap();
+        assert_eq!(live_hooks(&dir), [PathBuf::from(".git/hooks")]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_live_hook_or_foreign_config_withholds_the_agents_git() {
+        let dir = temp("agent-git");
+        assert_eq!(agent_git_verdict(&dir), Ok(()), "no repository yet");
+        init_repo(&dir, "chore: create project").unwrap();
+        assert_eq!(agent_git_verdict(&dir), Ok(()));
+        let hook = dir.join(".git/hooks/pre-commit");
+        std::fs::create_dir_all(hook.parent().unwrap()).unwrap();
+        std::fs::write(&hook, "#!/bin/sh\n").unwrap();
+        let withheld = agent_git_verdict(&dir).unwrap_err();
+        assert!(withheld.contains(".git/hooks/pre-commit"), "{withheld}");
+        std::fs::remove_file(&hook).unwrap();
+        set_config(&dir, "core.fsmonitor", "/bin/true");
+        let withheld = agent_git_verdict(&dir).unwrap_err();
+        assert!(withheld.contains("core.fsmonitor"), "{withheld}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
