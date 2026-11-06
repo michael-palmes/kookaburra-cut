@@ -1,6 +1,6 @@
 ---
 name: kookaburra-release
-description: Cutting a macOS release of Kookaburra Cut through the GitHub Actions release pipeline: the signed v* tag that triggers it, the Touch ID tag key and the commit key, recovery for a lost Mac, the build / sign / verify / publish jobs, the protected release environment and its secrets, the private licensed-models archive, ad-hoc rehearsals, Developer ID signing, Apple notarisation, the plain and styled DMGs, the updater manifest and the packaged-parity gate. Use when asked to "cut a release", "tag a release", "rehearse the release", "build a release build", "make a DMG", "sign the app", "notarise", "staple", "ship it", "publish a build", "bump the version and release", "rotate the signing key", "rotate the tag key", "lost my Mac", or when touching .github/allowed_tag_signers, .github/allowed_signers, .github/workflows/release.yml, .github/workflows/signers.yml, scripts/release.sh, scripts/sign-and-notarize.sh, scripts/verify-release.sh, scripts/make-dmg.sh, scripts/build-ffmpeg-sidecar.sh, scripts/install-build-tools.sh, scripts/bundle-digest.sh, rust-toolchain.toml, src-tauri/dmg/, or bundle.macOS and plugins.updater in tauri.conf.json.
+description: Cutting a macOS release of Kookaburra Cut through the GitHub Actions release pipeline: the signed v* tag that triggers it, the Touch ID tag key and the commit key, the Signed head app check, recovery for a lost Mac, the build / sign / verify / publish jobs, the protected release environment and its secrets, the private licensed-models archive, ad-hoc rehearsals, Developer ID signing, Apple notarisation, the plain and styled DMGs, the updater manifest and the packaged-parity gate. Use when asked to "cut a release", "tag a release", "rehearse the release", "build a release build", "make a DMG", "sign the app", "notarise", "staple", "ship it", "publish a build", "bump the version and release", "rotate the signing key", "rotate the tag key", "Signed head is missing", "lost my Mac", or when touching .github/allowed_tag_signers, .github/allowed_signers, .github/workflows/release.yml, .github/workflows/signers.yml, scripts/release.sh, scripts/sign-and-notarize.sh, scripts/verify-release.sh, scripts/make-dmg.sh, scripts/build-ffmpeg-sidecar.sh, scripts/install-build-tools.sh, scripts/bundle-digest.sh, rust-toolchain.toml, src-tauri/dmg/, or bundle.macOS and plugins.updater in tauri.conf.json.
 ---
 
 # kookaburra-release
@@ -33,8 +33,37 @@ Rehearsals, in order of cost:
 Everything here is done by hand, once. Nothing in the repository works until it is.
 
 1. **Signing keys, in the Secure Enclave.** Two non-exportable keys, so a stolen disk signs nothing. See "Signing keys" below.
-2. **Rulesets.** `main`: pull request required, the `frontend`, `rust` and `Head commit signed` checks required, no force push, no deletion; an empty bypass list. Tags `v*`: no update, no deletion.
-3. **The `release` environment** with a required reviewer (yourself) and a deployment branch policy of **tags matching `v*` only**. Its secrets:
+2. **The signed-head app**, which posts `Signed head` (see "Signing keys"). Its key is in an environment only `main` can use, so no workflow a pull request adds can post as it. Do all of this before the ruleset requires its check, or every PR waits on a check nothing posts.
+   1. Create the app (private, no webhook, Checks write only), then on its page note the **App ID** and **Client ID**, click **Generate a private key** and **Install App** on `kookaburra-cut` only:
+      ```bash
+      open "https://github.com/settings/apps/new?name=kookaburra-cut-signed-head&description=Posts%20the%20Signed%20head%20check&url=https://github.com/michael-palmes/kookaburra-cut&public=false&webhook_active=false&checks=write"
+      ```
+   2. The `signed-head` environment, limited to `main`, holding the key and the client ID; then delete the downloaded `.pem`:
+      ```bash
+      gh api --method PUT repos/michael-palmes/kookaburra-cut/environments/signed-head -F 'deployment_branch_policy[protected_branches]=false' -F 'deployment_branch_policy[custom_branch_policies]=true'
+      ```
+      ```bash
+      gh api --method POST repos/michael-palmes/kookaburra-cut/environments/signed-head/deployment-branch-policies -f name=main -f type=branch
+      ```
+      ```bash
+      gh secret set SIGNED_HEAD_APP_KEY --env signed-head --repo michael-palmes/kookaburra-cut < "<path to the one downloaded .pem>"
+      ```
+      ```bash
+      gh variable set SIGNED_HEAD_APP_CLIENT_ID --env signed-head --repo michael-palmes/kookaburra-cut --body "<Client ID>"
+      ```
+      Without the branch policy any branch's own workflow could use the key, so check it reads `{"custom_branch_policies":true,"protected_branches":false}` and `["branch:main"]`, then lists both names:
+      ```bash
+      R=repos/michael-palmes/kookaburra-cut/environments/signed-head && gh api $R --jq .deployment_branch_policy && gh api $R/deployment-branch-policies --jq '[.branch_policies[] | "\(.type):\(.name)"]' && gh secret list --env signed-head --repo michael-palmes/kookaburra-cut && gh variable list --env signed-head --repo michael-palmes/kookaburra-cut
+      ```
+   3. Open or update any PR into `main`: the app's `Signed head` check must appear beside `Head commit signed` with the same result. Only then require it (next step).
+3. **Rulesets.** `main`: pull request required, the `frontend`, `rust` and `Signed head` checks required, `Signed head` pinned to the app's ID so an Actions job of that name can't answer for it; no force push, no deletion; an empty bypass list. Tags `v*`: no update, no deletion. To swap `Head commit signed` for the app's check, then confirm it reads back:
+   ```bash
+   APP_ID="<App ID>" RS=19092788 && gh api repos/michael-palmes/kookaburra-cut/rulesets/$RS | jq --argjson app "$APP_ID" '{rules: [.rules[] | if .type == "required_status_checks" then .parameters.required_status_checks |= (map(select(.context != "Head commit signed")) + [{context: "Signed head", integration_id: $app}]) else . end]}' | gh api --method PUT repos/michael-palmes/kookaburra-cut/rulesets/$RS --input -
+   ```
+   ```bash
+   gh api repos/michael-palmes/kookaburra-cut/rulesets/19092788 --jq '.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks'
+   ```
+4. **The `release` environment** with a required reviewer (yourself) and a deployment branch policy of **tags matching `v*` only**. Its secrets:
    | Secret | What |
    | --- | --- |
    | `DEVELOPER_ID_P12` | the Developer ID Application certificate and key, base64 of a `.p12` export |
@@ -44,14 +73,14 @@ Everything here is done by hand, once. Nothing in the repository works until it 
    | `TAURI_SIGNING_PRIVATE_KEY` | the updater (minisign) private key file's contents |
    | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | its password |
    Repository **variables**: `APPLE_TEAM_ID` (the Team ID every signature is checked against), optionally `LICENSED_ASSETS_REPO`. The runner image is `macos-26`, hard-coded so a variable can't redirect the sign job.
-4. **Updater key.** Keep the key the published apps trust (`plugins.updater.pubkey`) if existing installs are to update themselves; rotating it means every install at or below the last laptop-signed release needs one manual download, since their bundled public key will not verify the new signature. Either way, generate any new key with `pnpm tauri signer generate -w <file>` and paste the public key into `tauri.conf.json` in the same PR that rotates the secret.
-5. **Licensed device models** (`src/assets/models/README.md`). Create a private repository (default `michael-palmes/kookaburra-cut-assets`) holding one file, `licensed-models.tar.age`: a flat tar of the licensed glbs encrypted to an age recipient. Repository secrets (not in the environment: the build job reads them, and they hold no signing power): `LICENSED_ASSETS_TOKEN`, a fine-grained token with read-only Contents on that one repository, and `LICENSED_ASSETS_AGE_KEY`, the matching age identity. The build job unpacks the archive and refuses any glb that does not match `src/assets/models/licensed.sha256`.
+5. **Updater key.** Keep the key the published apps trust (`plugins.updater.pubkey`) if existing installs are to update themselves; rotating it means every install at or below the last laptop-signed release needs one manual download, since their bundled public key will not verify the new signature. Either way, generate any new key with `pnpm tauri signer generate -w <file>` and paste the public key into `tauri.conf.json` in the same PR that rotates the secret.
+6. **Licensed device models** (`src/assets/models/README.md`). Create a private repository (default `michael-palmes/kookaburra-cut-assets`) holding one file, `licensed-models.tar.age`: a flat tar of the licensed glbs encrypted to an age recipient. Repository secrets (not in the environment: the build job reads them, and they hold no signing power): `LICENSED_ASSETS_TOKEN`, a fine-grained token with read-only Contents on that one repository, and `LICENSED_ASSETS_AGE_KEY`, the matching age identity. The build job unpacks the archive and refuses any glb that does not match `src/assets/models/licensed.sha256`.
    ```bash
    cd src/assets/models/licensed && COPYFILE_DISABLE=1 tar --no-mac-metadata --no-xattrs -cf /tmp/licensed-models.tar *.glb
    age-keygen -o /tmp/licensed-models.key          # the identity goes in the secret, the recipient below
    age -r <recipient> -o licensed-models.tar.age /tmp/licensed-models.tar
    ```
-6. **Back up and retire the laptop key material.** Export the Developer ID `.p12` and the updater key to an encrypted offline backup, then remove the signing identity from the login keychain, the `kookaburra-cut-updater` keychain item and the `~/.tauri` key file. Nothing local signs releases any more.
+7. **Back up and retire the laptop key material.** Export the Developer ID `.p12` and the updater key to an encrypted offline backup, then remove the signing identity from the login keychain, the `kookaburra-cut-updater` keychain item and the `~/.tauri` key file. Nothing local signs releases any more.
 
 ## Signing keys
 
@@ -60,7 +89,9 @@ Everything here is done by hand, once. Nothing in the repository works until it 
 | Tag (`kookaburra-tag`) | Touch ID | `.github/allowed_tag_signers` | release tags, PR heads that change what the release pipeline runs or pins | run without a person |
 | Commit (`kookaburra-commit`) | none, no prompt | `.github/allowed_signers` | every other PR head, including an agent's while you're away | tag a release, change what the release pipeline runs or pins |
 
-`release.yml` and `release.sh` read only the tag list. `signers.yml` requires the tag key when anything in its `tag_paths` differs between the PR head and its merge base with the base branch: `.github/`, every script the pipeline reaches, both lock files, `package.json`, `patches/`, `tauri.conf.json` and the pin files. A stolen commit key can't point `release.yml` at the commit list or swap what the sign job runs, but it can still change `src/` and `build.rs`, so read the diff before tagging. `scripts/signers-paths.test.mjs` fails when a new pipeline script is missing from the list. GitHub runs that check from the default branch's copy, whatever the PR's base.
+`release.yml` and `release.sh` read only the tag list. `signers.yml` requires the tag key when anything in its `tag_paths` differs between the PR head and its merge base with the base branch: `.github/`, every script the pipeline reaches, both lock files, `package.json`, `patches/`, `tauri.conf.json` and the pin files. A stolen commit key can't point `release.yml` at the commit list or swap what the sign job runs, but it can still change `src/` and `build.rs`, so read the diff before tagging. `scripts/signers-paths.test.mjs` fails when a new pipeline script is missing from the list, which `release.sh` reads too. GitHub runs the workflow from the default branch's copy, whatever the PR's base, and it reads both lists from `main`.
+
+Two jobs, so the key never sits beside PR content. `Head commit signed` has no secret: it fetches the head by SHA as data, checks it and logs the fix. For a PR into `main`, `Post Signed head` then mints a Checks-only token from the app's key and posts the verdict as the app's `Signed head`, the check the ruleset requires; a missing verdict posts a failure. Keep it that way: never give the key to a job that fetches or reads PR content, and pass PR values to `run:` only through `env:`, never as `${{ }}` inside the script. A re-run checks the run's own head against `main` as it stood at the first run (a force-pushed head has its own run), and the app check's own Re-run does nothing (no webhook): re-run from the Signers run it links, or close and reopen the PR to check against today's lists. A fork's head carries no listed key, so it fails: fetch it into a branch here, re-sign the head and open the PR from that.
 
 Set up a Mac (the files `ssh-keygen -K` writes are references to the Secure Enclave, useless on another machine):
 
@@ -75,11 +106,13 @@ git config gpg.format ssh && git config commit.gpgsign true && git config tag.gp
 git config user.signingkey ~/.ssh/kookaburra/id_ecdsa_sk_rk_kookaburra-commit.pub   # only once main lists this key
 ```
 
-A head signed by an unlisted key fails Signers on every PR, so set `user.signingkey` last. Without `SSH_SK_PROVIDER`, signing stops with `No FIDO SecurityKeyProvider specified`; `release.sh` sets it itself. A list line is `<GitHub noreply address> namespaces="git" <first two fields of the .pub>`. Check a key with `ssh-keygen -lf <file>.pub` against `sc_auth list-ctk-identities -t ssh`. Dependabot's branches are re-signed by hand, each with the tag key (one Touch ID), because every bump touches a lock file or `.github/`. About half of all PRs touch the list too, and an agent working alone stops there until you can sign.
+A head signed by an unlisted key fails Signers on every PR, so set `user.signingkey` last. Without `SSH_SK_PROVIDER`, signing stops with `No FIDO SecurityKeyProvider specified`; `release.sh` sets it itself. A list line is `<GitHub noreply address> namespaces="git" <first two fields of the .pub>`. Check a key with `ssh-keygen -lf <file>.pub` against `sc_auth list-ctk-identities -t ssh`. Dependabot's branches are re-signed by hand, each with the tag key (one Touch ID), because every bump touches a lock file or `.github/`; `Signed head` fails on Dependabot's own head and passes on yours. About half of all PRs touch the list too, and an agent working alone stops there until you can sign.
 
-**Rotating a key.** Change the list in a PR with the head signed by the current tag key: `git -c user.signingkey="$(git config --path kookaburra.tagkey)" commit --amend --no-edit -S`. Remove the old key once no open PR's head still carries it.
+**Rotating a key.** Change the list in a PR with the head signed by the current tag key: `git -c user.signingkey="$(git config --path kookaburra.tagkey)" commit --amend --no-edit -S`. Remove the old key once no open PR's head still carries it; a PR that passed before keeps that pass until it runs again, so close and reopen any still signed by it.
 
-**Testing a change to `signers.yml`.** `pull_request_target` always runs `main`'s copy, so a test PR into a branch does not exercise your edit. Copy the job into a throwaway workflow under `pull_request` on that base branch. Never test with a `v*` tag: the ruleset refuses to delete it and a push starts a release.
+**Rotating the app key.** On the app's page, generate a new private key and store it with the `gh secret set` above, check that the next PR's `Signed head` posts, then delete the old key there.
+
+**Testing a change to `signers.yml`.** `pull_request_target` always runs `main`'s copy, so a test PR into a branch does not exercise your edit. Copy the keyless job into a throwaway workflow under `pull_request` on that base branch. The app job can't run there (its environment refuses any ref but `main`), so the next PR into `main` proves a change to it; if a merged change stops `Signed head` posting, every PR waits on it: land the fix through the admin bypass as in "Recovery for a lost Mac". Never test with a `v*` tag: the ruleset refuses to delete it and a push starts a release.
 
 ## Recovery for a lost Mac
 
@@ -87,12 +120,12 @@ Both keys die with the Mac and neither has a backup, by design. No listed key re
 
 1. **Contain.** Sign the lost Mac out of GitHub (Settings > Sessions), revoke its SSH keys and tokens, and rotate the secrets it could reach. A Mac taken while logged in can still sign with the commit key, which can't tag or change a list. The tag key needs a finger.
 2. **New keys.** Set up the new Mac as above.
-3. **PR.** Replace every line for the lost keys in both lists and sign the head with the new tag key. Signers fails, as it should.
+3. **PR.** Replace every line for the lost keys in both lists and sign the head with the new tag key. `Signed head` fails, as it should.
 4. **Admin bypass, for this PR only.** Settings > Rules > `main-branch-protection`: add Repository admin to the bypass list, merge the PR, then empty the bypass list straight away. Check it reads `[]`:
    ```bash
    gh api repos/michael-palmes/kookaburra-cut/rulesets --jq '.[] | select(.name=="main-branch-protection") | .id' | xargs -I{} gh api repos/michael-palmes/kookaburra-cut/rulesets/{} --jq .bypass_actors
    ```
-5. **Prove it.** Open a PR with a one-line change signed by the new commit key: Signers passes. Close it.
+5. **Prove it.** Open a PR with a one-line change signed by the new commit key: `Signed head` passes. Close it.
 
 Published releases are unaffected, since a tag is checked only at build time. A tag not yet built fails against the new list; bump the version and tag again.
 
@@ -157,6 +190,7 @@ gh attestation verify KookaburraCut-<version>.dmg --repo michael-palmes/kookabur
 
 ## Troubleshooting
 
+- **`Signed head` stays Expected on a PR into `main`**: read the Signers run's `Post Signed head` job. `not allowed to deploy` means the run's ref isn't `main`; a failed token step means the app is uninstalled, its key revoked or the client ID wrong (one-time setup, step 2). Fix it and re-run Signers.
 - **`verify-tag` fails in the build job**: the tag was not made by `pnpm release`, or its key is not in `main`'s `.github/allowed_tag_signers` (`No principal matched` means the commit key signed it). Delete the tag only if the `v*` ruleset lets you; otherwise bump the version.
 - **The sign job waits forever**: nobody approved the `release` environment. Approve it from the run page.
 - **notarytool returns `Invalid`**: the sign job prints `notarytool log`; usually an unsigned or dylib-linked sidecar.

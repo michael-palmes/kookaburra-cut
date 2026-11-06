@@ -16,33 +16,36 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+    outputs:
+      verdict: ${{ steps.verify.outputs.verdict }}
+      key: ${{ steps.verify.outputs.key }}
     steps:
-      - name: Checkout the base branch
+      - name: Checkout the default branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Fetch the pull request head as data
         env:
-          PR: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          # A just-opened pull request can fire this before GitHub has created its ref.
+          # A just-opened pull request from a fork can fire this before GitHub can serve its head.
           for attempt in 1 2 3 4 5; do
-            git fetch --no-tags origin "+refs/pull/${PR}/head:refs/remotes/pr/head" && break
-            [ "$attempt" -lt 5 ] || { echo "::error::refs/pull/${PR}/head never appeared"; exit 1; }
+            git fetch --no-tags origin "$HEAD_SHA" && break
+            [ "$attempt" -lt 5 ] || { echo "::error::the head commit ${HEAD_SHA} could not be fetched"; exit 1; }
             sleep 5
           done
-          [ "$(git rev-parse refs/remotes/pr/head)" = "$HEAD_SHA" ] || { echo "::error::the fetched head is not the event's head"; exit 1; }
+          git cat-file -e "${HEAD_SHA}^{commit}"
 
       # The head's signature covers the whole tree; a change to what the release pipeline runs or pins needs the tag key, so a stolen commit key can't add a key, point a release at the commit list or swap what the sign job runs.
       - name: Require an allowed signature on the head commit
+        id: verify
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MAIN_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           tag_paths=(
@@ -76,6 +79,7 @@ jobs:
             src/assets/models/licensed.sha256
           )
           signers=allowed_signers
+          key=commit
           fix="git commit --amend --no-edit -S with that key, then push (for Dependabot, check out its branch, re-sign the head the same way and push)"
           changed=false
           bases="$(git merge-base --all "$BASE_SHA" "$HEAD_SHA")" || changed=true
@@ -84,13 +88,66 @@ jobs:
           done
           if [ "$changed" = true ]; then
             signers=allowed_tag_signers
+            key=tag
             fix="git -c user.signingkey=\"\$(git config --path kookaburra.tagkey)\" commit --amend --no-edit -S, then push (for Dependabot, check out its branch first)"
             echo "This pull request changes what the release pipeline runs or pins, so the head must carry the tag key"
           fi
-          git show "${BASE_SHA}:.github/${signers}" > "$RUNNER_TEMP/signers"
-          if git -c gpg.ssh.allowedSignersFile="$RUNNER_TEMP/signers" -c gpg.minTrustLevel=fully verify-commit --verbose "$HEAD_SHA"; then
-            echo "The head commit is signed by a key in ${signers}"
+          echo "key=${key}" >> "$GITHUB_OUTPUT"
+          git show "${MAIN_SHA}:.github/${signers}" > "$RUNNER_TEMP/signers"
+          if git -c gpg.ssh.allowedSignersFile="$RUNNER_TEMP/signers" -c gpg.minTrustLevel=fully verify-commit "$HEAD_SHA"; then
+            echo "verdict=success" >> "$GITHUB_OUTPUT"
+            echo "The head commit is signed by a key in the default branch's .github/${signers}"
           else
-            echo "::error::the head commit must be signed by a key in the base branch's .github/${signers}. Fix: ${fix}"
-            exit 1
+            echo "verdict=failure" >> "$GITHUB_OUTPUT"
+            echo "::error::the head commit must be signed by a key in the default branch's .github/${signers}. Fix: ${fix}"
           fi
+
+      - name: Fail unless the head is signed
+        if: steps.verify.outputs.verdict != 'success'
+        run: exit 1
+
+  # The ruleset requires the check this job posts, pinned to the app, so no workflow a pull request adds can answer for it. The key is in an environment only the default branch can use.
+  app-check:
+    name: Post Signed head
+    needs: signed-head
+    # A check run belongs to the commit, so a pass against another base would also answer for main.
+    if: ${{ !cancelled() && github.event.pull_request.base.ref == github.event.repository.default_branch }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    environment:
+      name: signed-head
+      deployment: false
+    steps:
+      - name: Mint a checks-only token as the app
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.SIGNED_HEAD_APP_CLIENT_ID }}
+          private-key: ${{ secrets.SIGNED_HEAD_APP_KEY }}
+          permission-checks: write
+
+      - name: Post the verdict as the app
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          VERDICT: ${{ needs.signed-head.outputs.verdict }}
+          KEY: ${{ needs.signed-head.outputs.key }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          case "$KEY" in
+            tag) fix="Sign the head with the tag key: \`git -c user.signingkey=\"\$(git config --path kookaburra.tagkey)\" commit --amend --no-edit -S\`, then push." ;;
+            *) KEY=commit; fix="Sign the head with the commit key: \`git commit --amend --no-edit -S\`, then push." ;;
+          esac
+          if [ "$VERDICT" = success ]; then
+            conclusion=success title="Signed with the ${KEY} key" summary="The head commit is signed by a key the default branch lists for what it changes."
+          elif [ "$VERDICT" = failure ]; then
+            conclusion=failure title="Not signed with the ${KEY} key" summary="$fix For Dependabot, check out its branch first."
+          else
+            conclusion=failure title="The signature check didn't finish" summary="Re-run the Signers workflow from the run page."
+          fi
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/check-runs" \
+            -f name="Signed head" -f head_sha="$HEAD_SHA" -f status=completed -f conclusion="$conclusion" \
+            -f details_url="$RUN_URL" -f "output[title]=$title" -f "output[summary]=$summary" --silent
+          echo "Posted Signed head (${conclusion}) on ${HEAD_SHA}"
