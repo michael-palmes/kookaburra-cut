@@ -958,7 +958,6 @@ pub async fn website_grant_origin(
             .insert((project_key, origin));
         return Ok(true);
     }
-    log::info!("[website] {shown}: allowed for {project}");
     workspace::update_settings(&app, &settings, |value| {
         let origins = value.website_origin_grants.entry(project_key).or_default();
         if !origins.contains(&origin) {
@@ -966,6 +965,7 @@ pub async fn website_grant_origin(
             origins.sort();
         }
     })?;
+    log::info!("[website] {shown}: allowed for {project}");
     Ok(true)
 }
 

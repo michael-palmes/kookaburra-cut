@@ -2670,11 +2670,6 @@ pub fn trust_project(
         return Err("the project changed while the consent sheet was open; open it again".into());
     }
     let session_only = grant_lasts_only_this_session(cfg!(debug_assertions), crate::is_autorun());
-    log::info!(
-        "[trust] {slug}: allowed{} ({})",
-        if session_only { " for this launch" } else { "" },
-        crate::audit::path(&dir)
-    );
     if !session_only {
         let allowed_at_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -2689,6 +2684,11 @@ pub fn trust_project(
             settings.trusted_projects.insert(slug.clone(), record);
         })?;
     }
+    log::info!(
+        "[trust] {slug}: allowed{} ({})",
+        if session_only { " for this launch" } else { "" },
+        crate::audit::path(&dir)
+    );
     trust
         .session
         .lock()
