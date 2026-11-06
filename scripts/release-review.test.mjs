@@ -45,7 +45,9 @@ describe("release.sh before it signs", () => {
     }
     mkdirSync(join(clone, "scripts"));
     mkdirSync(join(clone, ".github/workflows"), { recursive: true });
-    copyFileSync(join(ROOT, "scripts/release.sh"), join(clone, "scripts/release.sh"));
+    for (const script of ["release.sh", "changelog-section.sh"]) {
+      copyFileSync(join(ROOT, "scripts", script), join(clone, "scripts", script));
+    }
     copyFileSync(
       join(ROOT, ".github/workflows/signers.yml"),
       join(clone, ".github/workflows/signers.yml"),
@@ -58,12 +60,17 @@ describe("release.sh before it signs", () => {
     const security = (version) => `# Security\n\n**As of version ${version}.**\n`;
     write("src-tauri/tauri.conf.json", conf("0.1.0"));
     write("SECURITY.md", security("0.1.0"));
+    write("CHANGELOG.md", "# Changelog\n\n## [0.1.0] - 2026-01-01\n\n### Added\n\n- The app.\n");
     commit("first release");
     git("tag", "-a", "v0.1.0", "-m", "first");
     write("pnpm-lock.yaml", "two\n");
     write("src/app.ts", "two\n");
     write("src-tauri/tauri.conf.json", conf("0.2.0"));
     write("SECURITY.md", security("0.2.0"));
+    write(
+      "CHANGELOG.md",
+      "# Changelog\n\n## [Unreleased]\n\n## [0.2.0] - 2026-02-01\n\n### Security\n\n- A fix.\n\n## [0.1.0] - 2026-01-01\n\n### Added\n\n- The app.\n",
+    );
     commit("second release");
     git("push", "-q", "origin", "main", "--tags");
   });
@@ -88,5 +95,18 @@ describe("release.sh before it signs", () => {
     assert.equal(r.status, 1);
     assert.match(r.stderr, /not signed/);
     assert.equal(git("tag", "--list", "v0.2.0"), "");
+  });
+
+  test("refuses a version whose CHANGELOG.md section is missing or empty, before asking", () => {
+    write(
+      "CHANGELOG.md",
+      "# Changelog\n\n## [0.2.0] - 2026-02-01\n\n## [0.1.0] - 2026-01-01\n\n- The app.\n",
+    );
+    const r = release("y\n");
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /CHANGELOG\.md has no entry for 0\.2\.0/);
+    assert.doesNotMatch(r.stdout, /Sign and push/);
+    assert.equal(git("tag", "--list", "v0.2.0"), "");
+    git("checkout", "--", "CHANGELOG.md");
   });
 });
