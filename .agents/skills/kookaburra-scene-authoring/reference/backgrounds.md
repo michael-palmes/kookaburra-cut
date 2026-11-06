@@ -79,7 +79,7 @@ the geometry (a colour, gradient, image or shader; never another scene3d).
 | Painted and printed | blue-and-gold, ink-ranges, lily-pond, paper-theatre, pop-up-terrace, shadow-lace, wash-dome |
 | Art history | colour-court, cubist-facets, seigaiha-tide, tessera-dome |
 | Deco and architecture | iris-screen, oculus-rotunda, sunburst-terrazzo, sunset-proscenium |
-| Texture and atmosphere | aurora-veil, caustic-pool, clerestory-shafts, frosted-panes, mezzotint-sky, riso-dunes |
+| Texture and atmosphere | aurora-veil, caustic-pool, clerestory-shafts, frosted-panes, mezzotint-sky, riso-dunes, sunroom |
 | Kinetic | box-kites, calder-mobiles, flip-disc-floor, helix-spinners, long-exposure, louvre-ring, origami-tide, pendulum-ring, rain-canopy, sand-table, shylight-blooms, skeleton-clockwork, wind-wands |
 
 Each look has nine presets (`p1`..`p5` light, `p6`..`p9` dark; values in

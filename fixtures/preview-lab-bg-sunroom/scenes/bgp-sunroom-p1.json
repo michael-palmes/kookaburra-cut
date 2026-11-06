@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "name": "preset still for the \"sunroom\" 3D background (\"Bangalow\")",
+  "background": {
+    "type": "scene3d",
+    "look": "sunroom",
+    "colors": ["#d0bfb5", "#fff4ea", "#c9b7ab"],
+    "speed": 1,
+    "params": {
+      "sunSide": -22,
+      "sunHeight": 24,
+      "drift": 2,
+      "patch": -0.25,
+      "slatPitch": 0.68,
+      "opening": 0.66,
+      "panes": 3,
+      "softness": 1.3,
+      "wallDistance": 9
+    },
+    "backing": {
+      "type": "color",
+      "color": "#efe6de"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-sunroom",
+  "name": "Preview Lab — bg-sunroom (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-sunroom.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-sunroom-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-sunroom-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sunroom-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sunroom-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sunroom-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sunroom-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sunroom-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sunroom-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sunroom-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sunroom-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

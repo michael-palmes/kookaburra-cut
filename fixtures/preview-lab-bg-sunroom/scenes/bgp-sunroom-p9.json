@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "name": "preset still for the \"sunroom\" 3D background (\"Terania\")",
+  "background": {
+    "type": "scene3d",
+    "look": "sunroom",
+    "colors": ["#18201b", "#55684f", "#141a15"],
+    "speed": 1,
+    "params": {
+      "sunSide": 25,
+      "sunHeight": 28,
+      "drift": 2,
+      "patch": 0.2,
+      "slatPitch": 0.58,
+      "opening": 0.58,
+      "panes": 1,
+      "softness": 1.5,
+      "wallDistance": 12
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0b100c"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
