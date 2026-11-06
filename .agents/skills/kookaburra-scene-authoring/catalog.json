@@ -23727,6 +23727,10 @@
         "weights": [400, 600]
       },
       {
+        "id": "Inter Tight",
+        "weights": [300, 400, 600, 700, 800, 900]
+      },
+      {
         "id": "JetBrains Mono",
         "weights": [400]
       },

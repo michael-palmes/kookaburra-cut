@@ -21,4 +21,5 @@ beside them are derived outline conversions (`pnpm assets:text3d-font`).
 | Jost | Jost-*.woff, Jost-Regular.typeface.json | © 2020 The Jost Project Authors (github.com/indestructible-type/Jost) |
 | IBM Plex Sans | IBMPlexSans-*.woff, IBMPlexSans-Regular.typeface.json | © 2019 IBM Corp., with Reserved Font Name "Plex" (github.com/IBM/plex) |
 | Fraunces | Fraunces-SemiBold.* | © 2020 The Fraunces Project Authors (github.com/undercasetype/Fraunces) |
+| Inter Tight | InterTight-*.woff, InterTight-ExtraBold.typeface.json | © 2022 The Inter Project Authors (github.com/rsms/inter-tight) |
 | Kookaburra Fallback | KookaburraFallback.otf | Derived subset (`pnpm assets:emoji-fonts`) of Noto Sans Symbols 2, Noto Sans Symbols and Noto Sans Math, © The Noto Project Authors (github.com/notofonts), merged with empty private-use placeholder glyphs; renamed per the OFL reserved-name clause |

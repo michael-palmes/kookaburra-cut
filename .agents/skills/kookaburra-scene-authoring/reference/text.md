@@ -119,8 +119,8 @@ literal pair, add spaces or use `∗` (U+2217).
   - `stepsAt={[ms, ...]}`: one jump (with a pop) at each scene ms; it replaces the window.
     With `ticks` or `stepsAt`, `ease` bends how far each jump goes, not when. `pop` is the
     scale each pops by (default 0.08 over 180 ms; 0 turns it off).
-- `ExtrudedText`: lit 3D text, bundled families only, no emoji. For 3D-looking type in
-  any font, use `depth` on `AnimatedHeadline`.
+- `ExtrudedText`: lit 3D text, bundled families only, one weight each (Inter Tight's is
+  800), no emoji. For 3D-looking type in any font, use `depth` on `AnimatedHeadline`.
 - `ManagedTextStack`: the generic managed renderer the host mounts; rarely mounted by hand.
 - `PromptBar text textKey from to position width height fontSize face send caret`: a
   chat prompt bar (theme tokens only). The text types in one keystroke at a time from
@@ -330,6 +330,7 @@ Bundled families are always safe (`./kb fonts safe`):
 | Jost | 400, 500 |
 | IBM Plex Sans | 400, 600 |
 | Fraunces | 600 |
+| Inter Tight | 300, 400, 600, 700, 800, 900 |
 
 A bundled family snaps to its nearest weight (ties go lighter): `Inter@700` renders 600.
 

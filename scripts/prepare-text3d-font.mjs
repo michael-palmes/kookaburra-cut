@@ -4,7 +4,8 @@
  * (FontLoader + TextGeometry need glyph outlines, not the SDF atlas troika builds).
  * The outputs are committed beside the WOFFs and bundled via direct JSON imports, so
  * the 3D-text path needs no fetch at runtime. One typeface per FAMILY (the default
- * weight) — 3D text is a display primitive; weights stay a 2D concern (v8 · M3).
+ * weight; Inter Tight, a display family, takes its 800): 3D text is a display
+ * primitive; weights stay a 2D concern (v8 · M3).
  *
  * Usage: pnpm assets:text3d-font
  */
@@ -27,6 +28,7 @@ const FONTS = [
   { src: "src/assets/fonts/Jost-Regular.woff", family: "Jost" },
   { src: "src/assets/fonts/IBMPlexSans-Regular.woff", family: "IBM Plex Sans" },
   { src: "src/assets/fonts/Fraunces-SemiBold.woff", family: "Fraunces" },
+  { src: "src/assets/fonts/InterTight-ExtraBold.woff", family: "Inter Tight" },
 ];
 
 // Keep in sync with PRELOAD_CHARACTERS in src/theme/fonts.ts — the same glyph

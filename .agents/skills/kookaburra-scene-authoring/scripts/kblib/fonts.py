@@ -25,6 +25,7 @@ FALLBACK_BUNDLED: Dict[str, List[int]] = {
     "Jost": [400, 500],
     "IBM Plex Sans": [400, 600],
     "Fraunces": [600],
+    "Inter Tight": [300, 400, 600, 700, 800, 900],
 }
 
 # Known system families whose weights skip 400, so the app substitutes the nearest weight.

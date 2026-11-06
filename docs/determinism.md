@@ -1232,10 +1232,10 @@ reaches the window only through `NativePort.readObject`, the same door a sidecar
   keeps its exact subtable (901 installed faces compared glyph for glyph, zero
   differences), so no baseline moves.
 - **3D text stays bundled.** `ExtrudedText` typefaces (converted outlines, one
-  per family at the default weight, `pnpm assets:text3d-font`) cover the bundled
-  set only; system-font refs fall back to Inter there. The converter is
-  byte-stable: regenerating Inter's typeface reproduced the committed file
-  exactly.
+  per family at the default weight, Inter Tight's at its 800 display weight,
+  `pnpm assets:text3d-font`) cover the bundled set only; system-font refs fall
+  back to Inter there. The converter is byte-stable: regenerating Inter's
+  typeface reproduced the committed file exactly.
 - **Text metrics parse the same files on their own.** `preloadAppFonts` ends by parsing
   each face it preloaded (plus the fallback face) with troika's parser into
   `theme/fontMetrics.ts`, after the atlas preloads; nothing reaches troika's atlas, so
