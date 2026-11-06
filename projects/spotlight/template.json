@@ -14,10 +14,11 @@
     "Works for an app on a phone or a web app in a browser window"
   ],
   "bring": [
-    "One screen recording of the flow",
-    "Feature name",
     "A problem line",
-    "A benefit line",
+    "Feature name",
+    "One screen recording of the flow",
+    "A benefit line, with a figure or quote to prove it",
+    "A call to action",
     "Logo"
   ],
   "song": {

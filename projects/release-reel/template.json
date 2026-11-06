@@ -18,7 +18,8 @@
     "Version number",
     "Three features: a punch word and a line each",
     "A recording per feature",
-    "An optional list for And more"
+    "An optional list for And more",
+    "Product name"
   ],
   "song": {
     "title": "Colour Theory",
