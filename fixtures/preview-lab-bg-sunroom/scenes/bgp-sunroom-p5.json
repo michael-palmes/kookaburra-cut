@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "name": "preset still for the \"sunroom\" 3D background (\"Brunswick Heads\")",
+  "background": {
+    "type": "scene3d",
+    "look": "sunroom",
+    "colors": ["#cdbb98", "#fdf3d8", "#c2ae8c"],
+    "speed": 1,
+    "params": {
+      "sunSide": -25,
+      "sunHeight": 30,
+      "drift": 2.5,
+      "patch": 0.25,
+      "slatPitch": 0.6,
+      "opening": 0.62,
+      "panes": 3,
+      "softness": 1.4,
+      "wallDistance": 12
+    },
+    "backing": {
+      "type": "color",
+      "color": "#ece2cc"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
