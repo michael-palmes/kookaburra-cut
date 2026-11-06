@@ -1,0 +1,42 @@
+name: Throwaway env refusal
+
+# Throwaway proof: a branch's own workflow must not reach the signed-head key. Never merge.
+on:
+  push:
+    branches: [test/signed-head-env-refusal]
+  pull_request:
+
+permissions: {}
+
+jobs:
+  deployment-false:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    environment:
+      name: signed-head
+      deployment: false
+    steps:
+      - name: Report whether the key and client ID are reachable
+        env:
+          K: ${{ secrets.SIGNED_HEAD_APP_KEY }}
+          C: ${{ vars.SIGNED_HEAD_APP_CLIENT_ID }}
+        run: |
+          if [ -z "$K" ]; then echo "K empty"; else echo "K not empty"; fi
+          if [ -z "$C" ]; then echo "C empty"; else echo "C not empty"; fi
+          if [ -n "$K" ]; then echo "::error::KEY REACHABLE"; exit 1; fi
+
+  deployment-default:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    environment: signed-head
+    steps:
+      - name: Report whether the key and client ID are reachable
+        env:
+          K: ${{ secrets.SIGNED_HEAD_APP_KEY }}
+          C: ${{ vars.SIGNED_HEAD_APP_CLIENT_ID }}
+        run: |
+          if [ -z "$K" ]; then echo "K empty"; else echo "K not empty"; fi
+          if [ -z "$C" ]; then echo "C empty"; else echo "C not empty"; fi
+          if [ -n "$K" ]; then echo "::error::KEY REACHABLE"; exit 1; fi
