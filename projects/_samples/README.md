@@ -18,7 +18,7 @@ against IP Australia, USPTO and the App Store (see that README).
 - Recordings are 30 fps H.264, yuv420p, BT.709 tagged, faststart, 4 to 6 s and at
   most 1.5 MB each. Each still at a recording's settled moment matches its frame.
 - Icons are 1024 PNG with transparent corners.
-- Keep the family under 12 MB.
+- Keep the family under 18 MB.
 
 | File | Purpose |
 | --- | --- |
@@ -43,6 +43,34 @@ against IP Australia, USPTO and the App Store (see that README).
 | `songlark-ask-window.mp4` | Ask, think, answer on the web |
 | `songlark-ask-phone.jpg` / `songlark-answer-phone.jpg` / `.mp4` | The same on a phone |
 | `songlark-voice-phone.jpg` | Voice mode |
+| `fairywren-sorted-phone.mp4` / `.jpg`, `fairywren-sorted-dark-phone.jpg` | "Plans itself": the week sorts itself under a "This week, sorted" card |
+| `fairywren-quickadd-phone.mp4` / `.jpg` | "Faster": a plan typed in plain words is parsed and added |
+| `fairywren-reschedule-phone.mp4` / `.jpg` | "Smarter": a meeting runs over and two plans move to fit |
+| `fairywren-share-phone.mp4` / `.jpg` | "Together": a list shared with three people, who tick items off |
+| `fairywren-focusflow-phone.mp4` | Spotlight's flow: one large Focus toggle, no baked tap |
+| `fairywren-insights-phone.jpg` / `fairywren-month-phone.jpg` | Two more screens for a line-up |
+| `songlark-offsite-ask-window.jpg` / `songlark-offsite-answer-window.jpg` | Prompt pair two: a team offsite |
+| `songlark-notes-ask-window.jpg` / `songlark-notes-answer-window.jpg` | Prompt pair three: launch notes |
+| `songlark-followup-window.mp4` / `.jpg` | A follow-up typed into the thread, the answer streaming in word by word |
+| `thornbill-changes-terminal.mp4` / `.jpg` | `thornbill upgrade` with one change line per beat |
+| `thornbill-diff-window.jpg` | The 4.2 migration diff, changed lines lit |
+| `thornbill-benchmark-window.jpg` | 4.1 against 4.2: cold start, p95 latency, throughput |
+
+### Timings and regions for the launch templates
+
+Regions are screen UV `[u0, v0, u1, v1]` (`ScreenRegion rect`), times are seconds into the clip.
+
+- Line-up of five different phones: `fairywren-today-phone.jpg`, `fairywren-focus-phone.jpg`,
+  `fairywren-insights-phone.jpg`, `fairywren-month-phone.jpg`, `fairywren-share-phone.jpg`.
+- "This week, sorted" card: `[0.04, 0.172, 0.96, 0.40]`, still from 2.0 s.
+- Quick add field and parsed plan: `[0.04, 0.27, 0.96, 0.444]`, still from 2.8 to 3.4 s apart from the
+  blinking caret (Add at 3.45 s).
+- Reschedule card: `[0.04, 0.27, 0.96, 0.531]`, still from 1.3 to 3.3 s (Keep at 3.35 s).
+- Share sheet: `[0.02, 0.613, 0.98, 0.991]`, still from 1.6 to 2.3 s (Share at 2.3 s).
+- Focus flow: the toggle centre is `(0.818, 0.389)` and flips at 1.5 s; the Focus card is
+  `[0.04, 0.327, 0.96, 0.451]` until it grows at 1.85 s. Put the `TapRing` at 1.5 s.
+- Changes terminal: the command ends on beat 4 at 128 BPM (1.875 s), then one line per beat
+  at 2.34, 2.81, 3.28, 3.75 and 4.22 s, and DONE at 4.69 s, each within one frame.
 
 ## Kooka set
 

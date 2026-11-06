@@ -53,6 +53,77 @@ export const JOBS = [
     seconds: 5.5,
   },
 
+  {
+    out: "fairywren-sorted-phone.jpg",
+    page: "fairywren/features.html?scene=sorted",
+    device: "phone",
+    at: 4.5,
+  },
+  {
+    out: "fairywren-sorted-dark-phone.jpg",
+    page: "fairywren/features.html?scene=sorted&mode=dark",
+    device: "phone",
+    at: 4.5,
+  },
+  {
+    out: "fairywren-quickadd-phone.jpg",
+    page: "fairywren/features.html?scene=quickadd",
+    device: "phone",
+    at: 3,
+  },
+  {
+    out: "fairywren-reschedule-phone.jpg",
+    page: "fairywren/features.html?scene=reschedule",
+    device: "phone",
+    at: 2.6,
+  },
+  {
+    out: "fairywren-share-phone.jpg",
+    page: "fairywren/features.html?scene=share",
+    device: "phone",
+    at: 5.4,
+  },
+  {
+    out: "fairywren-insights-phone.jpg",
+    page: "fairywren/features.html?scene=insights",
+    device: "phone",
+  },
+  {
+    out: "fairywren-month-phone.jpg",
+    page: "fairywren/features.html?scene=month",
+    device: "phone",
+  },
+  {
+    out: "fairywren-sorted-phone.mp4",
+    page: "fairywren/features.html?scene=sorted",
+    device: "phone",
+    seconds: 6,
+  },
+  {
+    out: "fairywren-quickadd-phone.mp4",
+    page: "fairywren/features.html?scene=quickadd",
+    device: "phone",
+    seconds: 5,
+  },
+  {
+    out: "fairywren-reschedule-phone.mp4",
+    page: "fairywren/features.html?scene=reschedule",
+    device: "phone",
+    seconds: 5,
+  },
+  {
+    out: "fairywren-share-phone.mp4",
+    page: "fairywren/features.html?scene=share",
+    device: "phone",
+    seconds: 5.5,
+  },
+  {
+    out: "fairywren-focusflow-phone.mp4",
+    page: "fairywren/features.html?scene=focusflow",
+    device: "phone",
+    seconds: 6,
+  },
+
   { out: "thornbill-icon.png", page: "thornbill/icon.html", device: "icon" },
   {
     out: "thornbill-upgrade-terminal.jpg",
@@ -91,6 +162,25 @@ export const JOBS = [
     seconds: 5,
   },
 
+  {
+    out: "thornbill-changes-terminal.jpg",
+    page: "thornbill/terminal.html?scene=changes",
+    device: "window",
+    at: 6,
+  },
+  { out: "thornbill-diff-window.jpg", page: "thornbill/review.html?page=diff", device: "window" },
+  {
+    out: "thornbill-benchmark-window.jpg",
+    page: "thornbill/review.html?page=bench",
+    device: "window",
+  },
+  {
+    out: "thornbill-changes-terminal.mp4",
+    page: "thornbill/terminal.html?scene=changes",
+    device: "window",
+    seconds: 6,
+  },
+
   { out: "songlark-icon.png", page: "songlark/icon.html", device: "icon" },
   { out: "songlark-ask-window.jpg", page: "songlark/window.html", device: "window", at: 1.9 },
   { out: "songlark-answer-window.jpg", page: "songlark/window.html", device: "window", at: 6 },
@@ -104,4 +194,40 @@ export const JOBS = [
   },
   { out: "songlark-ask-window.mp4", page: "songlark/window.html", device: "window", seconds: 6 },
   { out: "songlark-ask-phone.mp4", page: "songlark/phone.html", device: "phone", seconds: 5 },
+  {
+    out: "songlark-offsite-ask-window.jpg",
+    page: "songlark/window.html?topic=offsite",
+    device: "window",
+    at: 2.25,
+  },
+  {
+    out: "songlark-offsite-answer-window.jpg",
+    page: "songlark/window.html?topic=offsite",
+    device: "window",
+    at: 6.5,
+  },
+  {
+    out: "songlark-notes-ask-window.jpg",
+    page: "songlark/window.html?topic=notes",
+    device: "window",
+    at: 2.25,
+  },
+  {
+    out: "songlark-notes-answer-window.jpg",
+    page: "songlark/window.html?topic=notes",
+    device: "window",
+    at: 6.5,
+  },
+  {
+    out: "songlark-followup-window.jpg",
+    page: "songlark/window.html?scene=followup",
+    device: "window",
+    at: 6,
+  },
+  {
+    out: "songlark-followup-window.mp4",
+    page: "songlark/window.html?scene=followup",
+    device: "window",
+    seconds: 6,
+  },
 ];

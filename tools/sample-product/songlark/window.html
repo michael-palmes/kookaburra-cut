@@ -240,6 +240,79 @@
         font-size: 17px;
         stroke-width: 2.4;
       }
+      .scroll {
+        position: absolute;
+        inset: 0;
+      }
+      .wide {
+        position: relative;
+        display: grid;
+        grid-template-columns: 36px 1fr auto;
+        align-items: center;
+        gap: 4px 14px;
+        margin-top: 14px;
+        padding: 16px;
+        border-radius: 18px;
+        background: var(--surface);
+        box-shadow: var(--shadow), 0 0 0 1px var(--hair);
+      }
+      .wide .ic {
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        font-size: 19px;
+        background: var(--lavender);
+        color: var(--violet);
+      }
+      .wide .wt b {
+        display: block;
+        font-size: 15px;
+      }
+      .wide .wt span {
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .wide .day {
+        grid-column: 1 / -1;
+        position: relative;
+        height: 34px;
+        margin-top: 10px;
+        border-radius: 10px;
+        background: #f6f4fb;
+      }
+      .wide .day i {
+        position: absolute;
+        top: 4px;
+        bottom: 4px;
+        border-radius: 7px;
+        padding-left: 10px;
+        font-style: normal;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 26px;
+      }
+      .wide .day .gone {
+        background: #ece8ff;
+        box-shadow: inset 3px 0 0 #9a7cf4;
+        text-decoration: line-through;
+      }
+      .wide .moved {
+        grid-row: 1;
+        grid-column: 3;
+        white-space: nowrap;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 30px;
+        padding: 0 12px;
+        border-radius: 15px;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--violet-deep);
+        background: var(--lavender);
+      }
       .acts .ghost {
         display: flex;
         align-items: center;
@@ -257,42 +330,85 @@
     <div class="win" id="win"></div>
     <script type="module">
       import { fillIcons, icon } from "../shared/icons.js";
-      import { caretOn, ease, lerp, params, press, ready, rise, seg, typed } from "../shared/motion.js";
+      import { caretOn, ease, lerp, params, press, ready, rise, seg, typed, typedEnd } from "../shared/motion.js";
       import { MARK, SPARK } from "./mark.js";
 
-      const empty = params().scene === "empty";
-      const PROMPT = "Make next week calmer";
-      const REPLY = "Here’s a calmer week. I moved three meetings and kept your mornings free for focus.";
-      const CARDS = [
-        ["calendar", "Moved 3 meetings", "Design review, the 1:1 with Jo and Retro now sit after 13:00."],
-        ["target", "4 focus blocks", "09:00 to 11:00, Monday to Thursday, with alerts paused."],
-        ["sun", "Friday afternoon free", "Nothing booked after 14:00, so the week ends early."],
-      ];
+      const P = params();
+      const empty = P.scene === "empty";
+      const followup = P.scene === "followup";
+      const TOPICS = {
+        calm: {
+          prompt: "Make next week calmer",
+          think: "Looking at your calendar",
+          reply: "Here’s a calmer week. I moved three meetings and kept your mornings free for focus.",
+          cards: [
+            ["calendar", "Moved 3 meetings", "Design review, the 1:1 with Jo and Retro now sit after 13:00."],
+            ["target", "4 focus blocks", "09:00 to 11:00, Monday to Thursday, with alerts paused."],
+            ["sun", "Friday afternoon free", "Nothing booked after 14:00, so the week ends early."],
+          ],
+          acts: ["Apply to calendar", "Show changes"],
+        },
+        offsite: {
+          prompt: "Plan a team offsite in May",
+          think: "Finding places and dates",
+          reply: "Here’s a two-day offsite on the coast, with mornings for work and afternoons outside.",
+          cards: [
+            ["calendar", "Thu 21 May", "Arrive by 10:00. Strategy in the morning, a coast walk at 15:00."],
+            ["users", "12 people, two cabins", "A long table, a fast connection and room to spread out."],
+            ["sun", "Fri 22 May", "Retro and roadmap, then lunch and home by 16:00."],
+          ],
+          acts: ["Hold the dates", "Share with the team"],
+        },
+        notes: {
+          prompt: "Summarise the launch notes",
+          think: "Reading the launch notes",
+          reply: "The launch is on track. Three things need a decision this week.",
+          cards: [
+            ["flag", "Pricing page", "Legal needs to sign off the new copy by Wednesday."],
+            ["shield", "Load testing", "Expect twice last launch’s peak. Add a second region."],
+            ["mail", "Press kit", "Two partner quotes are still missing."],
+          ],
+          acts: ["Send to the team", "Show sources"],
+        },
+      };
+      const topic = followup ? TOPICS.calm : TOPICS[P.topic ?? "calm"];
+      const shift = Math.max(0, typedEnd(topic.prompt, 350, 15) - typedEnd(TOPICS.calm.prompt, 350, 15));
+      const FOLLOW = "Keep Thursday free too";
+      const REPLY2 = "Done. Thursday is clear: Launch review moved to Wednesday at 15:00, and your focus block stays.";
 
       const win = document.getElementById("win");
       win.innerHTML = `<div class="toolbar"><div class="lights"><i></i><i></i><i></i></div>${icon("sidebar")}${icon("chevronLeft")}${icon("chevronRight")}<div class="address">${icon("lock")}Songlark</div>${icon("share")}${icon("plus")}</div>
         <div class="app"><nav class="rail"><span class="logo">${MARK}</span><div class="r">${icon("pen")}</div><div class="r">${icon("search")}</div><div class="r">${icon("clock")}</div><div class="r">${icon("folder")}</div><div class="me">A</div></nav>
           <main class="main" id="main"><div class="greet" id="greet"><span class="spark">${SPARK}</span><h1 class="display">Good morning, Alex</h1><p>What should we work on?</p></div>
-            <div class="col" id="thread" style="top:40px;height:560px"><div class="bubble you" id="you">${PROMPT}</div>
-              <div class="bot" id="bot"><span class="spark">${SPARK}</span><div class="say"><div class="thinking shimmer" id="thinking">Looking at your calendar</div>
-                <div class="reply" id="reply">${REPLY.split(" ").map((w) => `<span>${w} </span>`).join("")}</div>
-                <div class="cards">${CARDS.map(([ic, b, s]) => `<div class="answer-card"><div class="ic">${icon(ic)}</div><div><b>${b}</b><span>${s}</span></div></div>`).join("")}</div>
-                <div class="acts" id="acts"><div class="go">${icon("check")}Apply to calendar</div><div class="ghost">Show changes</div></div></div></div></div>
+            <div class="col" id="thread" style="top:40px;height:560px"><div class="scroll" id="scroll"><div class="bubble you" id="you">${topic.prompt}</div>
+              <div class="bot" id="bot"><span class="spark">${SPARK}</span><div class="say"><div class="thinking shimmer" id="thinking">${topic.think}</div>
+                <div class="reply" id="reply">${topic.reply.split(" ").map((w) => `<span>${w} </span>`).join("")}</div>
+                <div class="cards">${topic.cards.map(([ic, b, s]) => `<div class="answer-card"><div class="ic">${icon(ic)}</div><div><b>${b}</b><span>${s}</span></div></div>`).join("")}</div>
+                <div class="acts" id="acts"><div class="go">${icon("check")}${topic.acts[0]}</div><div class="ghost">${topic.acts[1]}</div></div></div></div>${
+                  followup
+                    ? `<div class="bubble you" id="you2" style="top:384px">${FOLLOW}</div>
+                <div class="bot" id="bot2" style="top:452px"><span class="spark">${SPARK}</span><div class="say"><div class="thinking shimmer" id="thinking2">Checking Thursday</div>
+                  <div class="reply" id="reply2">${REPLY2.split(" ").map((w) => `<span>${w} </span>`).join("")}</div>
+                  <div class="wide" id="wide"><div class="ic">${icon("calendar")}</div><div class="wt"><b>Thursday 14 May</b><span>Cleared, with your focus block kept</span></div>
+                    <div class="day"><i style="left:0;width:22%;background:#def4e7;box-shadow:inset 3px 0 0 #3fb27a">Focus</i><i class="gone" style="left:30%;width:24%">Launch review</i></div>
+                    <div class="moved">${icon("arrowRight")}Wed 15:00</div></div></div></div>`
+                    : ""
+                }</div></div>
             <div class="col composer" id="composer"><div class="text"><span id="typed"></span><span class="caret" id="caret"></span><span class="ph" id="ph">Ask Songlark anything</span></div>
               <div class="tools"><span class="t">${icon("paperclip")}Attach</span><span class="t">${icon("sparkle")}Tools</span><span class="grow"></span><span class="mic">${icon("mic")}</span><div class="send" id="send">${icon("arrowUp")}</div></div></div>
             <div class="col chips" id="chips"><span class="suggest">${icon("calendar")}Plan my week</span><span class="suggest">${icon("note")}Summarise a doc</span><span class="suggest">${icon("mail")}Draft a reply</span><span class="suggest">${icon("clock")}Find a time</span></div></main></div>`;
       fillIcons(win);
       const $ = (id) => document.getElementById(id);
       const words = [...$("reply").children];
-      const cards = [...win.querySelectorAll(".answer-card")];
+      const cards = [...win.querySelectorAll("#bot .answer-card")];
 
-      window.render = (t) => {
-        const sent = !empty && t >= 2050;
-        const text = empty ? "" : typed(PROMPT, t, 350, 15);
-        const m = ease.inOut(seg(t, 2050, 650));
+      function ask(t, x) {
+        const sent = !empty && t >= 2050 + x;
+        const text = empty ? "" : typed(topic.prompt, t, 350, 15);
+        const m = ease.inOut(seg(t, 2050 + x, 650));
         $("greet").style.opacity = String(1 - m);
         $("greet").style.transform = `translateY(${-24 * m}px)`;
-        $("chips").style.opacity = String(1 - ease.out(seg(t, 2050, 300)));
+        $("chips").style.opacity = String(1 - ease.out(seg(t, 2050 + x, 300)));
         $("chips").style.top = "548px";
         const composer = $("composer");
         composer.style.top = `${lerp(384, 612, m)}px`;
@@ -300,23 +416,53 @@
         $("typed").textContent = sent ? "" : text;
         $("ph").textContent = sent ? "Reply to Songlark" : "Ask Songlark anything";
         $("ph").style.display = $("typed").textContent ? "none" : "inline";
-        $("caret").style.opacity = !sent && caretOn(t, 1800) ? "1" : "0";
+        $("caret").style.opacity = !sent && caretOn(t, 1800 + x) ? "1" : "0";
+        const send = $("send");
+        send.classList.toggle("live", Boolean(text) && !sent);
+        send.style.transform = `scale(${press(t, 2000 + x)})`;
+        $("thread").style.display = t >= 2150 + x && !empty ? "block" : "none";
+        rise($("you"), t, 2200 + x, { dy: 14 });
+        rise($("bot"), t, 2450 + x, { dy: 10 });
+        const thinking = $("thinking");
+        thinking.style.display = t < 3150 + x ? "flex" : "none";
+        thinking.style.backgroundPosition = `${100 - ((t - 2450 - x) / 9) % 300}% 0`;
+        $("reply").style.display = t >= 3150 + x ? "block" : "none";
+        for (const [i, w] of words.entries()) w.style.opacity = String(ease.out(seg(t, 3150 + x + i * 45, 160)));
+        for (const [i, c] of cards.entries()) rise(c, t, 3850 + x + i * 170, { dy: 18, scale: 0.98 });
+        rise($("acts"), t, 4550 + x, { dy: 10 });
+      }
+
+      function follow(t) {
+        ask(7000, 0);
+        $("thread").style.overflow = "hidden";
+        const text = typed(FOLLOW, t, 300, 15);
+        const sent = t >= 2050;
+        $("typed").textContent = sent ? "" : text;
+        $("ph").textContent = "Reply to Songlark";
+        $("ph").style.display = $("typed").textContent ? "none" : "inline";
+        $("caret").style.opacity = !sent && caretOn(t, 1750) ? "1" : "0";
         const send = $("send");
         send.classList.toggle("live", Boolean(text) && !sent);
         send.style.transform = `scale(${press(t, 2000)})`;
-        $("thread").style.display = t >= 2150 && !empty ? "block" : "none";
-        rise($("you"), t, 2200, { dy: 14 });
-        rise($("bot"), t, 2450, { dy: 10 });
-        const thinking = $("thinking");
-        thinking.style.display = t < 3150 ? "flex" : "none";
-        thinking.style.backgroundPosition = `${100 - ((t - 2450) / 9) % 300}% 0`;
-        $("reply").style.display = t >= 3150 ? "block" : "none";
-        words.forEach((w, i) => {
-          w.style.opacity = String(ease.out(seg(t, 3150 + i * 45, 160)));
-        });
-        for (const [i, c] of cards.entries()) rise(c, t, 3850 + i * 170, { dy: 18, scale: 0.98 });
-        rise($("acts"), t, 4550, { dy: 10 });
-      };
+        $("scroll").style.transform = `translateY(${-130 * ease.inOut(seg(t, 2100, 650))}px)`;
+        $("you2").style.display = t >= 2100 ? "block" : "none";
+        rise($("you2"), t, 2100, { dy: 14 });
+        $("bot2").style.display = t >= 2350 ? "flex" : "none";
+        rise($("bot2"), t, 2350, { dy: 10 });
+        const thinking = $("thinking2");
+        thinking.style.display = t < 2950 ? "flex" : "none";
+        thinking.style.backgroundPosition = `${100 - ((t - 2350) / 9) % 300}% 0`;
+        $("reply2").style.display = t >= 2950 ? "block" : "none";
+        for (const [i, w] of [...$("reply2").children].entries()) {
+          w.style.opacity = String(ease.out(seg(t, 2950 + i * 55, 140)));
+        }
+        rise($("wide"), t, 3950, { dy: 16, scale: 0.98 });
+        const gone = win.querySelector(".gone");
+        gone.style.opacity = String(1 - 0.75 * ease.inOut(seg(t, 4500, 500)));
+        $("wide").querySelector(".moved").style.opacity = String(seg(t, 4700, 300));
+      }
+
+      window.render = (t) => (followup ? follow(t) : ask(t, shift));
       window.pageReady = ready();
     </script>
   </body>

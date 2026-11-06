@@ -6,9 +6,9 @@ same week, the same people, the same release):
 
 | Product | What it is | Look | Surfaces |
 | --- | --- | --- | --- |
-| Fairywren | A calm planner | Navy and coral, Inter Tight titles | Phone (light, dark, focus, an older design), tablet and laptop week, web share flow |
-| Thornbill | A developer CLI and SDK | Midnight, cyan and lime, JetBrains Mono | Terminal, docs site, dashboard, editor |
-| Songlark | An AI assistant | White canvas and violet | Chat composer and answer cards on the web and phone, voice mode |
+| Fairywren | A calm planner | Navy and coral, Inter Tight titles | Phone (light, dark, focus, an older design, insights, month), five feature flows (`features.html`), tablet and laptop week, web share flow |
+| Thornbill | A developer CLI and SDK | Midnight, cyan and lime, JetBrains Mono | Terminal (an upgrade and a change list on the beat), docs site, migration diff, benchmarks, dashboard, editor |
+| Songlark | An AI assistant | White canvas and violet | Three prompt and answer pairs and a streamed follow-up on the web, the same on a phone, voice mode |
 
 ## Run it
 
@@ -44,7 +44,7 @@ oxipng and the ffmpeg sidecar (`pnpm setup:ffmpeg`; it falls back to `ffmpeg` on
 - Fictional names, people and data only. No real products, marks, domains or package
   installs (`npx` or `brew` lines invite someone to squat the name).
 - Keep each recording 4 to 6 seconds, settled at its first and last frame, and the
-  whole family under 12 MB.
+  whole family under 18 MB.
 - The names were checked against IP Australia, USPTO, the App Store, npm and PyPI on
   6 Nov 2026. Whipbird and Bellbird clashed with live software marks (WHIPBIRD SIGNALS
   in AU classes 9, 38 and 42; BELLBIRD in US classes 9, 38 and 42), so the developer
