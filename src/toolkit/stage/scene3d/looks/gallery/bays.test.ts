@@ -25,10 +25,14 @@ import {
   BRASS_VERTEX,
   FLAT_FRAGMENT,
   FLOOR_FRAGMENT,
+  GALLERY_HAZE,
   GLASS_FRAGMENT,
   PIER_FRAGMENT,
   WALL_FRAGMENT,
 } from "./shaders";
+
+/** The orbit UI's camera distance cap. */
+const ORBIT_REACH = 50;
 
 const PITCHES = Array.from(
   { length: (BAY_RANGE.max - BAY_RANGE.min) / 0.5 + 1 },
@@ -71,6 +75,10 @@ describe("gallery bays", () => {
     expect(GALLERY.floorY).toBeLessThan(-CONTENT_BOX.y - 1);
     expect(GALLERY.ceilingY).toBeGreaterThan(CONTENT_BOX.y + 4);
     expect(GALLERY.frontZ).toBeGreaterThan(CONTENT_BOX.zMax + 15);
+  });
+
+  it("hazes the corridor out before its ends from anywhere in orbit reach", () => {
+    expect(GALLERY.halfLength - ORBIT_REACH).toBeGreaterThanOrEqual(GALLERY_HAZE.far);
   });
 
   it("keeps the highest lamp under the clerestory sill", () => {

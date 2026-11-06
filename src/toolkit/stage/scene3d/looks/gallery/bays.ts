@@ -11,8 +11,8 @@ export const GALLERY = {
   reveal: 0.7,
   /** The far wall behind the default camera; floor and ceiling run to it. */
   frontZ: 30,
-  /** The corridor runs x -96..96 and hazes into the backing long before its ends. */
-  halfLength: 96,
+  /** The corridor runs x -150..150, so it has hazed into the backing before its ends from any camera in orbit reach. */
+  halfLength: 150,
   pierWidth: 1.2,
   /** The shadow-gap skirting and the brass bead above it. */
   skirting: 0.1,
@@ -43,7 +43,7 @@ export const LAMP_HEIGHT_RANGE = { min: 1.5, max: 4.5 } as const;
 
 /** Bays from -n to n fill the corridor, so lamps and piers stop short of its ends. */
 function bayReach(pitch: number): number {
-  return Math.floor((GALLERY.halfLength - pitch / 2) / pitch);
+  return Math.floor((GALLERY.halfLength - (pitch + GALLERY.pierWidth) / 2) / pitch);
 }
 
 /** Bay centres along the hanging wall, ascending x. */

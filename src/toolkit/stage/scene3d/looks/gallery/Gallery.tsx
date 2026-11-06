@@ -8,7 +8,6 @@ import {
   type IUniform,
   PlaneGeometry,
   Quaternion,
-  type ShaderMaterial,
   Vector3,
 } from "three";
 import {
@@ -124,21 +123,21 @@ export function lampGeometries() {
   return { can, arm, plate };
 }
 
-function shared(): Record<string, IUniform> {
+function sharedUniforms(): Record<string, IUniform> {
   return {
-    uPlaster: lookColorUniform("#3a342e"),
-    uOak: lookColorUniform("#3d2c20"),
-    uShade: lookColorUniform("#16130f"),
-    uBrass: lookColorUniform("#6b5636"),
-    uLamp: lookColorUniform("#ad8f5e"),
-    uBacking: lookColorUniform("#100e0c"),
+    uPlaster: lookColorUniform("#3b3530"),
+    uOak: lookColorUniform("#4a2f22"),
+    uShade: lookColorUniform("#15120f"),
+    uBrass: lookColorUniform("#705c3b"),
+    uLamp: lookColorUniform("#a8895c"),
+    uBacking: lookColorUniform("#110f0d"),
     uDark: { value: 1 },
     uPitch: { value: 9 },
     uPierDepth: { value: 0.6 },
-    uLampY: { value: 2.8 },
-    uPools: { value: 0.7 },
-    uDaylight: { value: 0.6 },
-    uClouds: { value: 0.5 },
+    uLampY: { value: 2.6 },
+    uPools: { value: 0.85 },
+    uDaylight: { value: 0.25 },
+    uClouds: { value: 0.4 },
     uCloud: { value: new Vector3() },
   };
 }
@@ -202,53 +201,49 @@ export function Gallery({ colors, params, speed, backing }: Scene3dLookProps) {
     [geometry],
   );
 
-  const mats = useLookMaterials(
-    () => ({
-      wall: { key: "gallery/wall", fragmentShader: WALL_FRAGMENT, uniforms: shared() },
-      pier: { key: "gallery/pier", fragmentShader: PIER_FRAGMENT, uniforms: shared() },
+  const mats = useLookMaterials(() => {
+    const shared = sharedUniforms();
+    return {
+      wall: { key: "gallery/wall", fragmentShader: WALL_FRAGMENT, uniforms: shared },
+      pier: { key: "gallery/pier", fragmentShader: PIER_FRAGMENT, uniforms: shared },
       floor: {
         key: "gallery/floor",
         fragmentShader: FLOOR_FRAGMENT,
-        uniforms: { ...shared(), uBoard: { value: 0.42 } },
+        uniforms: { ...shared, uBoard: { value: 0.42 } },
       },
-      flat: { key: "gallery/flat", fragmentShader: FLAT_FRAGMENT, uniforms: shared() },
+      flat: { key: "gallery/flat", fragmentShader: FLAT_FRAGMENT, uniforms: shared },
       glass: {
         key: "gallery/glass",
         fragmentShader: GLASS_FRAGMENT,
-        uniforms: { ...shared(), uSway: { value: 0 } },
+        uniforms: { ...shared, uSway: { value: 0 } },
       },
       can: {
         key: "gallery/can",
         vertexShader: BRASS_VERTEX,
         fragmentShader: BRASS_FRAGMENT,
         defines: { GA_LENS: 1 },
-        uniforms: shared(),
+        uniforms: shared,
       },
       fitting: {
         key: "gallery/fitting",
         vertexShader: BRASS_VERTEX,
         fragmentShader: BRASS_FRAGMENT,
-        uniforms: shared(),
+        uniforms: shared,
       },
-    }),
-    [],
-  );
-  const all = useMemo<ShaderMaterial[]>(() => Object.values(mats), [mats]);
+    };
+  }, []);
+  const u = mats.wall.uniforms;
 
   const [plaster, oak, shade, brass, lamp] = colors;
   useLayoutEffect(() => {
-    const dark = lookLuminance(plaster) < DARK_LUMINANCE ? 1 : 0;
-    for (const m of all) {
-      const u = m.uniforms;
-      u.uPlaster.value.set(plaster);
-      u.uOak.value.set(oak);
-      u.uShade.value.set(shade);
-      u.uBrass.value.set(brass);
-      u.uLamp.value.set(lamp);
-      u.uBacking.value.set(backing);
-      u.uDark.value = dark;
-    }
-  }, [all, plaster, oak, shade, brass, lamp, backing]);
+    u.uPlaster.value.set(plaster);
+    u.uOak.value.set(oak);
+    u.uShade.value.set(shade);
+    u.uBrass.value.set(brass);
+    u.uLamp.value.set(lamp);
+    u.uBacking.value.set(backing);
+    u.uDark.value = lookLuminance(plaster) < DARK_LUMINANCE ? 1 : 0;
+  }, [u, plaster, oak, shade, brass, lamp, backing]);
 
   const pitch = params.bayWidth;
   const depth = params.pierDepth;
@@ -267,21 +262,17 @@ export function Gallery({ colors, params, speed, backing }: Scene3dLookProps) {
   useStaticInstancedLayout(lampMeshes, lamps, lampPose);
 
   useLayoutEffect(() => {
-    const sway = swayPhase(t);
-    for (const m of all) {
-      const u = m.uniforms;
-      u.uPitch.value = pitch;
-      u.uPierDepth.value = depth;
-      u.uLampY.value = lampY;
-      u.uPools.value = params.pools;
-      u.uDaylight.value = params.daylight;
-      u.uClouds.value = params.clouds;
-      writeCloudPhases(u.uCloud.value, t);
-    }
+    u.uPitch.value = pitch;
+    u.uPierDepth.value = depth;
+    u.uLampY.value = lampY;
+    u.uPools.value = params.pools;
+    u.uDaylight.value = params.daylight;
+    u.uClouds.value = params.clouds;
+    writeCloudPhases(u.uCloud.value, t);
     mats.floor.uniforms.uBoard.value = params.boards;
-    mats.glass.uniforms.uSway.value = sway;
+    mats.glass.uniforms.uSway.value = swayPhase(t);
   }, [
-    all,
+    u,
     mats,
     t,
     pitch,

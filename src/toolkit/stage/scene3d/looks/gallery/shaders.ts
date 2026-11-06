@@ -56,6 +56,11 @@ float gaPool(float dx, float y) {
   float glow = exp(-dx * dx / 9.5 - (below - 1.3) * (below - 1.3) / 7.0);
   return clamp(fan * 0.95 + bloom * 0.5 + glow * 0.36, 0.0, 1.0);
 }
+// The brighter of the two nearest lamps' pools, so glows meet seamlessly between bays.
+float gaPools(float x, float y, float soft) {
+  float dx = gaBayX(x);
+  return max(gaPool(dx / soft, y), gaPool((dx - sign(dx) * uPitch) / soft, y));
+}
 // The wall settles toward shade high above the lamps and low by the floor.
 float gaFalloff(float y) {
   return 0.3 * smoothstep(uLampY + 0.3, GA_SILL, y) + 0.2 * exp(-(y - GA_FLOOR) * 1.3);
@@ -165,7 +170,7 @@ void main() {
     float t = (GA_WALL - P.z) / V.z;
     vec3 H = P + vec3(V.x, -V.y, V.z) * t;
     float soft = 1.0 + t * 0.1;
-    pool = gaPool(gaBayX(H.x) / soft, H.y) * uPools * exp(-t * 0.05);
+    pool = gaPools(H.x, H.y, soft) * uPools * exp(-t * 0.05);
     sky = step(GA_SILL, H.y) * step(H.y, GA_HEAD) * uDaylight;
   }
   float fres = mix(0.05, 0.5, pow(1.0 - clamp(-V.y, 0.0, 1.0), 5.0));
@@ -191,7 +196,7 @@ void main() {
   vec3 P = vWorld;
   float up = step(0.0, normalize(vNormalW).y);
   float ceiling = step(GA_HEAD + 0.5, P.y);
-  if ((1.0 - up) * (1.0 - ceiling) > 0.5 && cameraPosition.z < GA_WALL + 0.02) discard;
+  if (ceiling < 0.5 && cameraPosition.z < GA_WALL + 0.02) discard;
   vec3 col = uPlaster * gaMottle(P.xz + vec2(0.0, 57.0));
   col = mix(col, gaDayTone(), up * 0.45 * uDaylight);
   col *= gaCloud(P.x);
