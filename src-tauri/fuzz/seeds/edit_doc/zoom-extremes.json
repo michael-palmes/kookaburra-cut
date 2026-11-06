@@ -1,0 +1,31 @@
+{
+  "version": 3,
+  "name": "x",
+  "sources": [
+    {
+      "id": "s1",
+      "rel": "assets/capture.mp4",
+      "width": 1920,
+      "height": 1080,
+      "fps": 60,
+      "durationMs": 12000
+    }
+  ],
+  "settings": { "width": 1920, "height": 1080, "fps": 1000000.0 },
+  "clips": [
+    {
+      "id": "c1",
+      "sourceId": "s1",
+      "inMs": 0,
+      "outMs": 4000,
+      "speed": 1,
+      "startMs": 0,
+      "zoom": {
+        "keys": [
+          { "tMs": -9000000000000000000, "rect": [0, 0, 1, 1] },
+          { "tMs": 9000000000000000000, "rect": [0.25, 0.25, 0.5, 0.5] }
+        ]
+      }
+    }
+  ]
+}

@@ -82,6 +82,11 @@ pnpm kookaburra:run --action preset-previews            # --project <slug,...> s
 # then confirm with one or two autorun screenshots (tools/look-lab/README.md).
 pnpm look-lab --look <id> --gpu                          # --compare 4,8 for motion, --grid for all 9 presets
 
+# Fuzz harness (src-tauri/fuzz, README there): libFuzzer over the untrusted-input parsers via the
+# app's `fuzzing` feature. Stable runs every target over its seeds (CI's rust job); nightly fuzzes.
+# The RUSTFLAGS let rten's unused cdylib link under sancov (the README says why).
+cd src-tauri && RUSTFLAGS='-Clink-arg=-Wl,-undefined,dynamic_lookup' cargo +nightly fuzz build -s none
+
 # Release: a signed v* tag on main; .github/workflows/release.yml builds, signs (protected
 # environment), verifies and drafts the GitHub release (kookaburra-release skill).
 pnpm release           # tag v<version> (signed, checked against .github/allowed_tag_signers) and push it

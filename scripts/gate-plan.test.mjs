@@ -36,6 +36,8 @@ describe("gate plan", () => {
         "docs/design.md",
         ".agents/skills/x/SKILL.md",
         "src-tauri/src/kit.rs",
+        "src-tauri/src/fuzz_api.rs",
+        "src-tauri/fuzz/src/lib.rs",
       ],
       closure,
     );

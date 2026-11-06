@@ -72,8 +72,13 @@ fn identity_of(key: &SigningKey) -> PackIdentity {
     let raw = key.verifying_key().to_bytes();
     PackIdentity {
         key_id: key_id_for(&raw),
-        public_key: format!("{PUBLIC_KEY_PREFIX}{}", BASE64.encode(raw)),
+        public_key: published_key(&raw),
     }
+}
+
+/// The wire form of a public key: the prefix and the base64 of its 32 raw bytes.
+pub(crate) fn published_key(raw: &[u8; 32]) -> String {
+    format!("{PUBLIC_KEY_PREFIX}{}", BASE64.encode(raw))
 }
 
 /// Parse an `ed25519:<base64>` public key. Anything else is not a key we can check a signature with.

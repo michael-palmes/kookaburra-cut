@@ -266,7 +266,7 @@ fn check_kind_cap(path: &str, bytes: u64) -> Result<(), PackError> {
 /// `manifest.contents` carries paths too, and apply joins them onto the staging root to find what to move. `Path::join`
 /// with an absolute path DISCARDS the base, so an unvalidated `file: "/etc/passwd"` would read clean outside the tree.
 /// Every one of them is validated here and required to appear in `files`, the same as any zip entry.
-fn validate_contents_paths(manifest: &PackManifest) -> Result<(), PackError> {
+pub(crate) fn validate_contents_paths(manifest: &PackManifest) -> Result<(), PackError> {
     let listed: HashSet<&str> = manifest.files.iter().map(|f| f.path.as_str()).collect();
     let check = |path: &str| -> Result<(), PackError> {
         validate_archive_path(path)?;

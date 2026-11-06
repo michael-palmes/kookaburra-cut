@@ -1,0 +1,103 @@
+{
+  "version": 2,
+  "name": "walkthrough",
+  "sources": [
+    {
+      "id": "s1",
+      "rel": "assets/capture.mp4",
+      "width": 1920,
+      "height": 1080,
+      "fps": 60,
+      "durationMs": 12000
+    }
+  ],
+  "settings": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 60
+  },
+  "clips": [
+    {
+      "id": "c1",
+      "sourceId": "s1",
+      "inMs": 500,
+      "outMs": 3500,
+      "speed": 1,
+      "startMs": 0
+    },
+    {
+      "id": "c2",
+      "sourceId": "s1",
+      "inMs": 3500,
+      "outMs": 3500,
+      "speed": 1,
+      "startMs": 3000,
+      "holdMs": 1500
+    },
+    {
+      "id": "c3",
+      "sourceId": "s1",
+      "inMs": 3500,
+      "outMs": 9500,
+      "speed": 2,
+      "startMs": 4500
+    }
+  ],
+  "taps": [
+    {
+      "id": "t1",
+      "sourceId": "s1",
+      "sourceMs": 1200,
+      "pos": [0.5, 0.62]
+    },
+    {
+      "id": "t2",
+      "sourceId": "s1",
+      "sourceMs": 6000,
+      "pos": [0.18, 0.3]
+    }
+  ],
+  "tapStyle": "ring",
+  "tapColor": "accent",
+  "tapSize": 1.5,
+  "masks": [
+    {
+      "id": "m1",
+      "sourceId": "s1",
+      "style": "blur",
+      "strength": 0.6,
+      "startMs": 1000,
+      "endMs": 4000,
+      "fadeInMs": 200,
+      "fadeOutMs": 300,
+      "keys": [
+        {
+          "sourceMs": 1000,
+          "rect": [0.1, 0.1, 0.2, 0.15]
+        },
+        {
+          "sourceMs": 4000,
+          "rect": [0.3, 0.3, 0.2, 0.15]
+        }
+      ]
+    },
+    {
+      "id": "m2",
+      "sourceId": "s1",
+      "style": "solid",
+      "color": "#102030",
+      "startMs": 5000,
+      "endMs": 9000,
+      "keys": [
+        {
+          "sourceMs": 5000,
+          "rect": [0.6, 0.7, 0.3, 0.2]
+        }
+      ]
+    }
+  ],
+  "reference": {
+    "rel": "assets/reference.mp4",
+    "offsetMs": -250
+  }
+}

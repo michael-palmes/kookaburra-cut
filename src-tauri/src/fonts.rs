@@ -271,7 +271,7 @@ pub fn embedding_from_fs_type(fs_type: u16) -> FontEmbedding {
 }
 
 /// fsType sits at OS/2 + 8. A missing table or any parse failure reads Unknown (usually an old free face), which gates as a warning rather than a refusal.
-fn embedding_in_face(data: &[u8], face_offset: usize) -> FontEmbedding {
+pub(crate) fn embedding_in_face(data: &[u8], face_offset: usize) -> FontEmbedding {
     let Ok((_, tables)) = face_tables(data, face_offset) else {
         return FontEmbedding::Unknown;
     };
@@ -288,7 +288,7 @@ fn embedding_in_face(data: &[u8], face_offset: usize) -> FontEmbedding {
 }
 
 /// 0 for a plain sfnt; for a collection, the named face if it resolves, else the first.
-fn embedding_face_offset(data: &[u8], postscript: Option<&str>) -> usize {
+pub(crate) fn embedding_face_offset(data: &[u8], postscript: Option<&str>) -> usize {
     if data.get(0..4) != Some(b"ttcf") {
         return 0;
     }
@@ -586,15 +586,15 @@ fn read_u32(data: &[u8], at: usize) -> Result<u32, String> {
         .ok_or_else(|| "font data truncated".to_string())
 }
 
-struct TableRecord {
+pub(crate) struct TableRecord {
     tag: [u8; 4],
     checksum: u32,
-    offset: u32,
-    length: u32,
+    pub(crate) offset: u32,
+    pub(crate) length: u32,
 }
 
 /// The table records of the face whose offset table starts at `face_offset`.
-fn face_tables(data: &[u8], face_offset: usize) -> Result<(u32, Vec<TableRecord>), String> {
+pub(crate) fn face_tables(data: &[u8], face_offset: usize) -> Result<(u32, Vec<TableRecord>), String> {
     let sfnt_version = read_u32(data, face_offset)?;
     let num_tables = read_u16(data, face_offset + 4)? as usize;
     let mut tables = Vec::with_capacity(num_tables);
@@ -649,7 +649,7 @@ fn name_string(data: &[u8], tables: &[TableRecord], want_id: u16) -> Option<Stri
 }
 
 /// Extract the face matching `postscript` from a ttc/otc into a standalone font.
-fn extract_face_from_collection(data: &[u8], postscript: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn extract_face_from_collection(data: &[u8], postscript: &str) -> Result<Vec<u8>, String> {
     if data.get(0..4) != Some(b"ttcf") {
         return Err("not a TrueType collection".into());
     }
@@ -763,14 +763,14 @@ fn find_collection_face(data: &[u8], postscript: &str) -> Result<(usize, usize),
     Err(format!("face \"{postscript}\" not found in the collection"))
 }
 
-struct VarAxis {
+pub(crate) struct VarAxis {
     tag: [u8; 4],
     min: f32,
     default: f32,
     max: f32,
 }
 
-struct VarInstance {
+pub(crate) struct VarInstance {
     postscript_name_id: Option<u16>,
     coords: Vec<f32>,
 }
@@ -779,7 +779,7 @@ fn read_fixed(data: &[u8], at: usize) -> Result<f32, String> {
     Ok(read_u32(data, at)? as i32 as f32 / 65536.0)
 }
 
-fn parse_fvar(
+pub(crate) fn parse_fvar(
     data: &[u8],
     tables: &[TableRecord],
 ) -> Result<(Vec<VarAxis>, Vec<VarInstance>), String> {

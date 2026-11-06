@@ -29,6 +29,8 @@ mod export_health;
 mod export_presets;
 mod flashes;
 mod fonts;
+#[cfg(feature = "fuzzing")]
+pub mod fuzz_api;
 mod global_screenshots;
 mod gradients;
 mod history;
