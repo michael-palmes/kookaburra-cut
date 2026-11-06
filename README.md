@@ -35,11 +35,15 @@ while you watch them update here.
 </p>
 
 - A signed and notarised `.dmg`; macOS 26.0+ on **Apple Silicon** (arm64) only, no Intel build
-- Free and open source; everything runs locally (no accounts, no telemetry, no cloud)
+- Free and open source. No accounts, no telemetry. Nothing leaves your Mac
+  unless you start it: the opt-in update check, Edit with Claude, or a website
+  you allow in a scene
 - The optional AI authoring path uses your own Claude Code install
-- Managed Macs: a configuration profile can turn off the Claude entry points, live
-  websites or update checks, limit packs to approved publishers and fix the
-  workspace location ([`docs/mdm.md`](docs/mdm.md))
+- Managed Macs: a configuration profile can turn off the Claude entry points,
+  the agent kit, live websites, pack export or update checks, limit packs to
+  approved publishers, point updates at your own server, keep exports in the
+  project and fix the workspace location ([`docs/fleet.md`](docs/fleet.md),
+  [`docs/mdm.md`](docs/mdm.md))
 
 Every release is built by this repository's release workflow from a signed tag,
 signed with a Developer ID certificate and notarised by Apple. To check a
@@ -61,15 +65,19 @@ gh attestation verify KookaburraCut-<version>.dmg --bundle KookaburraCut-<versio
   --source-ref refs/tags/v<version> --deny-self-hosted-runners
 ```
 
-> Status: early release, in active development. Nothing leaves your Mac
-> unless you start it: the opt-in update check (asked once on the first-run
-> welcome, recommended there; Escape declines; Settings changes it any time)
-> asks GitHub whether a newer release exists and sends no identifiers; the
-> Claude integration (the Edit with Claude handoff to the Claude desktop app,
-> using your own Claude Code install) sends the project's files to Anthropic as
-> you work; a live website in a scene loads
-> only after you allow its origin. Every path, with its off switch, is in
-> [`docs/privacy.md`](docs/privacy.md) and [`SECURITY.md`](SECURITY.md).
+> Status: early release, in active development. Every path off your Mac, with
+> its off switch, is in [`docs/privacy.md`](docs/privacy.md) and
+> [`SECURITY.md`](SECURITY.md).
+
+## For security teams
+
+- [`docs/security-overview.md`](docs/security-overview.md): what leaves the Mac,
+  where data rests, how releases are built, questionnaire answers and what is
+  not done yet, for the team deciding whether it may run on managed Macs.
+- [`SECURITY.md`](SECURITY.md): the engineering record, every control with the
+  file or command behind it, and how to report a vulnerability.
+- [`docs/fleet.md`](docs/fleet.md): deploying it on managed Macs: verifying a
+  release, the keys to force, Claude Code's own settings, what to expect in EDR.
 
 ## Core features
 
@@ -135,8 +143,9 @@ src/theme/     theme schema, bundled themes, fonts
 src/store/     zustand editor/preview state
 projects/      one folder per project: project.json + scenes/ + assets/
 src-tauri/     Rust shell, tauri.conf.json, capabilities/, bin/ (sidecars)
-docs/          architecture, determinism, decisions, design, voice
-.claude/       project skills (scene authoring, export presets) + slash commands
+docs/          architecture, determinism, decisions, design, voice, privacy, security, fleet
+.agents/       project skills (scene authoring, video editing, brand packs, release)
+.claude/       slash commands (new-scene, preview, export); skills/ is a symlink to ../.agents/skills
 ```
 
 ## Authoring scenes
@@ -158,9 +167,13 @@ decision and why.
 
 This is a personal, source-available project. Issues and discussion are welcome;
 pull requests may be declined: see [`CONTRIBUTING.md`](CONTRIBUTING.md).
-Security reports: see [`SECURITY.md`](SECURITY.md), which lists everything
-the app touches; [`docs/privacy.md`](docs/privacy.md) is the plain-words
-version.
+Security: [`SECURITY.md`](SECURITY.md) is the engineering record and the
+place to report a vulnerability, for the security engineer, auditor and
+contributor; [`docs/security-overview.md`](docs/security-overview.md) is the
+summary for the security lead, CTO or engineering manager;
+[`docs/fleet.md`](docs/fleet.md) is the deployment guide for the IT team; and
+[`docs/privacy.md`](docs/privacy.md) says it in plain words for the person
+using the app.
 
 ## Licensing
 

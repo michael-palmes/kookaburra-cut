@@ -15,6 +15,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Your projects, workspace and pack signing key stay.
 - Settings ▸ About ▸ Activity log shows the app's log in Finder, and
   `docs/privacy.md` now says how to uninstall the app completely.
+- A security overview and a fleet guide for the teams approving and deploying
+  the app on managed Macs (`docs/security-overview.md`, `docs/fleet.md`).
+
+### Changed
+
+- What leaves your Mac opens the privacy page for the installed version, so
+  the words match the build.
+- Vulnerability reports are acknowledged within 14 days (`SECURITY.md`).
 
 ### Security
 

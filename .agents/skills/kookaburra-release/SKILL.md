@@ -14,6 +14,7 @@ A release is a **signed `v*` tag on `main`**, pushed by `pnpm release`. `.github
 ## Cutting a release
 
 1. **Bump the version** in `src-tauri/tauri.conf.json` (the single source of truth), re-read `SECURITY.md` against `main` and set its "As of version" line to match, move `## [Unreleased]`'s entries in `CHANGELOG.md` under `## [<version>] - <date>` (every security fix under `### Security`, one line on what it meant for a user, a GHSA link when an advisory exists: `CONTRIBUTING.md`, "Changelog"), and merge all three to `main` through a PR like any change. `pnpm release` and the build job refuse a tag whose `SECURITY.md` names another version, because 0.21.1 shipped under a file describing controls it lacked, and a tag whose `CHANGELOG.md` has no section, because the release body is built from it. The README must state the `minimumSystemVersion` floor (`macOS 26.0+`); the build job refuses otherwise.
+   **Security docs:** `git diff v<previous> HEAD -- SECURITY.md docs/privacy.md docs/mdm.md`, carry every change into `docs/security-overview.md` and `docs/fleet.md`, and set the version line in all four (`scripts/security-docs.test.mjs` fails until each matches `tauri.conf.json`).
 2. **Tag and push** from a clean `main` equal to `origin/main`:
    ```bash
    pnpm release
@@ -22,6 +23,7 @@ A release is a **signed `v*` tag on `main`**, pushed by `pnpm release`. `.github
 3. **Approve the sign job** when GitHub asks (the `release` environment's required reviewer). The run waits for you; nothing is signed before.
 4. **Publish the draft** once verify and publish are green: read the run summary (digests, sidecar record, SBOM count, build info), check the draft's assets hold `KookaburraCut-<version>.cdx.json` and its body opens with the version's changelog section, then publish the release on GitHub. The in-app updater only sees a published release (the draft 404s at `releases/latest/download/latest.json`).
 5. **Run the packaged-parity gate** on the published DMG's app (below). The workflow does not run it: it needs this machine's recorded baselines.
+6. **Update the website.** In `mpalmes-website-nextjs`, set `DESCRIBES` in `pages/kookaburracut/security.tsx` to the new version so its tag-pinned links resolve, and refresh `Expires` in `public/kookaburracut/security.txt` if it falls within the next three months; open a PR there.
 
 Rehearsals, in order of cost:
 - `pnpm release:rehearse`: build, sign ad hoc, plain DMG, verify, on this Mac. No key, no tag.
