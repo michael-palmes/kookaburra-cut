@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"gallery\" 3D background (\"Spotted Gum\")",
+  "background": {
+    "type": "scene3d",
+    "look": "gallery",
+    "colors": ["#c4c3bf", "#b0a593", "#a3a3a2", "#b9a073", "#f6f3ec"],
+    "speed": 1.1,
+    "params": {
+      "bayWidth": 9,
+      "pierDepth": 0.85,
+      "lampHeight": 2.6,
+      "pools": 0.8,
+      "daylight": 0.45,
+      "clouds": 0.35,
+      "boards": 0.55
+    },
+    "backing": {
+      "type": "color",
+      "color": "#e1e0dd"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

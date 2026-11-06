@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"gallery\" 3D background (\"Red Gum\")",
+  "background": {
+    "type": "scene3d",
+    "look": "gallery",
+    "colors": ["#42292a", "#4d2c22", "#170e0e", "#74583b", "#a78560"],
+    "speed": 0.95,
+    "params": {
+      "bayWidth": 9,
+      "pierDepth": 1,
+      "lampHeight": 2.6,
+      "pools": 0.9,
+      "daylight": 0.3,
+      "clouds": 0.5,
+      "boards": 0.5
+    },
+    "backing": {
+      "type": "color",
+      "color": "#130c0c"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

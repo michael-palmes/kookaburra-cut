@@ -78,9 +78,13 @@ the geometry (a colour, gradient, image or shader; never another scene3d).
 | Lines and engraving | engraved-hills, guilloche-medallion, hiroshige-rain, plexus-loom, pulsar-ridges |
 | Painted and printed | blue-and-gold, ink-ranges, lily-pond, paper-theatre, pop-up-terrace, shadow-lace, wash-dome |
 | Art history | colour-court, cubist-facets, seigaiha-tide, tessera-dome |
-| Deco and architecture | iris-screen, oculus-rotunda, sunburst-terrazzo, sunset-proscenium |
+| Deco and architecture | gallery, iris-screen, oculus-rotunda, sunburst-terrazzo, sunset-proscenium |
 | Texture and atmosphere | aurora-veil, caustic-pool, clerestory-shafts, frosted-panes, mezzotint-sky, riso-dunes |
 | Kinetic | box-kites, calder-mobiles, flip-disc-floor, helix-spinners, long-exposure, louvre-ring, origami-tide, pendulum-ring, rain-canopy, sand-table, shylight-blooms, skeleton-clockwork, wind-wands |
+
+`gallery` is a wall to hang work on: bays centre on x = k × `bayWidth` (9 by default),
+the wall face is at z -7.5 (hang images or devices at z -7.45) and each bay's picture
+light sits at `lampHeight` (2.6), so keep works below about y 2.4.
 
 Each look has nine presets (`p1`..`p5` light, `p6`..`p9` dark; values in
 `./kb catalog backgrounds.scene3d --json`). Applying one writes:
