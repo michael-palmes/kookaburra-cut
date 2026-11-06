@@ -48,6 +48,7 @@ const LAYOUT_LABELS: Record<DeviceLayoutPreset, string> = {
   cascade: "Cascade",
   hero: "Hero",
   "depth-pair": "Depth",
+  v: "V",
 };
 
 function LayoutDiagram({ preset }: { preset: DeviceLayoutPreset }) {
@@ -124,6 +125,15 @@ function LayoutDiagram({ preset }: { preset: DeviceLayoutPreset }) {
         <rect x="2.5" y="2" width="6.5" height="14" rx="1.6" />
         <rect x="11" y="4" width="5.2" height="11" rx="1.4" opacity="0.7" />
         <rect x="18.5" y="5.5" width="4" height="8.5" rx="1.2" opacity="0.45" />
+      </>
+    ),
+    v: (
+      <>
+        <rect x="1.5" y="5.5" width="3.8" height="8" rx="1.1" opacity="0.4" />
+        <rect x="6" y="4" width="4.6" height="10" rx="1.3" opacity="0.65" />
+        <rect x="10.5" y="2" width="7" height="14" rx="1.8" />
+        <rect x="17.4" y="4" width="4.6" height="10" rx="1.3" opacity="0.65" />
+        <rect x="22.7" y="5.5" width="3.8" height="8" rx="1.1" opacity="0.4" />
       </>
     ),
   }[preset];

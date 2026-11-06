@@ -13,6 +13,7 @@ import { MOTION_BLUR_AMOUNT_MAX, SAMPLE_PRESETS, SHUTTER_PRESETS } from "../engi
 import { listPresets } from "../engine/presets";
 import type { ProjectManifest } from "../engine/project";
 import { EXPOSURE_MAX, EXPOSURE_MIN, type ToneMappingId } from "../engine/renderSettings";
+import { frameCoverDistance } from "../engine/rigFraming";
 import {
   DEVICE_LAYOUT_PRESETS,
   type DeviceLayoutPreset,
@@ -662,6 +663,7 @@ const DEVICE_LAYOUTS: Record<DeviceLayoutPreset, { label: string; summary: strin
     label: "Depth",
     summary: "Two devices split front and back (exactly 2, else toe-in).",
   },
+  v: { label: "V", summary: "Device 1 forward, pairs stepping back and out, turned in." },
 };
 
 const BULLET_MARKERS: Record<SceneManagedTextMarker, string> = {
@@ -731,6 +733,18 @@ export const TOOLKIT_SUMMARIES: Record<
   },
   useDeviceScreen: {
     summary: "Inside Device: { rect, coverRect, local(u, v) } for the screen it renders, or null.",
+  },
+  ScreenRegion: {
+    summary:
+      "Child of Device: lifts a rect of its own screen towards the camera with a soft shadow, or variant lens magnifies a point.",
+  },
+  useDeviceScreenPoint: {
+    summary:
+      "useDeviceScreenPoint(device, u, v): this frame's { position, rotation, scale } of a screen point on a moving device.",
+  },
+  screenFillPose: {
+    summary:
+      "screenFillPose(model, pose, { fovDeg }): the cameraRig pose that fills the frame with a device's screen.",
   },
   DeviceMockup: { summary: "Pre-catalogue phone with a static screen image.", legacy: true },
   ExtrudedText: { summary: "Lit 3D extruded text (ASCII, bundled face)." },
@@ -1350,6 +1364,8 @@ function screenRectEntry(rect: DeviceScreenRect): Json {
     z: round(rect.z, 4),
     cornerRadius: round(rect.cornerRadius, 4),
     ...(rect.frame ? { frame: { ...rect.frame } } : {}),
+    // Square on at fov 45 in 16:9, placement scale 1: how far off the glass a camera fills the frame with it.
+    fillDistance: round(frameCoverDistance(rect.width, rect.height, CAMERA.fov, 16 / 9) ?? 0, 4),
   };
 }
 

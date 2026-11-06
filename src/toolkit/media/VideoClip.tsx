@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { type Mesh, MeshBasicMaterial } from "three";
-import { clipPlaneSize } from "../../engine/clipFrame";
+import { clipPlaneSize, clipSourceFrameIndex } from "../../engine/clipFrame";
 import { useClipTexture } from "../../engine/clipTexture";
 import { isExporting } from "../../engine/exportState";
 import { useFormat } from "../../engine/format";
@@ -12,6 +12,8 @@ export interface VideoClipProps {
   src: string;
   /** When the clip starts, in ms (local scene time). */
   startMs: number;
+  /** Source ms shown at `startMs` (held before it), so a full-bleed clip can carry on a device screen's video; with it the clip shows every source frame exactly once. */
+  inMs?: number;
   /** `contain` fits the whole clip in the frame (letterbox); `cover` fills + crops. */
   fit?: "cover" | "contain";
   position?: V3;
@@ -20,7 +22,7 @@ export interface VideoClipProps {
 
 /** Embedded video clip: the ffmpeg sidecar pre-extracts the source to a CFR frame sequence, and frame selection is a pure function of the timeline (never `HTMLVideoElement` seeking) so preview and export pick the identical frame; the sampling/binding core lives in `engine/clipTexture.ts` (shared with the Device screen), and this primitive is the plane-mesh consumer, sized via `fit`. See docs/determinism.md. */
 export function VideoClip(props: VideoClipProps) {
-  const { src, startMs, fit = "contain", position = [0, 0, 0], scale = 1 } = props;
+  const { src, startMs, inMs, fit = "contain", position = [0, 0, 0], scale = 1 } = props;
   const format = useFormat();
   const meshRef = useRef<Mesh>(null);
 
@@ -40,9 +42,19 @@ export function VideoClip(props: VideoClipProps) {
     if (meshRef.current) meshRef.current.visible = true;
   }, []);
 
+  const frameAt = useMemo(
+    () =>
+      inMs === undefined
+        ? undefined
+        : (localMs: number, clip: { fps: number; frameCount: number }) =>
+            clipSourceFrameIndex(localMs, startMs, inMs, clip.fps, clip.frameCount),
+    [inMs, startMs],
+  );
+
   const { info, ready } = useClipTexture({
     src,
     startMs,
+    frameAt,
     material,
     readyObjectRef: meshRef,
     onPending,

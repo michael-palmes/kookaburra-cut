@@ -81,6 +81,7 @@ import {
 import { DeviceGizmo } from "./DeviceGizmo";
 import { DeviceScreenContext } from "./DeviceScreenAnchor";
 import { DeviceShadow } from "./DeviceShadow";
+import { DeviceDisplaysContext } from "./deviceDisplays";
 import { clampFoldDeg, foldCentreOffset, foldVisibleWidth } from "./foldPose";
 import {
   applyFoldScreenShader,
@@ -91,6 +92,7 @@ import {
 } from "./foldScreenShader";
 import { type DevicePose, deviceGizmoMovedY } from "./gizmoCommit";
 import { resolveDeviceLayout } from "./layout";
+import { useLayoutFormat } from "./layoutFormat";
 import { HIDDEN_NODES } from "./models";
 import { useScreenImageTexture } from "./screenTexture";
 import { type DeviceMediaRotation, screenTurns } from "./screenTurns";
@@ -322,8 +324,11 @@ function materialName(material: Material | Material[]): string | undefined {
 
 /** Bakes a cover-crop map into the screen mesh's UVs; stashes the pristine UV set on first bake so a media change re-bakes from the original (re-baking the same map is a no-op via `uvRectKey`), cloning geometry first since `Object3D.clone` shares geometry with drei's cache. */
 function bakeScreenUvs(mesh: Mesh, map: ScreenUvMap): void {
-  // A foldable's display shader turns media UVs back into panel coordinates, so it needs the same map.
-  if (!Array.isArray(mesh.material)) setFoldScreenCrop(mesh.material, map);
+  // A foldable's display shader turns media UVs back into panel coordinates, so it needs the same map, and a ScreenRegion crops through it.
+  if (!Array.isArray(mesh.material)) {
+    setFoldScreenCrop(mesh.material, map);
+    mesh.material.userData.screenUvMap = map;
+  }
   const { rect, turn } = map;
   const key = `${rect.u0}/${rect.v0}/${rect.u1}/${rect.v1}${turn ? `/${turn.a}/${turn.b}/${turn.c}/${turn.d}/${turn.e}/${turn.f}` : ""}`;
   if (mesh.userData.uvRectKey === key) return;
@@ -645,6 +650,10 @@ export function Device(props: DeviceProps) {
     return m;
   }, [foldCoverAspect]);
   useLayoutEffect(() => () => coverMaterial.dispose(), [coverMaterial]);
+  const displays = useMemo(
+    () => ({ main: screenMaterial, cover: coverMaterial }),
+    [screenMaterial, coverMaterial],
+  );
   // Display brightness, 0 off to 1 lit; a foldable's fold angle drives them, every other device holds 1.
   const screenLevel = useRef(1);
   const coverLevel = useRef(1);
@@ -735,7 +744,11 @@ export function Device(props: DeviceProps) {
 
   // The opt-in keyframe track: a delta on the resolved placement, sampled before the motion presets so both layer.
   const sceneDoc = useContext(SceneDocContext);
-  const track = useMemo(() => resolveDeviceTrack(sceneDoc ?? undefined), [sceneDoc]);
+  const layoutFormat = useLayoutFormat();
+  const track = useMemo(
+    () => resolveDeviceTrack(sceneDoc ?? undefined, layoutFormat),
+    [sceneDoc, layoutFormat],
+  );
   const authoredLidDeg = lidDeg ?? activeSpec.lid?.defaultDeg;
   const authoredFoldDeg = activeSpec.fold ? (foldDeg ?? activeSpec.fold.defaultDeg) : undefined;
   const keyed = deviceTrackPoseAt(track, id ?? "", localMs, authoredLidDeg, authoredFoldDeg);
@@ -974,8 +987,10 @@ export function Device(props: DeviceProps) {
               <DeviceScreenContext.Provider
                 value={{ model, renderModel, lidDeg: renderedLidDeg, foldDeg: renderedFoldDeg }}
               >
-                {children}
-                {screenTaps && id !== undefined && <DeviceScreenTaps deviceId={id} />}
+                <DeviceDisplaysContext.Provider value={displays}>
+                  {children}
+                  {screenTaps && id !== undefined && <DeviceScreenTaps deviceId={id} />}
+                </DeviceDisplaysContext.Provider>
               </DeviceScreenContext.Provider>
             </group>
           )}

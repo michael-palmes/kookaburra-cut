@@ -1,3 +1,5 @@
+import { resolveDeviceLayout } from "../toolkit/device/layout";
+import type { FormatInfo } from "../toolkit/types";
 import { ease } from "./ease";
 import { trackLayout } from "./keyedTrack";
 import type { SceneDoc, SceneDocDevicePose } from "./sceneDocSchema";
@@ -36,12 +38,79 @@ export interface ResolvedDeviceTrack {
   }>;
 }
 
-/** The scene's device track with its keys sorted and its segments resolved to times, or null when the scene has none: the null-for-legacy path every untracked scene takes. */
-export function resolveDeviceTrack(doc: SceneDoc | undefined): ResolvedDeviceTrack | null {
+/** A device's resting slot: what the layout block resolves for it, else its own placement. */
+export interface DeviceSlot {
+  position: [number, number, number];
+  rotationDeg: [number, number, number];
+  scale: number;
+  ground: boolean;
+}
+
+/** Every device's resting slot by id. A host's scale multiplier (the presets' 0.92) applies to every device alike, so it cancels out of the ratios a slot-relative pose takes. */
+export function deviceSlots(doc: SceneDoc, format: FormatInfo): Record<string, DeviceSlot> {
+  const devices = doc.devices ?? [];
+  const laidOut = doc.deviceLayout ? resolveDeviceLayout(devices, doc.deviceLayout, format) : null;
+  const slots: Record<string, DeviceSlot> = {};
+  devices.forEach((device, i) => {
+    const placement = laidOut?.[i] ?? device.placement;
+    slots[device.id] = {
+      position: placement?.position ?? [0, 0, 0],
+      rotationDeg: placement?.rotationDeg ?? [0, 0, 0],
+      scale: placement?.scale ?? 1,
+      ground: placement?.ground === true,
+    };
+  });
+  return slots;
+}
+
+/** A slot-relative pose as an ordinary delta on the device's own slot: it lands where the named slot rests (offset, rotation and scale added on top). A grounded device keeps its own height, since the floor sets it. */
+function fromSlot(
+  pose: SceneDocDevicePose,
+  own: DeviceSlot | undefined,
+  slot: DeviceSlot | undefined,
+): SceneDocDevicePose {
+  const { slot: _named, ...rest } = pose;
+  if (!own || !slot) return rest;
+  const [ox, oy, oz] = pose.offset ?? [0, 0, 0];
+  const [rx, ry, rz] = pose.rotationDeg ?? [0, 0, 0];
+  return {
+    ...rest,
+    offset: [
+      slot.position[0] - own.position[0] + ox,
+      (own.ground ? 0 : slot.position[1] - own.position[1]) + oy,
+      slot.position[2] - own.position[2] + oz,
+    ],
+    rotationDeg: [
+      slot.rotationDeg[0] - own.rotationDeg[0] + rx,
+      slot.rotationDeg[1] - own.rotationDeg[1] + ry,
+      slot.rotationDeg[2] - own.rotationDeg[2] + rz,
+    ],
+    scale: (own.scale > 0 ? slot.scale / own.scale : 1) * (pose.scale ?? 1),
+  };
+}
+
+/** The scene's device track with its keys sorted and its segments resolved to times, or null when the scene has none: the null-for-legacy path every untracked scene takes. With `format`, slot-relative poses resolve to plain deltas (what renders); without it they stay as authored (what an edit writes back). */
+export function resolveDeviceTrack(
+  doc: SceneDoc | undefined,
+  format?: FormatInfo,
+): ResolvedDeviceTrack | null {
   const raw = doc?.deviceTrack;
   if (!raw || raw.keys.length === 0) return null;
+  const slotted = format && raw.keys.some((key) => Object.values(key.pose).some((p) => p.slot));
+  const slots = slotted ? deviceSlots(doc, format) : null;
+  const keys = slots
+    ? raw.keys.map((key) => ({
+        ...key,
+        pose: Object.fromEntries(
+          Object.entries(key.pose).map(([id, pose]) => [
+            id,
+            pose.slot ? fromSlot(pose, slots[id], slots[pose.slot]) : pose,
+          ]),
+        ),
+      }))
+    : raw.keys;
   const layout = trackLayout<Record<string, SceneDocDevicePose>>({
-    keys: raw.keys,
+    keys,
     segments: raw.segments,
   });
   const byId = new Map(layout.keys.map((k) => [k.id, k.pose]));

@@ -29,6 +29,13 @@ const HERO_TOE_DEG = 12;
 const DEPTH_PAIR_TOE_DEG = 8;
 const DEPTH_PAIR_FRONT_Z = 0.25;
 const DEPTH_PAIR_BACK_Z = 0.5;
+const V_FRONT_Z = 0.3;
+const V_STEP_Z = 0.55;
+const V_TOE_DEG = 22;
+const V_TOE_STEP_DEG = 8;
+/** How much of a wing's turned width tucks behind its inner neighbour. */
+const V_TUCK = 0.18;
+const DEG2RAD = Math.PI / 180;
 interface LayoutDeviceLike {
   id: string;
   model: string;
@@ -121,6 +128,24 @@ function presetBases(preset: DeviceLayoutPreset, widths: number[], gap: number):
           yawDeg: -Math.sign(x) * HERO_TOE_DEG,
           scale: HERO_WING_SCALE,
         });
+      }
+      return bases;
+    }
+    case "v": {
+      // Device 1 forward and centred; each further pair steps back, out and turns in more, right then left, tucked behind its inner neighbour.
+      const bases: BasePlacement[] = [{ x: 0, z: V_FRONT_Z, yawDeg: 0, scale: 1 }];
+      let right = widths[0] / 2;
+      let left = -widths[0] / 2;
+      for (let i = 1; i < n; i++) {
+        const rank = Math.ceil(i / 2);
+        const side = i % 2 === 1 ? 1 : -1;
+        const yaw = V_TOE_DEG + V_TOE_STEP_DEG * (rank - 1);
+        const w = widths[i] * Math.cos(yaw * DEG2RAD);
+        const reach = gap * 0.5 + w * (0.5 - V_TUCK);
+        const x = side === 1 ? right + reach : left - reach;
+        if (side === 1) right = x + w / 2;
+        else left = x - w / 2;
+        bases.push({ x, z: V_FRONT_Z - V_STEP_Z * rank, yawDeg: -side * yaw, scale: 1 });
       }
       return bases;
     }

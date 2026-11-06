@@ -298,6 +298,7 @@ const LAYOUT_PRESET_LABELS: Record<DeviceLayoutPreset, { label: string; title: s
   cascade: { label: "Cascade", title: "Fanned cards stepping across and back" },
   hero: { label: "Hero", title: "Device 1 forward, the rest flanking behind" },
   "depth-pair": { label: "Depth", title: "Two devices split front and back" },
+  v: { label: "V", title: "Device 1 forward, pairs stepping back and out" },
 };
 
 const LIGHTING_ROUTES: Record<string, LightingInspectorScreen> = {

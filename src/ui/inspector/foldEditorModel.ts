@@ -7,6 +7,7 @@ import {
   resolveDeviceTrack,
 } from "../../engine/sceneDeviceTrack";
 import type { SceneDoc, SceneDocDeviceSpec } from "../../engine/sceneDocSchema";
+import type { FormatInfo } from "../../toolkit/types";
 
 /** Pure edits behind the foldable inspector. A scene that animates its devices reads the fold from its keys, so a plain write to the device would show nothing: every edit here lands where the scene is actually reading. */
 
@@ -67,9 +68,14 @@ export function addFoldAnimation(
   localMs: number,
   sceneDurationMs: number,
   openDeg: number,
+  format?: FormatInfo,
 ): boolean {
   const [fromDeg, toDeg] = direction === "unfold" ? [0, openDeg] : [openDeg, 0];
-  const showing = deviceTrackSnapshotAt(resolveDeviceTrack(doc), doc.devices ?? [], localMs);
+  const showing = deviceTrackSnapshotAt(
+    resolveDeviceTrack(doc, format),
+    doc.devices ?? [],
+    localMs,
+  );
   const withFold = (foldDeg: number) => ({
     ...showing,
     [deviceId]: { ...showing[deviceId], foldDeg },

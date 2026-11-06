@@ -143,6 +143,67 @@ further forward and off centre).
   fallback, and when TSX passes `position`, `rotationDeg` or `ground` to a `Device` in a
   scene with a `deviceLayout` (the layout owns the pose).
 
+## Screen portal
+
+A pull-out from inside the screen, or a push through it into a full-bleed clip: the camera
+side is in reference/camera.md ("Screen portal"). The device side:
+
+- The screen plays `media: { "startMs": 0, "inMs": S }` after the cut, or `inMs: S - cut`
+  before it, where `S` is the portal's one source time and `cut` the outgoing scene's length
+  minus any transition overlap. `inMs` is a whole number of ms, 0 or more, so before the cut
+  `S` must be at least `cut`.
+- Drive it from the shared value in TSX so both sides read one number:
+  `<Device {...d} media={{ ...d.media, inMs: sourceMs }} />`.
+- Record at the screen's own aspect (the catalogue's `screenAspect`, phones about 1206 x 2622)
+  and the full-bleed clip matches the filled screen exactly.
+- Keep the device still at the cut: no motion preset, no keys moving it.
+
+## Lifting part of the screen: `ScreenRegion`
+
+A child of `Device` that lifts a rectangle of the device's own screen towards the camera as
+a card with a soft shadow on the glass, then settles it back: the control that matters
+rising out of the screen. `variant="lens"` is a round magnifier over a point instead. It
+samples whatever the screen shows this frame (video or still), so it adds no decode.
+
+```tsx
+<Device {...d}>
+  <ScreenRegion rect={[0.05, 0.3, 0.95, 0.4]} at={600} scale={1.3} offset={[-0.35, 0]} outAt={3200} />
+  <ScreenRegion variant="lens" centre={[0.3, 0.72]} radius={0.3} zoom={2.2} at={1400} offset={[-0.7, 0.05]} />
+</Device>
+```
+
+| Prop | Meaning |
+| --- | --- |
+| `rect` | The card's screen rectangle `[u0, v0, u1, v1]` (u right, v down, as `DeviceScreenAnchor`) |
+| `variant`, `centre`, `radius`, `zoom` | `"lens"`: magnifies `centre` by `zoom` in a circle of `radius` fitted units (defaults 0.32 and 2) |
+| `at`, `durationMs`, `ease` | The lift: starts at `at`, takes `durationMs` (600), eased (`outCubic`) |
+| `outAt`, `outDurationMs` | Settles back onto the glass from `outAt`; absent stays up |
+| `lift`, `scale`, `offset` | At full lift: distance off the glass (0.35 card, 0.22 lens), size (1.12 card), slide `[x, y]` across the screen |
+| `cornerRadius`, `shadow`, `rimColour` | Card corners (22% of the short side), shadow strength 0..1 (0.35: on the glass, and softer round the card's own edge so it reads on a light set), the lens rim (theme text) |
+
+- Find the rectangle from the media: `mediaPixelToScreenUv(model, [x, y], { width, height })`
+  turns a pixel of the recording into screen UV, allowing for the cover crop.
+- A card overhanging the screen reads as lifted: scale 1.2 to 1.4 with an `offset` towards
+  the frame's centre.
+
+## A moving screen's point: `useDeviceScreenPoint`
+
+For a word that flies into a screen and lands as its title: where a screen point is this
+frame, with the scene's `deviceTrack` and floor applied. Pass the same props the scene hands
+that `Device`; it returns `{ position, rotation, scale }` (world point, the screen's
+rotation, and the world size of one fitted unit).
+
+```tsx
+const [hero] = useSceneDevices();
+const target = useDeviceScreenPoint(hero, 0.5, 0.12);
+const p = ramp(localMs, 700, 1500, "inOutCubic");
+// Ease the word from its start to target.position, its size to the title's times target.scale,
+// and its rotation to target.rotation.
+```
+
+Motion presets (`float`, `turntable`, the intros) aren't counted: keep the target on
+`motion: none`. A static device needs only `deviceScreenPoint`.
+
 ## Motion presets
 
 | Preset | Motion | Params (defaults) |
@@ -188,6 +249,7 @@ shadows; use `none` when the stage's own shadow is enough.
 | `cascade` | Fanned cards stepping across and back |
 | `hero` | Device 1 forward, the rest flanking behind |
 | `depth-pair` | Two devices front and back (exactly 2, else `toe-in`) |
+| `v` | Device 1 forward, each further pair stepping back, out and turning in (three to five devices) |
 
 - While the block exists, each device's own `position`, `rotationDeg` and `scale` are
   ignored (`ground` still applies); delete the block to revert.
@@ -211,6 +273,29 @@ Poses are DELTAS on the resolved placement or layout: `offset` and `rotationDeg`
 `scale` multiplies; `lidDeg`, `foldDeg`, `screenPower` and `coverPower` are absolute.
 Absent fields hold the rest value. Motion presets layer on top. Track rules:
 reference/sidecar.md.
+
+`slot` measures a pose from another device's resting slot instead of the device's own:
+`{ "slot": "d1", "offset": [0, 0, -0.5] }` sits half a unit behind `d1`. A line-up that
+deals out on the drop stacks every wing behind its hero, holds, then eases each to its own
+slot (an empty pose is the slot itself):
+
+```json
+"deviceLayout": { "preset": "v" },
+"deviceTrack": {
+  "keys": [
+    { "id": "k1", "tMs": 0, "pose": { "d2": { "slot": "d1", "offset": [0, 0, -0.5] }, "d3": { "slot": "d1", "offset": [0, 0, -0.5] } } },
+    { "id": "k2", "tMs": 600, "pose": { "d2": { "slot": "d1", "offset": [0, 0, -0.5] }, "d3": { "slot": "d1", "offset": [0, 0, -0.5] } } },
+    { "id": "k3", "tMs": 1050, "pose": {} }
+  ],
+  "segments": [{ "from": "k2", "to": "k3", "ease": "outExpo" }]
+}
+```
+
+- Put the deal on the beat with each key's `at` (reference/beats.md): the slide straddling
+  the drop reads best.
+- A grounded device keeps its own height (the floor sets it); a floating one takes the
+  slot's.
+- An unknown `slot` id reads as the device's own slot.
 
 - `screenPower` (the screen, a foldable's inside one) and `coverPower` (a foldable's
   outside one): 0 black to 1 lit, resting lit. Key a display dark until a beat, then ease

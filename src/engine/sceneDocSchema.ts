@@ -179,6 +179,7 @@ export const DEVICE_LAYOUT_PRESETS = [
   "cascade",
   "hero",
   "depth-pair",
+  "v",
 ] as const;
 export type DeviceLayoutPreset = (typeof DEVICE_LAYOUT_PRESETS)[number];
 
@@ -199,6 +200,8 @@ export interface SceneDocDeviceLayout {
 
 /** One device's pose at a key: a DELTA on whatever the scene already resolves for it (the layout block, or its own placement), so the motion presets keep layering on top and deleting the track reverts exactly. Offsets and rotations add, scale multiplies, and the hinge angles (`lidDeg`, `foldDeg`) and screen powers are the absolutes (an angle has no meaningful delta). Every field is optional and an absent one holds the device's resting value, the lighting-pose rule. */
 export interface SceneDocDevicePose {
+  /** Another device's id: this pose's offset, rotation and scale measure from that device's resting slot instead of this one's, so a line-up can start stacked behind its hero. */
+  slot?: string;
   offset?: [number, number, number];
   rotationDeg?: [number, number, number];
   scale?: number;
@@ -1254,6 +1257,7 @@ const isChartColour = (v: unknown): v is string =>
   typeof v === "string" && (THEME_COLOUR_TOKENS.includes(v) || CHART_HEX.test(v));
 
 const DEVICE_POSE_FIELDS: string[] = [
+  "slot",
   "offset",
   "rotationDeg",
   "scale",
@@ -1282,6 +1286,12 @@ function parseDeviceTrack(raw: unknown, source: string): SceneDoc["deviceTrack"]
       const out = Object.fromEntries(
         Object.entries(raw).filter(([field]) => !DEVICE_POSE_FIELDS.includes(field)),
       ) as SceneDocDevicePose;
+      if (typeof raw.slot === "string" && raw.slot.length > 0) out.slot = raw.slot;
+      else if (raw.slot !== undefined) {
+        parseWarn(
+          `[sceneDoc] ${source}: deviceTrack pose "${deviceId}" slot isn't a device id, dropped`,
+        );
+      }
       if (finiteV3(raw.offset)) out.offset = [...raw.offset];
       if (finiteV3(raw.rotationDeg)) out.rotationDeg = [...raw.rotationDeg];
       if (finiteNum(raw.scale)) out.scale = raw.scale;

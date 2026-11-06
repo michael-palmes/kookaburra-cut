@@ -5,6 +5,8 @@ export { EASE_NAMES, type EaseOptions, ease, easeFn, isEaseName } from "../engin
 export { frameAtDepth, useFormat } from "../engine/format";
 // project.json `shared`: author constants every scene reads.
 export { type ProjectShared, useProjectShared } from "../engine/projectShared";
+// The screen portal's camera key: a pose that fills the frame with a device's display.
+export { type ScreenFillOptions, screenFillPose } from "../engine/rigFraming";
 // Seeded RNG for generative geometry; scenes must never call Math.random.
 export { createSeededRandom, type SeededRandom } from "../engine/rng";
 // The resolved sidecar chart block: every default baked and the data track sorted.
@@ -30,9 +32,12 @@ export type {
 export type { RoomFloodSample, RoomSample } from "../engine/sceneRoom";
 // Shared-element morph sampling for persistent (hoisted) modules.
 export {
+  type DeviceScreenPointOptions,
+  type DeviceScreenSample,
   type SharedKeyframe,
   type SharedTransform,
   sampleSharedTransform,
+  type TrackedDevice,
 } from "../engine/sharedElement";
 // Time / format / theme hooks
 export { useTimeline } from "../engine/timeline";
@@ -104,6 +109,7 @@ export {
   useDeviceScreen,
 } from "./device/DeviceScreenAnchor";
 export { resolveDeviceLayout } from "./device/layout";
+export { ScreenRegion, type ScreenRegionProps } from "./device/ScreenRegion";
 export {
   type DeviceScreenDisplay,
   type DeviceScreenHinge,
@@ -115,6 +121,9 @@ export {
   SCREEN_LIFT,
   screenUvToMediaPixel,
 } from "./device/screenAnchor";
+export type { RegionLiftTiming, ScreenUvRect } from "./device/screenRegionMath";
+// A moving device's screen point this frame, for a word that flies into its screen.
+export { useDeviceScreenPoint } from "./device/useDeviceScreenPoint";
 // Icon + text lockups animated as one unit through the text presets.
 export { AnimatedGroup, type AnimatedGroupProps } from "./group/AnimatedGroup";
 export { type GroupAnimationState, useGroupAnimation } from "./group/context";

@@ -214,6 +214,9 @@ See reference/backgrounds.md.
   shadow fades with the card. Use `radius` to match an icon's rounded corners.
 - `<VideoClip src="assets/clip.mp4" startMs={0} fit="contain" | "cover" position scale />`:
   a video plane; holds the first frame before `startMs` and the last after the end.
+  `inMs` is the source ms shown at `startMs` (held before it), so a full-bleed clip carries on
+  a device screen's video (the screen portal, reference/camera.md); with it the clip shows every
+  source frame exactly once.
 
 ## Split field (`mosaic`)
 

@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { DeviceMediaSpec } from "../toolkit/device/Device";
-import { clipFrameIndex, clipPlaneSize, deviceClipFrameIndex, hasPlaybackKeys } from "./clipFrame";
+import {
+  clipFrameIndex,
+  clipPlaneSize,
+  clipSourceFrameIndex,
+  deviceClipFrameIndex,
+  hasPlaybackKeys,
+} from "./clipFrame";
+import { FPS } from "./format";
 
 describe("clipFrameIndex — pure frame selection (hold first/last)", () => {
   const fps = 60;
@@ -266,3 +273,122 @@ describe("clipPlaneSize — fit math", () => {
     });
   });
 });
+
+describe("clipSourceFrameIndex, VideoClip inMs", () => {
+  const n = 5000;
+
+  it("holds inMs before startMs, then plays from it", () => {
+    expect(clipSourceFrameIndex(0, 500, 2000, 60, n)).toBe(120);
+    expect(clipSourceFrameIndex(500, 500, 2000, 60, n)).toBe(120);
+    expect(clipSourceFrameIndex(1500, 500, 2000, 60, n)).toBe(180);
+  });
+
+  it("holds the last frame past the end and degrades a bad inMs to the start", () => {
+    expect(clipSourceFrameIndex(1e7, 0, 0, 60, 90)).toBe(89);
+    expect(clipSourceFrameIndex(1000, 0, Number.NaN, 60, n)).toBe(60);
+    // A negative in-point keeps the source arithmetic, so a hand-off with sourceMs below the cut still lines up.
+    expect(clipSourceFrameIndex(0, 0, -400, 60, n)).toBe(0);
+    expect(clipSourceFrameIndex(1000, 0, -400, 60, n)).toBe(36);
+    expect(clipSourceFrameIndex(1000, 0, 0, 60, 0)).toBe(0);
+  });
+
+  it("shows every source frame exactly once on the export clock, where the legacy floor repeats", () => {
+    let legacySteps = 0;
+    for (const sceneStartMs of [0, 1875, 2000, 3750, 4100, 15000]) {
+      for (const [startMs, inMs] of [
+        [0, 0],
+        [0, 4000],
+        [250, 1250],
+        [700, 0],
+      ]) {
+        const first = Math.ceil(((sceneStartMs + startMs) * FPS) / 1000) + 1;
+        let previous = clipSourceFrameIndex(
+          exportMs(first - 1) - sceneStartMs,
+          startMs,
+          inMs,
+          FPS,
+          n,
+        );
+        for (let frame = first; frame < first + 600; frame++) {
+          const local = exportMs(frame) - sceneStartMs;
+          const index = clipSourceFrameIndex(local, startMs, inMs, FPS, n);
+          expect(index - previous).toBe(1);
+          previous = index;
+          const legacy = deviceClipFrameIndex(local, 0, video({ startMs, inMs }), FPS, n);
+          const legacyBefore = deviceClipFrameIndex(
+            local - 1000 / FPS,
+            0,
+            video({ startMs, inMs }),
+            FPS,
+            n,
+          );
+          if (legacy - legacyBefore !== 1) legacySteps++;
+        }
+      }
+    }
+    expect(legacySteps).toBeGreaterThan(0);
+  });
+});
+
+describe("screen portal hand-off on the export clock", () => {
+  const n = 100_000;
+  // Scene starts on and off the frame grid (128 BPM bars are 112.5 frames), straight cuts.
+  const sceneStarts = Array.from({ length: 160 }, (_, i) => i * 125);
+  const durations = [1875, 2000, 2343.75, 3750, 1500, 2050];
+  const sources = [4000, 4050, 6000, 7500, 10_000];
+
+  /** Scene B starts at the end of scene A: the last export frame inside A and the first inside B. */
+  function cut(sceneStartMs: number, durationMs: number) {
+    const cutMs = sceneStartMs + durationMs;
+    const firstB = Math.ceil((cutMs * FPS) / 1000 - 1e-9);
+    return { cutMs, lastA: exportMs(firstB - 1), firstB: exportMs(firstB) };
+  }
+
+  it("pull-out: the screen picks up on the very next frame after the full-bleed clip", () => {
+    for (const startA of sceneStarts) {
+      for (const durationMs of durations) {
+        for (const sourceMs of sources) {
+          const { cutMs, lastA, firstB } = cut(startA, durationMs);
+          const clip = clipSourceFrameIndex(lastA - startA, 0, sourceMs - durationMs, FPS, n);
+          const screen = deviceClipFrameIndex(
+            firstB - cutMs,
+            0,
+            video({ startMs: 0, inMs: sourceMs }),
+            FPS,
+            n,
+          );
+          expect(screen - clip).toBe(1);
+        }
+      }
+    }
+  });
+
+  it("push-through: the full-bleed clip never repeats the screen's last frame and skips at most one", () => {
+    for (const startA of sceneStarts) {
+      for (const durationMs of [2000, 3750, 1500, 2050]) {
+        for (const sourceMs of sources) {
+          const { cutMs, lastA, firstB } = cut(startA, durationMs);
+          const screen = deviceClipFrameIndex(
+            lastA - startA,
+            0,
+            video({ startMs: 0, inMs: sourceMs - durationMs }),
+            FPS,
+            n,
+          );
+          const clip = clipSourceFrameIndex(firstB - cutMs, 0, sourceMs, FPS, n);
+          expect(clip).toBe((sourceMs * FPS) / 1000);
+          expect([1, 2]).toContain(clip - screen);
+        }
+      }
+    }
+  });
+});
+
+/** The export loop's clock: `tMs = frame * 1000 / FPS`. */
+function exportMs(frame: number): number {
+  return (frame * 1000) / FPS;
+}
+
+function video(keys: Partial<DeviceMediaSpec>): DeviceMediaSpec {
+  return { src: "assets/clip.mp4", kind: "video", ...keys };
+}
