@@ -62,6 +62,9 @@ const template: TemplateEntry = {
   storeLegal: false,
   uses: [],
   highlights: [],
+  bring: [],
+  song: null,
+  looks: [],
   order: 10,
   status: "stable",
   sceneCount: 3,
@@ -70,6 +73,7 @@ const template: TemplateEntry = {
   primaryAspect: "16:9",
   themeId: "kookaburra-studio-white",
   previews: null,
+  loop: null,
   haystack: "launch film",
 };
 

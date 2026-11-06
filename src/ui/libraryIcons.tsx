@@ -41,32 +41,26 @@ export const TEMPLATE_CATEGORY_ICONS: Record<string, ReactElement> = {
   all: GRID_ICON,
   mine: railIcon(<path d="M7 4.5h10a1 1 0 011 1V20l-6-3.5L6 20V5.5a1 1 0 011-1z" />),
   uncategorised: UNCATEGORISED_ICON,
-  "app-updates": railIcon(
-    <>
-      <circle cx="12" cy="12" r="8" />
-      <path d="M12 16V8m0 0l-3.5 3.5M12 8l3.5 3.5" />
-    </>,
-  ),
-  "product-launch": railIcon(
+  launch: railIcon(
     <>
       <path d="M12 3c3 2 4.2 6 3 9.5L12 15.5 9 12.5C7.8 9 9 5 12 3z" />
       <path d="M9.5 12.5l-3 2.5 1 2.5 3-1.2M14.5 12.5l3 2.5-1 2.5-3-1.2M12 16v4" />
       <circle cx="12" cy="8.4" r="1.2" />
     </>,
   ),
-  "marketing-social": railIcon(
+  feature: railIcon(
     <>
-      <path d="M18 5v14l-8-3.2H6.5A2.5 2.5 0 0 1 4 13.3v-2.6a2.5 2.5 0 0 1 2.5-2.5H10L18 5z" />
-      <path d="M8 16v3.5" />
+      <path d="M12 4l1.7 4.3L18 10l-4.3 1.7L12 16l-1.7-4.3L6 10l4.3-1.7L12 4z" />
+      <path d="M17.5 16.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2z" />
     </>,
   ),
-  presentations: railIcon(
+  update: railIcon(
     <>
-      <rect x="4" y="4.5" width="16" height="10.5" rx="1.5" />
-      <path d="M12 15v3m-3.5 2l3.5-2 3.5 2" />
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 16V8m0 0l-3.5 3.5M12 8l3.5 3.5" />
     </>,
   ),
-  "finance-crypto": railIcon(
+  proof: railIcon(
     <>
       <path d="M4 17l5-5 3 3 8-8" />
       <path d="M16 7h4v4" />
