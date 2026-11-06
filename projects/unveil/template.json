@@ -1,0 +1,40 @@
+{
+  "version": 2,
+  "name": "Unveil",
+  "tagline": "The big reveal: out of the dark on the first hit, three features, the name on the final hit.",
+  "category": "launch",
+  "tags": ["launch", "reveal", "hero", "keynote", "music", "beat cut"],
+  "personas": ["marketer", "co-founder"],
+  "level": "showcase",
+  "tier": "bold",
+  "uses": ["audio"],
+  "highlights": [
+    "Cut to an original song: the device rises into the light on bar 9",
+    "Three features, each a claim, its proof and a close look",
+    "The name and the date land on the final hit, then silence"
+  ],
+  "bring": [
+    "An opening line",
+    "Product name",
+    "Three features, one line each",
+    "Three screen recordings and five screenshots",
+    "A date or call to action",
+    "Logo"
+  ],
+  "song": {
+    "title": "First Light",
+    "bpm": 128
+  },
+  "looks": ["kookaburra-onyx", "kookaburra-daylight", "kookaburra-ink"],
+  "preview": {
+    "poster": 4,
+    "frames": [3, 4, 6, 15],
+    "loop": {
+      "scene": 3,
+      "atMs": 0,
+      "durationMs": 6000
+    }
+  },
+  "order": 101,
+  "status": "beta"
+}

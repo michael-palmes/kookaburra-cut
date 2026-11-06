@@ -1,0 +1,109 @@
+{
+  "id": "spotlight",
+  "name": "Spotlight",
+  "version": 2,
+  "themeId": "kookaburra-mid-century",
+  "formats": ["16:9"],
+  "audio": {
+    "file": "assets/song.flac",
+    "startOffsetMs": 2338,
+    "grid": {
+      "bpm": 128,
+      "offsetMs": 2337.85,
+      "beatsPerBar": 4,
+      "source": {
+        "sha256": "f4d4374d498cf4ca324a7bfc0a0a2474c86c9c30abcf230c6d84a3346da22163",
+        "analysisVersion": 3,
+        "tracker": "nn"
+      }
+    },
+    "sections": [
+      {
+        "id": "problem",
+        "label": "Problem",
+        "from": "bar:1",
+        "to": "bar:3"
+      },
+      {
+        "id": "name",
+        "label": "Name",
+        "from": "bar:3",
+        "to": "bar:5"
+      },
+      {
+        "id": "flow",
+        "label": "The flow",
+        "from": "bar:5",
+        "to": "bar:9"
+      },
+      {
+        "id": "close-up",
+        "label": "Close-up",
+        "from": "bar:9",
+        "to": "bar:11"
+      },
+      {
+        "id": "payoff",
+        "label": "Payoff",
+        "from": "bar:11",
+        "to": "bar:15"
+      },
+      {
+        "id": "lockup",
+        "label": "Lockup",
+        "from": "bar:15",
+        "to": "bar:17"
+      }
+    ],
+    "cues": {
+      "stop": "bar:3",
+      "reveal": "bar:9",
+      "dip": "bar:11",
+      "warmth": "bar:12",
+      "final-hit": "bar:16"
+    }
+  },
+  "defaultTransition": null,
+  "scenes": [
+    {
+      "file": "scenes/01-problem.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:3"
+    },
+    {
+      "file": "scenes/02-name.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:5"
+    },
+    {
+      "file": "scenes/03-flow-a.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:7"
+    },
+    {
+      "file": "scenes/04-flow-b.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:9"
+    },
+    {
+      "file": "scenes/05-close-up.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:11"
+    },
+    {
+      "file": "scenes/06-claim.tsx",
+      "durationMs": 1875,
+      "cutAt": "bar:12"
+    },
+    {
+      "file": "scenes/07-proof.tsx",
+      "durationMs": 5625,
+      "cutAt": "bar:15"
+    },
+    {
+      "file": "scenes/08-lockup.tsx",
+      "durationMs": 5625,
+      "cutAt": "bar:18"
+    }
+  ]
+}
