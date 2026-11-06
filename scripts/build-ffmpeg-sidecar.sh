@@ -23,6 +23,7 @@ set -euo pipefail
 
 FFMPEG_VERSION="8.1"
 FFMPEG_SHA256="b072aed6871998cce9b36e7774033105ca29e33632be5b6347f3206898e0756a"
+FFMPEG_URL="https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz"
 # x264 has no releases; Homebrew's r3222 is this commit.
 X264_COMMIT="b35605ace3ddf7c1a5d67a2eb553f034aef41d55"
 X264_URL="https://code.videolan.org/videolan/x264.git"
@@ -30,10 +31,11 @@ X264_URL="https://code.videolan.org/videolan/x264.git"
 X264_SEI="x264 - core 165 r3222 b35605a"
 X265_VERSION="4.3"
 X265_SHA256="83c53e4c8bbb8f1e33ed59e10a7d621d1d7801ca853910c3eb41f038b8ffb121"
+X265_URL="https://github.com/Multicorewareinc/x265/releases/download/$X265_VERSION/x265_$X265_VERSION.tar.gz"
 
 if [[ "${1:-}" == "--print-pins" ]]; then
-  printf 'FFMPEG_VERSION=%s\nFFMPEG_SHA256=%s\nX264_COMMIT=%s\nX264_SEI=%s\nX265_VERSION=%s\nX265_SHA256=%s\n' \
-    "$FFMPEG_VERSION" "$FFMPEG_SHA256" "$X264_COMMIT" "$X264_SEI" "$X265_VERSION" "$X265_SHA256"
+  printf 'FFMPEG_VERSION=%s\nFFMPEG_SHA256=%s\nFFMPEG_URL=%s\nX264_COMMIT=%s\nX264_URL=%s\nX264_SEI=%s\nX265_VERSION=%s\nX265_SHA256=%s\nX265_URL=%s\n' \
+    "$FFMPEG_VERSION" "$FFMPEG_SHA256" "$FFMPEG_URL" "$X264_COMMIT" "$X264_URL" "$X264_SEI" "$X265_VERSION" "$X265_SHA256" "$X265_URL"
   exit 0
 fi
 
@@ -80,8 +82,7 @@ if [[ "$LICENSE" == "gpl" ]]; then
     make -j"$JOBS" install >"$WORK/x264-make.log" 2>&1 || { tail -30 "$WORK/x264-make.log" >&2; exit 1; }
   )
 
-  fetch_pinned "https://github.com/Multicorewareinc/x265/releases/download/$X265_VERSION/x265_$X265_VERSION.tar.gz" \
-    "$WORK/x265.tar.gz" "$X265_SHA256"
+  fetch_pinned "$X265_URL" "$WORK/x265.tar.gz" "$X265_SHA256"
   mkdir -p "$WORK/x265"
   tar -xzf "$WORK/x265.tar.gz" -C "$WORK/x265" --strip-components=1
   # Homebrew's multilib recipe: 10- and 12-bit cores linked into the 8-bit library, one libx265.a.
@@ -107,7 +108,7 @@ if [[ "$LICENSE" == "gpl" ]]; then
   )
 fi
 
-fetch_pinned "https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz" "$WORK/src.tar.xz" "$FFMPEG_SHA256"
+fetch_pinned "$FFMPEG_URL" "$WORK/src.tar.xz" "$FFMPEG_SHA256"
 tar -xf "$WORK/src.tar.xz" -C "$WORK"
 cd "$WORK/ffmpeg-$FFMPEG_VERSION"
 

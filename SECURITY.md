@@ -678,21 +678,34 @@ builds it in separate jobs, each on a fresh runner.
 
 - **Build, with no signing secret in reach.** The build job checks that the tag
   is signed by a key in `main`'s `.github/allowed_tag_signers` (read from `main`,
-  never from the tagged tree) and sits on `main`. Before any dependency or
+  never from the tagged tree) and sits on `main`, and that `CHANGELOG.md` holds
+  the version's section (`scripts/changelog-section.sh`), since the release
+  body is built from it. Before any dependency or
   repository script runs, it unpacks the licensed device models from a private
   repository's `age`-encrypted archive. It then refuses any glb that does not match
   `src/assets/models/licensed.sha256`, builds the ffmpeg sidecar from sources
   pinned by SHA-256 and commit (`scripts/build-ffmpeg-sidecar.sh`), fetches the
-  beat model against its pins, runs `pnpm tauri build --no-sign` and uploads the
-  unsigned app with its SHA-256.
+  beat model against its pins, runs `pnpm tauri build --no-sign` through
+  `cargo auditable`, so the binary carries its own crate list in a `.dep-v0`
+  section (`rust-audit-info` must read it back before packing, and `cargo audit
+  bin` reads it on any Mac), and uploads the unsigned app with its SHA-256.
   Its only secrets are the read-only token for that private repository and the
   archive's decryption key; neither can sign anything. The toolchain is pinned:
   `rust-toolchain.toml`, an exact Node in `engines`, pnpm through corepack
-  against the hash in `packageManager`, and cmake, nasm and pkgconf from SHA-256
-  pinned releases (`scripts/install-build-tools.sh`). The runner image and its
-  default Xcode still float, so `build-info.txt` records them. The job uploads that
-  file and a digest of every bundle file as its own artefact, which the sign
-  job never touches.
+  against the hash in `packageManager`, cmake, nasm and pkgconf from SHA-256
+  pinned releases (`scripts/install-build-tools.sh`), and `cargo-cyclonedx`,
+  `cargo-auditable` and `rust-audit-info` built from crates.io at the versions
+  `release.yml` names. The runner image and its
+  default Xcode still float, so `build-info.txt` records them, with every tool
+  version and pin. The job also writes the release's SBOM,
+  `KookaburraCut-<version>.cdx.json` (`scripts/sbom.mjs`: CycloneDX 1.5, one
+  component per npm package from `pnpm ls --prod` with its licence, every crate
+  `cargo cyclonedx` resolves for the shipped target, the sidecar's pinned
+  sources and the beat model's pinned files; the timestamp is the commit's and
+  the serial number derives from it, so two builds of one commit write the
+  same bytes). It uploads `build-info.txt`, the SBOM and a digest of every
+  bundle file as its own artefact, whose combined digest is a job output the
+  sign job never touches.
 - **Sign, in the protected `release` environment.** Behind a required reviewer
   (one, the maintainer, who can approve their own run) and limited to `v*` tags,
   the sign job checks the payload's digest against the
@@ -714,15 +727,21 @@ builds it in separate jobs, each on a fresh runner.
   before that binary runs, every file in the zip's app and the updater tar's
   app equals the build job's record with signatures stripped, file list
   included, so a file the sign job adds or changes fails it. Only the seal and
-  the notarisation ticket that signing adds are left out.
+  the notarisation ticket that signing adds are left out. The job also checks
+  that this file names the Team ID the signatures carry: the `TeamIdentifier=`
+  under "Verify an install" must equal the `APPLE_TEAM_ID` variable.
 - **Publish.** `SHA256SUMS` over the DMG, the zip, the updater tar and its
-  `.sig`, `latest.json`, `build-info.txt` and a copy of this file as it stood
-  at the tag; a GitHub build provenance attestation over the DMG, zip, tar and
-  `build-info.txt`, kept by GitHub and uploaded beside them as
+  `.sig`, `latest.json`, `build-info.txt`, the SBOM and a copy of this file as
+  it stood at the tag (`scripts/release-sums.sh`, which a branch rehearsal also
+  runs, so a file missing from the set fails a dry run); a GitHub build
+  provenance attestation over the DMG, zip, tar, `build-info.txt` and the SBOM,
+  kept by GitHub and uploaded beside them as
   `KookaburraCut-<version>.intoto.jsonl`, with the updater's `.sig` as its own
-  asset; a static notes body naming the Team ID; a draft release a
-  person publishes. The in-app updater sees a release only once it is
-  published.
+  asset; an SBOM attestation on the DMG (`actions/attest` with `sbom-path`,
+  predicate `https://cyclonedx.org/bom`); a release body that opens with the
+  version's `CHANGELOG.md` section, then how to install and verify, naming the
+  Team ID; a draft release a person publishes, with the SBOM among its assets.
+  The in-app updater sees a release only once it is published.
 - **Updater.** `plugins.updater.requireSignedVersion` is on: the app refuses a
   signature whose trusted comment does not bind the announced version, so a
   manifest re-pointed at an older signed archive cannot roll an install back.
@@ -753,15 +772,25 @@ builds it in separate jobs, each on a fresh runner.
   `CODEOWNERS` names the maintainer everywhere and a second reviewer
   (`@FromeCloned`) on the surfaces this file is about: the pack reader, the
   asset server, the updater, managed preferences, the capabilities, the
-  workflows and the release scripts. `audit.yml` runs
-  `pnpm audit` and `cargo deny check advisories` on every pull request
-  and weekly. Every workflow but `scorecard.yml` starts from `permissions: {}` or
+  workflows and the release scripts. `audit.yml` runs, on every pull request
+  and weekly, `pnpm audit --prod` at moderate for what ships and `pnpm audit`
+  at high for the dev tree, and `cargo deny check advisories licenses bans
+  sources` against `src-tauri/deny.toml`: an allow list of permissive licences
+  (MIT, Apache-2.0 with or without the LLVM exception, BSD-2-Clause,
+  BSD-3-Clause, ISC, Zlib, MPL-2.0, Unicode-3.0, 0BSD, CC0-1.0, MIT-0,
+  Unlicense), no wildcard versions, crates.io as the only source.
+  `dependency-review.yml` fails a pull request that adds a dependency with a
+  moderate advisory or a licence outside that list (plus OFL-1.1 for fonts),
+  and comments on the pull request only then. Every workflow but `scorecard.yml` starts from `permissions: {}` or
   `contents: read` (`scorecard.yml` starts from `read-all`, and its one job
   narrows to `security-events` and `id-token`). Every workflow
   pins actions to a commit SHA and sets `persist-credentials: false`.
-- **Verify an install.** On the release page's files:
+- **Verify an install.** On the release page's files. `scripts/verify-install.sh`
+  runs all of this on a downloaded release, plus the sidecars' signatures and a
+  diff of this file against the previous release's, and downloads nothing:
 
   ```bash
+  gh release download v<version> --repo michael-palmes/kookaburra-cut --dir <dir>
   shasum -a 256 -c SHA256SUMS --ignore-missing
   for f in KookaburraCut-<version>.dmg build-info.txt; do
     gh attestation verify "$f" --repo michael-palmes/kookaburra-cut \
@@ -770,9 +799,13 @@ builds it in separate jobs, each on a fresh runner.
   done
   # offline, from the release's own copy of the attestation:
   #   add --bundle KookaburraCut-<version>.intoto.jsonl to either command
+  gh attestation verify KookaburraCut-<version>.dmg --repo michael-palmes/kookaburra-cut \
+    --signer-workflow michael-palmes/kookaburra-cut/.github/workflows/release.yml \
+    --source-ref refs/tags/v<version> --deny-self-hosted-runners \
+    --predicate-type https://cyclonedx.org/bom           # the SBOM, KookaburraCut-<version>.cdx.json
   grep '^commit=' build-info.txt                          # the same commit as the next line
   git ls-remote https://github.com/michael-palmes/kookaburra-cut 'refs/tags/v<version>^{}'
-  codesign -dvv "/Applications/Kookaburra Cut.app"       # flags=0x10000(runtime), Authority=Developer ID Application
+  codesign -dvv "/Applications/Kookaburra Cut.app"       # flags=0x10000(runtime), Authority=Developer ID Application, TeamIdentifier=Q4B8N8ZKA2
   spctl -a -t exec -vv "/Applications/Kookaburra Cut.app" # source=Notarized Developer ID
   ```
 
@@ -784,6 +817,21 @@ key, which agents use, can't tag. Neither stops an account that has been taken
 over: the list the tag key is checked against lives in the repository, and an
 admin can change it and approve the run.
 
+Reproducible builds are not claimed. Tauri does not promise one and this
+pipeline does not either: the runner image, macOS, Xcode and the SDK float
+between runs, and `build-info.txt` records which ones a build used. What is
+reproducible is the exported film: the sidecar is built from pinned sources
+with every configure flag in `scripts/build-ffmpeg-sidecar.sh`, its x264
+version string is part of every H.264 export's bytes, and the packaged-parity
+gate (`docs/determinism.md`) proves each published DMG renders the gate
+projects to the recorded hashes. The sidecar's own bytes, the frontend bundle
+and the Rust binary are not claimed reproducible. In place of a rebuild, a
+reviewer has the build record (`build-info.txt`, `bundle-digests.txt`,
+`sidecar-digests.txt` and the SBOM, chained by one digest from the keyless
+build job), the provenance attestation that ties the DMG to this workflow and
+the tag, the SBOM attestation on the DMG, and the crate list embedded in the
+binary (`cargo audit bin`).
+
 ## Process
 
 - `pnpm ready` runs the workspace-name check on every branch
@@ -794,6 +842,10 @@ admin can change it and approve the run.
   every pull request (`.github/workflows/ci.yml`, "Workspace names").
 - Every PR runs `/code-review high` and `pnpm ready`; a render-path change
   gates through `docs/determinism.md`.
+- Every security fix is a `### Security` entry in `CHANGELOG.md` with one line
+  on what it meant for a user and a link to the GHSA advisory when one exists
+  (`CONTRIBUTING.md`, "Changelog"); the release body is built from that
+  section, and a tag without one is refused.
 
 ## Not yet
 

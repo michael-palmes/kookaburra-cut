@@ -33,5 +33,5 @@ test("every bundling route runs the CLI behind the shim", () => {
   assert.match(scripts.tauri, /scripts\/tauri-path:\$PATH/);
   assert.doesNotMatch(readFileSync("scripts/acceptance-app.mjs", "utf8"), /"exec",\s*"tauri"/);
   assert.match(readFileSync("scripts/sign-and-notarize.sh", "utf8"), /TAURI_CLI:-pnpm tauri/);
-  assert.match(readFileSync(".github/workflows/release.yml", "utf8"), /run: pnpm tauri build/);
+  assert.match(readFileSync(".github/workflows/release.yml", "utf8"), /[ :]pnpm tauri build /);
 });

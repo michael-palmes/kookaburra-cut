@@ -336,6 +336,7 @@ The stills contract (PDF handout and PNG images) is in [stills.md](./stills.md).
 | Migration pattern | Replace a UI surface by extracting its write funnel to a shared hook, running old and new against it, then deleting the old surface | Deletion becomes a zero-behaviour-risk change |
 | Icon & wordmark | The icon is the layered Icon Composer document `src-tauri/icons/AppIcon.icon` (ink plates with glass off), compiled to `Assets.car`, with a flat `.icns` rendered from it as the fallback and never re-masked; the wordmark is a one-off SVG; no display typeface is bundled | Layers give macOS its dark, clear and tinted modes while the art stays a print; re-masking a finished render double-borders it; type licensing stays clean |
 | Brand art | One print language (`docs/design.md` section 16): the icon's plates, a rust moon, the title, a subtitle and a timeline rule, on navy; tone only through a halftone screen, no fades or overlays; built by `scripts/make-art.py` from the icon document, type in Inter; the real product stays in the demo and website video | Painted, generated art read as generic. Rings, app windows and thumbnail rows were tried and made the sheets noisy. Building from the plates keeps every image reproducible from the repo |
+| Release evidence (2026-11) | Every release carries a CycloneDX SBOM (`scripts/sbom.mjs`: npm packages, crates for the shipped target, the sidecar's pinned sources, the beat model), written in the keyless build job, chained into the build record and attested on the DMG; the binary embeds its crate list (`cargo auditable`); the release body is the version's `CHANGELOG.md` section; dependency licences and sources are CI policy (`src-tauri/deny.toml`, `audit.yml`, `dependency-review.yml`); reproducible builds are not claimed (`SECURITY.md`, "Release integrity") | A security reviewer asks for an inventory, provenance and a policy, not a rebuild; the SBOM, the embedded list and the attestations give those without a promise Tauri's toolchain can't keep, and the film stays the reproducible artefact |
 
 ## Licensing posture
 
@@ -352,7 +353,12 @@ encoder outranks licence convenience; the LGPL build flag remains an escape
 hatch only. Each release's corresponding source is
 `scripts/build-ffmpeg-sidecar.sh` at the tagged commit (ffmpeg 8.1, x264
 `b35605a`, x265 4.3, all pinned and checked), named in `NOTICE.md` and tied to
-the shipped binaries by the release's build provenance attestation. Bundled
+the shipped binaries by the release's build provenance attestation. Dependency
+licences are policy, not a hand review: `src-tauri/deny.toml` and
+`.github/workflows/dependency-review.yml` allow the permissive set (MIT,
+Apache-2.0 with or without the LLVM exception, BSD, ISC, Zlib, MPL-2.0,
+Unicode-3.0, 0BSD, CC0-1.0, MIT-0, Unlicense, and OFL-1.1 for fonts), and each
+release's SBOM is the inventory. Bundled
 fonts are OFL 1.1 (`src/assets/fonts/OFL.txt`); bundled HDRIs are CC0
 (Poly Haven).
 

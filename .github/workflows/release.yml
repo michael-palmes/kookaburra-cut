@@ -32,6 +32,10 @@ env:
   TAURI_CLI_SHA256: "4a27a61b06e688308a5c17333008b6df52fd5780fa7a313a9ce8fb4a80dfb9ac"
   AGE_VERSION: "1.3.2"
   AGE_SHA256: "e2020b073c44f692685a24d6abc378817eb81ffaaf49fd0531ef8565f767f2f5"
+  # Built from crates.io by the build job: the SBOM's crate graph, the dependency list embedded in the binary, and its reader.
+  CARGO_CYCLONEDX_VERSION: "0.5.9"
+  CARGO_AUDITABLE_VERSION: "0.7.7"
+  RUST_AUDIT_INFO_VERSION: "0.5.4"
 
 jobs:
   # Builds from pinned source with no signing secret in reach. Its output is an unsigned app, its digest and the build record.
@@ -145,6 +149,16 @@ jobs:
           as_of="$(sed -nE '1,5s/^\*\*As of version ([^ ]+)\.\*\*.*/\1/p' SECURITY.md)"
           [ "$as_of" = "$VERSION" ] || { echo "::error::SECURITY.md describes version '${as_of:-none}', not ${VERSION}"; exit 1; }
 
+      # The publish job builds the release body from this section, so a tag without one stops here.
+      - name: Check CHANGELOG.md has this version's notes
+        if: steps.meta.outputs.tag != ''
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          bash scripts/changelog-section.sh "$VERSION" > /dev/null \
+            || { echo "::error::CHANGELOG.md has no entry for ${VERSION}; the release body is built from it"; exit 1; }
+
       - name: Set up Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -163,6 +177,16 @@ jobs:
       # rust-toolchain.toml pins the version.
       - name: Set up Rust
         run: rustup toolchain install --no-self-update
+
+      # Pinned and built from source here: cargo-cyclonedx writes the crate graph for the SBOM, cargo-auditable
+      # embeds the crate list in the binary, rust-audit-info reads it back. build-info.txt records their versions.
+      - name: Install the SBOM tools (pinned)
+        run: |
+          set -euo pipefail
+          cargo install cargo-cyclonedx --version "$CARGO_CYCLONEDX_VERSION" --locked
+          cargo install cargo-auditable --version "$CARGO_AUDITABLE_VERSION" --locked
+          cargo install rust-audit-info --version "$RUST_AUDIT_INFO_VERSION" --locked
+          cargo install --list
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -184,10 +208,28 @@ jobs:
         run: pnpm setup:models
 
       # The app only: nothing about the sidecar's build may move, since its x264 string is export bytes.
-      - name: Build the app (unsigned)
+      # cargo auditable embeds the crate list in the binary's .dep-v0 section. The Tauri CLI calls cargo by
+      # name and cargo-auditable refuses a bare RUSTC_WORKSPACE_WRAPPER, so this is its documented drop-in
+      # shim (REPLACING_CARGO.md), on PATH for this step only.
+      - name: Build the app (unsigned, cargo auditable)
         env:
           SOURCE_DATE_EPOCH: ${{ steps.meta.outputs.source_date_epoch }}
-        run: pnpm tauri build --ci --no-sign
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/auditable"
+          printf '#!/bin/sh\nexec "%s" auditable "$@"\n' "$(command -v cargo)" > "$RUNNER_TEMP/auditable/cargo"
+          chmod +x "$RUNNER_TEMP/auditable/cargo"
+          PATH="$RUNNER_TEMP/auditable:$PATH" pnpm tauri build --ci --no-sign
+
+      - name: Check the binary carries its Rust dependency list
+        run: |
+          set -euo pipefail
+          bin="src-tauri/target/release/bundle/macos/Kookaburra Cut.app/Contents/MacOS/kookaburra-cut"
+          rust-audit-info "$bin" > "$RUNNER_TEMP/audit-info.json"
+          crates="$(jq '.packages | length' "$RUNNER_TEMP/audit-info.json")"
+          [ "$crates" -gt 1 ] || { echo "::error::the binary's .dep-v0 section lists no dependencies"; exit 1; }
+          echo "$crates crates in the binary's .dep-v0 section:"
+          jq -r '.packages[] | "\(.name) \(.version)"' "$RUNNER_TEMP/audit-info.json"
 
       - name: Pack the unsigned payload
         id: payload
@@ -220,10 +262,26 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      # The crate graph for the shipped target (the one deny.toml audits), merged with the npm tree, the
+      # sidecar's sources and the beat model into one CycloneDX file. It is part of the record below, so
+      # verify and publish know it came from this job.
+      - name: Write the SBOM
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          SOURCE_DATE_EPOCH: ${{ steps.meta.outputs.source_date_epoch }}
+        run: |
+          set -euo pipefail
+          cargo cyclonedx --manifest-path src-tauri/Cargo.toml --target aarch64-apple-darwin \
+            --format json --spec-version 1.5 --override-filename KookaburraCut-rust
+          node scripts/sbom.mjs --version "$VERSION" --commit "$(git rev-parse HEAD)" \
+            --cargo src-tauri/KookaburraCut-rust.json --out "record/KookaburraCut-${VERSION}.cdx.json"
+          rm src-tauri/KookaburraCut-rust.json
+
       # Verify and publish read this from here, never through the sign job.
       - name: Write the build record
         id: record
         env:
+          VERSION: ${{ steps.meta.outputs.version }}
           SOURCE_DATE_EPOCH: ${{ steps.meta.outputs.source_date_epoch }}
         run: |
           set -euo pipefail
@@ -243,10 +301,12 @@ jobs:
             echo "cmake=$(cmake --version | sed -n '1s/^cmake version //p')"
             echo "nasm=$(nasm --version | awk '{ print $3 }')"
             echo "pkgconf=$(pkg-config --version)"
+            cargo install --list | awk -F'[ :]' '/^(cargo-cyclonedx|cargo-auditable|rust-audit-info) v/ { name = $1; gsub(/-/, "_", name); sub(/^v/, "", $2); print name "=" $2 }'
             bash scripts/build-ffmpeg-sidecar.sh --print-pins
+            bash scripts/setup-models.sh --print-pins
           } > record/build-info.txt
           cat record/build-info.txt
-          echo "sha256=$(cd record && shasum -a 256 build-info.txt bundle-digests.txt sidecar-digests.txt | shasum -a 256 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(cd record && shasum -a 256 build-info.txt bundle-digests.txt sidecar-digests.txt "KookaburraCut-${VERSION}.cdx.json" | shasum -a 256 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Upload the build record
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -408,8 +468,16 @@ jobs:
           RECORD_SHA256: ${{ needs.build.outputs.record_sha256 }}
         run: |
           set -euo pipefail
-          got="$(cd record && shasum -a 256 build-info.txt bundle-digests.txt sidecar-digests.txt | shasum -a 256 | cut -d' ' -f1)"
+          got="$(cd record && shasum -a 256 build-info.txt bundle-digests.txt sidecar-digests.txt "KookaburraCut-${VERSION}.cdx.json" | shasum -a 256 | cut -d' ' -f1)"
           [ "$got" = "$RECORD_SHA256" ] || { echo "::error::the build record is not the one the build job wrote"; exit 1; }
+
+      # SECURITY.md ships with the release and tells people which Team ID to expect; it must be the one in the signatures.
+      - name: Check SECURITY.md names the Team ID the signatures carry
+        run: |
+          set -euo pipefail
+          published="$(grep -Eo 'TeamIdentifier=[A-Z0-9]+' SECURITY.md | sort -u)"
+          [ "$published" = "TeamIdentifier=${KOOKABURRA_TEAM_ID}" ] \
+            || { echo "::error::SECURITY.md names '${published:-no Team ID}', the signatures carry TeamIdentifier=${KOOKABURRA_TEAM_ID}"; exit 1; }
 
       - name: Verify signatures, notarisation, the CLI and the bundle digests
         run: bash scripts/verify-release.sh --dir release --sidecar-digests record/sidecar-digests.txt --bundle-digests record/bundle-digests.txt
@@ -422,7 +490,7 @@ jobs:
             echo '```'; (cd release && shasum -a 256 KookaburraCut-*.dmg KookaburraCut-*.zip KookaburraCut-*-updater.app.tar.gz latest.json); echo '```'
             echo "Sidecars (signature stripped, equal to the build job's record):"
             echo '```'; cat record/sidecar-digests.txt; echo '```'
-            echo "Every bundle file equals the build job's record ($(wc -l < record/bundle-digests.txt) files). Build info:"
+            echo "Every bundle file equals the build job's record ($(wc -l < record/bundle-digests.txt) files). SBOM: $(jq '.components | length' "record/KookaburraCut-${VERSION}.cdx.json") components. Build info:"
             echo '```'; cat record/build-info.txt; echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -474,7 +542,7 @@ jobs:
           RECORD_SHA256: ${{ needs.build.outputs.record_sha256 }}
         run: |
           set -euo pipefail
-          got="$(cd record && shasum -a 256 build-info.txt bundle-digests.txt sidecar-digests.txt | shasum -a 256 | cut -d' ' -f1)"
+          got="$(cd record && shasum -a 256 build-info.txt bundle-digests.txt sidecar-digests.txt "KookaburraCut-${VERSION}.cdx.json" | shasum -a 256 | cut -d' ' -f1)"
           [ "$got" = "$RECORD_SHA256" ] || { echo "::error::the build record is not the one the build job wrote"; exit 1; }
 
       - name: Install tauri-cli (pinned, for the updater signature)
@@ -487,6 +555,7 @@ jobs:
           unzip -q "$zip" -d "$RUNNER_TEMP/tauri-cli"
           echo "TAURI_CLI=$RUNNER_TEMP/tauri-cli/cargo-tauri" >> "$GITHUB_ENV"
 
+      # Ends with the publish job's SHA256SUMS step, so a file missing from the set fails the dry run, not the tag.
       - name: Sign ad hoc, package and verify
         run: |
           set -euo pipefail
@@ -497,6 +566,7 @@ jobs:
           bash scripts/sign-and-notarize.sh --app "$RUNNER_TEMP/unsigned/Kookaburra Cut.app" --adhoc --plain-dmg
           bash scripts/verify-release.sh --adhoc --dir release --sidecar-digests record/sidecar-digests.txt --bundle-digests record/bundle-digests.txt
           rm -rf "release/Kookaburra Cut.app"
+          bash scripts/release-sums.sh --dir release --record record --version "$VERSION"
 
       - name: Upload the rehearsal set
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -543,21 +613,11 @@ jobs:
           RECORD_SHA256: ${{ needs.build.outputs.record_sha256 }}
         run: |
           set -euo pipefail
-          got="$(cd record && shasum -a 256 build-info.txt bundle-digests.txt sidecar-digests.txt | shasum -a 256 | cut -d' ' -f1)"
+          got="$(cd record && shasum -a 256 build-info.txt bundle-digests.txt sidecar-digests.txt "KookaburraCut-${VERSION}.cdx.json" | shasum -a 256 | cut -d' ' -f1)"
           [ "$got" = "$RECORD_SHA256" ] || { echo "::error::the build record is not the one the build job wrote"; exit 1; }
 
       - name: Write SHA256SUMS
-        working-directory: release
-        run: |
-          set -euo pipefail
-          cp ../record/build-info.txt build-info.txt
-          set_files=("KookaburraCut-${VERSION}.dmg" "KookaburraCut-${VERSION}.zip" "KookaburraCut-${VERSION}-updater.app.tar.gz" "KookaburraCut-${VERSION}-updater.app.tar.gz.sig" latest.json)
-          for f in "${set_files[@]}"; do
-            [ -f "$f" ] || { echo "::error::missing $f"; exit 1; }
-          done
-          cp ../SECURITY.md SECURITY.md
-          sha256sum "${set_files[@]}" build-info.txt SECURITY.md > SHA256SUMS
-          cat SHA256SUMS
+        run: bash scripts/release-sums.sh --dir release --record record --version "$VERSION"
 
       - name: Attest build provenance
         id: attest
@@ -568,6 +628,16 @@ jobs:
             release/KookaburraCut-${{ needs.build.outputs.version }}.zip
             release/KookaburraCut-${{ needs.build.outputs.version }}-updater.app.tar.gz
             release/build-info.txt
+            release/KookaburraCut-${{ needs.build.outputs.version }}.cdx.json
+
+      # The SBOM as an attestation on the DMG (predicate https://cyclonedx.org/bom): a verifier asks GitHub for
+      # the DMG's dependency list without trusting the release page. actions/attest-sbom is a deprecated shim
+      # over this same action and input.
+      - name: Attest the SBOM
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: release/KookaburraCut-${{ needs.build.outputs.version }}.dmg
+          sbom-path: release/KookaburraCut-${{ needs.build.outputs.version }}.cdx.json
 
       # Offline verifiers and Scorecard read provenance from the release assets, not the attestation store.
       - name: Write the provenance bundle
@@ -580,14 +650,18 @@ jobs:
           [ -s "$out" ] || { echo "::error::the provenance bundle is empty"; exit 1; }
 
       # A draft: a person reads the run and publishes. The in-app updater sees the release only once published.
+      # The body is the version's CHANGELOG.md section, then how to install and verify.
       - name: Draft the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           min_os="$(node -p "require('./src-tauri/tauri.conf.json').bundle.macOS.minimumSystemVersion")"
+          bash scripts/changelog-section.sh "$VERSION" > "$RUNNER_TEMP/changelog.md" \
+            || { echo "::error::CHANGELOG.md has no entry for ${VERSION}; the release body is built from it"; exit 1; }
           notes="$RUNNER_TEMP/notes.md"
-          cat > "$notes" <<EOF
+          { echo "## What changed"; echo; cat "$RUNNER_TEMP/changelog.md"; echo; } > "$notes"
+          cat >> "$notes" <<EOF
           ## Install
 
           Download \`KookaburraCut-${VERSION}.dmg\`, open it and drag Kookaburra Cut to Applications. macOS ${min_os}+ on Apple Silicon (arm64); no Intel build.
@@ -598,6 +672,10 @@ jobs:
               gh attestation verify KookaburraCut-${VERSION}.dmg --repo ${GITHUB_REPOSITORY} \\
                 --signer-workflow ${GITHUB_REPOSITORY}/.github/workflows/release.yml \\
                 --source-ref refs/tags/${TAG} --deny-self-hosted-runners
+              gh attestation verify KookaburraCut-${VERSION}.dmg --repo ${GITHUB_REPOSITORY} \\
+                --signer-workflow ${GITHUB_REPOSITORY}/.github/workflows/release.yml \\
+                --source-ref refs/tags/${TAG} --deny-self-hosted-runners \\
+                --predicate-type https://cyclonedx.org/bom
 
           Offline, against the provenance bundle attached here:
 
@@ -611,11 +689,14 @@ jobs:
 
           \`build-info.txt\` records the toolchain, the runner image, the commit and the sidecar pins this build used.
 
+          \`KookaburraCut-${VERSION}.cdx.json\` is the release's SBOM (CycloneDX 1.5): every npm package and Rust crate built into the app, the sidecar's pinned sources and the beat model, attested on the DMG above. The app binary also carries its own Rust dependency list (\`cargo audit bin\`).
+
           The bundled ffmpeg sidecar is a GPL build (libx264, libx265). Its recipe and source pins are \`scripts/build-ffmpeg-sidecar.sh\`; sources: ffmpeg.org, code.videolan.org/videolan/x264, github.com/Multicorewareinc/x265.
           EOF
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
             --title "Kookaburra Cut ${VERSION}" --notes-file "$notes" --generate-notes \
             "release/KookaburraCut-${VERSION}.dmg" "release/KookaburraCut-${VERSION}.zip" \
             "release/KookaburraCut-${VERSION}-updater.app.tar.gz" "release/KookaburraCut-${VERSION}-updater.app.tar.gz.sig" \
-            "release/KookaburraCut-${VERSION}.intoto.jsonl" release/latest.json release/build-info.txt release/SHA256SUMS release/SECURITY.md
+            "release/KookaburraCut-${VERSION}.intoto.jsonl" "release/KookaburraCut-${VERSION}.cdx.json" \
+            release/latest.json release/build-info.txt release/SHA256SUMS release/SECURITY.md
           echo "Draft release ${TAG} created; publish it on GitHub." >> "$GITHUB_STEP_SUMMARY"
