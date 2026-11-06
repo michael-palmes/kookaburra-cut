@@ -25,7 +25,7 @@ pub enum UpdateCheck {
     },
 }
 
-/// Ask the configured endpoint whether a newer release exists. Dev builds answer DevBuild without touching the network unless KOOKABURRA_UPDATE_ENDPOINT points at a local test manifest.
+/// Ask the configured endpoint (or the organisation's `UpdateEndpoint`) whether a newer release exists. Dev builds answer DevBuild without touching the network unless KOOKABURRA_UPDATE_ENDPOINT points at a local test manifest.
 #[tauri::command]
 pub async fn check_for_update(
     app: AppHandle,
@@ -33,6 +33,8 @@ pub async fn check_for_update(
     pending: State<'_, PendingUpdate>,
 ) -> Result<UpdateCheck, String> {
     crate::managed::deny_update_check()?;
+    // A forced but unusable server refuses here, so the check never falls back to the default.
+    let managed_endpoint = crate::managed::managed_update_endpoint()?;
     // The local test manifest is a dev-only affordance: a release build never reads the variable, so no environment can repoint a shipped app's updater (the pinned pubkey bounds it either way).
     let override_endpoint = if cfg!(debug_assertions) {
         std::env::var("KOOKABURRA_UPDATE_ENDPOINT")
@@ -45,11 +47,14 @@ pub async fn check_for_update(
         return Ok(UpdateCheck::DevBuild);
     }
 
+    let endpoint = match (override_endpoint, managed_endpoint) {
+        (Some(raw), _) => Some(("KOOKABURRA_UPDATE_ENDPOINT", raw)),
+        (None, Some(raw)) => Some(("UpdateEndpoint", raw)),
+        (None, None) => None,
+    };
     let mut builder = app.updater_builder();
-    if let Some(raw) = override_endpoint {
-        let url: tauri::Url = raw
-            .parse()
-            .map_err(|e| format!("KOOKABURRA_UPDATE_ENDPOINT: {e}"))?;
+    if let Some((source, raw)) = endpoint {
+        let url: tauri::Url = raw.parse().map_err(|e| format!("{source}: {e}"))?;
         builder = builder.endpoints(vec![url]).map_err(|e| e.to_string())?;
     }
     let updater = builder.build().map_err(|e| e.to_string())?;
@@ -91,8 +96,10 @@ pub fn set_update_consent(
     settings: State<'_, SettingsState>,
     consent: bool,
 ) -> Result<(), String> {
-    // A profile that turns update checks off pins consent off, whatever the switch asked for.
-    let consent = consent && crate::managed::deny_update_check().is_ok();
+    // A profile that turns update checks off, or names a server it can't use, pins consent off whatever the switch asked for.
+    let consent = consent
+        && crate::managed::deny_update_check().is_ok()
+        && crate::managed::managed_update_endpoint().is_ok();
     workspace::update_settings(&app, &settings, |s| {
         s.update_check_consent = Some(consent);
         if !consent {

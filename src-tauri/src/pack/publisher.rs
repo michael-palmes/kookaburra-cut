@@ -270,6 +270,7 @@ pub fn manifest_publisher(
     state: &State<'_, SettingsState>,
     name_override: Option<&str>,
 ) -> Result<PackPublisher, String> {
+    crate::managed::deny_pack_export()?;
     let settings = load_settings(app, state)?;
     let profile = settings.publisher.as_ref();
     let name = match profile {
@@ -348,6 +349,7 @@ pub fn set_publisher_profile(
 /// Replace the signing key. `known_publishers` is deliberately untouched: rotating changes who *we* look like, not who we trust. Async so a Keychain prompt never holds the main thread.
 #[tauri::command]
 pub async fn rotate_publisher_key(app: AppHandle) -> Result<PublisherKeyView, String> {
+    crate::managed::deny_pack_export()?;
     key::rotate_identity(&app)
         .map(key_view)
         .map_err(String::from)

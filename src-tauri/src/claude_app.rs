@@ -81,6 +81,7 @@ pub async fn open_in_claude(
     prompt: Option<String>,
 ) -> Result<(), String> {
     crate::managed::deny_claude()?;
+    crate::managed::deny_agent_kit()?;
     let dir = workspace::project_dir_mut(&app, &state, &slug)?;
     if !dir.join(workspace::MANIFEST_FILENAME).is_file() {
         return Err(format!("\"{slug}\" is not a project folder"));
@@ -128,6 +129,7 @@ pub async fn open_project_folder(
 #[tauri::command]
 pub async fn open_claude_download() -> Result<(), String> {
     crate::managed::deny_claude()?;
+    crate::managed::deny_agent_kit()?;
     open_in_background(DOWNLOAD_URL.to_string()).await
 }
 

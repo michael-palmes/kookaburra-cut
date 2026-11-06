@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isExporting } from "./exportState";
-import { managedPolicy } from "./managed";
+import { managedPolicy, updateChecksLocked } from "./managed";
 import { getSettings } from "./workspace";
 
 /** Frontend face of the opt-in update lane (src-tauri/src/updater.rs). All network and consent bookkeeping happens Rust-side; this module holds the pure auto-check policy and the per-window hook that drives the dialogs, the Settings rows and the manual-check surfaces. */
@@ -107,7 +107,7 @@ export function formatCheckedAgo(ms: number, nowMs: number): string {
 
 export interface UpdateCheckApi {
   consent: UpdateConsent;
-  /** Update checks are turned off by a configuration profile: no switch, no manual check. */
+  /** Update checks are turned off by a configuration profile, or pointed at a server the app can't use: no switch, no manual check. */
   managed: boolean;
   /** The first-run welcome is still owed (no answer stored yet, managed or not). */
   welcomeOwed: boolean;
@@ -158,9 +158,10 @@ export function useUpdateCheck({
     Promise.all([getSettings(), managedPolicy()])
       .then(([s, policy]) => {
         if (cancelled) return;
-        setManaged(policy.disableUpdateCheck);
+        const locked = updateChecksLocked(policy);
+        setManaged(locked);
         setWelcomeOwed(consentFromSettings(s.updateCheckConsent) === "undecided");
-        setConsent(consentFromSettings(s.updateCheckConsent, policy.disableUpdateCheck));
+        setConsent(consentFromSettings(s.updateCheckConsent, locked));
         setLastCheckedMs(s.lastUpdateCheckMs ?? null);
       })
       .catch(() => {
@@ -213,7 +214,7 @@ export function useUpdateCheck({
         .then(([s, policy]) => {
           const due = autoCheckDue({
             storedConsent: s.updateCheckConsent,
-            managedOff: policy.disableUpdateCheck,
+            managedOff: updateChecksLocked(policy),
             lastCheckedMs: s.lastUpdateCheckMs,
             lastAttemptMs: lastAttemptRef.current,
             exporting: isExporting(),

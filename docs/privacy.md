@@ -116,11 +116,14 @@ them. FileVault and your account password are the protection at rest.
 ## For organisations
 
 The app can be locked down with a configuration profile from your MDM, so staff
-run the same build with the network paths you do not want switched off and
-greyed out in Settings with a note that the organisation manages them: Claude
-(Edit with Claude and Get Claude), live websites, the update check, the
-publishers whose packs may be imported, and the workspace location. The keys
-and a sample profile are in [docs/mdm.md](./mdm.md).
+run the same build with what you do not want switched off and locked in
+Settings with a note that the organisation manages it (`src-tauri/src/managed.rs`):
+Claude (Edit with Claude and Get Claude), the agent kit and the `_bridge`
+folder, live websites, pack export, the update check, the publishers whose
+packs may be imported, and the workspace location. A profile can also keep
+exports in each project instead of Downloads, and point the update check at
+your own server instead of GitHub; a malformed server address means no check
+at all. The keys and a sample profile are in [docs/mdm.md](./mdm.md).
 
 Report a security problem privately through the repository's Security tab, as
 [SECURITY.md](../SECURITY.md) describes.

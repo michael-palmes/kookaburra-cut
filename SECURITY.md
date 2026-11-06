@@ -8,8 +8,10 @@ is 0.22.1 built before the pinned toolchain and the whole-bundle record
 Each release from 0.22.0 on carries its own copy of this file in its assets.
 
 On a managed Mac, a configuration profile can pin the posture an organisation
-needs: turn off the app's Claude launchers, live scene websites or update checks,
-limit pack imports to approved publishers, and fix where projects are kept.
+needs: turn off the app's Claude launchers, its agent kit and bridge, live scene
+websites, pack export or update checks, point update checks at the
+organisation's own server, keep exports out of Downloads, limit pack imports to
+approved publishers, and fix where projects are kept (`src-tauri/src/managed.rs`).
 The app honours a key only while macOS reports it as forced by a profile, so a
 user's own `defaults write` grants nothing, and a malformed key fails closed.
 The keys and a sample profile: [`docs/mdm.md`](docs/mdm.md).
@@ -122,7 +124,7 @@ and refuses every nested worker.
 
 | Path | Trigger | Destination | Data | Consent and off switch | Control |
 | --- | --- | --- | --- | --- | --- |
-| Update check | At launch and hourly while the main window is open, at most every 20 h, only with the consent on and never during an export; or Check for Updates (menu, ⌘K, Settings), which runs without consent and stores nothing | `github.com/michael-palmes/kookaburra-cut/releases/latest/download/latest.json` | One GET; no identifiers, no version in the URL; the plugin's user agent only | First-run welcome switch (on by default, Escape saves off); Settings ▸ Updates. `update_check_consent` in `$APPDATA/settings.json` | `src-tauri/src/updater.rs`, `src/engine/updates.ts`; `KOOKABURRA_UPDATE_ENDPOINT` is honoured only in debug builds |
+| Update check | At launch and hourly while the main window is open, at most every 20 h, only with the consent on and never during an export; or Check for Updates (menu, ⌘K, Settings), which runs without consent and stores nothing | `github.com/michael-palmes/kookaburra-cut/releases/latest/download/latest.json`, or the https URL a profile forces as `UpdateEndpoint` | One GET; no identifiers, no version in the URL; the plugin's user agent only | First-run welcome switch (on by default, Escape saves off); Settings ▸ Updates. `update_check_consent` in `$APPDATA/settings.json` | `src-tauri/src/updater.rs`, `src/engine/updates.ts`; `KOOKABURRA_UPDATE_ENDPOINT` is honoured only in debug builds; `managed::usable_endpoint` refuses an `UpdateEndpoint` with a query, fragment, login or `{{…}}` template, and an unusable one means no check, never GitHub |
 | Update install | Install and relaunch on the update dialog | The release asset `latest.json` names | The signed updater archive | Later hides the offer until the next check | `updater.rs` (`download_and_install`); the ed25519 signature is checked against `plugins.updater.pubkey` before anything is written |
 | Edit with Claude (`claude://` handoff) | Edit with Claude, with the Claude desktop app installed | The Claude desktop app on this Mac, which talks to Anthropic under the user's account | The project folder path and a starter prompt, typed in, never sent | Not pressing it; `DisableClaude` turns it off for a fleet | `src-tauri/src/claude_app.rs` (`code_session_link`, `open_in_claude`) |
 | Live scene websites | Open live website in the paused editor after Allow for that origin; Present reloads an allowed origin on each hold | The approved origin, with the reach of a browser tab (subresources, subframes and scripts are not filtered) | Whatever the page loads; cookies and storage in a profile separate from Safari | Allow per origin per project (main window only); revoke in the inspector; Settings ▸ Website data clears storage | `src-tauri/src/website.rs` (`website_open` refuses without a grant, HTTPS or loopback only, downloads and new windows denied, no Tauri capability for the child) |
@@ -132,8 +134,9 @@ Dev-time only, never in the app: `pnpm setup:models` downloads the beat model
 from a pinned commit and checks its SHA-256 (`scripts/setup-models.sh`);
 `pnpm setup:ffmpeg:release` fetches the ffmpeg, x264 and x265 sources against their pins (`scripts/build-ffmpeg-sidecar.sh`).
 
-A configuration profile can force the update check, the Claude launchers and
-live websites off (see "Managed preferences").
+A configuration profile can force the update check, the Claude launchers, the
+agent kit and live websites off, and point the update check at the
+organisation's own server (see "Managed preferences").
 
 ## On the Mac
 
@@ -202,7 +205,8 @@ backup. Everything else is backed up like any document: projects with their own
   progress for up to an hour and 2 GiB in all; `requests/.claimed/` the claimed
   requests; `apps/<pid>.json` and `app.json` heartbeats carry the executable
   path, workspace root, open project, playhead and the folders picked this
-  session; `cli.json` the headless CLI's location. Control: `bridge.rs`
+  session; `cli.json` the headless CLI's location. Never created under
+  `DisableAgentKit`: `bridge_root` refuses first. Control: `bridge.rs`
   (`bridge_root`, the caps at its head, `prune`).
 - **`~/Kookaburra Cut/_autorun/`**: terminal-triggered runs (`runs/<id>/` with
   `last-run.json`, `dev.log`, screenshots and preview batches), the gate cache
@@ -257,8 +261,10 @@ backup. Everything else is backed up like any document: projects with their own
 - **Exports**: `~/Downloads/<project>-<aspect>.<ext>` by default, never
   overwriting, or the project's `exports/` folder (Settings ▸ Video, "Save
   exports to Downloads"; terminal and bridge runs always use the project
-  folder). ffmpeg writes a hidden `.part` sibling and renames it on success.
-  Stills go where the save dialog points; `.kbpack` files go where the Save
+  folder, and so does every export under `ExportsInProject`, which routes a
+  Downloads request to the project in `export_dir_kind`). Video and stills
+  follow the same rule. ffmpeg writes a hidden `.part` sibling and renames it
+  on success. `.kbpack` files go where the Save
   dialog `build_pack` runs from Rust points, never a webview path
   (`pack::commands::validate_destination` refuses system folders, `$APPDATA`
   and the app bundle). Control: `resolve_export_output` in `lib.rs`.
@@ -328,7 +334,10 @@ Claude Code runs outside the app, in the Claude desktop app or the person's own
 terminal, under their own account, install and settings. The app holds no API
 key, sends nothing to Anthropic itself and starts no Claude Code, and no shell
 but the updater's administrator install, so no credential passes through it and
-no window can type into a session.
+no window can type into a session. A profile forcing `DisableAgentKit` turns off
+everything below: no kit is stamped or healed (`stamp_claude_provisioning` in
+`workspace.rs`), the bridge never serves and `_bridge` is never created
+(`bridge_role`, `bridge_root`), and the handoff refuses (`open_in_claude`).
 
 - **The `claude://` handoff** (`claude_app.rs`): `open claude://code/new?folder=<project>&q=<prompt>`,
   the prompt capped at the Claude app's limit, opened only when LaunchServices
@@ -580,10 +589,13 @@ printed by the app or written to its logs.
 
 ## Managed preferences
 
-Five keys in the domain `com.mpalmes.kookaburracut`, honoured only when a
+Nine keys in the domain `com.mpalmes.kookaburracut`, honoured only when a
 configuration profile forces them (`src-tauri/src/managed.rs`): `DisableClaude`,
-`DisableLiveWebsites`, `AllowedPublisherKeyIds`, `DisableUpdateCheck` and
-`WorkspaceRoot`. Settings marks each affected row "Managed by your organisation".
+`DisableLiveWebsites`, `AllowedPublisherKeyIds`, `DisableUpdateCheck`,
+`WorkspaceRoot`, `DisableAgentKit`, `DisablePackExport`, `ExportsInProject` and
+`UpdateEndpoint`. A malformed key fails closed: a boolean of the wrong type reads
+as `true`, and an unusable `UpdateEndpoint` means no update check at all.
+Settings marks each affected row "Managed by your organisation".
 The key table and a sample profile are in `docs/mdm.md`.
 
 ## Release integrity

@@ -685,7 +685,7 @@ fn stamp_pack_source(staging: &Path, work: &[Work]) -> Result<(), PackError> {
     Ok(())
 }
 
-/// Move every agent file's text in a landing item to its `NOTES.md`; a project-shaped root keeps the app's default `CLAUDE.md`, and one that will not delete stops the import.
+/// Move every agent file's text in a landing item to its `NOTES.md`; a project-shaped root keeps the app's default `CLAUDE.md` (none under `DisableAgentKit`), and one that will not delete stops the import.
 fn replace_agent_instructions(staging: &Path, work: &[Work]) -> Result<Vec<AgentNote>, PackError> {
     let mut notes = Vec::new();
     for item in work.iter().filter(|w| {
@@ -695,7 +695,8 @@ fn replace_agent_instructions(staging: &Path, work: &[Work]) -> Result<Vec<Agent
         let mut authored = Vec::new();
         let mut had_root_file = false;
         take_agent_files(&dir, "", &mut authored, &mut had_root_file)?;
-        if had_root_file && is_project_shaped(item.kind) {
+        if had_root_file && is_project_shaped(item.kind) && crate::managed::deny_agent_kit().is_ok()
+        {
             let name = project_display_name(&dir, &item.name);
             let claude = dir.join(ROOT_AGENT_FILE);
             std::fs::write(&claude, crate::kit::render_claude_md(&name))?;

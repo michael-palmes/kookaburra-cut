@@ -15,6 +15,15 @@ export interface ManagedPolicy {
   workspaceRoot: string | null;
   /** True whenever WorkspaceRoot is forced, usable or not: relocation is refused either way. */
   workspaceRootLocked: boolean;
+  /** No kit, no bridge, no Claude handoff; disableClaude alone keeps the kit. */
+  disableAgentKit: boolean;
+  disablePackExport: boolean;
+  /** App exports stay in the project's exports folder whatever the Downloads switch says. */
+  exportsInProject: boolean;
+  /** The organisation's update manifest URL, when the profile's value was usable. */
+  updateEndpoint: string | null;
+  /** True whenever UpdateEndpoint is forced, usable or not: an unusable one means no update check at all. */
+  updateEndpointLocked: boolean;
   forcedKeys: string[];
 }
 
@@ -26,6 +35,11 @@ export const UNMANAGED: ManagedPolicy = {
   disableUpdateCheck: false,
   workspaceRoot: null,
   workspaceRootLocked: false,
+  disableAgentKit: false,
+  disablePackExport: false,
+  exportsInProject: false,
+  updateEndpoint: null,
+  updateEndpointLocked: false,
   forcedKeys: [],
 };
 
@@ -38,8 +52,37 @@ export const LOCKED_DOWN: ManagedPolicy = {
   disableUpdateCheck: true,
   workspaceRoot: null,
   workspaceRootLocked: true,
+  disableAgentKit: true,
+  disablePackExport: true,
+  exportsInProject: true,
+  updateEndpoint: null,
+  updateEndpointLocked: true,
   forcedKeys: [],
 };
+
+/** Every Claude entry point closes under either key: the handoff without the kit would run Claude Code without its rules. */
+export function claudeLocked(policy: ManagedPolicy): boolean {
+  return policy.disableClaude || policy.disableAgentKit;
+}
+
+/** A forced update server the app can't use means no check at all, the same lock as DisableUpdateCheck. */
+export function updateEndpointUnusable(policy: ManagedPolicy): boolean {
+  return policy.updateEndpointLocked && policy.updateEndpoint === null;
+}
+
+export function updateChecksLocked(policy: ManagedPolicy): boolean {
+  return policy.disableUpdateCheck || updateEndpointUnusable(policy);
+}
+
+/** The host a forced update server names, for the Settings copy; null when none is forced. */
+export function updateServerHost(policy: ManagedPolicy): string | null {
+  if (!policy.updateEndpoint) return null;
+  try {
+    return new URL(policy.updateEndpoint).host;
+  } catch {
+    return null;
+  }
+}
 
 /** Every refusal a managed key causes starts with this (managed.rs `REASON_PREFIX`). */
 export const MANAGED_REASON_PREFIX = "managed:";

@@ -73,7 +73,9 @@ scripts/
   lists), then the same full stamp when anything is gone, under `restamping_trust`. So a kit
   deleted while the app runs comes back on the next save or reopen, with every rule below
   applied: foreign hooks, permissions, env, commands, agents and skills go; `kit.json` records
-  the hashes; declining the trust prompt stamps nothing. Autoruns never stamp.
+  the hashes; declining the trust prompt stamps nothing. Autoruns never stamp, and neither
+  does a Mac whose profile forces `DisableAgentKit` (`docs/mdm.md`): nothing is written,
+  moved or healed, and a kit already in a folder stays as it is.
 - **Edits are never lost silently.** Before a restamp replaces a skill, any file that differs
   from `kit.json`'s record (`files`), or that the record does not list, is copied to
   `.kb/kit-replaced/<stampedAtMs>/<skill>/<rel>` (1 MiB a file, the newest 5 sets) and logged as
@@ -1253,7 +1255,9 @@ release build ignores it. kb reads `KB_BRIDGE_DIR`, then `KOOKABURRA_BRIDGE_DIR`
 Several app instances can run on one machine (the packaged app, a dev build, acceptance
 bundles, autoruns). Each decides once at start whether it serves the bridge, in order:
 
-1. An autorun never serves.
+1. An autorun never serves, and neither does a Mac whose profile forces `DisableAgentKit`,
+   whatever `KOOKABURRA_BRIDGE` says; there `bridge_root` refuses, so `_bridge` is never
+   created and no heartbeat is written.
 2. `KOOKABURRA_BRIDGE=0` turns serving off; `KOOKABURRA_BRIDGE=1` turns it on (any other
    value is ignored with a warning).
 3. An overridden workspace root (`KOOKABURRA_WORKSPACE_ROOT`), a non-production bundle id
