@@ -52,11 +52,11 @@ describe("collectThemeFontRefs", () => {
 });
 
 describe("bundled theme faces", () => {
-  it("bundles the theme-library display faces at their audited static weights", () => {
+  it("bundles the display faces at their audited static weights", () => {
     expect(
       Object.fromEntries(
         Object.entries(BUNDLED_FONTS)
-          .slice(-8)
+          .slice(-9)
           .map(([family, weights]) => [family, Object.keys(weights).map(Number)]),
       ),
     ).toEqual({
@@ -68,6 +68,7 @@ describe("bundled theme faces", () => {
       Jost: [400, 500],
       "IBM Plex Sans": [400, 600],
       Fraunces: [600],
+      "Inter Tight": [300, 400, 600, 700, 800, 900],
     });
   });
 

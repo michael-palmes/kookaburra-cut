@@ -1,0 +1,1034 @@
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fairywren features</title>
+    <link rel="stylesheet" href="../shared/base.css" />
+    <link rel="stylesheet" href="../shared/phone.css" />
+    <link rel="stylesheet" href="app.css" />
+    <link rel="stylesheet" href="phone.css" />
+    <style>
+      .abs {
+        position: absolute;
+        left: 16px;
+        right: 16px;
+      }
+      .card {
+        border-radius: 24px;
+        background: var(--surface);
+        box-shadow: var(--shadow), 0 0 0 1px var(--hair) inset;
+      }
+      .sorted {
+        top: 150px;
+        height: 200px;
+        border-radius: 26px;
+        padding: 18px 20px;
+        color: #f4f0ea;
+        background:
+          radial-gradient(80% 90% at 100% 0%, rgba(240, 108, 91, 0.35), transparent 60%),
+          linear-gradient(160deg, #22325e, #0d1428);
+        box-shadow: 0 18px 40px -20px rgba(13, 20, 40, 0.8);
+        overflow: hidden;
+      }
+      .sorted .top {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .sorted .spark {
+        width: 34px;
+        height: 34px;
+        border-radius: 11px;
+        display: grid;
+        place-items: center;
+        background: var(--coral);
+        color: #fff;
+        font-size: 19px;
+      }
+      .sorted .title {
+        font-family: "Inter Tight", sans-serif;
+        font-size: 21px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      .sorted .sub {
+        margin-top: 8px;
+        font-size: 13px;
+        color: #c3c9dc;
+      }
+      .stats {
+        display: flex;
+        gap: 22px;
+        margin-top: 16px;
+      }
+      .stats b {
+        display: block;
+        font-family: "Inter Tight", sans-serif;
+        font-size: 32px;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        line-height: 1;
+      }
+      .stats span {
+        display: block;
+        margin-top: 5px;
+        font-size: 12px;
+        color: #aab2cc;
+      }
+      .load {
+        position: absolute;
+        right: 20px;
+        top: 18px;
+        display: flex;
+        gap: 5px;
+        align-items: flex-end;
+        height: 34px;
+      }
+      .load i {
+        width: 10px;
+        border-radius: 3px;
+        background: rgba(244, 240, 234, 0.85);
+      }
+      .load i.free {
+        background: var(--coral);
+      }
+      .skeleton {
+        position: absolute;
+        inset: 18px 20px;
+      }
+      .skeleton i {
+        display: block;
+        height: 14px;
+        margin-bottom: 14px;
+        border-radius: 7px;
+        background: rgba(244, 240, 234, 0.14);
+      }
+      .rows {
+        top: 398px;
+      }
+      .drow {
+        position: relative;
+        height: 64px;
+        display: flex;
+        align-items: center;
+        border-bottom: 1px solid var(--hair);
+      }
+      .drow .dl {
+        width: 52px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+        line-height: 1.3;
+      }
+      .drow .dl b {
+        display: block;
+        font-size: 17px;
+        color: var(--ink);
+      }
+      .drow .lane {
+        position: relative;
+        flex: 1;
+        height: 40px;
+      }
+      .seg {
+        position: absolute;
+        top: 4px;
+        height: 32px;
+        border-radius: 9px;
+        background: var(--tint);
+        box-shadow: inset 3px 0 0 var(--bar);
+        font-size: 11px;
+        font-weight: 600;
+        padding: 9px 0 0 9px;
+        white-space: nowrap;
+        overflow: hidden;
+      }
+      .freechip {
+        position: absolute;
+        right: 0;
+        top: 16px;
+        height: 30px;
+        padding: 0 12px;
+        border-radius: 15px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--coral-deep);
+        background: rgba(240, 108, 91, 0.12);
+        box-shadow: inset 0 0 0 1.5px rgba(240, 108, 91, 0.45);
+      }
+      .peach {
+        --tint: var(--peach-bg);
+        --bar: var(--peach);
+      }
+      .quick {
+        top: 236px;
+        height: 58px;
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 16px;
+        font-size: 17px;
+        font-weight: 600;
+        background: var(--surface);
+        box-shadow: var(--shadow), 0 0 0 1.5px var(--coral) inset;
+      }
+      .quick > svg.i {
+        font-size: 20px;
+        color: var(--coral);
+      }
+      .quick .ph {
+        color: var(--faint);
+        font-weight: 400;
+      }
+      .tok {
+        border-radius: 6px;
+        padding: 1px 3px;
+        margin: 0 -1px;
+      }
+      .tok.on {
+        background: rgba(240, 108, 91, 0.16);
+        color: var(--coral-deep);
+      }
+      .tok.who.on {
+        background: rgba(93, 141, 232, 0.16);
+        color: #2f62c4;
+      }
+      .preview {
+        top: 304px;
+        height: 84px;
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 14px 0 18px;
+      }
+      .preview .pv {
+        flex: 1;
+      }
+      .preview b {
+        display: block;
+        font-size: 16px;
+      }
+      .preview .meta {
+        display: flex;
+        gap: 6px;
+        margin-top: 6px;
+      }
+      .preview .meta span {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 24px;
+        padding: 0 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+        background: var(--surface-2);
+        box-shadow: inset 0 0 0 1px var(--hair);
+      }
+      .preview .meta svg.i {
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .btn {
+        height: 40px;
+        padding: 0 16px;
+        border-radius: 20px;
+        display: grid;
+        place-items: center;
+        font-size: 15px;
+        font-weight: 600;
+        background: var(--coral);
+        color: #fff;
+      }
+      .btn.ghost {
+        background: transparent;
+        color: var(--ink);
+        box-shadow: inset 0 0 0 1.5px var(--hair);
+      }
+      .toast {
+        position: absolute;
+        left: 50%;
+        bottom: 112px;
+        height: 42px;
+        padding: 0 18px 0 14px;
+        border-radius: 21px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        white-space: nowrap;
+        background: var(--navy);
+        color: #fff;
+        font-size: 14px;
+        font-weight: 600;
+        box-shadow: 0 14px 30px -14px rgba(13, 20, 40, 0.6);
+        z-index: 30;
+      }
+      .toast svg.i {
+        stroke-width: 2.6;
+        color: #8fd0a6;
+      }
+      .banner {
+        top: 236px;
+        border-radius: 22px;
+        padding: 16px 16px 14px;
+        overflow: hidden;
+      }
+      .banner .why {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--coral-deep);
+      }
+      .banner h3 {
+        margin: 6px 0 10px;
+        font-family: "Inter Tight", sans-serif;
+        font-size: 21px;
+        font-weight: 700;
+        letter-spacing: -0.015em;
+      }
+      .move {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 30px;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .move .t {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .move .t b {
+        color: var(--coral-deep);
+      }
+      .move .t svg {
+        width: 14px;
+        height: 14px;
+      }
+      .banner .acts {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .banner .acts .btn {
+        flex: 1;
+      }
+      .movedchip {
+        display: inline-flex;
+        align-items: center;
+        height: 20px;
+        padding: 0 7px;
+        margin-left: 8px;
+        border-radius: 10px;
+        font-size: 11px;
+        font-weight: 600;
+        vertical-align: 2px;
+        color: var(--coral-deep);
+        background: rgba(240, 108, 91, 0.14);
+      }
+      .hero {
+        top: 150px;
+        height: 132px;
+        border-radius: 24px;
+        padding: 18px 20px;
+        color: #fff;
+        background:
+          radial-gradient(70% 90% at 90% 10%, rgba(255, 255, 255, 0.35), transparent 60%),
+          linear-gradient(135deg, #f7a072, #f06c5b 60%, #d9534f);
+      }
+      .hero small {
+        font-size: 13px;
+        font-weight: 600;
+        opacity: 0.9;
+      }
+      .hero b {
+        display: block;
+        margin-top: 4px;
+        font-family: "Inter Tight", sans-serif;
+        font-size: 26px;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+      }
+      .hero .who {
+        position: absolute;
+        left: 20px;
+        bottom: 16px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .hero .who .avatar {
+        box-shadow: 0 0 0 2px #f06c5b;
+      }
+      .hero .shareb {
+        position: absolute;
+        right: 16px;
+        top: 16px;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        font-size: 21px;
+        background: rgba(255, 255, 255, 0.24);
+      }
+      .items {
+        top: 298px;
+        padding: 4px 16px;
+      }
+      .item {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        height: 56px;
+        font-size: 16px;
+        border-top: 1px solid var(--hair);
+      }
+      .item:first-child {
+        border-top: 0;
+      }
+      .item .check {
+        width: 26px;
+        height: 26px;
+      }
+      .item.done span {
+        color: var(--faint);
+        text-decoration: line-through;
+      }
+      .item .by {
+        margin-left: auto;
+        width: 22px;
+        height: 22px;
+        font-size: 10px;
+        box-shadow: none;
+      }
+      .sheet2 {
+        position: absolute;
+        left: 8px;
+        right: 8px;
+        bottom: 8px;
+        height: 330px;
+        border-radius: 38px;
+        background: var(--surface);
+        z-index: 21;
+        padding: 12px 22px 0;
+        box-shadow: 0 -10px 40px -20px rgba(13, 20, 40, 0.5);
+      }
+      .sheet2 h2 {
+        margin: 0;
+        font-size: 21px;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+      }
+      .people {
+        display: flex;
+        justify-content: space-between;
+        margin: 20px 4px 18px;
+      }
+      .person {
+        display: grid;
+        justify-items: center;
+        gap: 8px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .person .avatar {
+        width: 58px;
+        height: 58px;
+        font-size: 21px;
+        box-shadow: 0 0 0 3px rgba(240, 108, 91, 0.9);
+      }
+      .person.invite .avatar {
+        background: var(--surface-2);
+        color: var(--muted);
+        box-shadow: inset 0 0 0 1.5px var(--hair);
+      }
+      .sheet2 .linkrow {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        height: 48px;
+        padding: 0 14px;
+        border-radius: 14px;
+        background: var(--surface-2);
+        font-size: 14px;
+        color: var(--muted);
+      }
+      .sheet2 .linkrow svg.i {
+        color: var(--coral);
+      }
+      .sheet2 .big {
+        margin-top: 14px;
+        height: 54px;
+        border-radius: 27px;
+        background: var(--coral);
+        color: #fff;
+        display: grid;
+        place-items: center;
+        font-size: 17px;
+        font-weight: 600;
+      }
+      .fcard {
+        top: 286px;
+        border-radius: 28px;
+        padding: 22px 22px 0;
+        overflow: hidden;
+      }
+      .fcard .row1 {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        height: 64px;
+      }
+      .fcard .badge {
+        width: 60px;
+        height: 60px;
+        border-radius: 19px;
+        display: grid;
+        place-items: center;
+        font-size: 32px;
+        color: var(--sage);
+        background: rgba(111, 174, 132, 0.16);
+      }
+      .fcard .txt {
+        flex: 1;
+      }
+      .fcard b {
+        display: block;
+        font-family: "Inter Tight", sans-serif;
+        font-size: 27px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      .fcard .txt span {
+        font-size: 14px;
+        color: var(--muted);
+      }
+      .bigtoggle {
+        width: 70px;
+        height: 42px;
+        border-radius: 21px;
+        background: #d9dbe3;
+        position: relative;
+        flex: none;
+      }
+      .bigtoggle .knob {
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: #fff;
+        box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2);
+      }
+      .timer {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-top: 18px;
+        padding-top: 16px;
+        border-top: 1px solid var(--hair);
+      }
+      .timer .clock {
+        font-family: "Inter Tight", sans-serif;
+        font-size: 44px;
+        font-weight: 300;
+        letter-spacing: -0.02em;
+      }
+      .timer small {
+        display: block;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .timer .chip {
+        margin-left: auto;
+        height: 30px;
+        font-size: 12px;
+        background: rgba(111, 174, 132, 0.14);
+        color: #3d7d52;
+        box-shadow: none;
+      }
+      .timer .chip svg.i {
+        color: var(--sage);
+      }
+      .dimmed {
+        top: 560px;
+      }
+      .insight {
+        top: 150px;
+        height: 150px;
+        padding: 20px;
+      }
+      .insight small,
+      .bars small,
+      .mini small {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      .insight b {
+        display: block;
+        margin-top: 6px;
+        font-family: "Inter Tight", sans-serif;
+        font-size: 54px;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        line-height: 1;
+      }
+      .insight em {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        margin-top: 10px;
+        font-style: normal;
+        font-size: 13px;
+        font-weight: 600;
+        color: #3d7d52;
+      }
+      .insight .ring {
+        position: absolute;
+        right: 20px;
+        top: 22px;
+        width: 104px;
+        height: 104px;
+      }
+      .bars {
+        top: 314px;
+        height: 230px;
+        padding: 18px 20px;
+      }
+      .chart {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        height: 140px;
+        margin-top: 14px;
+      }
+      .chart div {
+        display: grid;
+        justify-items: center;
+        gap: 8px;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      .chart i {
+        width: 30px;
+        border-radius: 8px;
+        background: rgba(240, 108, 91, 0.28);
+      }
+      .chart .now i {
+        background: var(--coral);
+      }
+      .chart .now {
+        color: var(--coral-deep);
+      }
+      .minis {
+        top: 558px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+      .mini {
+        height: 136px;
+        padding: 16px;
+      }
+      .mini b {
+        display: block;
+        margin-top: 8px;
+        font-family: "Inter Tight", sans-serif;
+        font-size: 30px;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+      }
+      .mini .track {
+        height: 8px;
+        border-radius: 4px;
+        margin-top: 12px;
+        background: rgba(22, 33, 62, 0.08);
+        overflow: hidden;
+      }
+      .mini .track i {
+        display: block;
+        height: 100%;
+        border-radius: 4px;
+      }
+      .month {
+        top: 150px;
+        padding: 14px 12px 10px;
+      }
+      .mgrid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        row-gap: 6px;
+        text-align: center;
+      }
+      .mgrid .h {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+        padding-bottom: 6px;
+      }
+      .mgrid .d {
+        position: relative;
+        height: 52px;
+        display: grid;
+        justify-items: center;
+        align-content: start;
+        gap: 4px;
+        padding-top: 6px;
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .mgrid .d.out {
+        color: var(--faint);
+      }
+      .mgrid .d.today span {
+        width: 30px;
+        height: 30px;
+        margin-top: -5px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: var(--coral);
+        color: #fff;
+      }
+      .mgrid .dots {
+        display: flex;
+        gap: 3px;
+      }
+      .mgrid .dots i {
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+      }
+      .mgrid .span {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 3px;
+        height: 28px;
+        background: rgba(240, 135, 91, 0.16);
+      }
+      .mgrid .span.a {
+        left: 6px;
+        border-radius: 14px 0 0 14px;
+      }
+      .mgrid .span.b {
+        right: 6px;
+        border-radius: 0 14px 14px 0;
+      }
+      .mgrid .d span {
+        position: relative;
+      }
+      .upnext {
+        top: 548px;
+        padding: 6px 16px;
+      }
+      .up {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        height: 64px;
+        border-top: 1px solid var(--hair);
+      }
+      .up:first-child {
+        border-top: 0;
+      }
+      .up i {
+        width: 4px;
+        height: 36px;
+        border-radius: 2px;
+      }
+      .up b {
+        display: block;
+        font-size: 15px;
+      }
+      .up span {
+        font-size: 13px;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="phone" id="phone"></div>
+    <script type="module">
+      import { fillIcons, icon } from "../shared/icons.js";
+      import { caretOn, ease, lerp, mix, params, press, ready, rise, seg, typed } from "../shared/motion.js";
+      import { phoneChrome } from "../shared/phone.js";
+
+      const P = params();
+      const scene = P.scene ?? "sorted";
+      const phone = document.getElementById("phone");
+      if (P.mode === "dark") phone.classList.add("dark");
+      const $ = (id) => document.getElementById(id);
+      const ARROW = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8h11M9 4l4 4-4 4"/></svg>`;
+      const DAYS = [
+        ["Mon", 11],
+        ["Tue", 12],
+        ["Wed", 13],
+        ["Thu", 14],
+        ["Fri", 15],
+        ["Sat", 16],
+        ["Sun", 17],
+      ];
+      const head = (eyebrow, title) =>
+        `<div class="glow"></div><header class="head"><div class="eyebrow">${eyebrow}</div><h1 class="display">${title}</h1></header>`;
+      const week = () =>
+        `<div class="week" id="week">${DAYS.map(([d, n], i) => `<div class="day${i === 1 ? " today" : ""}${i > 4 ? " weekend" : ""}"><small>${d}</small><b class="tnum">${n}</b><i style="opacity:${i > 4 ? 0 : 1}"></i></div>`).join("")}</div>`;
+      const dock = (on = "Today") =>
+        `<div class="dock" id="dock"><nav class="tabs">${[
+          ["calendar", "Today"],
+          ["list", "Lists"],
+          ["bars", "Insights"],
+        ]
+          .map(([ic, t]) => `<div class="tab${t === on ? " on" : ""}">${icon(ic)}${t}</div>`)
+          .join("")}</nav><div class="add" id="add">${icon("plus")}Add plan</div></div>`;
+      const block = (cls, time, title, meta, id = "") =>
+        `<div class="block ${cls}"${id ? ` id="${id}"` : ""}><div class="body"><div class="time tnum">${time}</div><div class="title">${title}</div><div class="meta">${meta}</div></div><div class="side"><div class="check"><svg class="i" viewBox="0 0 24 24"><path d="M6 12.5l4 4 8-9"/></svg></div></div></div>`;
+      const pop = (el, t, at, dur = 380) => {
+        const k = ease.outBack(seg(t, at, dur));
+        el.style.opacity = String(Math.min(1, seg(t, at, dur) * 2));
+        el.style.transform = `scale(${0.6 + 0.4 * k})`;
+      };
+
+      const LANES = [
+        ["Mon", 11, [["sky", 0, 0.18, "Sync"], ["peach", 0.24, 0.48, "Interviews"], ["mint", 0.56, 0.88, "Focus"]]],
+        ["Tue", 12, [["sky", 0, 0.14, "Plan"], ["lilac", 0.2, 0.42, "Review"], ["mint", 0.48, 0.74, "Focus"], ["butter", 0.8, 0.96, "Ship"]]],
+        ["Wed", 13, [["peach", 0.06, 0.26, "1:1 Jo"], ["mint", 0.4, 0.72, "Focus"], ["sky", 0.78, 0.94, "Demo"]]],
+        ["Thu", 14, [["mint", 0, 0.3, "Focus"], ["lilac", 0.36, 0.6, "Launch"], ["sky", 0.68, 0.84, "Sync"]]],
+        ["Fri", 15, [["butter", 0.04, 0.22, "Retro"], ["mint", 0.28, 0.5, "Focus"]]],
+      ];
+
+      function sorted(t) {
+        if (!phone.dataset.ready) {
+          phone.innerHTML = `${head("11–17 May", "This week")}
+            <div class="abs sorted" id="card"><div class="skeleton" id="skel"><div class="top"><span class="spark">${icon("sparkle")}</span><span class="title" style="color:#c3c9dc">Sorting your week</span></div><i style="width:70%;margin-top:22px"></i><i style="width:46%"></i><i style="width:58%"></i></div>
+              <div id="done"><div class="top"><span class="spark">${icon("sparkle")}</span><span class="title">This week, sorted</span></div><div class="sub">Fairywren placed every plan around what matters.</div>
+              <div class="stats"><div><b class="tnum" id="s1">12</b><span>plans placed</span></div><div><b class="tnum" id="s2">4</b><span>focus blocks</span></div><div><b>Fri</b><span>afternoon free</span></div></div>
+              <div class="load">${[28, 33, 25, 32, 13].map((h, i) => `<i class="${i === 4 ? "free" : ""}" style="height:${h}px"></i>`).join("")}</div></div></div>
+            <div class="label" style="top:368px"><span>Schedule</span><span class="count">Mon to Fri</span></div>
+            <div class="abs rows">${LANES.map(([d, n, segs], r) => `<div class="drow"><div class="dl">${d}<b class="tnum">${n}</b></div><div class="lane">${segs.map(([c, a, b, txt]) => `<div class="seg ${c}" data-r="${r}" style="left:${a * 100}%;width:${(b - a) * 100}%">${txt}</div>`).join("")}${r === 4 ? `<div class="freechip" id="free">${icon("sun")}Afternoon free</div>` : ""}</div></div>`).join("")}</div>
+            ${dock()}${phoneChrome()}`;
+          fillIcons(phone);
+          phone.dataset.ready = "1";
+        }
+        rise($("card"), t, 250, { dy: 22, dur: 620 });
+        const swap = seg(t, 1100, 260);
+        $("skel").style.opacity = String(1 - swap);
+        $("done").style.opacity = String(swap);
+        const n = ease.out(seg(t, 1100, 900));
+        $("s1").textContent = String(Math.round(lerp(0, 12, n)));
+        $("s2").textContent = String(Math.round(lerp(0, 4, n)));
+        for (const [i, el] of [...phone.querySelectorAll(".seg")].entries()) {
+          const r = Number(el.dataset.r);
+          const p = ease.outQuint(seg(t, 1350 + r * 260 + (i % 4) * 70, 520));
+          el.style.opacity = String(Math.min(1, p * 1.5));
+          el.style.transform = `translateX(${(1 - p) * 40}px)`;
+        }
+        pop($("free"), t, 3900);
+      }
+
+      function quickadd(t) {
+        const TEXT = "Lunch with Jo Fri 12:30";
+        if (!phone.dataset.ready) {
+          phone.innerHTML = `${head("Tuesday 12 May", "Today")}${week()}
+            <div class="abs quick" id="quick">${icon("sparkle")}<span id="typed"></span><span class="caret" id="caret"></span><span class="ph" id="ph">Add anything, in your words</span></div>
+            <div class="abs card preview" id="preview"><div class="pv"><b>Lunch with Jo</b><div class="meta"><span>${icon("calendar")}Fri 15 May</span><span>${icon("clock")}12:30 to 13:30</span></div></div><div class="btn" id="addb">Add</div></div>
+            <div class="label" style="top:410px"><span>Schedule</span><span class="count">4 plans</span></div>
+            <div class="blocks" style="top:440px">${block("lilac", "10:30", "Design review", "Studio · 45 min")}${block("mint", "13:00", "Focus time", "Write the brief · 90 min")}${block("butter", "15:30", "Ship release", "Team · 30 min")}</div>
+            <div class="toast" id="toast">${icon("check")}Added to Friday</div>${dock()}${phoneChrome()}`;
+          fillIcons(phone);
+          phone.dataset.ready = "1";
+        }
+        const text = typed(TEXT, t, 400, 14);
+        const n = text.length;
+        const token = (from, to, cls) => {
+          const part = text.slice(from, Math.min(n, to));
+          if (!part) return "";
+          return n >= to ? `<span class="tok ${cls} on">${part}</span>` : part;
+        };
+        $("typed").innerHTML = `${text.slice(0, 11)}${token(11, 13, "who")}${text.slice(13, 14)}${token(14, 17, "day")}${text.slice(17, 18)}${token(18, 23, "time")}`;
+        const sent = t >= 3600;
+        $("ph").style.display = n ? "none" : "inline";
+        $("caret").style.opacity = !sent && caretOn(t, 2100) ? "1" : "0";
+        if (sent) $("typed").textContent = "";
+        if (sent) $("ph").style.display = "inline";
+        const pv = $("preview");
+        const up = ease.outQuint(seg(t, 2250, 520));
+        const away = ease.inOut(seg(t, 3600, 420));
+        pv.style.opacity = String(Math.min(1, up * 1.4) * (1 - away));
+        pv.style.transform = `translateY(${(1 - up) * -10 + away * 30}px) scale(${1 - 0.06 * away})`;
+        $("addb").style.transform = `scale(${press(t, 3450)})`;
+        const toast = $("toast");
+        const q = ease.outQuint(seg(t, 3750, 480));
+        toast.style.opacity = String(q);
+        toast.style.transform = `translate(-50%, ${(1 - q) * 16}px)`;
+        const fri = phone.querySelectorAll(".day")[4].querySelector("i");
+        fri.style.background = t >= 3750 ? "var(--coral)" : "";
+        fri.style.transform = `scale(${t >= 3750 ? 1 + 0.8 * Math.sin(Math.PI * seg(t, 3750, 380)) : 1})`;
+      }
+
+      function reschedule(t) {
+        if (!phone.dataset.ready) {
+          phone.innerHTML = `${head("Tuesday 12 May", "Today")}${week()}
+            <div class="abs card banner" id="banner"><div class="why">${icon("clock")}Design review is running over</div><h3>Moved 2 plans to fit</h3>
+              <div class="move">${icon("target")}Focus time<span class="t">13:00 ${ARROW} <b>13:30</b></span></div><div class="move">${icon("users")}Call with Sam<span class="t">16:30 ${ARROW} <b>17:00</b></span></div>
+              <div class="acts"><div class="btn" id="keep">Keep</div><div class="btn ghost">Undo</div></div></div>
+            <div class="label" id="label" style="top:236px"><span>Schedule</span><span class="count">3 plans</span></div>
+            <div class="blocks" id="blocks" style="top:266px">${block("lilac", "10:30", "Design review", "Studio · running 30 min over")}${block("mint", "13:00", "Focus time", "Write the brief · 90 min", "b2")}${block("peach", "16:30", "Call with Sam", "Phone · 30 min", "b4")}</div>
+            ${dock()}${phoneChrome()}`;
+          fillIcons(phone);
+          phone.dataset.ready = "1";
+        }
+        const open = ease.outQuint(seg(t, 700, 560));
+        const close = ease.inOut(seg(t, 3500, 520));
+        const h = 228 * open * (1 - close);
+        const banner = $("banner");
+        banner.style.height = `${h}px`;
+        banner.style.opacity = String(Math.min(1, open * 1.6) * (1 - close));
+        banner.style.padding = h < 30 ? "0 16px" : "";
+        $("label").style.top = `${236 + (h ? h + 14 : 0)}px`;
+        $("blocks").style.top = `${266 + (h ? h + 14 : 0)}px`;
+        $("keep").style.transform = `scale(${press(t, 3350)})`;
+        for (const [id, from, to] of [
+          ["b2", "13:00", "13:30"],
+          ["b4", "16:30", "17:00"],
+        ]) {
+          const el = $(id);
+          const at = id === "b2" ? 1500 : 1800;
+          const p = seg(t, at, 300);
+          const time = el.querySelector(".time");
+          time.innerHTML = p < 0.5 ? from : `${to}<span class="movedchip">Moved</span>`;
+          time.style.opacity = String(Math.abs(1 - 2 * p) * 0.8 + 0.2);
+          el.style.boxShadow = p > 0 ? `0 0 0 ${2 * Math.sin(Math.PI * Math.min(1, p))}px var(--coral) inset` : "";
+        }
+      }
+
+      function share(t) {
+        const ITEMS = ["Book the cabin", "Pack the tent", "Grab snacks", "Fill the car", "Charge the speaker", "Check the weather"];
+        if (!phone.dataset.ready) {
+          phone.innerHTML = `${head("List · 6 items", "Weekend away")}
+            <div class="abs hero" id="hero"><small>Sat 16 to Sun 17 May</small><b>Two nights at the coast</b><div class="who" id="who"><span id="whoText">Just you</span></div><div class="shareb" id="shareb">${icon("share")}</div></div>
+            <div class="abs card items" id="items">${ITEMS.map((s, i) => `<div class="item${i === 0 ? " done" : ""}"><div class="check${i === 0 ? " on" : ""}"><svg class="i" viewBox="0 0 24 24"><path d="M6 12.5l4 4 8-9"/></svg></div><span>${s}</span></div>`).join("")}</div>
+            <div class="scrim" id="scrim"></div>
+            <div class="sheet2" id="sheet"><div class="grabber"></div><h2 class="display">Share ‘Weekend away’</h2>
+              <div class="people" id="people"><div class="person"><div class="avatar a1">S</div>Sam</div><div class="person"><div class="avatar a3">J</div>Jo</div><div class="person"><div class="avatar a4">P</div>Priya</div><div class="person invite"><div class="avatar">${icon("plus")}</div>Add</div></div>
+              <div class="linkrow">${icon("link")}Anyone with the link can view</div><div class="big" id="go">Share with 3 people</div></div>
+            <div class="toast" id="toast">${icon("check")}Shared with 3 people</div>${dock("Lists")}${phoneChrome()}`;
+          fillIcons(phone);
+          phone.dataset.ready = "1";
+        }
+        $("shareb").style.transform = `scale(${press(t, 900)})`;
+        $("shareb").style.background = t >= 900 && t < 1150 ? "rgba(255,255,255,0.4)" : "";
+        const up = ease.outQuint(seg(t, 1000, 520));
+        const down = ease.inOut(seg(t, 2450, 420));
+        const vis = up * (1 - down);
+        $("scrim").style.opacity = String(0.32 * vis);
+        $("sheet").style.transform = `translateY(${(1 - vis) * 110}%)`;
+        $("go").style.transform = `scale(${press(t, 2300)})`;
+        const shared = t >= 2800;
+        $("whoText").textContent = shared ? "Sam, Jo and Priya" : "Just you";
+        const who = $("who");
+        if (shared && !who.querySelector(".avatars")) {
+          who.insertAdjacentHTML("afterbegin", '<div class="avatars"><div class="avatar a1">S</div><div class="avatar a3">J</div><div class="avatar a4">P</div></div>');
+        }
+        if (!shared) who.querySelector(".avatars")?.remove();
+        const av = who.querySelector(".avatars");
+        if (av) pop(av, t, 2800);
+        const toast = $("toast");
+        const q = ease.outQuint(seg(t, 2950, 480));
+        toast.style.opacity = String(q * (1 - seg(t, 4700, 400)));
+        toast.style.transform = `translate(-50%, ${(1 - q) * 16}px)`;
+        for (const [i, at, who2, cls] of [
+          [1, 3700, "S", "a1"],
+          [2, 4250, "J", "a3"],
+        ]) {
+          const item = phone.querySelectorAll(".item")[i];
+          const on = t >= at;
+          item.classList.toggle("done", on);
+          const c = item.querySelector(".check");
+          c.classList.toggle("on", on);
+          c.style.transform = `scale(${on ? 1 + 0.15 * Math.sin(Math.PI * seg(t, at, 260)) : 1})`;
+          let by = item.querySelector(".by");
+          if (on && !by) {
+            item.insertAdjacentHTML("beforeend", `<div class="avatar by ${cls}">${who2}</div>`);
+            by = item.querySelector(".by");
+          }
+          if (!on) by?.remove();
+          if (by) pop(by, t, at + 80);
+        }
+      }
+
+      function focusflow(t) {
+        if (!phone.dataset.ready) {
+          phone.innerHTML = `${head("Tuesday 12 May", "Today")}${week()}
+            <div class="abs card fcard" id="fcard"><div class="row1"><div class="badge">${icon("target")}</div><div class="txt"><b>Focus</b><span>Quiet the rest of the day</span></div><div class="bigtoggle" id="toggle"><div class="knob"></div></div></div>
+              <div class="timer" id="timer"><div><div class="clock tnum" id="clock">25:00</div><small>Until 14:30 · Write the brief</small></div><div class="chip">${icon("bellOff")}Paused</div></div></div>
+            <div class="abs dimmed" id="dimmed"><div class="label" style="position:relative;left:8px;right:8px;margin-bottom:12px"><span>Schedule</span><span class="count">3 plans</span></div><div style="display:flex;flex-direction:column;gap:10px">${block("lilac", "10:30", "Design review", "Studio · 45 min")}${block("butter", "15:30", "Ship release", "Team · 30 min")}</div></div>
+            ${dock()}${phoneChrome()}`;
+          fillIcons(phone);
+          phone.dataset.ready = "1";
+        }
+        const k = ease.outBack(seg(t, 1500, 320));
+        $("toggle").querySelector(".knob").style.transform = `translateX(${28 * k}px)`;
+        $("toggle").style.background = mix("#d9dbe3", "#6fae84", seg(t, 1500, 220));
+        const grow = ease.inOut(seg(t, 1850, 650));
+        $("fcard").style.height = `${108 + 112 * grow}px`;
+        $("timer").style.opacity = String(seg(t, 2150, 400));
+        $("dimmed").style.opacity = String(1 - 0.6 * ease.inOut(seg(t, 1900, 600)));
+        $("dimmed").style.top = `${414 + 112 * grow}px`;
+        const secs = 25 * 60 - Math.max(0, Math.floor((t - 2900) / 1000));
+        $("clock").textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+      }
+
+      function insights() {
+        const H = [3.2, 2.1, 4.0, 2.8, 1.6, 0.4, 0];
+        phone.innerHTML = `${head("11–17 May", "Insights")}
+          <div class="abs card insight"><small>Focus this week</small><b>9.5 h</b><em>${icon("arrowUp")}2 h more than last week</em>
+            <svg class="ring" viewBox="0 0 104 104"><circle cx="52" cy="52" r="44" fill="none" stroke="rgba(22,33,62,0.08)" stroke-width="12"/><circle cx="52" cy="52" r="44" fill="none" stroke="#6fae84" stroke-width="12" stroke-linecap="round" stroke-dasharray="276.5" stroke-dashoffset="69" transform="rotate(-90 52 52)"/><text x="52" y="58" text-anchor="middle" font-family="Inter Tight" font-weight="700" font-size="20" fill="currentColor">76%</text></svg></div>
+          <div class="abs card bars"><small>Focus hours by day</small><div class="chart">${DAYS.map(([d], i) => `<div class="${i === 1 ? "now" : ""}"><i style="height:${Math.max(6, H[i] * 28)}px"></i>${d.slice(0, 1)}</div>`).join("")}</div></div>
+          <div class="abs minis"><div class="card mini"><small>Plans done</small><b class="tnum">18 / 22</b><div class="track"><i style="width:82%;background:var(--coral)"></i></div></div><div class="card mini"><small>Meetings</small><b class="tnum">6 h</b><div class="track"><i style="width:38%;background:var(--sky)"></i></div></div></div>
+          ${dock("Insights")}${phoneChrome()}`;
+        fillIcons(phone);
+      }
+
+      function month() {
+        const EV = { 4: ["sky"], 6: ["mint", "lilac"], 7: ["peach"], 11: ["sky", "peach", "lilac"], 12: ["sky", "lilac", "mint"], 13: ["peach", "mint"], 14: ["mint", "lilac"], 15: ["butter", "mint"], 19: ["sky"], 20: ["mint"], 21: ["lilac", "mint"], 22: ["butter"], 26: ["sky", "mint"], 27: ["peach"], 28: ["mint"], 29: ["butter"] };
+        const colour = { sky: "var(--sky)", mint: "var(--mint)", lilac: "var(--lilac)", peach: "var(--peach)", butter: "var(--butter)" };
+        const cells = [];
+        for (let i = 0; i < 35; i++) {
+          const d = i - 3;
+          const label = d < 1 ? 27 + i + 1 : d > 31 ? d - 31 : d;
+          const out = d < 1 || d > 31;
+          const span = d === 16 ? '<div class="span a"></div>' : d === 17 ? '<div class="span b"></div>' : "";
+          const dots = !out && EV[d] ? `<div class="dots">${EV[d].map((c) => `<i style="background:${colour[c]}"></i>`).join("")}</div>` : "";
+          cells.push(`<div class="d${out ? " out" : ""}${d === 12 ? " today" : ""}">${span}<span class="tnum">${label}</span>${dots}</div>`);
+        }
+        phone.innerHTML = `${head("Calendar", "May")}
+          <div class="abs card month"><div class="mgrid">${["M", "T", "W", "T", "F", "S", "S"].map((h) => `<div class="h">${h}</div>`).join("")}${cells.join("")}</div></div>
+          <div class="abs card upnext"><div class="up"><i style="background:var(--lilac)"></i><div><b>Design review</b><span>Today · 10:30</span></div></div><div class="up"><i style="background:var(--peach)"></i><div><b>Weekend away</b><span>Sat 16 to Sun 17 May</span></div></div><div class="up"><i style="background:var(--butter)"></i><div><b>Retro</b><span>Fri 15 May · 10:00</span></div></div></div>
+          ${dock()}${phoneChrome()}`;
+        fillIcons(phone);
+      }
+
+      const SCENES = { sorted, quickadd, reschedule, share, focusflow, insights, month };
+      window.render = (t) => SCENES[scene](t);
+      window.pageReady = ready();
+    </script>
+  </body>
+</html>

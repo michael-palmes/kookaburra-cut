@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <title>Thornbill terminal</title>
+    <link rel="stylesheet" href="../shared/base.css" />
+    <link rel="stylesheet" href="../shared/window.css" />
+    <link rel="stylesheet" href="app.css" />
+    <style>
+      .bar {
+        height: 44px;
+        flex: none;
+        display: flex;
+        align-items: center;
+        padding: 0 18px;
+        background: var(--toolbar);
+        border-bottom: 1px solid var(--toolbar-line);
+        position: relative;
+      }
+      .bar .title {
+        position: absolute;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--toolbar-ink);
+      }
+      .term {
+        flex: 1;
+        padding: 30px 40px;
+        font: 400 20px/35px "JetBrains Mono", monospace;
+        font-variant-ligatures: none;
+        background:
+          radial-gradient(80% 60% at 85% 0%, rgba(34, 211, 238, 0.07), transparent 70%),
+          var(--bg);
+      }
+      .line {
+        height: 35px;
+        display: flex;
+        align-items: center;
+        white-space: pre;
+      }
+      .line svg {
+        flex: none;
+      }
+      .ctx {
+        color: var(--cyan);
+      }
+      .branch {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-left: 14px;
+        color: var(--faint);
+      }
+      .branch svg.i {
+        font-size: 16px;
+      }
+      .chev {
+        width: 18px;
+        height: 18px;
+        margin-right: 12px;
+        stroke: var(--lime);
+        stroke-width: 2.6;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .block {
+        display: inline-block;
+        width: 10px;
+        height: 22px;
+        margin-left: 1px;
+        background: var(--ink);
+        vertical-align: middle;
+      }
+      .head {
+        gap: 12px;
+      }
+      .head .logo {
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .head .logo svg {
+        width: 22px;
+        height: 22px;
+        display: block;
+      }
+      .head .ver {
+        color: var(--muted);
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .arrow {
+        width: 16px;
+        height: 16px;
+        stroke: currentColor;
+        stroke-width: 2;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .step {
+        gap: 14px;
+      }
+      .step .mark {
+        width: 20px;
+        height: 20px;
+        display: grid;
+        place-items: center;
+      }
+      .step .txt {
+        flex: none;
+        width: 600px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .step .dur {
+        color: var(--faint);
+      }
+      .step.busy .txt {
+        color: var(--muted);
+      }
+      .meter {
+        display: inline-block;
+        width: 220px;
+        height: 8px;
+        border-radius: 4px;
+        background: rgba(148, 163, 184, 0.15);
+        overflow: hidden;
+        margin-right: 16px;
+      }
+      .meter i {
+        display: block;
+        height: 100%;
+        background: linear-gradient(90deg, #22d3ee, #67e8f9);
+        border-radius: 4px;
+      }
+      .done-pill {
+        display: inline-flex;
+        align-items: center;
+        height: 26px;
+        padding: 0 10px;
+        margin-right: 14px;
+        border-radius: 6px;
+        background: var(--lime);
+        color: #0a0f1e;
+        font-size: 14px;
+        letter-spacing: 0.06em;
+      }
+      .change {
+        gap: 16px;
+        margin: 0 -14px;
+        padding: 0 14px;
+        border-radius: 8px;
+      }
+      .change.done {
+        gap: 0;
+      }
+      .pill {
+        display: inline-grid;
+        place-items: center;
+        width: 96px;
+        height: 26px;
+        border-radius: 6px;
+        font-size: 14px;
+        line-height: 26px;
+        letter-spacing: 0.06em;
+      }
+      .pill.new {
+        background: rgba(34, 211, 238, 0.14);
+        color: var(--cyan);
+      }
+      .pill.faster,
+      .pill.better {
+        background: rgba(167, 139, 250, 0.16);
+        color: #c4b5fd;
+      }
+      .pill.fixed {
+        background: var(--lime-soft);
+        color: var(--lime);
+      }
+      .muted {
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="win" id="win"></div>
+    <script type="module">
+      import { fillIcons, icon } from "../shared/icons.js";
+      import { caretOn, params, ready, seg } from "../shared/motion.js";
+      import { MARK } from "./mark.js";
+
+      const CHEV = `<svg class="chev" viewBox="0 0 18 18"><path d="M5 3l7 6-7 6"/></svg>`;
+      const ARROW = `<svg class="arrow" viewBox="0 0 16 16"><path d="M2 8h11M9 4l4 4-4 4"/></svg>`;
+      const CHECK = `<svg width="20" height="20" viewBox="0 0 20 20"><path d="M4 10.5l4 4 8-9" fill="none" stroke="#a3e635" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      const spin = (t) =>
+        `<svg width="20" height="20" viewBox="0 0 20 20" style="transform:rotate(${(t * 0.6) % 360}deg)"><circle cx="10" cy="10" r="7.5" fill="none" stroke="rgba(148,163,184,0.25)" stroke-width="2.4"/><path d="M10 2.5a7.5 7.5 0 0 1 7.5 7.5" fill="none" stroke="#22d3ee" stroke-width="2.4" stroke-linecap="round"/></svg>`;
+
+      const COMMAND = "thornbill upgrade";
+      const keyAt = [];
+      let acc = 320;
+      for (let i = 0; i < COMMAND.length; i++) {
+        keyAt.push(acc);
+        acc += 52 + ((i * 37) % 5) * 9 + (COMMAND[i] === " " ? 40 : 0);
+      }
+      const STEPS = [
+        { at: 1900, end: 2250, busy: "Resolving packages", done: "Resolved 214 packages", dur: "0.4s" },
+        { at: 2250, end: 2700, busy: "Applying migration", done: `Applied migration 4.1 ${ARROW} 4.2`, dur: "0.9s" },
+        { at: 2700, end: 3050, busy: "Regenerating route types", done: "Regenerated route types", dur: "0.6s" },
+        { at: 3050, end: 3650, busy: "Running tests", done: "212 tests passed", dur: "1.2s", meter: true },
+      ];
+
+      const win = document.getElementById("win");
+      win.innerHTML = `<div class="bar"><div class="lights"><i></i><i></i><i></i></div><div class="title">shop-api · zsh</div></div><div class="term" id="term"></div>`;
+      const term = document.getElementById("term");
+
+      const BEAT = 60000 / 128;
+      const ENTER = 4 * BEAT;
+      const CHANGES = [
+        ["new", "NEW", "Typed environment variables"],
+        ["new", "NEW", '<span class="ctx">thornbill preview</span> shares a live URL'],
+        ["faster", "FASTER", "Cold starts 38% faster"],
+        ["better", "BETTER", "Route types regenerate in watch mode"],
+        ["fixed", "FIXED", "Watch mode on large monorepos"],
+      ];
+      const lit = (t, at) => {
+        const p = seg(t, at, 420);
+        return p > 0 && p < 1 ? ` style="background:rgba(34,211,238,${(0.14 * (1 - p)).toFixed(3)})"` : "";
+      };
+
+      function changes(t) {
+        const typedCount = keyAt.filter((k) => t >= k).length;
+        const lines = [`<div class="line"><span class="ctx">~/shop-api</span><span class="branch">${icon("git")}main</span></div>`];
+        lines.push(
+          `<div class="line">${CHEV}<span>${COMMAND.slice(0, typedCount)}</span>${t < ENTER && caretOn(t, keyAt.at(-1) + 200) ? '<span class="block"></span>' : ""}</div>`,
+        );
+        if (t >= ENTER) {
+          lines.push('<div class="line"></div>');
+          lines.push(`<div class="line head"><span class="logo">${MARK}</span><span>Thornbill</span><span class="ver">4.1.3 ${ARROW} 4.2.0 · 5 changes</span></div>`);
+          lines.push('<div class="line"></div>');
+        }
+        for (const [i, [cls, tag, text]] of CHANGES.entries()) {
+          const at = ENTER + (i + 1) * BEAT;
+          if (t < at) break;
+          lines.push(`<div class="line change"${lit(t, at)}><span class="pill ${cls}">${tag}</span><span>${text}</span></div>`);
+        }
+        const done = ENTER + 6 * BEAT;
+        if (t >= done) {
+          lines.push('<div class="line"></div>');
+          lines.push(`<div class="line change done"${lit(t, done)}><span class="done-pill">DONE</span><span class="ok">Upgraded to 4.2.0 in 3.1s</span></div>`);
+        }
+        if (t >= done + BEAT) {
+          lines.push('<div class="line"></div>');
+          lines.push(`<div class="line">${CHEV}${caretOn(t, done + BEAT) ? '<span class="block"></span>' : ""}</div>`);
+        }
+        term.innerHTML = lines.join("");
+      }
+
+      function upgrade(t) {
+        const typedCount = keyAt.filter((k) => t >= k).length;
+        const lines = [`<div class="line"><span class="ctx">~/shop-api</span><span class="branch">${icon("git")}main</span></div>`];
+        const entered = t >= 1650;
+        lines.push(
+          `<div class="line">${CHEV}<span>${COMMAND.slice(0, typedCount)}</span>${!entered && caretOn(t, keyAt.at(-1) + 200) ? '<span class="block"></span>' : ""}</div>`,
+        );
+        if (t >= 1750) {
+          lines.push('<div class="line"></div>');
+          lines.push(`<div class="line head"><span class="logo">${MARK}</span><span>Thornbill</span><span class="ver">4.1.3 ${ARROW} 4.2.0</span></div>`);
+          lines.push('<div class="line"></div>');
+        }
+        for (const s of STEPS) {
+          if (t < s.at) break;
+          const done = t >= s.end;
+          const meter = s.meter && !done ? `<span class="meter"><i style="width:${Math.round(100 * seg(t, s.at, s.end - s.at - 60))}%"></i></span>` : "";
+          lines.push(
+            `<div class="line step${done ? "" : " busy"}"><span class="mark">${done ? CHECK : spin(t)}</span><span class="txt">${done ? s.done : `${s.busy}`}</span>${meter}${done ? `<span class="dur">${s.dur}</span>` : ""}</div>`,
+          );
+        }
+        if (t >= 3800) {
+          lines.push('<div class="line"></div>');
+          lines.push('<div class="line"><span class="done-pill">DONE</span><span class="ok">Upgraded to 4.2.0 in 3.1s</span></div>');
+        }
+        if (t >= 3950) lines.push('<div class="line"><span class="muted">Next: </span><span class="ctx">thornbill deploy --preview</span></div>');
+        if (t >= 4150) {
+          lines.push('<div class="line"></div>');
+          lines.push(`<div class="line"><span class="ctx">~/shop-api</span><span class="branch">${icon("git")}main</span></div>`);
+          lines.push(`<div class="line">${CHEV}${caretOn(t, 4150) ? '<span class="block"></span>' : ""}</div>`);
+        }
+        term.innerHTML = lines.join("");
+      }
+
+      window.render = params().scene === "changes" ? changes : upgrade;
+      fillIcons(win);
+      window.pageReady = ready();
+    </script>
+  </body>
+</html>

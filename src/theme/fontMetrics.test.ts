@@ -22,6 +22,7 @@ const FACES: { ref: FontRef; file: string }[] = [
   { ref: { family: "Playfair Display", weight: 600 }, file: "PlayfairDisplay-SemiBold.woff" },
   { ref: { family: "JetBrains Mono", weight: 400 }, file: "JetBrainsMono-Regular.woff" },
   { ref: { family: "Cormorant Garamond", weight: 600 }, file: "CormorantGaramond-SemiBold.woff" },
+  { ref: { family: "Inter Tight", weight: 800 }, file: "InterTight-ExtraBold.woff" },
 ];
 
 const TEXTS = [

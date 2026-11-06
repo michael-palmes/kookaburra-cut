@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fairywren week</title>
+    <link rel="stylesheet" href="../shared/base.css" />
+    <link rel="stylesheet" href="app.css" />
+    <style>
+      .desk {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        background: var(--bg);
+        color: var(--ink);
+      }
+      .sysbar {
+        height: 32px;
+        flex: none;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 26px;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .sysbar .glyphs {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .menubar {
+        height: 32px;
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 22px;
+        padding: 0 18px;
+        font-size: 14px;
+        background: rgba(255, 255, 255, 0.72);
+        border-bottom: 1px solid var(--hair);
+      }
+      .menubar b {
+        font-weight: 600;
+      }
+      .menubar .right {
+        margin-left: auto;
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        font-size: 14px;
+      }
+      .menubar .right svg.i {
+        font-size: 16px;
+      }
+      .app {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+      }
+      .side {
+        width: var(--side);
+        flex: none;
+        padding: 22px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        background: var(--surface-2);
+        border-right: 1px solid var(--hair);
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 8px 18px;
+        font-family: "Inter Tight", sans-serif;
+        font-weight: 800;
+        font-size: 20px;
+        letter-spacing: -0.02em;
+      }
+      .brand .mark {
+        width: 32px;
+        height: 32px;
+        border-radius: 9px;
+      }
+      .nav {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        height: 42px;
+        padding: 0 12px;
+        border-radius: 12px;
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      .nav svg.i {
+        font-size: 19px;
+      }
+      .nav.on {
+        background: rgba(240, 108, 91, 0.12);
+        color: var(--coral-deep);
+      }
+      .nav .n {
+        margin-left: auto;
+        font-size: 12px;
+        color: var(--faint);
+      }
+      .group {
+        margin: 22px 12px 6px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--faint);
+      }
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        margin: 0 5px;
+      }
+      .me {
+        margin-top: auto;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .me .avatar {
+        width: 32px;
+        height: 32px;
+        font-size: 13px;
+      }
+      .me svg.i {
+        margin-left: auto;
+        color: var(--muted);
+        font-size: 18px;
+      }
+      .main {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        padding: 26px 30px 0;
+      }
+      .top {
+        display: flex;
+        align-items: flex-end;
+        gap: 14px;
+        padding-bottom: 20px;
+      }
+      .top .eyebrow {
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: var(--coral);
+      }
+      .top h1 {
+        margin: 4px 0 0;
+        font-size: 38px;
+        line-height: 1;
+        font-weight: 800;
+        letter-spacing: -0.025em;
+      }
+      .top .grow {
+        flex: 1;
+      }
+      .segs {
+        display: flex;
+        padding: 3px;
+        border-radius: 12px;
+        background: rgba(22, 33, 62, 0.06);
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      .segs div {
+        padding: 7px 16px;
+        border-radius: 9px;
+      }
+      .segs .on {
+        background: var(--surface);
+        color: var(--ink);
+        box-shadow: 0 1px 3px rgba(22, 33, 62, 0.12);
+      }
+      .iconbtn {
+        width: 38px;
+        height: 38px;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        font-size: 19px;
+        color: var(--muted);
+        box-shadow: 0 0 0 1px var(--hair) inset;
+        background: var(--surface);
+      }
+      .cta {
+        height: 40px;
+        padding: 0 18px;
+        border-radius: 20px;
+        background: var(--coral);
+        color: #fff;
+        font-size: 15px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        box-shadow: 0 10px 20px -12px rgba(240, 108, 91, 0.9);
+      }
+      .cta svg.i {
+        font-size: 18px;
+        stroke-width: 2.4;
+      }
+      .body {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        gap: 24px;
+      }
+      .cal {
+        flex: 1;
+        min-width: 0;
+        display: grid;
+        grid-template-columns: 54px repeat(5, 1fr);
+        grid-template-rows: 62px 1fr;
+        background: var(--surface);
+        border-radius: 22px 22px 0 0;
+        box-shadow: var(--shadow), 0 0 0 1px var(--hair) inset;
+        overflow: hidden;
+      }
+      .dayhead {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding-left: 12px;
+        border-bottom: 1px solid var(--hair);
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .dayhead b {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        font-size: 17px;
+        color: var(--ink);
+        letter-spacing: 0;
+      }
+      .dayhead.today b {
+        background: var(--coral);
+        color: #fff;
+      }
+      .dayhead.today {
+        color: var(--coral-deep);
+      }
+      .gutter {
+        position: relative;
+        border-bottom: 1px solid var(--hair);
+      }
+      .gutter span {
+        position: absolute;
+        right: 10px;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--faint);
+        transform: translateY(-50%);
+      }
+      .col {
+        position: relative;
+        border-left: 1px solid var(--hair);
+        background-image: linear-gradient(var(--hair) 1px, transparent 1px);
+        background-size: 100% var(--hour);
+      }
+      .col.today {
+        background-color: rgba(240, 108, 91, 0.035);
+      }
+      .ev {
+        position: absolute;
+        left: 6px;
+        right: 6px;
+        border-radius: 12px;
+        padding: 8px 10px 0 14px;
+        background: var(--tint);
+        overflow: hidden;
+      }
+      .ev::before {
+        content: "";
+        position: absolute;
+        left: 6px;
+        top: 8px;
+        bottom: 8px;
+        width: 3px;
+        border-radius: 2px;
+        background: var(--bar);
+      }
+      .ev small {
+        display: block;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--bar);
+      }
+      .ev b {
+        display: block;
+        margin-top: 1px;
+        font-size: 13.5px;
+        font-weight: 600;
+        line-height: 1.25;
+      }
+      .ev.done b {
+        text-decoration: line-through;
+        opacity: 0.5;
+      }
+      .sky {
+        --tint: var(--sky-bg);
+        --bar: var(--sky);
+      }
+      .lilac {
+        --tint: var(--lilac-bg);
+        --bar: var(--lilac);
+      }
+      .mint {
+        --tint: var(--mint-bg);
+        --bar: var(--mint);
+      }
+      .butter {
+        --tint: var(--butter-bg);
+        --bar: var(--butter);
+      }
+      .peach {
+        --tint: var(--peach-bg);
+        --bar: var(--peach);
+      }
+      .now {
+        position: absolute;
+        left: -1px;
+        right: 0;
+        height: 2px;
+        background: var(--coral);
+        z-index: 2;
+      }
+      .now::before {
+        content: "";
+        position: absolute;
+        left: -5px;
+        top: -4px;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--coral);
+      }
+      .todo {
+        width: var(--todo);
+        flex: none;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .card {
+        background: var(--surface);
+        border-radius: 22px;
+        box-shadow: var(--shadow), 0 0 0 1px var(--hair) inset;
+        padding: 18px 18px 8px;
+      }
+      .card h3 {
+        margin: 0 0 6px;
+        display: flex;
+        justify-content: space-between;
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .card h3 span {
+        font-size: 13px;
+        font-weight: 400;
+        color: var(--muted);
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        height: 48px;
+        font-size: 15px;
+        border-top: 1px solid var(--hair);
+      }
+      .row:first-of-type {
+        border-top: 0;
+      }
+      .row .check {
+        width: 22px;
+        height: 22px;
+      }
+      .row.done span {
+        text-decoration: line-through;
+        color: var(--faint);
+      }
+      .row em {
+        margin-left: auto;
+        font-style: normal;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .focus {
+        background: var(--navy);
+        color: #f4f0ea;
+        border-radius: 22px;
+        padding: 18px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      .launch {
+        padding-bottom: 18px;
+      }
+      .launch .bar {
+        height: 8px;
+        border-radius: 4px;
+        margin: 12px 0 14px;
+        background: rgba(22, 33, 62, 0.07);
+        overflow: hidden;
+      }
+      .launch .bar i {
+        display: block;
+        height: 100%;
+        border-radius: 4px;
+        background: var(--coral);
+      }
+      .launch .foot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .focus .ringlet {
+        width: 54px;
+        height: 54px;
+        flex: none;
+      }
+      .focus b {
+        display: block;
+        font-size: 15px;
+      }
+      .focus span {
+        font-size: 13px;
+        color: #aab2cc;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="desk" id="desk"></div>
+    <script type="module">
+      import { fillIcons, icon } from "../shared/icons.js";
+      import { params, ready } from "../shared/motion.js";
+
+      const form = params().form ?? "tablet";
+      const laptop = form === "laptop";
+      const desk = document.getElementById("desk");
+      desk.style.setProperty("--side", laptop ? "250px" : "232px");
+      desk.style.setProperty("--todo", laptop ? "330px" : "290px");
+
+      const FIRST = 8;
+      const LAST = 17;
+      const DAYS = [
+        ["Mon", 11, [
+          ["sky", 9.5, 1, "Team sync"],
+          ["peach", 11, 1.5, "Interviews"],
+          ["lilac", 14, 1.5, "Roadmap"],
+        ]],
+        ["Tue", 12, [
+          ["sky", 9, 0.75, "Plan the week", true],
+          ["lilac", 10.5, 1, "Design review"],
+          ["mint", 13, 1.5, "Focus time"],
+          ["butter", 15.5, 1, "Ship release"],
+        ]],
+        ["Wed", 13, [
+          ["peach", 10, 1, "1:1 with Jo"],
+          ["mint", 13, 2, "Focus time"],
+          ["sky", 16, 1, "Demo prep"],
+        ]],
+        ["Thu", 14, [
+          ["sky", 9.5, 1, "Team sync"],
+          ["lilac", 11, 1.5, "Launch review"],
+          ["mint", 14.5, 1.5, "Focus time"],
+        ]],
+        ["Fri", 15, [
+          ["butter", 10, 1, "Retro"],
+          ["mint", 13, 1.5, "Focus time"],
+          ["sky", 15, 1, "Wrap-up"],
+        ]],
+      ];
+      const TODO = [
+        ["Finish proposal", true, "Mon"],
+        ["Update roadmap", false, "Today"],
+        ["Plan next sprint", false, "Wed"],
+        ["Book travel", false, "Thu"],
+        ["Send the recap", false, "Fri"],
+      ];
+      const clock = (h) => `${String(Math.floor(h)).padStart(2, "0")}:${h % 1 ? String(Math.round((h % 1) * 60)).padStart(2, "0") : "00"}`;
+
+      const chrome = laptop
+        ? `<div class="menubar"><b>Fairywren</b><span>File</span><span>Edit</span><span>View</span><span>Window</span><span>Help</span><div class="right">${icon("search")}${icon("bell")}<span>Tue 12 May</span><span class="tnum">9:41</span></div></div>`
+        : `<div class="sysbar"><span class="tnum">9:41&nbsp;&nbsp;Tue 12 May</span><span class="glyphs"><svg width="17" height="12" viewBox="0 0 17 12" fill="currentColor"><path d="M8.5 2.6c2.3 0 4.4.9 6 2.4l1.2-1.2A10.2 10.2 0 0 0 8.5.9 10.2 10.2 0 0 0 1.3 3.8L2.5 5a8.5 8.5 0 0 1 6-2.4z"/><path d="M8.5 5.9c1.4 0 2.7.5 3.7 1.4l1.2-1.2A7 7 0 0 0 8.5 4.2a7 7 0 0 0-4.9 1.9l1.2 1.2c1-.9 2.3-1.4 3.7-1.4z"/><path d="M8.5 9.1c.6 0 1.1.2 1.5.5L8.5 11.3 7 9.6c.4-.3.9-.5 1.5-.5z"/></svg><span>100%</span><svg width="28" height="13" viewBox="0 0 28 13" fill="none"><rect x="0.6" y="0.6" width="23.6" height="11.8" rx="3.6" stroke="currentColor" stroke-opacity="0.4" stroke-width="1.2"/><rect x="2.4" y="2.4" width="20" height="8.2" rx="2.2" fill="currentColor"/></svg></span></div>`;
+
+      desk.innerHTML = `${chrome}<div class="app">
+        <aside class="side"><div class="brand"><img class="mark" src="mark.svg" alt="" />Fairywren</div>
+          <div class="nav">${icon("sun")}Today</div><div class="nav on">${icon("calendar")}Week<span class="n">17</span></div><div class="nav">${icon("list")}Lists</div><div class="nav">${icon("bars")}Insights</div>
+          <div class="group">Lists</div>
+          <div class="nav"><span class="dot" style="background:var(--coral)"></span>Launch<span class="n">8</span></div><div class="nav"><span class="dot" style="background:var(--sky)"></span>Work<span class="n">12</span></div><div class="nav"><span class="dot" style="background:var(--mint)"></span>Home<span class="n">5</span></div>
+          <div class="me"><div class="avatar a2">A</div>Alex${icon("settings")}</div></aside>
+        <main class="main"><div class="top"><div><div class="eyebrow">11–17 May</div><h1 class="display">This week</h1></div><div class="grow"></div>
+          <div class="segs"><div>Day</div><div class="on">Week</div><div>Month</div></div><div class="iconbtn">${icon("search")}</div><div class="cta">${icon("plus")}Add plan</div></div>
+          <div class="body"><div class="cal" id="cal"></div>
+          <div class="todo"><div class="card"><h3>To do<span>4 left</span></h3>${TODO.map(([t, d, w]) => `<div class="row${d ? " done" : ""}"><div class="check${d ? " on" : ""}">${icon("check")}</div><span>${t}</span><em>${w}</em></div>`).join("")}</div>
+            <div class="focus"><svg class="ringlet" viewBox="0 0 54 54"><circle cx="27" cy="27" r="22" fill="none" stroke="rgba(244,240,234,0.14)" stroke-width="5"/><circle cx="27" cy="27" r="22" fill="none" stroke="#f06c5b" stroke-width="5" stroke-linecap="round" stroke-dasharray="138.2" stroke-dashoffset="41" transform="rotate(-90 27 27)"/></svg><div><b>9.5 h of focus</b><span>Up 2 h on last week</span></div></div>
+            <div class="card launch"><h3>Launch week<span>12–29 May</span></h3><div class="bar"><i style="width:62%"></i></div><div class="foot"><div class="avatars"><div class="avatar a1">S</div><div class="avatar a2">A</div><div class="avatar a3">J</div><div class="avatar a4">P</div></div><span>62% planned</span></div></div></div></div></main></div>`;
+
+      const cal = document.getElementById("cal");
+      const hours = LAST - FIRST;
+      cal.innerHTML = `<div style="border-bottom:1px solid var(--hair)"></div>${DAYS.map(([d, n], i) => `<div class="dayhead${i === 1 ? " today" : ""}">${d}<b class="tnum">${n}</b></div>`).join("")}
+        <div class="gutter" id="gutter"></div>${DAYS.map((_, i) => `<div class="col${i === 1 ? " today" : ""}" data-day="${i}"></div>`).join("")}`;
+      const height = cal.getBoundingClientRect().height - 62;
+      const hour = height / hours;
+      desk.style.setProperty("--hour", `${hour}px`);
+      document.getElementById("gutter").innerHTML = Array.from({ length: hours - 1 }, (_, k) => `<span class="tnum" style="top:${(k + 1) * hour}px">${clock(FIRST + k + 1)}</span>`).join("");
+      for (const col of cal.querySelectorAll(".col")) {
+        const [, , events] = DAYS[Number(col.dataset.day)];
+        col.innerHTML = events
+          .map(([cls, start, dur, title, done]) => `<div class="ev ${cls}${done ? " done" : ""}" style="top:${(start - FIRST) * hour + 2}px;height:${dur * hour - 4}px"><small class="tnum">${clock(start)}</small><b>${title}</b></div>`)
+          .join("");
+        if (col.dataset.day === "1") col.insertAdjacentHTML("beforeend", `<div class="now" style="top:${(9 + 41 / 60 - FIRST) * hour}px"></div>`);
+      }
+      fillIcons(desk);
+      window.render = () => {};
+      window.pageReady = ready();
+    </script>
+  </body>
+</html>

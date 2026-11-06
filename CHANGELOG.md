@@ -13,6 +13,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   exports in Downloads) and `UpdateEndpoint` (update checks ask your own
   server). Settings shows a lock on each row they govern, and Settings ▸ Claude
   gains an Agent kit row. See `docs/mdm.md`.
+- Inter Tight joins the bundled fonts in six weights, 300 to 900, with a 3D face
+  for extruded titles. It loads only in projects that use it.
 
 ### Security
 

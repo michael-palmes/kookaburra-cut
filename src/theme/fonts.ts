@@ -7,6 +7,12 @@ import ibmPlexSansSemiBoldUrl from "../assets/fonts/IBMPlexSans-SemiBold.woff?ur
 import instrumentSerifRegularUrl from "../assets/fonts/InstrumentSerif-Regular.woff?url";
 import interRegularUrl from "../assets/fonts/Inter-Regular.woff?url";
 import interSemiBoldUrl from "../assets/fonts/Inter-SemiBold.woff?url";
+import interTightBlackUrl from "../assets/fonts/InterTight-Black.woff?url";
+import interTightBoldUrl from "../assets/fonts/InterTight-Bold.woff?url";
+import interTightExtraBoldUrl from "../assets/fonts/InterTight-ExtraBold.woff?url";
+import interTightLightUrl from "../assets/fonts/InterTight-Light.woff?url";
+import interTightRegularUrl from "../assets/fonts/InterTight-Regular.woff?url";
+import interTightSemiBoldUrl from "../assets/fonts/InterTight-SemiBold.woff?url";
 import jetbrainsMonoRegularUrl from "../assets/fonts/JetBrainsMono-Regular.woff?url";
 import jostMediumUrl from "../assets/fonts/Jost-Medium.woff?url";
 import jostRegularUrl from "../assets/fonts/Jost-Regular.woff?url";
@@ -54,6 +60,14 @@ export const BUNDLED_FONTS: Record<string, Record<number, string>> = {
   Jost: { 400: jostRegularUrl, 500: jostMediumUrl },
   "IBM Plex Sans": { 400: ibmPlexSansRegularUrl, 600: ibmPlexSansSemiBoldUrl },
   Fraunces: { 600: frauncesSemiBoldUrl },
+  "Inter Tight": {
+    300: interTightLightUrl,
+    400: interTightRegularUrl,
+    600: interTightSemiBoldUrl,
+    700: interTightBoldUrl,
+    800: interTightExtraBoldUrl,
+    900: interTightBlackUrl,
+  },
 };
 
 /** Faces added after the boot preload set froze: they typeset only when a project references them, so their atlas cells never shift an older project's glyphs (docs/determinism.md "Fonts"). Append every new bundled face here. */
@@ -62,6 +76,7 @@ export const LAZY_BUNDLED_FAMILIES: ReadonlySet<string> = new Set([
   "Jost",
   "IBM Plex Sans",
   "Fraunces",
+  "Inter Tight",
 ]);
 
 /** Workspace-pinned system fonts: family → weight → asset-protocol URL under `~/Kookaburra Cut/fonts/`, registered by `engine/systemFonts.ts`; pinning copies exact bytes so exports stay reproducible across macOS updates. */

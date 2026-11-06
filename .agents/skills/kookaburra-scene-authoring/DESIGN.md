@@ -123,11 +123,11 @@ imagery instead of the recipe below, and treat them as guidance rather than rule
    `muted` (secondary labels and subtitles: at least 5.5:1 on a light background and
    7:1 on a dark one, so mix text no more than about 25% toward background).
 3. Fonts: use the brand family only if `./kb fonts check` passes; otherwise the closest
-   bundled family: neo-grotesk sans to Inter; geometric sans to Jost or Space Grotesk;
-   humanist sans to Open Sans or Nunito; technical or corporate sans to IBM Plex Sans
-   or Libre Franklin; condensed to Barlow Condensed; editorial serif to Instrument
-   Serif, Playfair Display, Lora or Cormorant Garamond; soft display serif to Fraunces;
-   mono to JetBrains Mono.
+   bundled family: neo-grotesk sans to Inter, or Inter Tight for tight display type;
+   geometric sans to Jost or Space Grotesk; humanist sans to Open Sans or Nunito;
+   technical or corporate sans to IBM Plex Sans or Libre Franklin; condensed to Barlow
+   Condensed; editorial serif to Instrument Serif, Playfair Display, Lora or Cormorant
+   Garamond; soft display serif to Fraunces; mono to JetBrains Mono.
 4. Apply: for a whole video, a workspace theme (reference/project.md) so charts and
    backgrounds follow too; for a light touch, `project.json` `typography` plus a brand
    gradient `background` (oklch spec) and `textStyle` colours on key lines.

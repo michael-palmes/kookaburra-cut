@@ -53,6 +53,14 @@ const BUNDLED_FAMILY_FILES = {
     "src/assets/fonts/IBMPlexSans-SemiBold.woff",
   ],
   Fraunces: ["src/assets/fonts/Fraunces-SemiBold.woff"],
+  "Inter Tight": [
+    "src/assets/fonts/InterTight-Light.woff",
+    "src/assets/fonts/InterTight-Regular.woff",
+    "src/assets/fonts/InterTight-SemiBold.woff",
+    "src/assets/fonts/InterTight-Bold.woff",
+    "src/assets/fonts/InterTight-ExtraBold.woff",
+    "src/assets/fonts/InterTight-Black.woff",
+  ],
 };
 
 const EMOJI_PUA_START = 0xe000;

@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <title>Thornbill dashboard</title>
+    <link rel="stylesheet" href="../shared/base.css" />
+    <link rel="stylesheet" href="app.css" />
+    <style>
+      .dash {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        background: radial-gradient(70% 50% at 80% 0%, rgba(34, 211, 238, 0.06), transparent 70%), var(--bg);
+      }
+      .top {
+        height: 60px;
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 0 26px;
+        border-bottom: 1px solid var(--line);
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .logo {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .logo svg {
+        display: block;
+        width: 30px;
+        height: 30px;
+      }
+      .slash {
+        color: var(--faint);
+        font-weight: 400;
+      }
+      .switch {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .switch svg.i {
+        font-size: 15px;
+        color: var(--muted);
+      }
+      .env {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        height: 28px;
+        padding: 0 11px;
+        border-radius: 14px;
+        background: var(--lime-soft);
+        color: var(--lime);
+        font-size: 13px;
+      }
+      .env i,
+      .dep i {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: currentColor;
+      }
+      .top .grow {
+        flex: 1;
+      }
+      .top .ico {
+        color: var(--muted);
+        font-size: 20px;
+        display: flex;
+      }
+      .me {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: #5d8de8;
+        display: grid;
+        place-items: center;
+        font-size: 13px;
+      }
+      .body {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+      }
+      .side {
+        width: 224px;
+        flex: none;
+        padding: 22px 14px;
+        border-right: 1px solid var(--line);
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .side div {
+        height: 40px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 12px;
+        border-radius: 10px;
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      .side div svg.i {
+        font-size: 19px;
+      }
+      .side div.on {
+        background: var(--cyan-soft);
+        color: var(--cyan);
+      }
+      .main {
+        flex: 1;
+        min-width: 0;
+        padding: 30px 34px;
+        display: grid;
+        grid-template-columns: 1fr 420px;
+        grid-template-rows: auto auto 1fr;
+        gap: 18px;
+      }
+      .head {
+        grid-column: 1 / -1;
+        display: flex;
+        align-items: flex-end;
+        gap: 12px;
+      }
+      .head h1 {
+        margin: 0;
+        font-size: 36px;
+        font-weight: 800;
+        letter-spacing: -0.025em;
+      }
+      .head .sub {
+        margin-top: 6px;
+        font-size: 14px;
+        color: var(--muted);
+      }
+      .head .grow {
+        flex: 1;
+      }
+      .head .btn svg.i {
+        font-size: 16px;
+      }
+      .stats {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 14px;
+      }
+      .panel {
+        border-radius: 16px;
+        background: var(--panel);
+        box-shadow: inset 0 0 0 1px var(--line);
+      }
+      .stat {
+        padding: 18px 20px;
+      }
+      .stat small {
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .stat b {
+        display: block;
+        margin-top: 8px;
+        font-family: "Inter Tight", sans-serif;
+        font-size: 34px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      .stat b span {
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--muted);
+        margin-left: 3px;
+      }
+      .stat em {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        margin-top: 6px;
+        font-style: normal;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--lime);
+      }
+      .chart {
+        padding: 20px 22px;
+        display: flex;
+        flex-direction: column;
+      }
+      .chart h3,
+      .deps h3,
+      .logs h3 {
+        margin: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .legend {
+        display: flex;
+        gap: 16px;
+        font-size: 13px;
+        font-weight: 400;
+        color: var(--muted);
+      }
+      .legend span::before {
+        content: "";
+        display: inline-block;
+        width: 10px;
+        height: 3px;
+        border-radius: 2px;
+        margin-right: 7px;
+        vertical-align: middle;
+        background: var(--c);
+      }
+      .chart svg {
+        width: 100%;
+        height: auto;
+        margin-top: 12px;
+      }
+      .axis {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: var(--faint);
+        padding-left: 40px;
+      }
+      .deps {
+        grid-row: span 2;
+        padding: 20px 22px;
+      }
+      .dep {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        height: 64px;
+        border-top: 1px solid var(--line);
+        font-size: 14px;
+      }
+      .deps h3 + .dep {
+        margin-top: 12px;
+      }
+      .dep i {
+        flex: none;
+      }
+      .dep .v {
+        font: 400 14px "JetBrains Mono", monospace;
+      }
+      .dep small {
+        display: block;
+        margin-top: 3px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .dep .when {
+        margin-left: auto;
+        text-align: right;
+        font-size: 12px;
+        color: var(--faint);
+      }
+      .dep .state {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--lime);
+      }
+      .dep.build .state {
+        color: var(--amber);
+      }
+      .dep.build i {
+        color: var(--amber);
+      }
+      .dep.ok i {
+        color: var(--lime);
+      }
+      .logs {
+        padding: 20px 22px;
+      }
+      .log {
+        display: grid;
+        grid-template-columns: 96px 70px 1fr 56px 70px;
+        height: 30px;
+        align-items: center;
+        font: 400 13.5px "JetBrains Mono", monospace;
+        color: #cbd5e1;
+      }
+      .logs h3 + .log {
+        margin-top: 10px;
+      }
+      .log .t {
+        color: var(--faint);
+      }
+      .log .m {
+        color: var(--cyan);
+      }
+      .log .s {
+        color: var(--lime);
+      }
+      .log.warn .s {
+        color: var(--amber);
+      }
+      .log .ms {
+        color: var(--muted);
+        text-align: right;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="dash" id="dash"></div>
+    <script type="module">
+      import { fillIcons, icon } from "../shared/icons.js";
+      import { ready } from "../shared/motion.js";
+      import { MARK } from "./mark.js";
+
+      const W = 840;
+      const H = 380;
+      const series = (seed, base, amp, drop) =>
+        Array.from({ length: 49 }, (_, i) => {
+          const wave = Math.sin(i * 0.45 + seed) * amp + Math.sin(i * 1.7 + seed * 2) * amp * 0.35;
+          return base + wave - (i >= 34 ? drop : 0);
+        });
+      const p95 = series(1.2, 150, 14, 52);
+      const p50 = series(2.4, 62, 6, 18);
+      const max = 200;
+      const pt = (v, i) => [40 + (i / 48) * (W - 40), H - 16 - (v / max) * (H - 30)];
+      const line = (vals) => vals.map((v, i) => pt(v, i)).map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join("");
+      const area = (vals) => `${line(vals)}L${W} ${H - 16}L40 ${H - 16}Z`;
+      const grid = [0, 50, 100, 150, 200]
+        .map((v) => {
+          const y = H - 16 - (v / max) * (H - 30);
+          return `<line x1="40" x2="${W}" y1="${y}" y2="${y}" stroke="rgba(148,163,184,0.1)"/><text x="0" y="${y + 4}" fill="#5d6b85" font-size="12" font-family="Inter">${v} ms</text>`;
+        })
+        .join("");
+      const deployX = pt(0, 34)[0];
+
+      const dash = document.getElementById("dash");
+      dash.innerHTML = `<div class="top"><span class="logo">${MARK}</span>Thornbill<span class="slash">/</span><span class="switch">shop-api${icon("chevronDown")}</span><span class="env"><i></i>Production</span><span class="grow"></span><span class="ico">${icon("search")}</span><span class="ico">${icon("bell")}</span><span class="me">A</span></div>
+        <div class="body"><nav class="side"><div class="on">${icon("activity")}Overview</div><div>${icon("rocket")}Deployments</div><div>${icon("terminal")}Logs</div><div>${icon("bars")}Analytics</div><div>${icon("layers")}Environments</div><div>${icon("shield")}Secrets</div><div>${icon("settings")}Settings</div></nav>
+        <main class="main"><div class="head"><div><h1 class="display">Overview</h1><div class="sub">Production · eu-west and ap-southeast</div></div><div class="grow"></div><span class="btn ghost">${icon("globe")}Open preview</span><span class="btn primary">${icon("rocket")}Deploy</span></div>
+          <div class="stats"><div class="panel stat"><small>Requests, 24 h</small><b>1.28<span>M</span></b><em>${icon("arrowUp")}8.2%</em></div><div class="panel stat"><small>p95 latency</small><b>84<span>ms</span></b><em>21% faster</em></div><div class="panel stat"><small>Error rate</small><b>0.02<span>%</span></b><em>Steady</em></div><div class="panel stat"><small>Cold start</small><b>112<span>ms</span></b><em>38% faster</em></div></div>
+          <div class="panel chart"><h3>Latency, last 24 hours<span class="legend"><span style="--c:#22d3ee">p50</span><span style="--c:#a78bfa">p95</span></span></h3>
+            <svg viewBox="0 0 ${W} ${H}"><defs><linearGradient id="fa" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a78bfa" stop-opacity="0.28"/><stop offset="1" stop-color="#a78bfa" stop-opacity="0"/></linearGradient><linearGradient id="fb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#22d3ee" stop-opacity="0.3"/><stop offset="1" stop-color="#22d3ee" stop-opacity="0"/></linearGradient></defs>${grid}
+              <path d="${area(p95)}" fill="url(#fa)"/><path d="${line(p95)}" fill="none" stroke="#a78bfa" stroke-width="2.4"/><path d="${area(p50)}" fill="url(#fb)"/><path d="${line(p50)}" fill="none" stroke="#22d3ee" stroke-width="2.4"/>
+              <line x1="${deployX}" x2="${deployX}" y1="18" y2="${H - 16}" stroke="#a3e635" stroke-dasharray="4 5" stroke-width="1.6"/><rect x="${deployX + 8}" y="14" width="66" height="24" rx="12" fill="rgba(163,230,53,0.14)"/><text x="${deployX + 41}" y="30" fill="#a3e635" font-size="12" font-family="JetBrains Mono" text-anchor="middle">4.2.0</text></svg>
+            <div class="axis"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>Now</span></div></div>
+          <div class="panel deps"><h3>Deployments<span class="legend">All branches</span></h3>
+            <div class="dep ok"><i></i><div><span class="v">4.2.0</span><small>main · Upgrade to Thornbill 4.2</small></div><div class="when"><span class="state">Ready</span>2 min ago</div></div>
+            <div class="dep build"><i></i><div><span class="v">search-filters</span><small>Preview · Add price filter</small></div><div class="when"><span class="state">Building</span>just now</div></div>
+            <div class="dep ok"><i></i><div><span class="v">checkout-v2</span><small>Preview · New checkout flow</small></div><div class="when"><span class="state">Ready</span>1 h ago</div></div>
+            <div class="dep ok"><i></i><div><span class="v">4.1.3</span><small>main · Faster order lookups</small></div><div class="when"><span class="state">Ready</span>2 d ago</div></div>
+            <div class="dep ok"><i></i><div><span class="v">4.1.2</span><small>main · Fix retry headers</small></div><div class="when"><span class="state">Ready</span>4 d ago</div></div></div>
+          <div class="panel logs"><h3>Live logs<span class="legend">Streaming</span></h3>
+            <div class="log"><span class="t">09:41:02</span><span class="m">GET</span><span>/orders/8f21</span><span class="s">200</span><span class="ms">42 ms</span></div>
+            <div class="log"><span class="t">09:41:02</span><span class="m">POST</span><span>/checkout</span><span class="s">201</span><span class="ms">88 ms</span></div>
+            <div class="log"><span class="t">09:41:01</span><span class="m">GET</span><span>/search?q=tea</span><span class="s">200</span><span class="ms">51 ms</span></div>
+            <div class="log warn"><span class="t">09:41:00</span><span class="m">GET</span><span>/orders/0000</span><span class="s">404</span><span class="ms">12 ms</span></div>
+            <div class="log"><span class="t">09:40:58</span><span class="m">GET</span><span>/orders/8f20</span><span class="s">200</span><span class="ms">39 ms</span></div></div></main></div>`;
+      fillIcons(dash);
+      window.render = () => {};
+      window.pageReady = ready();
+    </script>
+  </body>
+</html>

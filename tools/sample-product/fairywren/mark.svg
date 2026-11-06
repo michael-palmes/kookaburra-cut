@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480">
+  <title>Fairywren</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#25366a" />
+      <stop offset="1" stop-color="#0d1428" />
+    </linearGradient>
+    <radialGradient id="sun" cx="0.36" cy="0.32" r="0.8">
+      <stop offset="0" stop-color="#ff9480" />
+      <stop offset="1" stop-color="#e2594a" />
+    </radialGradient>
+    <linearGradient id="bird" x1="0.1" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#ffffff" />
+      <stop offset="1" stop-color="#ebe3d7" />
+    </linearGradient>
+  </defs>
+  <rect width="480" height="480" fill="url(#bg)" />
+  <circle cx="314" cy="178" r="88" fill="url(#sun)" />
+  <g fill="url(#bird)">
+    <path d="M256 286c30-52 58-104 90-158 9-15 27-18 35-5 5 8 3 17-2 26-27 50-52 101-74 154z" />
+    <ellipse cx="214" cy="300" rx="90" ry="64" transform="rotate(-17 214 300)" />
+    <circle cx="160" cy="250" r="45" />
+    <path d="M118 242l-31 10 32 8z" />
+  </g>
+  <circle cx="150" cy="240" r="7.5" fill="#0d1428" />
+</svg>

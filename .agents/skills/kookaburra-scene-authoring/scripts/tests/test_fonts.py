@@ -64,3 +64,4 @@ class FontVerdictTests(KbTestCase):
         empty = catalog.Catalog({}, self.tmp / "none.json")
         self.assertIn("Barlow Condensed", fonts.bundled_fonts(empty))
         self.assertEqual(fonts.bundled_fonts(empty)["Inter"], [400, 600])
+        self.assertEqual(fonts.bundled_fonts(empty)["Inter Tight"], [300, 400, 600, 700, 800, 900])
