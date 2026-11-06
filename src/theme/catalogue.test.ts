@@ -86,8 +86,8 @@ describe("theme catalogue definitions", () => {
 
 describe("bundled theme catalogue", () => {
   it("discovers every file with unique ids matching its filename", () => {
-    expect(BUILTIN_THEME_CATALOGUE).toHaveLength(58);
-    expect(new Set(BUILTIN_THEME_CATALOGUE.map(({ id }) => id))).toHaveLength(58);
+    expect(BUILTIN_THEME_CATALOGUE).toHaveLength(71);
+    expect(new Set(BUILTIN_THEME_CATALOGUE.map(({ id }) => id))).toHaveLength(71);
     for (const entry of BUILTIN_THEME_CATALOGUE) {
       expect(entry.filename).toBe(`${entry.id}.json`);
       expect(entry.theme.id).toBe(entry.id);
@@ -107,18 +107,31 @@ describe("bundled theme catalogue", () => {
       "kookaburra-onyx",
       "kookaburra-ivory",
       "kookaburra-ink",
+      "kookaburra-white-canvas",
+      "kookaburra-paper-and-ink",
+      "kookaburra-ink-and-fluid",
       "kookaburra-afterglow",
       "kookaburra-blue-hour",
       "kookaburra-soft-field",
       "kookaburra-frost",
       "kookaburra-lilac",
       "kookaburra-moss",
+      "kookaburra-obsidian-stage",
+      "kookaburra-signal",
+      "kookaburra-daylight-studio",
+      "kookaburra-split-light",
+      "kookaburra-exhibition",
+      "kookaburra-instrument",
+      "kookaburra-aurora",
+      "kookaburra-blueprint",
       "kookaburra-sage",
       "kookaburra-sky",
       "kookaburra-blush",
       "kookaburra-citrus",
       "kookaburra-tangerine",
       "kookaburra-lagoon",
+      "kookaburra-colour-studio",
+      "kookaburra-continuum",
       "kookaburra-basel",
       "kookaburra-hi-fi",
       "kookaburra-mid-century",
@@ -184,13 +197,13 @@ describe("bundled theme catalogue", () => {
 
   it("counts visible and hidden entries without dropping empty categories", () => {
     expect(countThemesByCategory(BUILTIN_THEME_CATALOGUE)).toEqual({
-      essentials: 4,
-      studio: 6,
-      colour: 6,
+      essentials: 7,
+      studio: 14,
+      colour: 8,
       retro: 6,
     });
     expect(countThemesByCategory(BUILTIN_THEME_CATALOGUE, { includeHidden: true }).essentials).toBe(
-      40,
+      43,
     );
   });
 });

@@ -1,0 +1,88 @@
+{
+  "version": 2,
+  "id": "kookaburra-split-light",
+  "name": "Split Light",
+  "mode": "light",
+  "catalogue": {
+    "category": "studio",
+    "useLabel": "Redesigns and before and after",
+    "tags": ["redesign", "comparison", "before", "after", "dawn", "upgrade"],
+    "stage": "lighting-only",
+    "order": 100
+  },
+  "colors": {
+    "background": "#edeff2",
+    "text": "#121418",
+    "accent": "#4f35c2",
+    "muted": "#3e454e"
+  },
+  "gradients": {
+    "brand": {
+      "type": "linear",
+      "angleDeg": 90,
+      "stops": [["#d4d9df", 0], ["#eceef0", 0.5], ["#fbe0c6", 1]],
+      "space": "oklch"
+    }
+  },
+  "chartColors": ["#4f35c2", "#121418", "#b4501e", "#3d6f8f", "#9a3a6a", "#2f7a5a"],
+  "typography": {
+    "headline": {
+      "family": "Inter Tight",
+      "weight": 600
+    },
+    "body": "Inter",
+    "scale": 1.2
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 520,
+      "slow": 940
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 30,
+    "stagger": "word"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 60,
+      "elevationDeg": 30,
+      "intensity": 2.1,
+      "color": "#ffd9b0"
+    },
+    "fills": [
+      {
+        "azimuthDeg": -70,
+        "elevationDeg": 22,
+        "intensity": 1,
+        "color": "#c8d6ea"
+      }
+    ],
+    "ambient": 0.7,
+    "shadow": {
+      "technique": "map",
+      "softness": 0.7,
+      "opacity": 0.24,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#2a2f3a"
+    }
+  },
+  "environment": {
+    "source": "kookaburra:dawn",
+    "intensity": 0.9,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "gradient",
+    "gradient": "brand",
+    "parallax": 0.03
+  }
+}

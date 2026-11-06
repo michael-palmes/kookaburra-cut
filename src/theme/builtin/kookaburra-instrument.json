@@ -1,0 +1,85 @@
+{
+  "version": 2,
+  "id": "kookaburra-instrument",
+  "name": "Instrument",
+  "mode": "dark",
+  "catalogue": {
+    "category": "studio",
+    "useLabel": "Stats and impact numbers",
+    "tags": ["dark", "data", "numbers", "glass", "technical", "premium"],
+    "stage": "lighting-only",
+    "order": 120
+  },
+  "colors": {
+    "background": "#15171a",
+    "text": "#f1eee8",
+    "accent": "#7ce0ff",
+    "muted": "#b4bac2"
+  },
+  "gradients": {
+    "brand": {
+      "type": "radial",
+      "angleDeg": 0,
+      "stops": [["#262a30", 0], ["#15171a", 1]],
+      "space": "oklch"
+    }
+  },
+  "chartColors": ["#7ce0ff", "#f1eee8", "#ffc57a", "#9aa3ad", "#8ef0c4", "#c4a7ff"],
+  "typography": {
+    "headline": {
+      "family": "Inter Tight",
+      "weight": 300
+    },
+    "body": "Inter",
+    "scale": 1.25
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 520,
+      "slow": 940
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "chromatic",
+    "out": "fade",
+    "staggerMs": 0
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 0,
+      "elevationDeg": 70,
+      "intensity": 2.2,
+      "color": "#f3f6ff"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 160,
+        "elevationDeg": 25,
+        "intensity": 1.2,
+        "color": "#9fdcff"
+      },
+      {
+        "azimuthDeg": -90,
+        "elevationDeg": 15,
+        "intensity": 0.3,
+        "color": "#5a6270"
+      }
+    ],
+    "ambient": 0.3
+  },
+  "environment": {
+    "source": "kookaburra:softbox",
+    "intensity": 1,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "gradient",
+    "gradient": "brand",
+    "parallax": 0.03
+  }
+}

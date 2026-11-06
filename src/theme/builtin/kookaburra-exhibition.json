@@ -1,0 +1,88 @@
+{
+  "version": 2,
+  "id": "kookaburra-exhibition",
+  "name": "Exhibition",
+  "mode": "light",
+  "catalogue": {
+    "category": "studio",
+    "useLabel": "Product tours, hung like a show",
+    "tags": ["gallery", "portfolio", "serif", "warm", "tour", "art"],
+    "stage": "lighting-only",
+    "order": 110
+  },
+  "colors": {
+    "background": "#f2eee7",
+    "text": "#262626",
+    "accent": "#7a5a2a",
+    "muted": "#57524b"
+  },
+  "gradients": {
+    "brand": {
+      "type": "linear",
+      "angleDeg": 180,
+      "stops": [["#f7f4ee", 0], ["#f0ebe2", 0.6], ["#e9e2d6", 1]],
+      "space": "oklch"
+    }
+  },
+  "chartColors": ["#7a5a2a", "#262626", "#4f7a95", "#8a4a3a", "#8f74ab", "#5a6b3a"],
+  "typography": {
+    "headline": {
+      "family": "Instrument Serif",
+      "weight": 400
+    },
+    "body": "Inter",
+    "scale": 1.25
+  },
+  "motion": {
+    "durations": {
+      "fast": 240,
+      "base": 600,
+      "slow": 1100
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "fade",
+    "out": "fade",
+    "staggerMs": 80,
+    "stagger": "word"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 10,
+      "elevationDeg": 68,
+      "intensity": 2.3,
+      "color": "#fff2dc"
+    },
+    "fills": [
+      {
+        "azimuthDeg": -150,
+        "elevationDeg": 20,
+        "intensity": 0.5,
+        "color": "#dfe8f0"
+      }
+    ],
+    "ambient": 0.7,
+    "shadow": {
+      "technique": "map",
+      "softness": 0.6,
+      "opacity": 0.28,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#3a3226"
+    }
+  },
+  "environment": {
+    "source": "kookaburra:interior",
+    "intensity": 0.8,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "gradient",
+    "gradient": "brand",
+    "parallax": 0.03
+  }
+}

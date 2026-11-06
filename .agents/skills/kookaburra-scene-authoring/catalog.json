@@ -2912,6 +2912,51 @@
       "effects": []
     },
     {
+      "id": "kookaburra-white-canvas",
+      "label": "White Canvas",
+      "summary": "AI and prompt-led launches",
+      "mode": "light",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["clean", "white", "ai", "prompt", "minimal", "bright"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#fafafb",
+        "text": "#111216",
+        "accent": "#1f60e8",
+        "muted": "#575c66"
+      },
+      "chartColors": ["#1f60e8", "#111216", "#7a4fe0", "#c8562a", "#0f8a6e", "#b8327a"],
+      "typography": {
+        "headline": "Space Grotesk",
+        "body": "Inter",
+        "scale": 1.2
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 500,
+          "slow": 900
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "build",
+        "out": "fade",
+        "staggerMs": 0
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:softbox",
+      "lighting": true,
+      "effects": []
+    },
+    {
       "id": "kookaburra-loft",
       "label": "Loft",
       "summary": "Lifestyle product scenes",
@@ -2954,6 +2999,97 @@
       "background": "gradient",
       "backdrop": "image",
       "environment": "kookaburra:ferndale-studio",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-paper-and-ink",
+      "label": "Paper and Ink",
+      "summary": "Editorial launch stories",
+      "mode": "light",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["paper", "handmade", "journal", "warm", "print", "storytelling"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#f4efe4",
+        "text": "#111111",
+        "accent": "#b01e17",
+        "muted": "#55504a"
+      },
+      "chartColors": ["#b01e17", "#111111", "#1f4f7a", "#8a6d00", "#3f6b4a", "#7a4a8a"],
+      "typography": {
+        "headline": "Instrument Serif",
+        "body": "Inter",
+        "scale": 1.333
+      },
+      "motion": {
+        "durations": {
+          "fast": 220,
+          "base": 560,
+          "slow": 1000
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "mask-reveal",
+        "out": "fade",
+        "staggerMs": 0
+      },
+      "textLook": null,
+      "background": "shader:mesh-gradient",
+      "backdrop": null,
+      "environment": "kookaburra:story-studio",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-ink-and-fluid",
+      "label": "Ink and Fluid",
+      "summary": "Concept and finance explainers",
+      "mode": "light",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["minimal", "explainer", "finance", "numbers", "calm", "teal"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#fbfaf7",
+        "text": "#0e0e10",
+        "accent": "#0f6e6e",
+        "muted": "#5c5c58"
+      },
+      "chartColors": ["#0f6e6e", "#0e0e10", "#23876a", "#767672", "#b8572a", "#3a5a9a"],
+      "typography": {
+        "headline": "Inter Tight@300",
+        "body": "Inter",
+        "scale": 1.25
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 520,
+          "slow": 940
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outBack"
+        }
+      },
+      "gradients": ["brand", "fluid"],
+      "textAnimation": {
+        "in": "spring-pop",
+        "out": "fade",
+        "staggerMs": 40,
+        "stagger": "word"
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:softbox",
       "lighting": true,
       "effects": []
     },
@@ -3505,6 +3641,372 @@
       "effects": []
     },
     {
+      "id": "kookaburra-obsidian-stage",
+      "label": "Obsidian Stage",
+      "summary": "Hero product reveals",
+      "mode": "dark",
+      "category": "studio",
+      "categoryLabel": "Studio",
+      "tags": ["dark", "keynote", "cinematic", "product", "reveal", "launch"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#0b0c0f",
+        "text": "#efe9df",
+        "accent": "#e8a867",
+        "muted": "#c2bbaf"
+      },
+      "chartColors": ["#e8a867", "#5da9e9", "#efe9df", "#8c8577", "#f06c5b", "#7fb28a"],
+      "typography": {
+        "headline": "Inter Tight@800",
+        "body": "Inter",
+        "scale": 1.25
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 560,
+          "slow": 1000
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "tracking",
+        "out": "fade",
+        "staggerMs": 0,
+        "staggerExact": true
+      },
+      "textLook": null,
+      "background": "scene3d:clerestory-shafts",
+      "backdrop": null,
+      "environment": "kookaburra:monochrome-studio",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-signal",
+      "label": "Signal",
+      "summary": "Teasers and countdowns",
+      "mode": "dark",
+      "category": "studio",
+      "categoryLabel": "Studio",
+      "tags": ["dark", "teaser", "countdown", "minimal", "dramatic", "launch"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#050506",
+        "text": "#f4f4f2",
+        "accent": "#f23a2e",
+        "muted": "#b8bbc1"
+      },
+      "chartColors": ["#f23a2e", "#f4f4f2", "#c9ccd1", "#8a8d93", "#ff8a3d", "#6fa8ff"],
+      "typography": {
+        "headline": "Barlow Condensed@600",
+        "body": "JetBrains Mono",
+        "scale": 1.333
+      },
+      "motion": {
+        "durations": {
+          "fast": 160,
+          "base": 420,
+          "slow": 800
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "rise-mask",
+        "out": "fade",
+        "staggerMs": 40,
+        "stagger": "word"
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:monochrome-studio",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-daylight-studio",
+      "label": "Daylight Studio",
+      "summary": "Calm feature spotlights",
+      "mode": "light",
+      "category": "studio",
+      "categoryLabel": "Studio",
+      "tags": ["warm", "daylight", "calm", "feature", "lifestyle", "product"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#f3efe8",
+        "text": "#22252a",
+        "accent": "#b33e2b",
+        "muted": "#57524b"
+      },
+      "chartColors": ["#b33e2b", "#3d7a4f", "#9a6b22", "#8a5a7a", "#22252a", "#4a6fa5"],
+      "typography": {
+        "headline": "Inter Tight@600",
+        "body": "Inter",
+        "scale": 1.2
+      },
+      "motion": {
+        "durations": {
+          "fast": 220,
+          "base": 560,
+          "slow": 1000
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "fade-up",
+        "out": "fade",
+        "staggerMs": 40,
+        "stagger": "word"
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:interior",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-split-light",
+      "label": "Split Light",
+      "summary": "Redesigns and before and after",
+      "mode": "light",
+      "category": "studio",
+      "categoryLabel": "Studio",
+      "tags": ["redesign", "comparison", "before", "after", "dawn", "upgrade"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#edeff2",
+        "text": "#121418",
+        "accent": "#4f35c2",
+        "muted": "#3e454e"
+      },
+      "chartColors": ["#4f35c2", "#121418", "#b4501e", "#3d6f8f", "#9a3a6a", "#2f7a5a"],
+      "typography": {
+        "headline": "Inter Tight@600",
+        "body": "Inter",
+        "scale": 1.2
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 520,
+          "slow": 940
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "fade-up",
+        "out": "fade",
+        "staggerMs": 30,
+        "stagger": "word"
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:dawn",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-exhibition",
+      "label": "Exhibition",
+      "summary": "Product tours, hung like a show",
+      "mode": "light",
+      "category": "studio",
+      "categoryLabel": "Studio",
+      "tags": ["gallery", "portfolio", "serif", "warm", "tour", "art"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#f2eee7",
+        "text": "#262626",
+        "accent": "#7a5a2a",
+        "muted": "#57524b"
+      },
+      "chartColors": ["#7a5a2a", "#262626", "#4f7a95", "#8a4a3a", "#8f74ab", "#5a6b3a"],
+      "typography": {
+        "headline": "Instrument Serif",
+        "body": "Inter",
+        "scale": 1.25
+      },
+      "motion": {
+        "durations": {
+          "fast": 240,
+          "base": 600,
+          "slow": 1100
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "fade",
+        "out": "fade",
+        "staggerMs": 80,
+        "stagger": "word"
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:interior",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-instrument",
+      "label": "Instrument",
+      "summary": "Stats and impact numbers",
+      "mode": "dark",
+      "category": "studio",
+      "categoryLabel": "Studio",
+      "tags": ["dark", "data", "numbers", "glass", "technical", "premium"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#15171a",
+        "text": "#f1eee8",
+        "accent": "#7ce0ff",
+        "muted": "#b4bac2"
+      },
+      "chartColors": ["#7ce0ff", "#f1eee8", "#ffc57a", "#9aa3ad", "#8ef0c4", "#c4a7ff"],
+      "typography": {
+        "headline": "Inter Tight@300",
+        "body": "Inter",
+        "scale": 1.25
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 520,
+          "slow": 940
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "chromatic",
+        "out": "fade",
+        "staggerMs": 0
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:softbox",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-aurora",
+      "label": "Aurora",
+      "summary": "AI launches after dark",
+      "mode": "dark",
+      "category": "studio",
+      "categoryLabel": "Studio",
+      "tags": ["dark", "ai", "aurora", "atmospheric", "prompt", "cinematic"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#0b0a1c",
+        "text": "#f4f2ff",
+        "accent": "#a98cff",
+        "muted": "#bdb8d8"
+      },
+      "chartColors": ["#a98cff", "#5eead4", "#ffb59a", "#f4f2ff", "#7cb8ff", "#ff8fc0"],
+      "typography": {
+        "headline": "Space Grotesk",
+        "body": "Inter",
+        "scale": 1.2
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 540,
+          "slow": 980
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "blur-in",
+        "out": "fade",
+        "staggerMs": 50,
+        "stagger": "word"
+      },
+      "textLook": null,
+      "background": "shader:mesh-gradient",
+      "backdrop": null,
+      "environment": "kookaburra:monochrome-studio",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-blueprint",
+      "label": "Blueprint",
+      "summary": "Developer releases and changelogs",
+      "mode": "dark",
+      "category": "studio",
+      "categoryLabel": "Studio",
+      "tags": ["developer", "code", "dark", "grid", "technical", "release"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#0a1022",
+        "text": "#e6edf7",
+        "accent": "#4fd8f5",
+        "muted": "#b4bfd1"
+      },
+      "chartColors": ["#4fd8f5", "#9be564", "#e6edf7", "#ffb454", "#c792ea", "#ff7a90"],
+      "typography": {
+        "headline": "JetBrains Mono",
+        "body": "Space Grotesk",
+        "scale": 1.25
+      },
+      "motion": {
+        "durations": {
+          "fast": 160,
+          "base": 420,
+          "slow": 800
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "typewriter",
+        "out": "fade",
+        "staggerMs": 0
+      },
+      "textLook": null,
+      "background": "shader:graph-grid",
+      "backdrop": null,
+      "environment": "kookaburra:monochrome-studio",
+      "lighting": true,
+      "effects": []
+    },
+    {
       "id": "kookaburra-sage",
       "label": "Sage",
       "summary": "Calm health and wellbeing",
@@ -3774,6 +4276,99 @@
       "background": "gradient",
       "backdrop": null,
       "environment": "kookaburra:cyclorama",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-colour-studio",
+      "label": "Colour Studio",
+      "summary": "Release reels and what's new",
+      "mode": "dark",
+      "category": "colour",
+      "categoryLabel": "Colour",
+      "tags": ["bold", "blue", "release", "update", "energetic", "launch"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#1129b4",
+        "text": "#ffffff",
+        "accent": "#ff9457",
+        "muted": "#dde2ff"
+      },
+      "chartColors": ["#ff9457", "#f7f5f0", "#3ed6a6", "#b69cff", "#ffd43b", "#ff8fc0"],
+      "typography": {
+        "headline": "Inter Tight@900",
+        "body": "JetBrains Mono",
+        "scale": 1.25
+      },
+      "motion": {
+        "durations": {
+          "fast": 180,
+          "base": 460,
+          "slow": 860
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outBack"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "slam",
+        "out": "fade",
+        "staggerMs": 50,
+        "stagger": "word"
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:cyclorama",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-continuum",
+      "label": "Continuum",
+      "summary": "Cross-device launches",
+      "mode": "light",
+      "category": "colour",
+      "categoryLabel": "Colour",
+      "tags": ["sunrise", "gradient", "devices", "platforms", "fresh", "bright"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#f8f6f3",
+        "text": "#15171c",
+        "accent": "#2a4fd6",
+        "muted": "#4a505c"
+      },
+      "chartColors": ["#2a4fd6", "#15171c", "#c8562a", "#7a4fe0", "#0f7a8a", "#b8327a"],
+      "typography": {
+        "headline": "Inter Tight@700",
+        "body": "Inter",
+        "scale": 1.2
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 520,
+          "slow": 940
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "fade-scale",
+        "out": "fade",
+        "staggerMs": 30,
+        "stagger": "word",
+        "startScale": 0.96
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:dawn",
       "lighting": true,
       "effects": []
     },
