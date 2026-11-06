@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <title>Thornbill docs</title>
+    <link rel="stylesheet" href="../shared/base.css" />
+    <link rel="stylesheet" href="../shared/window.css" />
+    <link rel="stylesheet" href="app.css" />
+    <style>
+      .nav {
+        height: 60px;
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 28px;
+        padding: 0 28px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(10, 15, 30, 0.9);
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-family: "Inter Tight", sans-serif;
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--ink);
+        margin-right: 10px;
+      }
+      .brand .logo {
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .brand .logo svg {
+        display: block;
+        width: 28px;
+        height: 28px;
+      }
+      .brand .docs {
+        font-family: "Inter", sans-serif;
+        font-size: 12px;
+        padding: 3px 8px;
+        border-radius: 6px;
+        background: var(--cyan-soft);
+        color: var(--cyan);
+      }
+      .nav .on {
+        color: var(--ink);
+      }
+      .nav .grow {
+        flex: 1;
+      }
+      .search {
+        width: 230px;
+        height: 36px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 8px 0 12px;
+        box-shadow: inset 0 0 0 1px var(--line);
+        background: var(--panel);
+        font-weight: 400;
+        color: var(--faint);
+      }
+      .search svg.i {
+        font-size: 16px;
+      }
+      .search .kbd {
+        margin-left: auto;
+      }
+      .body {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+      }
+      .side {
+        width: 236px;
+        flex: none;
+        padding: 26px 18px;
+        border-right: 1px solid var(--line);
+        font-size: 14px;
+        color: var(--muted);
+      }
+      .side h5 {
+        margin: 0 0 8px;
+        padding-left: 10px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--faint);
+      }
+      .side div {
+        height: 32px;
+        display: flex;
+        align-items: center;
+        padding-left: 10px;
+        border-radius: 8px;
+      }
+      .side div.on {
+        color: var(--cyan);
+        background: var(--cyan-soft);
+        font-weight: 600;
+      }
+      .side .gap {
+        height: 18px;
+      }
+      .content {
+        flex: 1;
+        min-width: 0;
+        padding: 36px 48px 0;
+        position: relative;
+      }
+      .eyebrow {
+        font: 400 13px "JetBrains Mono", monospace;
+        letter-spacing: 0.08em;
+        color: var(--cyan);
+      }
+      h1 {
+        margin: 10px 0 0;
+        font-size: 52px;
+        line-height: 1.02;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+      }
+      .lede {
+        margin: 16px 0 0;
+        font-size: 17px;
+        line-height: 1.6;
+        color: var(--muted);
+      }
+      .hero {
+        display: grid;
+        grid-template-columns: 1fr 512px;
+        gap: 34px;
+        align-items: start;
+      }
+      .ctas {
+        display: flex;
+        gap: 10px;
+        margin-top: 26px;
+      }
+      .ctas svg.i {
+        font-size: 16px;
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+        margin-top: 34px;
+      }
+      .card {
+        border-radius: 14px;
+        padding: 18px;
+        background: var(--panel);
+        box-shadow: inset 0 0 0 1px var(--line);
+      }
+      .card .ic {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        display: grid;
+        place-items: center;
+        background: var(--cyan-soft);
+        color: var(--cyan);
+        font-size: 18px;
+      }
+      .card:nth-child(2) .ic {
+        background: var(--lime-soft);
+        color: var(--lime);
+      }
+      .card:nth-child(3) .ic {
+        background: rgba(167, 139, 250, 0.14);
+        color: #c4b5fd;
+      }
+      .card b {
+        display: block;
+        margin-top: 12px;
+        font-size: 15px;
+      }
+      .card span {
+        display: block;
+        margin-top: 4px;
+        font-size: 13px;
+        line-height: 1.5;
+        color: var(--muted);
+      }
+      .crumb {
+        font-size: 13px;
+        color: var(--faint);
+      }
+      .api h1 {
+        font: 400 38px "JetBrains Mono", monospace;
+        letter-spacing: -0.02em;
+        margin-top: 8px;
+      }
+      .api .lede {
+        max-width: 620px;
+        font-size: 16px;
+      }
+      .params {
+        margin-top: 22px;
+        border-radius: 12px;
+        box-shadow: inset 0 0 0 1px var(--line);
+        overflow: hidden;
+        font-size: 14px;
+      }
+      .params .r {
+        display: grid;
+        grid-template-columns: 120px 140px 1fr;
+        align-items: center;
+        min-height: 44px;
+        padding: 0 16px;
+        border-top: 1px solid var(--line);
+      }
+      .params .r:first-child {
+        border-top: 0;
+        background: var(--panel);
+        color: var(--faint);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        min-height: 36px;
+      }
+      .params code {
+        font: 400 13.5px "JetBrains Mono", monospace;
+        color: var(--cyan);
+      }
+      .params .ty {
+        font: 400 13px "JetBrains Mono", monospace;
+        color: #c4b5fd;
+      }
+      .params .d {
+        color: var(--muted);
+      }
+      .hero .codecard pre {
+        font-size: 13.5px;
+      }
+      .api .codecard {
+        margin-top: 22px;
+        position: relative;
+      }
+      .api .codecard pre {
+        font-size: 14px;
+        min-height: 194px;
+      }
+      .toc {
+        width: 190px;
+        flex: none;
+        padding: 40px 24px 0 0;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .toc h6 {
+        margin: 0 0 12px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--ink);
+      }
+      .toc div {
+        height: 28px;
+        padding-left: 12px;
+        border-left: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+      }
+      .toc div.on {
+        color: var(--cyan);
+        border-left-color: var(--cyan);
+      }
+      .log h1 {
+        font-size: 44px;
+      }
+      .entry {
+        display: grid;
+        grid-template-columns: 170px 1fr;
+        gap: 28px;
+        margin-top: 30px;
+        padding-top: 26px;
+        border-top: 1px solid var(--line);
+      }
+      .entry .v {
+        font: 400 22px "JetBrains Mono", monospace;
+        color: var(--ink);
+      }
+      .entry .when {
+        margin: 6px 0 10px;
+        font-size: 13px;
+        color: var(--faint);
+      }
+      .entry h3 {
+        margin: 0 0 14px;
+        font-size: 21px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+      .entry ul {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .entry li {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        height: 38px;
+        font-size: 15px;
+        color: #cbd5e1;
+      }
+      .entry li .tag {
+        width: 82px;
+        justify-content: center;
+        flex: none;
+      }
+      .entry li code,
+      .entry h3 code {
+        font: 400 14px "JetBrains Mono", monospace;
+        color: var(--cyan);
+      }
+      .entry.old {
+        opacity: 0.45;
+      }
+      .chip-cmd {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 14px;
+        height: 40px;
+        padding: 0 14px;
+        border-radius: 10px;
+        background: var(--panel);
+        box-shadow: inset 0 0 0 1px var(--line);
+        font: 400 14px "JetBrains Mono", monospace;
+      }
+      .chip-cmd .p {
+        color: var(--lime);
+      }
+      .swap {
+        position: absolute;
+        inset: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="win" id="win"></div>
+    <script type="module">
+      import { CURSOR, fillIcons, icon } from "../shared/icons.js";
+      import { ease, params, path, press, ready, ripple, seg } from "../shared/motion.js";
+      import { MARK } from "./mark.js";
+
+      const page = params().page ?? "home";
+      const still = Boolean(params().still);
+      const k = (s) => `<span class="kw">${s}</span>`;
+      const st = (s) => `<span class="str">${s}</span>`;
+      const f = (s) => `<span class="fn">${s}</span>`;
+      const p = (s) => `<span class="pun">${s}</span>`;
+      const lines = (rows) => rows.map((r, i) => `<span class="ln">${i + 1}</span>${r}`).join("\n");
+
+      const TS_HOME = lines([
+        `${k("import")} { thornbill } ${k("from")} ${st('"thornbill"')}${p(";")}`,
+        "",
+        `${k("const")} app ${p("=")} ${f("thornbill")}({ name${p(":")} ${st('"shop-api"')} })${p(";")}`,
+        "",
+        `app.${f("get")}(${st('"/orders/:id"')}, ${k("async")} ({ params, db }) ${p("=>")} {`,
+        `  ${k("return")} db.orders.${f("find")}(params.id)${p(";")}`,
+        `})${p(";")}`,
+        "",
+        `${k("export default")} app${p(";")}`,
+      ]);
+      const TS_API = lines([
+        `${k("import")} { thornbill } ${k("from")} ${st('"thornbill"')}${p(";")}`,
+        "",
+        `${k("const")} app ${p("=")} ${f("thornbill")}({ name${p(":")} ${st('"shop-api"')} })${p(";")}`,
+        "",
+        `app.${f("get")}(${st('"/orders/:id"')}, ${k("async")} ({ params, db }) ${p("=>")} {`,
+        `  ${k("const")} order ${p("=")} ${k("await")} db.orders.${f("find")}(params.id)${p(";")}`,
+        `  ${k("return")} order ${p("??")} app.${f("notFound")}()${p(";")}`,
+        `})${p(";")}`,
+      ]);
+      const PY_API = lines([
+        `${k("from")} thornbill ${k("import")} Thornbill`,
+        "",
+        `app ${p("=")} ${f("Thornbill")}(name${p("=")}${st('"shop-api"')})`,
+        "",
+        `${p("@")}app.${f("get")}(${st('"/orders/{id}"')})`,
+        `${k("async def")} ${f("get_order")}(id${p(":")} str, db)${p(":")}`,
+        `    order ${p("=")} ${k("await")} db.orders.${f("find")}(id)`,
+        `    ${k("return")} order ${k("or")} app.${f("not_found")}()`,
+      ]);
+
+      const toolbar = `<div class="toolbar"><div class="lights"><i></i><i></i><i></i></div>${icon("sidebar")}${icon("chevronLeft")}${icon("chevronRight")}<div class="address">${icon("lock")}Thornbill Docs</div>${icon("share")}${icon("plus")}</div>`;
+      const nav = `<div class="nav"><div class="brand"><span class="logo">${MARK}</span>Thornbill<span class="docs">Docs</span></div><span>Guides</span><span class="${page === "api" ? "on" : ""}">API</span><span>SDKs</span><span class="${page === "changelog" ? "on" : ""}">Changelog</span><div class="grow"></div><div class="search">${icon("search")}Search docs<span class="kbd">/</span></div><span class="btn ghost">Dashboard</span></div>`;
+      const sideItems = {
+        home: "Introduction",
+        api: "Routes",
+        changelog: "Changelog",
+      }[page];
+      const side = `<aside class="side"><h5>Get started</h5>${["Introduction", "Quickstart", "Install the CLI"].map((s) => `<div class="${s === sideItems ? "on" : ""}">${s}</div>`).join("")}<div class="gap"></div><h5>SDK</h5>${["Client", "Routes", "Middleware", "Testing"].map((s) => `<div class="${s === sideItems ? "on" : ""}">${s}</div>`).join("")}<div class="gap"></div><h5>Reference</h5>${["CLI commands", "Config file", "Changelog"].map((s) => `<div class="${s === sideItems ? "on" : ""}">${s}</div>`).join("")}</aside>`;
+
+      const home = `<main class="content"><div class="hero"><div><div class="eyebrow">THORNBILL 4.2</div><h1 class="display">Ship APIs in minutes.</h1><p class="lede">A CLI and SDK for typed, tested, deployable APIs. Write a route, run it locally, ship it with one command.</p><div class="ctas"><span class="btn primary">Quickstart${icon("arrowRight")}</span><span class="btn ghost">${icon("terminal")}Install the CLI</span></div></div>
+        <div class="codecard"><div class="tabs"><span class="t on">TypeScript</span><span class="t">Python</span><span class="t">Go</span><span class="copy">${icon("copy")}Copy</span></div><pre>${TS_HOME}</pre></div></div>
+        <div class="cards"><div class="card"><div class="ic">${icon("code")}</div><b>Typed routes</b><span>Params, query and body are checked before your handler runs.</span></div><div class="card"><div class="ic">${icon("terminal")}</div><b>Local preview</b><span>Run <code class="mono">thornbill dev</code> and every change reloads in milliseconds.</span></div><div class="card"><div class="ic">${icon("rocket")}</div><b>One-command deploys</b><span>Previews per branch, production when you merge.</span></div></div></main>`;
+
+      const api = `<main class="content api"><div class="crumb">SDK / Routes</div><h1>app.get()</h1><p class="lede">Register a typed GET route. Params, query and body are checked before your handler runs, and the response type flows to every client.</p>
+        <div class="params"><div class="r"><span>Name</span><span>Type</span><span>Description</span></div><div class="r"><code>path</code><span class="ty">string</span><span class="d">Route pattern, such as /orders/:id</span></div><div class="r"><code>handler</code><span class="ty">Handler</span><span class="d">Gets the request context and returns JSON or a Response</span></div><div class="r"><code>options</code><span class="ty">RouteOptions</span><span class="d">Caching, auth and rate limits</span></div></div>
+        <div class="codecard" id="code"><div class="tabs"><span class="t on" id="tabTs">TypeScript</span><span class="t" id="tabPy">Python</span><span class="copy" id="copy">${icon("copy")}<span id="copyText">Copy</span></span></div><pre id="pre">${TS_API}</pre></div></main>
+        <aside class="toc"><h6>On this page</h6><div class="on">Parameters</div><div>Example</div><div>Returns</div><div>Errors</div></aside>`;
+
+      const log = `<main class="content log"><h1 class="display">Changelog</h1><p class="lede">New releases, improvements and fixes.</p>
+        <div class="entry"><div><div class="v">4.2.0</div><div class="when">12 May</div><span class="tag latest">Latest</span></div><div><h3>Typed environments and faster cold starts</h3><ul>
+          <li><span class="tag new">New</span>Typed environment variables, checked at build time</li>
+          <li><span class="tag new">New</span><span><code>thornbill preview</code> shares a live URL for every branch</span></li>
+          <li><span class="tag better">Improved</span>Cold starts 38% faster on every runtime</li>
+          <li><span class="tag better">Improved</span>Route types regenerate in watch mode</li>
+          <li><span class="tag fixed">Fixed</span>Watch mode on large monorepos</li></ul>
+          <div class="chip-cmd"><span class="p">&gt;</span>thornbill upgrade</div></div></div>
+        <div class="entry old"><div><div class="v">4.1.0</div><div class="when">21 Apr</div></div><div><h3>Middleware you can test</h3><ul><li><span class="tag new">New</span>Test middleware without a server</li></ul></div></div></main>`;
+
+      const content = { home, api, changelog: log }[page];
+      const win = document.getElementById("win");
+      win.innerHTML = `${toolbar}${nav}<div class="body">${side}${content}</div><div class="ring" id="tap"></div>${page === "api" && !still ? CURSOR : ""}`;
+      fillIcons(win);
+
+      const $ = (id) => document.getElementById(id);
+      const centre = (el) => {
+        const r = el.getBoundingClientRect();
+        return [r.left + r.width / 2, r.top + r.height / 2];
+      };
+
+      window.render = (t) => {
+        if (page !== "api") return;
+        const py = $("tabPy");
+        const copy = $("copy");
+        const a = centre(py);
+        const b = centre(copy);
+        const start = [760, 690];
+        let at = t < 2300 ? path(t, 250, 1000, [start, [600, 560], a]) : path(t, 2300, 750, [a, [a[0] + 200, a[1] - 60], b]);
+        if (t > 3350) at = path(t, 3350, 900, [b, [b[0] - 20, b[1] + 60], [b[0] - 70, b[1] + 150]], ease.out);
+        const cursor = win.querySelector(".cursor");
+        if (cursor) cursor.style.transform = `translate(${at[0] - 4}px, ${at[1] - 3}px)`;
+        const tap = $("tap");
+        const target = t < 2300 ? a : b;
+        tap.style.left = `${target[0]}px`;
+        tap.style.top = `${target[1]}px`;
+        ripple(tap, t, t < 2300 ? 1300 : 3100, { size: 56, colour: "rgba(34,211,238,0.35)" });
+        const switched = t >= 1360;
+        $("tabTs").classList.toggle("on", !switched);
+        py.classList.toggle("on", switched);
+        py.style.transform = `scale(${press(t, 1300)})`;
+        const pre = $("pre");
+        const fade = seg(t, 1360, 220);
+        pre.innerHTML = switched ? PY_API : TS_API;
+        pre.style.opacity = String(switched ? 0.35 + 0.65 * ease.out(fade) : 1);
+        copy.style.transform = `scale(${press(t, 3100)})`;
+        const done = t >= 3180;
+        copy.style.color = done ? "var(--lime)" : "";
+        $("copyText").textContent = done ? "Copied" : "Copy";
+        copy.querySelector("svg").outerHTML = icon(done ? "check" : "copy");
+      };
+      window.pageReady = ready();
+    </script>
+  </body>
+</html>

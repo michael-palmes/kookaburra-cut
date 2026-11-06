@@ -1,0 +1,147 @@
+:root {
+  --navy: #16213e;
+  --navy-deep: #0d1428;
+  --coral: #f06c5b;
+  --coral-deep: #e2594a;
+  --sage: #6fae84;
+  --linen: #f7f4ef;
+  --sky: #4f8ef7;
+  --sky-bg: #e4eeff;
+  --lilac: #9a7cf4;
+  --lilac-bg: #eee8ff;
+  --mint: #3fb27a;
+  --mint-bg: #def4e7;
+  --butter: #f2b23a;
+  --butter-bg: #fff1d1;
+  --peach: #f0875b;
+  --peach-bg: #ffe6dc;
+  --bg: var(--linen);
+  --surface: #fff;
+  --surface-2: #fbf9f6;
+  --ink: var(--navy);
+  --muted: #6c7491;
+  --faint: #a3a9bd;
+  --hair: rgba(22, 33, 62, 0.08);
+  --shadow: 0 1px 2px rgba(22, 33, 62, 0.05), 0 8px 24px -12px rgba(22, 33, 62, 0.18);
+}
+
+.dark {
+  --bg: var(--navy-deep);
+  --surface: #172140;
+  --surface-2: #131c37;
+  --ink: #f4f0ea;
+  --muted: #9aa3bf;
+  --faint: #66708f;
+  --hair: rgba(244, 240, 234, 0.09);
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 10px 30px -14px rgba(0, 0, 0, 0.6);
+  --sky-bg: #1d2f5c;
+  --lilac-bg: #2a2558;
+  --mint-bg: #173a3a;
+  --butter-bg: #3a3226;
+  --peach-bg: #3b2a31;
+}
+
+body {
+  color: var(--ink);
+  background: var(--bg);
+}
+
+.display {
+  font-family: "Inter Tight", "Inter", sans-serif;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 15px;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 0 0 1px var(--hair) inset;
+}
+
+.avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.avatars {
+  display: flex;
+}
+
+.avatars .avatar + .avatar {
+  margin-left: -7px;
+}
+
+.a1 {
+  background: #e2846b;
+}
+
+.a2 {
+  background: #5d8de8;
+}
+
+.a3 {
+  background: #4fae8a;
+}
+
+.a4 {
+  background: #a283e6;
+}
+
+.check {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--faint);
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 15px;
+  flex: none;
+}
+
+.check svg.i {
+  stroke-width: 3;
+  opacity: 0;
+}
+
+.check.on {
+  border-color: var(--coral);
+  background: var(--coral);
+}
+
+.check.on svg.i {
+  opacity: 1;
+}
+
+.toggle {
+  width: 51px;
+  height: 31px;
+  border-radius: 16px;
+  background: #d9dbe3;
+  position: relative;
+  flex: none;
+}
+
+.toggle .knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+}

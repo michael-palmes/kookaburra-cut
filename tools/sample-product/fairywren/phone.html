@@ -1,0 +1,789 @@
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fairywren phone</title>
+    <link rel="stylesheet" href="../shared/base.css" />
+    <link rel="stylesheet" href="../shared/phone.css" />
+    <link rel="stylesheet" href="app.css" />
+    <style>
+      .glow {
+        position: absolute;
+        inset: -120px -80px auto -80px;
+        height: 420px;
+        background: radial-gradient(60% 60% at 70% 30%, rgba(240, 108, 91, 0.1), transparent 70%);
+        pointer-events: none;
+      }
+      .dark .glow {
+        background: radial-gradient(60% 60% at 70% 25%, rgba(79, 142, 247, 0.16), transparent 70%);
+      }
+      .head {
+        position: absolute;
+        left: 24px;
+        right: 24px;
+        top: 66px;
+        height: 72px;
+      }
+      .eyebrow {
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: var(--coral);
+      }
+      h1 {
+        margin: 4px 0 0;
+        font-size: 42px;
+        line-height: 1;
+        font-weight: 800;
+        letter-spacing: -0.025em;
+      }
+      .progress {
+        position: absolute;
+        right: 0;
+        top: 10px;
+        width: 54px;
+        height: 54px;
+      }
+      .progress svg {
+        width: 54px;
+        height: 54px;
+        transform: rotate(-90deg);
+      }
+      .progress span {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .week {
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        top: 152px;
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        text-align: center;
+      }
+      .day small {
+        display: block;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+        text-transform: uppercase;
+      }
+      .day b {
+        display: grid;
+        place-items: center;
+        width: 38px;
+        height: 38px;
+        margin: 7px auto 0;
+        border-radius: 50%;
+        font-size: 17px;
+        font-weight: 600;
+      }
+      .day.today b {
+        background: var(--coral);
+        color: #fff;
+        box-shadow: 0 6px 14px -6px rgba(240, 108, 91, 0.8);
+      }
+      .day.weekend b {
+        color: var(--faint);
+      }
+      .day i {
+        display: block;
+        width: 4px;
+        height: 4px;
+        margin: 5px auto 0;
+        border-radius: 2px;
+        background: var(--faint);
+      }
+      .day.today i {
+        background: var(--coral);
+      }
+      .label {
+        position: absolute;
+        left: 24px;
+        right: 24px;
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .label .count {
+        font-size: 13px;
+        font-weight: 400;
+        color: var(--muted);
+      }
+      .blocks {
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .block {
+        position: relative;
+        height: 78px;
+        border-radius: 20px;
+        padding: 14px 16px 0 26px;
+        background: var(--tint);
+        display: flex;
+        gap: 12px;
+        overflow: hidden;
+      }
+      .block::before {
+        content: "";
+        position: absolute;
+        left: 12px;
+        top: 14px;
+        bottom: 14px;
+        width: 4px;
+        border-radius: 2px;
+        background: var(--bar);
+      }
+      .block .body {
+        flex: 1;
+        min-width: 0;
+      }
+      .block .time {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--bar);
+        letter-spacing: 0.02em;
+      }
+      .block .title {
+        position: relative;
+        display: inline-block;
+        margin-top: 3px;
+        font-size: 17px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      .block .title::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 54%;
+        height: 2px;
+        border-radius: 1px;
+        background: currentColor;
+        transform-origin: left;
+        transform: scaleX(var(--strike, 0));
+      }
+      .block .meta {
+        margin-top: 3px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .block .side {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        height: 50px;
+      }
+      .sky {
+        --tint: var(--sky-bg);
+        --bar: var(--sky);
+      }
+      .lilac {
+        --tint: var(--lilac-bg);
+        --bar: var(--lilac);
+      }
+      .mint {
+        --tint: var(--mint-bg);
+        --bar: var(--mint);
+      }
+      .butter {
+        --tint: var(--butter-bg);
+        --bar: var(--butter);
+      }
+      .check svg.i {
+        stroke-dasharray: 22;
+        stroke-dashoffset: var(--draw, 22);
+        opacity: 1;
+      }
+      .dock {
+        position: absolute;
+        left: 18px;
+        right: 18px;
+        bottom: 30px;
+        height: 62px;
+        display: flex;
+        gap: 10px;
+      }
+      .tabs {
+        flex: 1;
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        border-radius: 31px;
+        background: color-mix(in srgb, var(--surface) 88%, transparent);
+        box-shadow: var(--shadow), 0 0 0 1px var(--hair) inset;
+        padding: 0 8px;
+      }
+      .tab {
+        display: grid;
+        justify-items: center;
+        gap: 3px;
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--muted);
+        width: 62px;
+      }
+      .tab svg.i {
+        font-size: 23px;
+      }
+      .tab.on {
+        color: var(--coral);
+      }
+      .add {
+        width: 146px;
+        border: 0;
+        border-radius: 31px;
+        background: var(--coral);
+        color: #fff;
+        font: 600 17px "Inter", sans-serif;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        box-shadow: 0 12px 26px -12px rgba(240, 108, 91, 0.9);
+      }
+      .add svg.i {
+        font-size: 21px;
+        stroke-width: 2.4;
+      }
+      .scrim {
+        position: absolute;
+        inset: 0;
+        background: #0d1428;
+        opacity: 0;
+        z-index: 20;
+      }
+      .sheet {
+        position: absolute;
+        left: 8px;
+        right: 8px;
+        bottom: 8px;
+        height: 352px;
+        border-radius: 38px;
+        background: var(--surface);
+        z-index: 21;
+        padding: 12px 22px 0;
+        box-shadow: 0 -10px 40px -20px rgba(13, 20, 40, 0.5);
+        transform: translateY(110%);
+      }
+      .grabber {
+        width: 38px;
+        height: 5px;
+        border-radius: 3px;
+        margin: 0 auto 18px;
+        background: #d6d8e0;
+      }
+      .sheet h2 {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+      }
+      .field {
+        margin-top: 16px;
+        height: 58px;
+        border-radius: 18px;
+        background: var(--surface-2);
+        box-shadow: 0 0 0 1.5px var(--coral) inset;
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        font-size: 19px;
+        font-weight: 600;
+        gap: 2px;
+      }
+      .field .ph {
+        color: var(--faint);
+        font-weight: 400;
+      }
+      .caret {
+        width: 2px;
+        height: 24px;
+        border-radius: 1px;
+        background: var(--coral);
+      }
+      .chips {
+        display: flex;
+        gap: 8px;
+        margin-top: 14px;
+      }
+      .chips .chip {
+        height: 36px;
+        border-radius: 18px;
+        padding: 0 14px;
+        font-size: 14px;
+        background: var(--surface-2);
+      }
+      .chips .chip svg.i {
+        font-size: 16px;
+        color: var(--muted);
+      }
+      .chips .chip.pick {
+        background: rgba(240, 108, 91, 0.12);
+        color: var(--coral-deep);
+        box-shadow: 0 0 0 1.5px rgba(240, 108, 91, 0.5) inset;
+      }
+      .chips .chip.pick svg.i {
+        color: var(--coral);
+      }
+      .sheet .save {
+        margin-top: 22px;
+        height: 54px;
+        border-radius: 27px;
+        background: var(--coral);
+        color: #fff;
+        display: grid;
+        place-items: center;
+        font-size: 17px;
+        font-weight: 600;
+      }
+      .focus-card {
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        top: 238px;
+        height: 76px;
+        border-radius: 22px;
+        background: var(--surface);
+        box-shadow: var(--shadow);
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 0 16px;
+      }
+      .focus-card .badge {
+        width: 44px;
+        height: 44px;
+        border-radius: 14px;
+        display: grid;
+        place-items: center;
+        background: rgba(111, 174, 132, 0.16);
+        color: var(--sage);
+        font-size: 24px;
+      }
+      .focus-card .txt {
+        flex: 1;
+      }
+      .focus-card b {
+        display: block;
+        font-size: 17px;
+        font-weight: 600;
+      }
+      .focus-card span {
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .focus-view {
+        position: absolute;
+        inset: 0;
+        z-index: 10;
+        opacity: 0;
+        color: #f4f0ea;
+      }
+      .fv-head {
+        position: absolute;
+        left: 24px;
+        top: 66px;
+      }
+      .fv-head .eyebrow {
+        color: #8fd0a6;
+      }
+      .fv-ring {
+        position: absolute;
+        left: 51px;
+        top: 214px;
+        width: 300px;
+        height: 300px;
+      }
+      .fv-ring svg {
+        position: absolute;
+        inset: 0;
+        transform: rotate(-90deg);
+      }
+      .fv-ring .halo {
+        position: absolute;
+        inset: -40px;
+        border-radius: 50%;
+        background: radial-gradient(closest-side, rgba(240, 108, 91, 0.22), transparent);
+      }
+      .fv-ring .readout {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-content: center;
+        text-align: center;
+      }
+      .fv-ring .clock {
+        font-family: "Inter Tight", "Inter", sans-serif;
+        font-size: 68px;
+        font-weight: 300;
+        letter-spacing: -0.02em;
+        line-height: 1;
+      }
+      .fv-ring .task {
+        margin-top: 10px;
+        font-size: 16px;
+        font-weight: 600;
+        color: #c9cede;
+      }
+      .fv-chips {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 560px;
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+      }
+      .fv-chips .chip {
+        background: rgba(255, 255, 255, 0.08);
+        color: #e9e6f0;
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+        height: 34px;
+        padding: 0 14px;
+      }
+      .fv-chips .chip svg.i {
+        font-size: 16px;
+        color: #8fd0a6;
+      }
+      .fv-end {
+        position: absolute;
+        left: 24px;
+        right: 24px;
+        bottom: 46px;
+        height: 56px;
+        border-radius: 28px;
+        display: grid;
+        place-items: center;
+        font-size: 17px;
+        font-weight: 600;
+        color: #f4f0ea;
+        box-shadow: 0 0 0 1.5px rgba(244, 240, 234, 0.28) inset;
+      }
+      .old {
+        position: absolute;
+        inset: 0;
+        background: #ececec;
+        color: #222;
+        font-family: "Inter", sans-serif;
+        --status: #111;
+      }
+      .old .bar {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        height: 108px;
+        background: #3a6fc9;
+        color: #fff;
+      }
+      .old .bar .row {
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        bottom: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 18px;
+        font-weight: 600;
+      }
+      .old .bar svg.i {
+        font-size: 24px;
+      }
+      .old .seg {
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        top: 122px;
+        height: 32px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        border: 1px solid #3a6fc9;
+        border-radius: 6px;
+        overflow: hidden;
+        font-size: 13px;
+        color: #3a6fc9;
+        text-align: center;
+        line-height: 30px;
+      }
+      .old .seg .on {
+        background: #3a6fc9;
+        color: #fff;
+      }
+      .old .date {
+        position: absolute;
+        left: 16px;
+        top: 172px;
+        font-size: 13px;
+        color: #777;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+      .old ul {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 196px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        background: #fff;
+        border-top: 1px solid #d4d4d4;
+      }
+      .old li {
+        height: 64px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 16px;
+        border-bottom: 1px solid #dcdcdc;
+        font-size: 15px;
+      }
+      .old li .tm {
+        width: 48px;
+        font-size: 13px;
+        color: #888;
+      }
+      .old li .sq {
+        width: 20px;
+        height: 20px;
+        border: 1.5px solid #9a9a9a;
+        border-radius: 3px;
+      }
+      .old li .grow {
+        flex: 1;
+      }
+      .old li small {
+        display: block;
+        color: #8a8a8a;
+        font-size: 12px;
+        margin-top: 2px;
+      }
+      .old li svg.i {
+        color: #b3b3b3;
+        font-size: 18px;
+      }
+      .old .foot {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 84px;
+        background: #f7f7f7;
+        border-top: 1px solid #cfcfcf;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        padding-top: 10px;
+        text-align: center;
+        font-size: 10px;
+        color: #8a8a8a;
+      }
+      .old .foot svg.i {
+        display: block;
+        margin: 0 auto 3px;
+        font-size: 22px;
+      }
+      .old .foot .on {
+        color: #3a6fc9;
+      }
+      .old .fab {
+        position: absolute;
+        right: 20px;
+        bottom: 104px;
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        background: #3a6fc9;
+        color: #fff;
+        display: grid;
+        place-items: center;
+        font-size: 26px;
+        box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="phone" id="phone"></div>
+    <script type="module">
+      import { fillIcons, icon } from "../shared/icons.js";
+      import { caretOn, ease, mix, params, press, ready, ripple, rise, seg, tween, typed } from "../shared/motion.js";
+      import { phoneChrome } from "../shared/phone.js";
+
+      const P = params();
+      const scene = P.scene ?? "plan";
+      const phone = document.getElementById("phone");
+      if (P.mode === "dark") phone.classList.add("dark");
+
+      const BLOCKS = [
+        { cls: "sky", time: "09:00", title: "Plan the week", meta: "15 min" },
+        { cls: "lilac", time: "10:30", title: "Design review", meta: "Studio · 45 min", people: ["S", "J", "P"] },
+        { cls: "mint", time: "13:00", title: "Focus time", meta: "Write the brief · 90 min" },
+        { cls: "butter", time: "15:30", title: "Ship release", meta: "Team · 30 min" },
+      ];
+      const DAYS = [
+        ["Mon", 11],
+        ["Tue", 12],
+        ["Wed", 13],
+        ["Thu", 14],
+        ["Fri", 15],
+        ["Sat", 16],
+        ["Sun", 17],
+      ];
+      const RING = 2 * Math.PI * 23;
+
+      function today() {
+        const blocks = BLOCKS.map(
+          (b) => `<div class="block ${b.cls}"><div class="body"><div class="time tnum">${b.time}</div><div class="title">${b.title}</div><div class="meta">${b.meta}</div></div><div class="side">${
+            b.people ? `<div class="avatars">${b.people.map((p, i) => `<div class="avatar a${i + 1}">${p}</div>`).join("")}</div>` : ""
+          }<div class="check"><svg class="i" viewBox="0 0 24 24"><path d="M6 12.5l4 4 8-9"/></svg></div></div></div>`,
+        );
+        return `<div class="glow"></div>
+          <header class="head"><div class="eyebrow">Tuesday 12 May</div><h1 class="display">Today</h1>
+            <div class="progress"><svg viewBox="0 0 54 54"><circle cx="27" cy="27" r="23" fill="none" stroke="var(--hair)" stroke-width="5"/><circle id="arc" cx="27" cy="27" r="23" fill="none" stroke="var(--coral)" stroke-width="5" stroke-linecap="round" stroke-dasharray="${RING}" stroke-dashoffset="${RING}"/></svg><span class="tnum" id="ringText">0/4</span></div></header>
+          <div class="week">${DAYS.map(([d, n], i) => `<div class="day${i === 1 ? " today" : ""}${i > 4 ? " weekend" : ""}"><small>${d}</small><b class="tnum">${n}</b><i style="opacity:${i > 4 ? 0 : 1}"></i></div>`).join("")}</div>
+          <section class="focus-card" id="focusCard"><div class="badge">${icon("target")}</div><div class="txt"><b>Focus</b><span>Quiet the rest of the day</span></div><div class="toggle" id="toggle"><div class="knob"></div></div></section>
+          <div class="label" id="label"><span>Schedule</span><span class="count">4 plans</span></div>
+          <div class="blocks" id="blocks">${blocks.join("")}</div>
+          <div class="dock" id="dock"><nav class="tabs"><div class="tab on">${icon("calendar")}Today</div><div class="tab">${icon("list")}Lists</div><div class="tab">${icon("bars")}Insights</div></nav><div class="add" id="add">${icon("plus")}Add plan</div></div>
+          <div class="scrim" id="scrim"></div>
+          <div class="sheet" id="sheet"><div class="grabber"></div><h2 class="display">New plan</h2>
+            <div class="field" id="field"><span id="typed"></span><span class="caret" id="caret"></span><span class="ph" id="ph">What's the plan?</span></div>
+            <div class="chips"><div class="chip">${icon("calendar")}Today</div><div class="chip pick" id="when">${icon("clock")}16:30</div><div class="chip">${icon("bell")}10 min before</div></div>
+            <div class="save">Add to today</div></div>
+          <div class="focus-view" id="focusView"><div class="fv-head"><div class="eyebrow">Until 14:30</div><h1 class="display">Focus</h1></div>
+            <div class="fv-ring"><div class="halo" id="halo"></div><svg viewBox="0 0 300 300"><circle cx="150" cy="150" r="136" fill="none" stroke="rgba(244,240,234,0.1)" stroke-width="10"/><circle id="fvArc" cx="150" cy="150" r="136" fill="none" stroke="var(--coral)" stroke-width="10" stroke-linecap="round" stroke-dasharray="${2 * Math.PI * 136}" stroke-dashoffset="${2 * Math.PI * 136}"/></svg>
+              <div class="readout"><div class="clock tnum" id="clock">25:00</div><div class="task">Write the brief</div></div></div>
+            <div class="fv-chips"><div class="chip" id="paused">${icon("bellOff")}Notifications paused</div></div>
+            <div class="fv-end" id="fvEnd">End focus</div></div>
+          <div class="ring" id="tap"></div>
+          ${phoneChrome()}`;
+      }
+
+      function then() {
+        return `<div class="old"><div class="bar"><div class="row">${icon("menu")}<span>Planner</span>${icon("plus")}</div></div>
+          <div class="seg"><div class="on">Day</div><div>Week</div><div>Month</div></div>
+          <div class="date">Tuesday, 12 May</div>
+          <ul>${BLOCKS.map((b) => `<li><span class="tm tnum">${b.time}</span><span class="sq"></span><span class="grow">${b.title}<small>${b.meta}</small></span>${icon("chevronRight")}</li>`).join("")}
+            <li><span class="tm tnum">17:00</span><span class="sq"></span><span class="grow">Groceries<small>Reminder</small></span>${icon("chevronRight")}</li></ul>
+          <div class="fab">${icon("plus")}</div>
+          <div class="foot"><div class="on">${icon("calendar")}Planner</div><div>${icon("list")}Tasks</div><div>${icon("note")}Notes</div><div>${icon("settings")}Settings</div></div>
+          ${phoneChrome()}</div>`;
+      }
+
+      phone.innerHTML = scene === "then" ? then() : today();
+      fillIcons(phone);
+      const $ = (id) => document.getElementById(id);
+      const blocks = [...phone.querySelectorAll(".block")];
+
+      function layout(focus) {
+        const top = focus ? 336 : 252;
+        $("focusCard").style.display = focus ? "flex" : "none";
+        $("label").style.top = `${top}px`;
+        $("blocks").style.top = `${top + 30}px`;
+      }
+
+      function check(i, t, at) {
+        const el = blocks[i];
+        const c = el.querySelector(".check");
+        const p = seg(t, at + 60, 240);
+        c.classList.toggle("on", t >= at + 60);
+        c.style.setProperty("--draw", String(22 * (1 - ease.out(p))));
+        c.style.transform = `scale(${t >= at ? 1 + 0.12 * Math.sin(Math.PI * seg(t, at, 260)) : 1})`;
+        el.querySelector(".title").style.setProperty("--strike", String(ease.inOut(seg(t, at + 120, 300))));
+        el.querySelector(".body").style.opacity = String(1 - 0.45 * seg(t, at + 120, 300));
+      }
+
+      function ring(done) {
+        $("arc").setAttribute("stroke-dashoffset", String(RING * (1 - done)));
+      }
+
+      function renderPlan(t) {
+        layout(false);
+        rise($("label"), t, 200);
+        for (const [i, b] of blocks.entries()) rise(b, t, 300 + i * 110, { dy: 26 });
+        const tap = $("tap");
+        const c = blocks[0].querySelector(".check").getBoundingClientRect();
+        tap.style.left = `${c.left + c.width / 2}px`;
+        tap.style.top = `${c.top + c.height / 2}px`;
+        ripple(tap, t, 1750, { size: 58 });
+        check(0, t, 1750);
+        ring(0.25 * ease.out(seg(t, 2250, 600)));
+        $("ringText").textContent = t >= 2350 ? "1/4" : "0/4";
+
+        const add = $("add");
+        add.style.transform = `scale(${press(t, 3250)})`;
+        if (t >= 3250 && t < 3800) {
+          const r = add.getBoundingClientRect();
+          tap.style.left = `${r.left + r.width / 2}px`;
+          tap.style.top = `${r.top + r.height / 2}px`;
+          ripple(tap, t, 3250, { size: 120, colour: "rgba(255,255,255,0.45)" });
+        }
+        const sheet = ease.outQuint(seg(t, 3380, 560));
+        $("scrim").style.opacity = String(0.32 * ease.out(seg(t, 3350, 360)));
+        $("sheet").style.transform = `translateY(${(1 - sheet) * 110}%)`;
+        const text = typed("Call with Sam", t, 3980, 17);
+        $("typed").textContent = text;
+        $("ph").style.display = text ? "none" : "inline";
+        $("caret").style.opacity = caretOn(t, 4750) ? "1" : "0";
+        $("when").style.transform = `scale(${t >= 4700 ? 1 + 0.08 * Math.sin(Math.PI * seg(t, 4700, 300)) : 1})`;
+      }
+
+      const LIGHT = { bg: "#f7f4ef", surface: "#ffffff", ink: "#16213e", muted: "#6c7491" };
+      const DARK = { bg: "#0d1428", surface: "#172140", ink: "#f4f0ea", muted: "#9aa3bf" };
+
+      function renderFocus(t) {
+        layout(true);
+        const tap = $("tap");
+        const tg = $("toggle").getBoundingClientRect();
+        tap.style.left = `${tg.left + tg.width / 2}px`;
+        tap.style.top = `${tg.top + tg.height / 2}px`;
+        ripple(tap, t, 700, { size: 70, colour: "rgba(111,174,132,0.45)" });
+        const k = ease.outBack(seg(t, 760, 280));
+        $("toggle").querySelector(".knob").style.transform = `translateX(${20 * k}px)`;
+        $("toggle").style.background = mix("#d9dbe3", "#6fae84", seg(t, 760, 200));
+
+        const m = ease.inOut(seg(t, 1150, 1000));
+        for (const key of Object.keys(LIGHT)) phone.style.setProperty(`--${key}`, mix(LIGHT[key], DARK[key], m));
+        phone.style.setProperty("--status", mix("#16213e", "#f4f0ea", m));
+        const away = ease.inOut(seg(t, 1200, 700));
+        for (const el of [phone.querySelector(".head"), phone.querySelector(".week"), $("focusCard"), $("label"), $("dock"), ...blocks]) {
+          el.style.opacity = String(1 - away);
+          el.style.transform = `translateY(${-14 * away}px)`;
+        }
+        phone.querySelector(".glow").style.opacity = String(1 - away);
+        const v = ease.outQuint(seg(t, 1750, 900));
+        const fv = $("focusView");
+        fv.style.opacity = String(v);
+        fv.querySelector(".fv-ring").style.transform = `scale(${0.9 + 0.1 * v})`;
+        const left = ease.out(seg(t, 1900, 1400)) - Math.max(0, t - 2600) / 1000 / 1500;
+        $("fvArc").setAttribute("stroke-dashoffset", String(2 * Math.PI * 136 * (1 - left)));
+        const secs = 25 * 60 - Math.max(0, Math.floor((t - 2600) / 1000));
+        $("clock").textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+        $("halo").style.transform = `scale(${1 + 0.035 * Math.sin((t / 1000) * 1.6)})`;
+        rise($("paused"), t, 3000, { dy: 12 });
+        rise($("fvEnd"), t, 3250, { dy: 10 });
+      }
+
+      window.render = (t) => {
+        if (scene === "plan") renderPlan(t);
+        else if (scene === "focus") renderFocus(t);
+      };
+      window.pageReady = ready();
+    </script>
+  </body>
+</html>

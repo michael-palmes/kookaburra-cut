@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fairywren share</title>
+    <link rel="stylesheet" href="../shared/base.css" />
+    <link rel="stylesheet" href="../shared/window.css" />
+    <link rel="stylesheet" href="app.css" />
+    <style>
+      .app {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+        position: relative;
+      }
+      .rail {
+        width: 68px;
+        flex: none;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 18px 0;
+        background: var(--surface-2);
+        border-right: 1px solid var(--hair);
+      }
+      .rail img {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        margin-bottom: 14px;
+      }
+      .rail .r {
+        width: 42px;
+        height: 42px;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        color: var(--muted);
+        font-size: 20px;
+      }
+      .rail .r.on {
+        background: rgba(240, 108, 91, 0.12);
+        color: var(--coral-deep);
+      }
+      .rail .me {
+        margin-top: auto;
+      }
+      .main {
+        flex: 1;
+        min-width: 0;
+        padding: 24px 30px 0;
+        display: flex;
+        flex-direction: column;
+      }
+      .top {
+        display: flex;
+        align-items: flex-end;
+        gap: 14px;
+      }
+      .eyebrow {
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: var(--coral);
+      }
+      h1 {
+        margin: 4px 0 0;
+        font-size: 32px;
+        line-height: 1;
+        font-weight: 800;
+        letter-spacing: -0.025em;
+      }
+      .grow {
+        flex: 1;
+      }
+      .presence .avatar {
+        width: 30px;
+        height: 30px;
+        font-size: 12px;
+        box-shadow: 0 0 0 2.5px var(--bg);
+      }
+      .presence .avatar + .avatar {
+        margin-left: -8px;
+      }
+      .share {
+        height: 38px;
+        padding: 0 16px;
+        border-radius: 19px;
+        background: var(--coral);
+        color: #fff;
+        font-size: 14px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        box-shadow: 0 10px 20px -12px rgba(240, 108, 91, 0.9);
+      }
+      .share svg.i {
+        font-size: 16px;
+        stroke-width: 2.2;
+      }
+      .tabs {
+        display: flex;
+        gap: 26px;
+        margin-top: 18px;
+        border-bottom: 1px solid var(--hair);
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      .tabs div {
+        padding-bottom: 11px;
+      }
+      .tabs .on {
+        color: var(--ink);
+        box-shadow: inset 0 -2px 0 var(--coral);
+      }
+      .plan {
+        flex: 1;
+        margin-top: 18px;
+        display: grid;
+        grid-template-columns: 236px 1fr;
+        grid-template-rows: 54px 1fr;
+        background: var(--surface);
+        border-radius: 18px 18px 0 0;
+        box-shadow: var(--shadow), 0 0 0 1px var(--hair) inset;
+        overflow: hidden;
+      }
+      .plan .corner {
+        display: flex;
+        align-items: center;
+        padding-left: 20px;
+        border-bottom: 1px solid var(--hair);
+        border-right: 1px solid var(--hair);
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--faint);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .dates {
+        display: grid;
+        grid-template-columns: repeat(18, 1fr);
+        border-bottom: 1px solid var(--hair);
+      }
+      .dates div {
+        display: grid;
+        place-content: center;
+        text-align: center;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .dates small {
+        display: block;
+        font-size: 10px;
+        color: var(--faint);
+        letter-spacing: 0.04em;
+      }
+      .dates .wk {
+        color: var(--faint);
+      }
+      .dates .now {
+        color: var(--coral-deep);
+      }
+      .tasks {
+        border-right: 1px solid var(--hair);
+      }
+      .task {
+        height: 58px;
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 0 16px 0 20px;
+        border-bottom: 1px solid var(--hair);
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .task .check {
+        width: 20px;
+        height: 20px;
+        border-width: 1.8px;
+      }
+      .task .avatar {
+        margin-left: auto;
+        width: 24px;
+        height: 24px;
+        font-size: 10px;
+      }
+      .grid {
+        position: relative;
+        display: grid;
+        grid-template-columns: repeat(18, 1fr);
+      }
+      .grid > i {
+        border-left: 1px solid var(--hair);
+      }
+      .grid > i.wk {
+        background: rgba(22, 33, 62, 0.025);
+      }
+      .bar {
+        position: absolute;
+        height: 30px;
+        border-radius: 9px;
+        background: var(--tint);
+        box-shadow: inset 0 0 0 1.5px var(--edge);
+        display: flex;
+        align-items: center;
+        padding-left: 10px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--deep);
+        white-space: nowrap;
+      }
+      .bar.sky {
+        --tint: #dbe8ff;
+        --edge: #b3cdfc;
+        --deep: #2d63c8;
+      }
+      .bar.lilac {
+        --tint: #ebe4ff;
+        --edge: #cbbcf8;
+        --deep: #6a4fd0;
+      }
+      .bar.mint {
+        --tint: #d9f2e4;
+        --edge: #a9dfc0;
+        --deep: #23855a;
+      }
+      .bar.butter {
+        --tint: #ffefc7;
+        --edge: #f5d68c;
+        --deep: #9a6a0c;
+      }
+      .ms {
+        position: absolute;
+        width: 18px;
+        height: 18px;
+        border-radius: 4px;
+        background: var(--coral);
+        transform: rotate(45deg);
+        box-shadow: 0 4px 10px -4px rgba(240, 108, 91, 0.9);
+      }
+      .ms-label {
+        position: absolute;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--coral-deep);
+      }
+      .links {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+      .today-line {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: var(--coral);
+        opacity: 0.75;
+      }
+      .pop {
+        position: absolute;
+        right: 30px;
+        top: 104px;
+        width: 392px;
+        border-radius: 20px;
+        background: #fff;
+        box-shadow:
+          0 0 0 1px rgba(22, 33, 62, 0.08),
+          0 30px 60px -20px rgba(13, 20, 40, 0.35),
+          0 10px 20px -10px rgba(13, 20, 40, 0.15);
+        padding: 18px 18px 16px;
+        transform-origin: 92% 0;
+        z-index: 20;
+        opacity: 0;
+      }
+      .pop h4 {
+        margin: 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 16px;
+        font-weight: 600;
+      }
+      .pop h4 svg.i {
+        color: var(--faint);
+        font-size: 18px;
+      }
+      .invite {
+        display: flex;
+        gap: 8px;
+        margin: 14px 0 6px;
+      }
+      .invite .in {
+        flex: 1;
+        height: 38px;
+        border-radius: 11px;
+        box-shadow: inset 0 0 0 1px rgba(22, 33, 62, 0.14);
+        display: flex;
+        align-items: center;
+        padding: 0 12px;
+        font-size: 14px;
+        color: var(--faint);
+      }
+      .invite .go {
+        height: 38px;
+        padding: 0 16px;
+        border-radius: 11px;
+        background: var(--navy);
+        color: #fff;
+        font-size: 14px;
+        font-weight: 600;
+        display: grid;
+        place-items: center;
+      }
+      .person {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        height: 46px;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .person .avatar {
+        width: 30px;
+        height: 30px;
+        font-size: 12px;
+        box-shadow: none;
+      }
+      .person small {
+        display: block;
+        font-size: 12px;
+        font-weight: 400;
+        color: var(--muted);
+      }
+      .person .role {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 13px;
+        font-weight: 400;
+        color: var(--muted);
+      }
+      .pop hr {
+        border: 0;
+        border-top: 1px solid var(--hair);
+        margin: 8px 0 12px;
+      }
+      .linkrow {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .linkrow .lk {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: rgba(240, 108, 91, 0.12);
+        color: var(--coral);
+        font-size: 16px;
+      }
+      .linkrow small {
+        display: block;
+        font-size: 12px;
+        font-weight: 400;
+        color: var(--muted);
+      }
+      .copy {
+        margin-left: auto;
+        height: 36px;
+        padding: 0 14px;
+        border-radius: 18px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--coral-deep);
+        box-shadow: inset 0 0 0 1.5px rgba(240, 108, 91, 0.45);
+      }
+      .copy svg.i {
+        font-size: 16px;
+      }
+      .copy.done {
+        background: var(--coral);
+        color: #fff;
+        box-shadow: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="win" id="win"></div>
+    <script type="module">
+      import { CURSOR, fillIcons, icon } from "../shared/icons.js";
+      import { ease, params, path, press, ready, ripple, seg } from "../shared/motion.js";
+
+      const win = document.getElementById("win");
+      const DATES = Array.from({ length: 18 }, (_, i) => {
+        const day = 12 + i;
+        const dow = ["Tue", "Wed", "Thu", "Fri", "Sat", "Sun", "Mon"][i % 7];
+        return { day, dow, wk: dow === "Sat" || dow === "Sun" };
+      });
+      const TASKS = [
+        ["Brief", "a1", "S", true],
+        ["Design", "a4", "P"],
+        ["Build", "a2", "A"],
+        ["Review", "a3", "J"],
+        ["Ship", "a1", "S"],
+      ];
+      const BARS = [
+        ["sky", 0, 2, "Write the brief"],
+        ["lilac", 2, 6, "Flows and screens"],
+        ["mint", 6, 12, "Build and test"],
+        ["butter", 13, 15, "Review"],
+      ];
+
+      win.innerHTML = `<div class="toolbar"><div class="lights"><i></i><i></i><i></i></div>${icon("sidebar")}${icon("chevronLeft")}${icon("chevronRight")}
+          <div class="address">${icon("lock")}Launch week · Fairywren</div>${icon("share")}${icon("plus")}</div>
+        <div class="app"><nav class="rail"><img src="mark.svg" alt="" /><div class="r">${icon("sun")}</div><div class="r on">${icon("calendar")}</div><div class="r">${icon("list")}</div><div class="r">${icon("bars")}</div><div class="avatar a2 me" style="width:32px;height:32px">A</div></nav>
+          <main class="main"><div class="top"><div><div class="eyebrow">Plan · 12–29 May</div><h1 class="display">Launch week</h1></div><div class="grow"></div>
+            <div class="avatars presence" id="presence"><div class="avatar a4" id="newbie">P</div><div class="avatar a1">S</div><div class="avatar a3">J</div></div><div class="share" id="share">${icon("share")}Share plan</div></div>
+            <div class="tabs"><div class="on">Timeline</div><div>Board</div><div>Calendar</div><div>Files</div></div>
+            <div class="plan"><div class="corner">Tasks</div><div class="dates">${DATES.map((d, i) => `<div class="${d.wk ? "wk" : ""}${i === 0 ? " now" : ""}"><small>${d.dow.slice(0, 1)}</small><span class="tnum">${d.day}</span></div>`).join("")}</div>
+              <div class="tasks">${TASKS.map(([name, a, initial, done]) => `<div class="task"><div class="check${done ? " on" : ""}">${icon("check")}</div>${name}<div class="avatar ${a}">${initial}</div></div>`).join("")}</div>
+              <div class="grid" id="grid">${DATES.map((d) => `<i class="${d.wk ? "wk" : ""}"></i>`).join("")}</div></div></main>
+          <div class="pop" id="pop"><h4>Share ‘Launch week’${icon("close")}</h4>
+            <div class="invite"><div class="in">Add people or teams</div><div class="go">Invite</div></div>
+            <div class="person"><div class="avatar a2">A</div><div>Alex<small>You</small></div><div class="role">Owner</div></div>
+            <div class="person"><div class="avatar a1">S</div><div>Sam<small>Design</small></div><div class="role">Can edit${icon("chevronDown")}</div></div>
+            <div class="person"><div class="avatar a3">J</div><div>Jo<small>Engineering</small></div><div class="role">Can view${icon("chevronDown")}</div></div>
+            <hr /><div class="linkrow"><div class="lk">${icon("link")}</div><div>Anyone with the link<small>Can view</small></div><div class="copy" id="copy">${icon("link")}<span id="copyText">Copy link</span></div></div></div>
+          <div class="toast" id="toast">${icon("check")}Link copied</div>
+          <div class="ring" id="tap"></div>${CURSOR}</div>`;
+      fillIcons(win);
+
+      const $ = (id) => document.getElementById(id);
+      const grid = $("grid");
+      const g = grid.getBoundingClientRect();
+      const col = g.width / 18;
+      const row = 58;
+      grid.insertAdjacentHTML("beforeend", `<div class="today-line" style="left:${col / 2 - 1}px"></div>`);
+      const bars = BARS.map(([cls, a, b, label], r) => {
+        const el = document.createElement("div");
+        el.className = `bar ${cls}`;
+        el.textContent = label;
+        el.style.left = `${a * col + 6}px`;
+        el.style.width = `${(b - a) * col - 12}px`;
+        el.style.top = `${r * row + 14}px`;
+        grid.append(el);
+        return el;
+      });
+      grid.insertAdjacentHTML(
+        "beforeend",
+        `<div class="ms" style="left:${16 * col + col / 2 - 9}px;top:${4 * row + 20}px"></div><div class="ms-label" style="left:${16 * col + col / 2 + 16}px;top:${4 * row + 21}px">Ship</div>`,
+      );
+      const links = [
+        [0, 2, 2],
+        [1, 6, 6],
+        [2, 12, 13],
+        [3, 15, 16.5],
+      ]
+        .map(([r, x1, x2]) => {
+          const ax = x1 * col - 18;
+          const ay = r * row + 44;
+          const bx = x2 * col + (r === 3 ? -13 : 4);
+          const by = (r + 1) * row + 29;
+          return `<path d="M${ax} ${ay}V${by - 8}q0 8 8 8H${bx}" fill="none" stroke="#b9bfcf" stroke-width="1.5"/><path d="M${bx - 5} ${by - 4}l5 4-5 4" fill="none" stroke="#b9bfcf" stroke-width="1.5"/>`;
+        })
+        .join("");
+      grid.insertAdjacentHTML("beforeend", `<svg class="links" width="${g.width}" height="${g.height}">${links}</svg>`);
+
+      const centre = (el) => {
+        const r = el.getBoundingClientRect();
+        return [r.left + r.width / 2, r.top + r.height / 2];
+      };
+      const cursor = win.querySelector(".cursor");
+      cursor.style.display = params().still ? "none" : "block";
+      const place = ([x, y]) => {
+        cursor.style.transform = `translate(${x - 4}px, ${y - 3}px)`;
+      };
+
+      window.render = (t) => {
+        const share = $("share");
+        const pop = $("pop");
+        const p = ease.outQuint(seg(t, 1420, 480));
+        pop.style.opacity = String(p);
+        pop.style.transform = `translateY(${(1 - p) * -8}px) scale(${0.97 + 0.03 * p})`;
+        share.style.transform = `scale(${press(t, 1300)})`;
+        const s = centre(share);
+        const copy = $("copy");
+        const c = centre(copy);
+        const start = [930, 640];
+        let at = start;
+        if (t < 2250) at = path(t, 300, 950, [start, [1000, 300], s]);
+        else at = path(t, 2250, 800, [s, [s[0] + 60, s[1] + 160], c]);
+        if (t > 4700) at = path(t, 4700, 900, [c, [c[0] - 30, c[1] + 50], [c[0] - 70, c[1] + 120]], ease.out);
+        place(at);
+        const tap = $("tap");
+        const target = t < 2250 ? s : c;
+        tap.style.left = `${target[0]}px`;
+        tap.style.top = `${target[1]}px`;
+        if (t < 2250) ripple(tap, t, 1300, { size: 70, colour: "rgba(240,108,91,0.35)" });
+        else ripple(tap, t, 3100, { size: 70, colour: "rgba(240,108,91,0.35)" });
+        copy.style.transform = `scale(${press(t, 3100)})`;
+        const done = t >= 3220;
+        copy.classList.toggle("done", done);
+        $("copyText").textContent = done ? "Copied" : "Copy link";
+        copy.querySelector("svg").outerHTML = icon(done ? "check" : "link");
+        const toast = $("toast");
+        const q = ease.outQuint(seg(t, 3350, 500));
+        toast.style.opacity = String(q);
+        toast.style.transform = `translate(-50%, ${(1 - q) * 18}px)`;
+        const n = $("newbie");
+        const k = ease.outBack(seg(t, 4300, 420));
+        n.style.opacity = String(Math.min(1, k * 1.5));
+        n.style.transform = `scale(${0.5 + 0.5 * k})`;
+      };
+      window.pageReady = ready();
+    </script>
+  </body>
+</html>

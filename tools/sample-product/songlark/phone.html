@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <title>Songlark phone</title>
+    <link rel="stylesheet" href="../shared/base.css" />
+    <link rel="stylesheet" href="../shared/phone.css" />
+    <link rel="stylesheet" href="app.css" />
+    <style>
+      .phone {
+        background:
+          radial-gradient(90% 40% at 50% 100%, rgba(167, 139, 250, 0.16), transparent 70%),
+          var(--bg);
+      }
+      .top {
+        position: absolute;
+        left: 20px;
+        right: 20px;
+        top: 58px;
+        height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 23px;
+        color: var(--ink);
+      }
+      .top .model {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-family: "Inter Tight", sans-serif;
+        font-size: 18px;
+        font-weight: 600;
+      }
+      .top .model svg.i {
+        font-size: 16px;
+        color: var(--muted);
+      }
+      .greet {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 214px;
+        text-align: center;
+      }
+      .greet .spark {
+        width: 52px;
+        height: 52px;
+      }
+      .greet h1 {
+        margin: 18px 0 0;
+        font-size: 34px;
+        font-weight: 600;
+        letter-spacing: -0.025em;
+      }
+      .greet p {
+        margin: 6px 0 0;
+        font-size: 16px;
+        color: var(--muted);
+      }
+      .grid {
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        top: 556px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      .tile {
+        height: 82px;
+        border-radius: 20px;
+        background: var(--surface);
+        box-shadow: 0 0 0 1px var(--hair);
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .tile svg.i {
+        font-size: 20px;
+        color: var(--violet);
+      }
+      .bar {
+        position: absolute;
+        left: 12px;
+        right: 12px;
+        bottom: 34px;
+        height: 58px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .bar .plus {
+        width: 46px;
+        height: 46px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: var(--surface);
+        box-shadow: 0 0 0 1px var(--hair);
+        font-size: 22px;
+        color: var(--ink);
+        flex: none;
+      }
+      .bar .composer {
+        flex: 1;
+        height: 54px;
+        border-radius: 27px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 7px 0 18px;
+        font-size: 17px;
+      }
+      .bar .ph {
+        color: var(--faint);
+      }
+      .bar .grow {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        overflow: hidden;
+        white-space: nowrap;
+      }
+      .caret {
+        width: 2px;
+        height: 22px;
+        border-radius: 1px;
+        background: var(--violet);
+        margin-left: 1px;
+      }
+      .bar .mic {
+        font-size: 21px;
+        color: var(--muted);
+        display: flex;
+      }
+      .send {
+        width: 40px;
+        height: 40px;
+        font-size: 20px;
+      }
+      .you {
+        position: absolute;
+        right: 16px;
+        top: 118px;
+        padding: 11px 16px;
+        font-size: 16px;
+      }
+      .bot {
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        top: 186px;
+      }
+      .bot .head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        height: 30px;
+      }
+      .bot .head .spark {
+        width: 26px;
+        height: 26px;
+      }
+      .thinking {
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .reply {
+        margin-top: 10px;
+        font-size: 17px;
+        line-height: 1.5;
+      }
+      .reply span {
+        opacity: 0;
+      }
+      .list {
+        margin-top: 14px;
+        border-radius: 22px;
+        background: var(--surface);
+        box-shadow: var(--shadow), 0 0 0 1px var(--hair);
+        padding: 4px 16px;
+      }
+      .item {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        height: 72px;
+        border-top: 1px solid var(--hair);
+      }
+      .item:first-child {
+        border-top: 0;
+      }
+      .item .ic {
+        width: 40px;
+        height: 40px;
+        border-radius: 13px;
+        background: var(--lavender);
+        color: var(--violet);
+        display: grid;
+        place-items: center;
+        font-size: 20px;
+        flex: none;
+      }
+      .item b {
+        display: block;
+        font-size: 16px;
+        font-weight: 600;
+      }
+      .item span {
+        display: block;
+        margin-top: 2px;
+        font-size: 14px;
+        color: var(--muted);
+      }
+      .follow {
+        display: flex;
+        gap: 8px;
+        margin-top: 14px;
+      }
+      .follow .suggest {
+        height: 38px;
+        padding: 0 14px;
+        font-size: 14px;
+      }
+      .follow .suggest svg.i {
+        font-size: 16px;
+      }
+      .voice {
+        position: absolute;
+        inset: 0;
+        display: none;
+      }
+      .voice .orb {
+        position: absolute;
+        left: 76px;
+        top: 220px;
+        width: 250px;
+        height: 250px;
+        border-radius: 50%;
+        background:
+          radial-gradient(60% 60% at 35% 30%, rgba(255, 255, 255, 0.9), transparent 60%),
+          radial-gradient(80% 80% at 70% 75%, #f472b6, transparent 70%),
+          linear-gradient(140deg, #a78bfa, #7c5cfc 55%, #5b3be0);
+      }
+      .voice .halo {
+        position: absolute;
+        left: 21px;
+        top: 165px;
+        width: 360px;
+        height: 360px;
+        border-radius: 50%;
+        background: radial-gradient(closest-side, rgba(124, 92, 252, 0.34), rgba(124, 92, 252, 0.12) 70%, rgba(124, 92, 252, 0));
+      }
+      .voice .wave {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 520px;
+        height: 44px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 5px;
+      }
+      .voice .wave i {
+        width: 5px;
+        border-radius: 3px;
+        background: var(--violet);
+      }
+      .voice .label {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 136px;
+        text-align: center;
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--violet);
+        letter-spacing: 0.02em;
+      }
+      .voice .said {
+        position: absolute;
+        left: 32px;
+        right: 32px;
+        top: 594px;
+        text-align: center;
+        font-family: "Inter Tight", sans-serif;
+        font-size: 26px;
+        line-height: 1.3;
+        font-weight: 600;
+        letter-spacing: -0.015em;
+      }
+      .voice .ctrls {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 56px;
+        display: flex;
+        justify-content: center;
+        gap: 22px;
+      }
+      .voice .ctrls div {
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        font-size: 26px;
+        background: var(--surface);
+        box-shadow: 0 0 0 1px var(--hair);
+      }
+      .voice .ctrls .end {
+        background: #ff5a5f;
+        color: #fff;
+        box-shadow: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="phone" id="phone"></div>
+    <script type="module">
+      import { fillIcons, icon } from "../shared/icons.js";
+      import { caretOn, ease, params, press, ready, rise, seg, typed } from "../shared/motion.js";
+      import { phoneChrome } from "../shared/phone.js";
+      import { SPARK } from "./mark.js";
+
+      const scene = params().scene ?? "ask";
+      const PROMPT = "Summarise my day";
+      const REPLY = "Here’s your Tuesday. Three things matter most:";
+      const ITEMS = [
+        ["calendar", "Design review", "10:30 with Sam, Jo and Priya"],
+        ["target", "90 min of focus", "13:00, writing the brief"],
+        ["flag", "Ship release", "15:30 with the team"],
+      ];
+      const SAID = "Move my 3 pm to tomorrow morning";
+
+      const phone = document.getElementById("phone");
+      phone.innerHTML = `<div class="top"><span>${icon("menu")}</span><span class="model">Songlark${icon("chevronDown")}</span><span>${icon("pen")}</span></div>
+        <div class="greet" id="greet"><span class="spark">${SPARK}</span><h1 class="display">Hi Alex</h1><p>How can I help today?</p></div>
+        <div class="grid" id="grid"><div class="tile">${icon("sun")}Summarise my day</div><div class="tile">${icon("mail")}Draft a reply to Jo</div><div class="tile">${icon("calendar")}Plan a calmer week</div><div class="tile">${icon("clock")}Find time for a walk</div></div>
+        <div class="bubble you" id="you">${PROMPT}</div>
+        <div class="bot" id="bot"><div class="head"><span class="spark">${SPARK}</span><span class="thinking shimmer" id="thinking">Reading your calendar</span></div>
+          <div class="reply" id="reply">${REPLY.split(" ").map((w) => `<span>${w} </span>`).join("")}</div>
+          <div class="list">${ITEMS.map(([ic, b, s]) => `<div class="item"><div class="ic">${icon(ic)}</div><div><b>${b}</b><span>${s}</span></div></div>`).join("")}</div>
+          <div class="follow" id="follow"><span class="suggest">${icon("mail")}Reply to Jo</span><span class="suggest">${icon("clock")}Move Retro</span></div></div>
+        <div class="bar" id="bar"><div class="plus">${icon("plus")}</div><div class="composer"><div class="grow"><span id="typed"></span><span class="caret" id="caret"></span><span class="ph" id="ph">Ask Songlark</span></div><span class="mic">${icon("mic")}</span><div class="send" id="send">${icon("arrowUp")}</div></div></div>
+        <div class="voice" id="voice"><div class="label">Listening</div><div class="halo" id="halo"></div><div class="orb" id="orb"></div><div class="wave" id="wave">${Array.from({ length: 21 }, () => "<i></i>").join("")}</div><div class="said" id="said"></div><div class="ctrls"><div>${icon("mic")}</div><div>${icon("more")}</div><div class="end">${icon("close")}</div></div></div>
+        ${phoneChrome()}`;
+      fillIcons(phone);
+      const $ = (id) => document.getElementById(id);
+      const words = [...$("reply").children];
+      const items = [...phone.querySelectorAll(".item")];
+
+      function ask(t) {
+        const text = typed(PROMPT, t, 300, 14);
+        const sent = t >= 1550;
+        $("typed").textContent = sent ? "" : text;
+        $("ph").style.display = !sent && text ? "none" : "inline";
+        $("caret").style.opacity = !sent && caretOn(t, 1450) ? "1" : "0";
+        const send = $("send");
+        send.classList.toggle("live", Boolean(text) && !sent);
+        send.style.transform = `scale(${press(t, 1500)})`;
+        const m = ease.inOut(seg(t, 1550, 450));
+        for (const id of ["greet", "grid"]) {
+          $(id).style.opacity = String(1 - m);
+          $(id).style.transform = `translateY(${-16 * m}px)`;
+        }
+        $("you").style.display = sent ? "block" : "none";
+        rise($("you"), t, 1650, { dy: 14 });
+        $("bot").style.display = t >= 1850 ? "block" : "none";
+        rise($("bot"), t, 1850, { dy: 8 });
+        const thinking = $("thinking");
+        thinking.textContent = t < 2550 ? "Reading your calendar" : "Songlark";
+        thinking.classList.toggle("shimmer", t < 2550);
+        thinking.style.backgroundPosition = `${100 - ((t - 1850) / 9) % 300}% 0`;
+        words.forEach((w, i) => {
+          w.style.opacity = String(ease.out(seg(t, 2550 + i * 55, 160)));
+        });
+        phone.querySelector(".list").style.opacity = t >= 2900 ? "1" : "0";
+        for (const [i, el] of items.entries()) rise(el, t, 2900 + i * 160, { dy: 12 });
+        rise($("follow"), t, 3600, { dy: 10 });
+      }
+
+      function voice(t) {
+        for (const id of ["greet", "grid", "bar", "you", "bot"]) $(id).style.display = "none";
+        phone.querySelector(".top").style.display = "none";
+        $("voice").style.display = "block";
+        const breath = Math.sin((t / 1000) * 2.4);
+        $("orb").style.transform = `scale(${1 + 0.03 * breath}) rotate(${t / 40}deg)`;
+        $("halo").style.transform = `scale(${1 + 0.06 * Math.sin((t / 1000) * 2.4 + 0.6)})`;
+        [...$("wave").children].forEach((bar, i) => {
+          const h = 8 + 30 * Math.abs(Math.sin(i * 0.9 + t / 160)) * (0.35 + 0.65 * Math.abs(Math.sin(i * 0.37 + t / 700)));
+          bar.style.height = `${h.toFixed(1)}px`;
+          bar.style.opacity = String(0.45 + 0.55 * (h / 38));
+        });
+        $("said").textContent = typed(SAID, t, 200, 20);
+      }
+
+      window.render = (t) => (scene === "voice" ? voice(t) : ask(t));
+      window.pageReady = ready();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,58 @@
+.phone {
+  position: relative;
+  width: 402px;
+  height: 874px;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.status {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 54px;
+  z-index: 40;
+  color: var(--status, var(--ink));
+}
+
+.status .time {
+  position: absolute;
+  left: 0;
+  width: 140px;
+  top: 18px;
+  text-align: center;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.status .glyphs {
+  position: absolute;
+  right: 30px;
+  top: 21px;
+  display: flex;
+  gap: 7px;
+  align-items: center;
+}
+
+.island {
+  position: absolute;
+  top: 11px;
+  left: 138px;
+  width: 126px;
+  height: 37px;
+  border-radius: 19px;
+  background: #000;
+  z-index: 41;
+}
+
+.home-bar {
+  position: absolute;
+  bottom: 8px;
+  left: 134px;
+  width: 134px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--status, var(--ink));
+  z-index: 40;
+}

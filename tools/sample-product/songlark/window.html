@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <title>Songlark window</title>
+    <link rel="stylesheet" href="../shared/base.css" />
+    <link rel="stylesheet" href="../shared/window.css" />
+    <link rel="stylesheet" href="app.css" />
+    <style>
+      .app {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+      }
+      .rail {
+        width: 64px;
+        flex: none;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 16px 0;
+        border-right: 1px solid var(--hair);
+        background: #f8f7fc;
+      }
+      .rail .logo {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        overflow: hidden;
+        margin-bottom: 12px;
+        box-shadow: 0 0 0 1px var(--hair);
+      }
+      .rail .r {
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        color: var(--muted);
+        font-size: 20px;
+      }
+      .rail .me {
+        margin-top: auto;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: #5d8de8;
+        color: #fff;
+        display: grid;
+        place-items: center;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .main {
+        flex: 1;
+        position: relative;
+        background:
+          radial-gradient(60% 50% at 50% 100%, rgba(167, 139, 250, 0.12), transparent 70%),
+          var(--bg);
+      }
+      .greet {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 150px;
+        text-align: center;
+      }
+      .greet .spark {
+        width: 46px;
+        height: 46px;
+      }
+      .greet h1 {
+        margin: 16px 0 0;
+        font-size: 40px;
+        font-weight: 600;
+        letter-spacing: -0.025em;
+      }
+      .greet p {
+        margin: 8px 0 0;
+        font-size: 17px;
+        color: var(--muted);
+      }
+      .col {
+        position: absolute;
+        left: 50%;
+        width: 760px;
+        margin-left: -380px;
+      }
+      .composer {
+        padding: 20px 20px 14px 24px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+      .composer .text {
+        display: flex;
+        align-items: center;
+        font-family: "Inter Tight", "Inter", sans-serif;
+        font-size: 21px;
+        min-height: 30px;
+      }
+      .composer .ph {
+        color: var(--faint);
+      }
+      .caret {
+        width: 2px;
+        height: 26px;
+        margin-left: 1px;
+        border-radius: 1px;
+        background: var(--violet);
+      }
+      .tools {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .tools .t {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 32px;
+        padding: 0 11px;
+        border-radius: 16px;
+        box-shadow: 0 0 0 1px var(--hair);
+      }
+      .tools .t svg.i {
+        font-size: 16px;
+      }
+      .tools .grow {
+        flex: 1;
+      }
+      .tools .mic {
+        font-size: 20px;
+        display: flex;
+      }
+      .send {
+        width: 40px;
+        height: 40px;
+        font-size: 20px;
+      }
+      .chips {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+      }
+      .chips .suggest {
+        height: 38px;
+        padding: 0 16px;
+        font-size: 14px;
+      }
+      .chips .suggest svg.i {
+        font-size: 16px;
+      }
+      .you {
+        position: absolute;
+        right: 0;
+        top: 0;
+        padding: 12px 18px;
+        font-size: 16px;
+      }
+      .bot {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 74px;
+        display: flex;
+        gap: 14px;
+      }
+      .bot .spark {
+        width: 30px;
+        height: 30px;
+        flex: none;
+        margin-top: 2px;
+      }
+      .bot .say {
+        flex: 1;
+      }
+      .thinking {
+        height: 32px;
+        display: flex;
+        align-items: center;
+        font-size: 16px;
+        font-weight: 600;
+      }
+      .reply {
+        font-size: 17px;
+        line-height: 1.55;
+        min-height: 54px;
+      }
+      .reply span {
+        opacity: 0;
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        margin-top: 14px;
+      }
+      .answer-card {
+        flex-direction: column;
+        padding: 16px;
+        gap: 12px;
+      }
+      .answer-card .ic {
+        width: 36px;
+        height: 36px;
+        font-size: 19px;
+      }
+      .answer-card b {
+        font-size: 15px;
+      }
+      .answer-card span {
+        margin-top: 4px;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      .acts {
+        display: flex;
+        gap: 10px;
+        margin-top: 16px;
+      }
+      .acts .go {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 40px;
+        padding: 0 18px;
+        border-radius: 20px;
+        background: linear-gradient(135deg, #8b6dff, #5b3be0);
+        color: #fff;
+        font-size: 14px;
+        font-weight: 600;
+        box-shadow: 0 10px 22px -12px rgba(91, 59, 224, 0.9);
+      }
+      .acts .go svg.i {
+        font-size: 17px;
+        stroke-width: 2.4;
+      }
+      .acts .ghost {
+        display: flex;
+        align-items: center;
+        height: 40px;
+        padding: 0 16px;
+        border-radius: 20px;
+        box-shadow: 0 0 0 1px var(--hair);
+        background: var(--surface);
+        font-size: 14px;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="win" id="win"></div>
+    <script type="module">
+      import { fillIcons, icon } from "../shared/icons.js";
+      import { caretOn, ease, lerp, params, press, ready, rise, seg, typed } from "../shared/motion.js";
+      import { MARK, SPARK } from "./mark.js";
+
+      const empty = params().scene === "empty";
+      const PROMPT = "Make next week calmer";
+      const REPLY = "Here’s a calmer week. I moved three meetings and kept your mornings free for focus.";
+      const CARDS = [
+        ["calendar", "Moved 3 meetings", "Design review, the 1:1 with Jo and Retro now sit after 13:00."],
+        ["target", "4 focus blocks", "09:00 to 11:00, Monday to Thursday, with alerts paused."],
+        ["sun", "Friday afternoon free", "Nothing booked after 14:00, so the week ends early."],
+      ];
+
+      const win = document.getElementById("win");
+      win.innerHTML = `<div class="toolbar"><div class="lights"><i></i><i></i><i></i></div>${icon("sidebar")}${icon("chevronLeft")}${icon("chevronRight")}<div class="address">${icon("lock")}Songlark</div>${icon("share")}${icon("plus")}</div>
+        <div class="app"><nav class="rail"><span class="logo">${MARK}</span><div class="r">${icon("pen")}</div><div class="r">${icon("search")}</div><div class="r">${icon("clock")}</div><div class="r">${icon("folder")}</div><div class="me">A</div></nav>
+          <main class="main" id="main"><div class="greet" id="greet"><span class="spark">${SPARK}</span><h1 class="display">Good morning, Alex</h1><p>What should we work on?</p></div>
+            <div class="col" id="thread" style="top:40px;height:560px"><div class="bubble you" id="you">${PROMPT}</div>
+              <div class="bot" id="bot"><span class="spark">${SPARK}</span><div class="say"><div class="thinking shimmer" id="thinking">Looking at your calendar</div>
+                <div class="reply" id="reply">${REPLY.split(" ").map((w) => `<span>${w} </span>`).join("")}</div>
+                <div class="cards">${CARDS.map(([ic, b, s]) => `<div class="answer-card"><div class="ic">${icon(ic)}</div><div><b>${b}</b><span>${s}</span></div></div>`).join("")}</div>
+                <div class="acts" id="acts"><div class="go">${icon("check")}Apply to calendar</div><div class="ghost">Show changes</div></div></div></div></div>
+            <div class="col composer" id="composer"><div class="text"><span id="typed"></span><span class="caret" id="caret"></span><span class="ph" id="ph">Ask Songlark anything</span></div>
+              <div class="tools"><span class="t">${icon("paperclip")}Attach</span><span class="t">${icon("sparkle")}Tools</span><span class="grow"></span><span class="mic">${icon("mic")}</span><div class="send" id="send">${icon("arrowUp")}</div></div></div>
+            <div class="col chips" id="chips"><span class="suggest">${icon("calendar")}Plan my week</span><span class="suggest">${icon("note")}Summarise a doc</span><span class="suggest">${icon("mail")}Draft a reply</span><span class="suggest">${icon("clock")}Find a time</span></div></main></div>`;
+      fillIcons(win);
+      const $ = (id) => document.getElementById(id);
+      const words = [...$("reply").children];
+      const cards = [...win.querySelectorAll(".answer-card")];
+
+      window.render = (t) => {
+        const sent = !empty && t >= 2050;
+        const text = empty ? "" : typed(PROMPT, t, 350, 15);
+        const m = ease.inOut(seg(t, 2050, 650));
+        $("greet").style.opacity = String(1 - m);
+        $("greet").style.transform = `translateY(${-24 * m}px)`;
+        $("chips").style.opacity = String(1 - ease.out(seg(t, 2050, 300)));
+        $("chips").style.top = "548px";
+        const composer = $("composer");
+        composer.style.top = `${lerp(384, 612, m)}px`;
+        composer.style.height = `${lerp(132, 110, m)}px`;
+        $("typed").textContent = sent ? "" : text;
+        $("ph").textContent = sent ? "Reply to Songlark" : "Ask Songlark anything";
+        $("ph").style.display = $("typed").textContent ? "none" : "inline";
+        $("caret").style.opacity = !sent && caretOn(t, 1800) ? "1" : "0";
+        const send = $("send");
+        send.classList.toggle("live", Boolean(text) && !sent);
+        send.style.transform = `scale(${press(t, 2000)})`;
+        $("thread").style.display = t >= 2150 && !empty ? "block" : "none";
+        rise($("you"), t, 2200, { dy: 14 });
+        rise($("bot"), t, 2450, { dy: 10 });
+        const thinking = $("thinking");
+        thinking.style.display = t < 3150 ? "flex" : "none";
+        thinking.style.backgroundPosition = `${100 - ((t - 2450) / 9) % 300}% 0`;
+        $("reply").style.display = t >= 3150 ? "block" : "none";
+        words.forEach((w, i) => {
+          w.style.opacity = String(ease.out(seg(t, 3150 + i * 45, 160)));
+        });
+        for (const [i, c] of cards.entries()) rise(c, t, 3850 + i * 170, { dy: 18, scale: 0.98 });
+        rise($("acts"), t, 4550, { dy: 10 });
+      };
+      window.pageReady = ready();
+    </script>
+  </body>
+</html>

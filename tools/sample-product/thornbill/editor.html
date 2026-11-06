@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <title>Thornbill editor</title>
+    <link rel="stylesheet" href="../shared/base.css" />
+    <link rel="stylesheet" href="../shared/window.css" />
+    <link rel="stylesheet" href="app.css" />
+    <style>
+      .bar {
+        height: 44px;
+        flex: none;
+        display: flex;
+        align-items: center;
+        padding: 0 18px;
+        background: var(--toolbar);
+        border-bottom: 1px solid var(--toolbar-line);
+        position: relative;
+      }
+      .bar .title {
+        position: absolute;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--toolbar-ink);
+      }
+      .ide {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+      }
+      .acts {
+        width: 52px;
+        flex: none;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        padding-top: 12px;
+        background: #080c18;
+        border-right: 1px solid var(--line);
+        color: var(--faint);
+        font-size: 22px;
+      }
+      .acts div {
+        width: 40px;
+        height: 40px;
+        display: grid;
+        place-items: center;
+        border-radius: 10px;
+      }
+      .acts .on {
+        color: var(--ink);
+        box-shadow: inset 2px 0 0 var(--cyan);
+        border-radius: 0;
+      }
+      .tree {
+        width: 232px;
+        flex: none;
+        padding: 14px 10px;
+        background: #0b1120;
+        border-right: 1px solid var(--line);
+        font-size: 13.5px;
+        color: var(--muted);
+      }
+      .tree h6 {
+        margin: 0 0 8px;
+        padding-left: 8px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        color: var(--faint);
+      }
+      .tree div {
+        height: 28px;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        border-radius: 6px;
+        padding-left: calc(8px + var(--d, 0) * 14px);
+        white-space: nowrap;
+      }
+      .tree div svg.i {
+        font-size: 15px;
+        flex: none;
+      }
+      .tree .dir svg.i {
+        color: #7dd3fc;
+      }
+      .tree .ts svg.i {
+        color: var(--cyan);
+      }
+      .tree .on {
+        background: rgba(34, 211, 238, 0.1);
+        color: var(--ink);
+      }
+      .tree .mod {
+        margin-left: auto;
+        margin-right: 8px;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--amber);
+      }
+      .work {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      .tabs {
+        height: 40px;
+        flex: none;
+        display: flex;
+        background: #080c18;
+        border-bottom: 1px solid var(--line);
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .tabs div {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 16px;
+        border-right: 1px solid var(--line);
+      }
+      .tabs div svg.i {
+        font-size: 14px;
+        color: var(--cyan);
+      }
+      .tabs .on {
+        background: var(--bg);
+        color: var(--ink);
+        box-shadow: inset 0 2px 0 var(--cyan);
+      }
+      .code {
+        flex: 1;
+        position: relative;
+        padding: 14px 0;
+        font: 400 15px/25px "JetBrains Mono", monospace;
+        font-variant-ligatures: none;
+        white-space: pre;
+      }
+      .code .row {
+        display: flex;
+        height: 25px;
+      }
+      .code .row.hl {
+        background: rgba(34, 211, 238, 0.06);
+      }
+      .code .n {
+        width: 58px;
+        flex: none;
+        padding-right: 18px;
+        text-align: right;
+        color: #3b4760;
+      }
+      .code .row.hl .n {
+        color: var(--muted);
+      }
+      .hover {
+        position: absolute;
+        left: 128px;
+        top: 216px;
+        width: 420px;
+        border-radius: 10px;
+        background: #131c34;
+        box-shadow:
+          inset 0 0 0 1px rgba(148, 163, 184, 0.2),
+          0 20px 40px -16px rgba(0, 0, 0, 0.7);
+        font: 400 13.5px/22px "JetBrains Mono", monospace;
+        white-space: normal;
+        overflow: hidden;
+      }
+      .hover .sig {
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--line);
+      }
+      .hover .doc {
+        padding: 10px 14px;
+        font: 400 13px/20px "Inter", sans-serif;
+        color: var(--muted);
+      }
+      .panel {
+        height: 196px;
+        flex: none;
+        border-top: 1px solid var(--line);
+        background: #080c18;
+        display: flex;
+        flex-direction: column;
+      }
+      .panel .ptabs {
+        height: 36px;
+        display: flex;
+        align-items: center;
+        gap: 22px;
+        padding: 0 18px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--faint);
+      }
+      .panel .ptabs .on {
+        color: var(--ink);
+        box-shadow: inset 0 -1px 0 var(--ink);
+        padding: 9px 0;
+      }
+      .panel .out {
+        padding: 6px 18px;
+        font: 400 14px/24px "JetBrains Mono", monospace;
+        color: #cbd5e1;
+      }
+      .out .p {
+        color: var(--lime);
+      }
+      .out .c {
+        color: var(--cyan);
+      }
+      .out .m {
+        color: var(--muted);
+      }
+      .status {
+        height: 26px;
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        padding: 0 14px;
+        background: #0e7490;
+        color: #e0faff;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .status svg.i {
+        font-size: 13px;
+      }
+      .status span {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .status .grow {
+        flex: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="win" id="win"></div>
+    <script type="module">
+      import { fillIcons, icon } from "../shared/icons.js";
+      import { ready } from "../shared/motion.js";
+
+      const k = (s) => `<span class="kw">${s}</span>`;
+      const st = (s) => `<span class="str">${s}</span>`;
+      const f = (s) => `<span class="fn">${s}</span>`;
+      const c = (s) => `<span class="cm">${s}</span>`;
+      const ty = (s) => `<span style="color:#c4b5fd">${s}</span>`;
+      const CODE = [
+        `${k("import")} { thornbill, type Context } ${k("from")} ${st('"thornbill"')};`,
+        `${k("import")} { orders } ${k("from")} ${st('"../db"')};`,
+        "",
+        `${k("export const")} app ${k("=")} ${f("thornbill")}({ name: ${st('"shop-api"')} });`,
+        "",
+        c("// Typed params: id is a string, checked before the handler runs."),
+        `app.${f("get")}(${st('"/orders/:id"')}, ${k("async")} ({ params }: ${ty("Context")}) ${k("=>")} {`,
+        `  ${k("const")} order ${k("=")} ${k("await")} orders.${f("find")}(params.id);`,
+        `  ${k("if")} (!order) ${k("return")} app.${f("notFound")}();`,
+        `  ${k("return")} { ...order, total: order.${f("total")}() };`,
+        "});",
+        "",
+        `app.${f("post")}(${st('"/checkout"')}, ${k("async")} ({ body }) ${k("=>")} {`,
+        `  ${k("const")} receipt ${k("=")} ${k("await")} orders.${f("checkout")}(body);`,
+        `  ${k("return")} app.${f("created")}(receipt);`,
+        "});",
+      ];
+      const tree = [
+        [0, "dir", "folder", "shop-api"],
+        [1, "dir", "folder", "src"],
+        [2, "dir", "folder", "routes"],
+        [3, "ts on", "code", "orders.ts", "M"],
+        [3, "ts", "code", "checkout.ts"],
+        [3, "ts", "code", "search.ts"],
+        [2, "dir", "folder", "middleware"],
+        [2, "ts", "code", "db.ts"],
+        [1, "dir", "folder", "tests"],
+        [2, "ts", "code", "orders.test.ts", "M"],
+        [1, "ts", "settings", "thornbill.config.ts"],
+        [1, "", "note", "package.json"],
+        [1, "", "note", "README.md"],
+      ];
+
+      const win = document.getElementById("win");
+      win.innerHTML = `<div class="bar"><div class="lights"><i></i><i></i><i></i></div><div class="title">orders.ts · shop-api</div></div>
+        <div class="ide"><div class="acts"><div class="on">${icon("folder")}</div><div>${icon("search")}</div><div>${icon("git")}</div><div>${icon("terminal")}</div><div>${icon("sparkle")}</div></div>
+          <div class="tree"><h6>EXPLORER</h6>${tree.map(([d, cls, ic, name, mod]) => `<div class="${cls}" style="--d:${d}">${icon(ic)}${name}${mod ? `<span class="mod">${mod}</span>` : ""}</div>`).join("")}</div>
+          <div class="work"><div class="tabs"><div class="on">${icon("code")}orders.ts</div><div>${icon("code")}checkout.ts</div><div>${icon("code")}orders.test.ts</div></div>
+            <div class="code">${CODE.map((r, i) => `<div class="row${i === 7 ? " hl" : ""}"><span class="n">${i + 1}</span><span>${r}</span></div>`).join("")}
+              <div class="hover"><div class="sig">${k("const")} order: ${ty("Order")} | ${ty("undefined")}</div><div class="doc">Inferred from <span class="mono" style="color:#e2e8f0">orders.find()</span>. Thornbill checks params.id is a string before this line runs.</div></div></div>
+            <div class="panel"><div class="ptabs"><span class="on">Terminal</span><span>Problems</span><span>Output</span></div>
+              <div class="out"><div><span class="p">&gt;</span> thornbill dev</div><div><span class="c">Ready</span> on localhost:3000 in 180 ms</div><div class="m">Watching src for changes</div><div><span class="c">GET</span> /orders/8f21 <span class="p">200</span> <span class="m">in 42 ms</span></div></div></div></div></div>
+        <div class="status"><span>${icon("git")}main</span><span>${icon("check")}212 tests</span><span class="grow"></span><span>Thornbill 4.2.0</span><span>TypeScript</span><span>Ln 8, Col 21</span></div>`;
+      fillIcons(win);
+      window.render = () => {};
+      window.pageReady = ready();
+    </script>
+  </body>
+</html>
