@@ -92,6 +92,13 @@ pin nothing theme-specific: colours come from tokens, animated backgrounds run
 on `themeColors: true` (the live Theme preset) or name a theme gradient, and scene overrides stay explicit. Insertions inherit the destination theme,
 so token-based styling adapts to the project.
 
+## Template card loops
+
+A bundled template's card plays `src/assets/template-previews/<id>-loop.mp4`,
+muted, while hovered or selected: the window its manifest's `preview.loop` names
+(the template contract in [`docs/content-library.md`](../docs/content-library.md)).
+With no loop committed, or under Reduce motion, the card keeps its four stills.
+
 ## Preview staleness
 
 `scripts/preset-preview-stale.mjs` keeps a content hash per bundled item in a

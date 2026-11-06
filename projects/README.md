@@ -30,6 +30,10 @@ by the same bare id in dev and are never bundled.
 
 A **template** is any folder here carrying a `template.json`. That file is the
 only discriminator: no allowlist, and `create_project` refuses an id without one.
+Its fields, categories and test bands are the template contract in
+[`docs/content-library.md`](../docs/content-library.md). A template's own
+`assets/` holds only what is its alone, such as a song; shared media comes from
+`_samples/` by name.
 
 ## project.json
 
