@@ -265,7 +265,7 @@ backup. Everything else is backed up like any document: projects with their own
   origins allowed, declined and removed (`[website]`), pack imports with the
   publisher's key id, verdict, item counts and outcome (`[pack]`), update checks
   and installs (`[update]`), workspace moves and project deletes
-  (`[workspace]`), managed keys and refusals (`[managed]`) and what the startup
+  (`[workspace]`), managed keys and each key's first refusal a launch (`[managed]`) and what the startup
   seal corrected (`[privacy]`). Lines hold paths, slugs, origins, key ids,
   versions and counts, never a file's contents or a secret, and a name a pack or
   page chose is escaped onto one line (`audit::field`). Only the app's own lines

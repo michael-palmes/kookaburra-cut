@@ -361,9 +361,14 @@ pub fn log_at_boot() {
     }
 }
 
-/// The error a refused command returns: the reason, then the key, so support can find the profile. Every refusal passes here, so each is logged.
+/// The error a refused command returns: the reason, then the key, so support can find the profile. Every refusal passes here, and the first for each key in a launch is logged, since the bridge and heartbeat probe the guards on every tick.
 pub fn refusal(key: Key) -> String {
-    log::warn!("[managed] refused: {}", key.name());
+    static LOGGED: std::sync::Mutex<Vec<Key>> = std::sync::Mutex::new(Vec::new());
+    let mut logged = LOGGED.lock().unwrap_or_else(|p| p.into_inner());
+    if !logged.contains(&key) {
+        logged.push(key);
+        log::warn!("[managed] refused: {} (logged once a launch)", key.name());
+    }
     format!("{REASON_PREFIX} {} ({}).", key.reason(), key.name())
 }
 
