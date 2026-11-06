@@ -551,14 +551,16 @@ jobs:
         run: |
           set -euo pipefail
           cp ../record/build-info.txt build-info.txt
-          for f in "KookaburraCut-${VERSION}.dmg" "KookaburraCut-${VERSION}.zip" "KookaburraCut-${VERSION}-updater.app.tar.gz" latest.json; do
+          set_files=("KookaburraCut-${VERSION}.dmg" "KookaburraCut-${VERSION}.zip" "KookaburraCut-${VERSION}-updater.app.tar.gz" "KookaburraCut-${VERSION}-updater.app.tar.gz.sig" latest.json)
+          for f in "${set_files[@]}"; do
             [ -f "$f" ] || { echo "::error::missing $f"; exit 1; }
           done
           cp ../SECURITY.md SECURITY.md
-          sha256sum "KookaburraCut-${VERSION}.dmg" "KookaburraCut-${VERSION}.zip" "KookaburraCut-${VERSION}-updater.app.tar.gz" latest.json build-info.txt SECURITY.md > SHA256SUMS
+          sha256sum "${set_files[@]}" build-info.txt SECURITY.md > SHA256SUMS
           cat SHA256SUMS
 
       - name: Attest build provenance
+        id: attest
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
@@ -566,6 +568,16 @@ jobs:
             release/KookaburraCut-${{ needs.build.outputs.version }}.zip
             release/KookaburraCut-${{ needs.build.outputs.version }}-updater.app.tar.gz
             release/build-info.txt
+
+      # Offline verifiers and Scorecard read provenance from the release assets, not the attestation store.
+      - name: Write the provenance bundle
+        env:
+          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          out="release/KookaburraCut-${VERSION}.intoto.jsonl"
+          jq -c . "$BUNDLE_PATH" > "$out"
+          [ -s "$out" ] || { echo "::error::the provenance bundle is empty"; exit 1; }
 
       # A draft: a person reads the run and publishes. The in-app updater sees the release only once published.
       - name: Draft the GitHub release
@@ -587,6 +599,14 @@ jobs:
                 --signer-workflow ${GITHUB_REPOSITORY}/.github/workflows/release.yml \\
                 --source-ref refs/tags/${TAG} --deny-self-hosted-runners
 
+          Offline, against the provenance bundle attached here:
+
+              gh attestation verify KookaburraCut-${VERSION}.dmg --bundle KookaburraCut-${VERSION}.intoto.jsonl \\
+                --repo ${GITHUB_REPOSITORY} --signer-workflow ${GITHUB_REPOSITORY}/.github/workflows/release.yml \\
+                --source-ref refs/tags/${TAG} --deny-self-hosted-runners
+
+          \`KookaburraCut-${VERSION}-updater.app.tar.gz.sig\` is the updater's signature; it verifies against \`plugins.updater.pubkey\` in \`src-tauri/tauri.conf.json\` (\`scripts/verify-updater-sig.mjs\`).
+
           Signed with a Developer ID Application certificate (Team ID ${TEAM_ID}), hardened runtime, notarised by Apple. Built by this repository's release workflow from the signed tag \`${TAG}\`.
 
           \`build-info.txt\` records the toolchain, the runner image, the commit and the sidecar pins this build used.
@@ -596,5 +616,6 @@ jobs:
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
             --title "Kookaburra Cut ${VERSION}" --notes-file "$notes" --generate-notes \
             "release/KookaburraCut-${VERSION}.dmg" "release/KookaburraCut-${VERSION}.zip" \
-            "release/KookaburraCut-${VERSION}-updater.app.tar.gz" release/latest.json release/build-info.txt release/SHA256SUMS release/SECURITY.md
+            "release/KookaburraCut-${VERSION}-updater.app.tar.gz" "release/KookaburraCut-${VERSION}-updater.app.tar.gz.sig" \
+            "release/KookaburraCut-${VERSION}.intoto.jsonl" release/latest.json release/build-info.txt release/SHA256SUMS release/SECURITY.md
           echo "Draft release ${TAG} created; publish it on GitHub." >> "$GITHUB_STEP_SUMMARY"

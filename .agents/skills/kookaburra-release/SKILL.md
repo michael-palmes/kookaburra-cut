@@ -9,7 +9,7 @@ Ship a signed, notarised, stapled `.app` and DMG that opens on any Mac with no G
 
 ## The shape, in one paragraph
 
-A release is a **signed `v*` tag on `main`**, pushed by `pnpm release`. `.github/workflows/release.yml` then runs four jobs on fresh runners: **build** (no signing secret in reach) verifies the tag against `main`'s `.github/allowed_tag_signers`, sets up the pinned toolchain, builds the ffmpeg sidecar from pinned source, fetches the beat-this model and the licensed device models, runs `pnpm tauri build --no-sign` and uploads the unsigned app with its SHA-256, plus a separate build record (`build-info.txt`, `bundle-digests.txt`, `sidecar-digests.txt`) whose digest is a job output; **sign**, in the protected `release` environment (one reviewer approves), checks that digest, imports the Developer ID into a temporary keychain, signs inside-out with the hardened runtime, notarises and staples the app and a plain DMG, tars the stapled app for the updater and signs it bound to the version, then deletes every key; **verify**, with no environment, checks signatures, notarisation, Gatekeeper and the updater signature against `plugins.updater.pubkey`, compares every file in the zip's and the updater tar's app, signatures stripped and file list included, with the build record, then runs the signed binary's `edit caps` and `check flashes`; **publish** writes `SHA256SUMS` over the set and `build-info.txt`, attests both and drafts the GitHub release for you to publish. Budget **about an hour**, plus the approval click.
+A release is a **signed `v*` tag on `main`**, pushed by `pnpm release`. `.github/workflows/release.yml` then runs four jobs on fresh runners: **build** (no signing secret in reach) verifies the tag against `main`'s `.github/allowed_tag_signers`, sets up the pinned toolchain, builds the ffmpeg sidecar from pinned source, fetches the beat-this model and the licensed device models, runs `pnpm tauri build --no-sign` and uploads the unsigned app with its SHA-256, plus a separate build record (`build-info.txt`, `bundle-digests.txt`, `sidecar-digests.txt`) whose digest is a job output; **sign**, in the protected `release` environment (one reviewer approves), checks that digest, imports the Developer ID into a temporary keychain, signs inside-out with the hardened runtime, notarises and staples the app and a plain DMG, tars the stapled app for the updater and signs it bound to the version, then deletes every key; **verify**, with no environment, checks signatures, notarisation, Gatekeeper and the updater signature against `plugins.updater.pubkey`, compares every file in the zip's and the updater tar's app, signatures stripped and file list included, with the build record, then runs the signed binary's `edit caps` and `check flashes`; **publish** writes `SHA256SUMS` over the set (the updater `.sig` included) and `build-info.txt`, attests the DMG, zip, updater tar and `build-info.txt` in one attestation and drafts the GitHub release for you to publish, with the attestation's bundle as `KookaburraCut-<version>.intoto.jsonl` and the updater `.sig` among its assets (OpenSSF Scorecard reads only release assets, never the attestation store). Budget **about an hour**, plus the approval click.
 
 ## Cutting a release
 
@@ -186,6 +186,11 @@ shasum -a 256 -c SHA256SUMS --ignore-missing
 gh attestation verify KookaburraCut-<version>.dmg --repo michael-palmes/kookaburra-cut \
   --signer-workflow michael-palmes/kookaburra-cut/.github/workflows/release.yml \
   --source-ref refs/tags/v<version> --deny-self-hosted-runners
+gh attestation verify KookaburraCut-<version>.dmg --bundle KookaburraCut-<version>.intoto.jsonl \
+  --repo michael-palmes/kookaburra-cut --signer-workflow michael-palmes/kookaburra-cut/.github/workflows/release.yml \
+  --source-ref refs/tags/v<version> --deny-self-hosted-runners   # offline, the release's own bundle
+node scripts/verify-updater-sig.mjs KookaburraCut-<version>-updater.app.tar.gz KookaburraCut-<version>-updater.app.tar.gz.sig \
+  "$(node -p "require('./src-tauri/tauri.conf.json').plugins.updater.pubkey")" <version>
 ```
 
 ## Troubleshooting
