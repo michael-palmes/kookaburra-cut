@@ -148,6 +148,25 @@ def live_hooks(root: Path) -> List[str]:
     return sorted(f".git/hooks/{name}" for name in names if not name.endswith(".sample"))
 
 
+def nested_repo(root: Path) -> Optional[str]:
+    """The first .git below the project's own, links never followed: git run in that folder uses its hooks and settings instead."""
+    stack = [""]
+    while stack:
+        rel = stack.pop()
+        try:
+            entries = list(os.scandir(os.path.join(str(root), rel)))
+        except OSError:
+            continue
+        for entry in entries:
+            child = f"{rel}/{entry.name}" if rel else entry.name
+            if entry.name == ".git":
+                if rel:
+                    return child
+            elif entry.is_dir(follow_symlinks=False):
+                stack.append(child)
+    return None
+
+
 def run(root: Path, args: List[str], check: bool = True, timeout: float = 30) -> subprocess.CompletedProcess:
     """git in the project, isolated from the folder's settings and any repository above it; a failure naming index.lock is retried (50 ms doubling to 1.6 s), then exit 3 kind index-locked."""
     refused = refusal(root)

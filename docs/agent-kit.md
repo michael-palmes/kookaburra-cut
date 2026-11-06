@@ -153,7 +153,8 @@ scripts/
   the RULES import.
 - **The agent's git** (`history::agent_git_verdict`, asked at every stamp). Plain `git` runs the
   folder's hooks and the programs its `.git/config` names, so the template's five git rules stay
-  only while the app would run git there itself and no live hook remains. Otherwise they go and
+  only while the app would run git there itself, no live hook remains and no other `.git` sits below
+  the root (git run in that folder would use its own hooks). Otherwise they go and
   `deny` gains `Bash(git:*)`, with one `[kit]` line naming why; either set is the app's own, so
   the swap is never listed for review. kb's `bash-pre` refuses any command that runs git under
   the same verdict, checked live (`hookfast.git_withheld`), and names `./kb checkpoint`,
