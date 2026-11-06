@@ -4,6 +4,7 @@ import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "../e
 import { deviceTrackSnapshotAt, resolveDeviceTrack } from "../engine/sceneDeviceTrack";
 import { commitSceneDocPatch, type DocChangedHandler } from "../engine/sceneDocPatchQueue";
 import type { SceneDocDevicePose } from "../engine/sceneDocSchema";
+import { useLayoutFormat } from "../toolkit/device/layoutFormat";
 
 /** Device-track doc plumbing (the useChartTrackDoc pattern): the in-flight draft the lane draws while a pointer is down, the sidecar commit with history + write-error surface, and the applied-pose sampler that seeds Add-keyframe so adding never visibly moves a device. Writing an empty track DELETES the block, so turning the animation off leaves the document exactly as it was before. */
 export function useDeviceTrackDoc(
@@ -14,6 +15,7 @@ export function useDeviceTrackDoc(
   const slug = isEditableProjectId(project.id) ? nativeProjectSlug(project.id) : null;
   const doc = project.sceneDocs[sceneIndex];
   const sceneFile = project.sceneFiles[sceneIndex];
+  const format = useLayoutFormat();
   const [localDraft, setLocalDraft] = useState<DeviceTrackDoc | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: project identity IS the reload signal
   useEffect(() => setLocalDraft(null), [project, sceneIndex]);
@@ -50,11 +52,11 @@ export function useDeviceTrackDoc(
   const appliedPoseAt = useCallback(
     (localT: number): Record<string, SceneDocDevicePose> =>
       deviceTrackSnapshotAt(
-        resolveDeviceTrack({ ...doc, version: doc?.version ?? 1, deviceTrack: track }),
+        resolveDeviceTrack({ ...doc, version: doc?.version ?? 1, deviceTrack: track }, format),
         doc?.devices ?? [],
         localT,
       ),
-    [doc, track],
+    [doc, track, format],
   );
 
   return { slug, doc, track, preview, commit, appliedPoseAt };

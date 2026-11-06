@@ -34,6 +34,7 @@ import {
   type DeviceShadowMode,
   effectiveDeviceShadowMode,
 } from "../../toolkit/device/Device";
+import { useLayoutFormat } from "../../toolkit/device/layoutFormat";
 import { DEVICE_SHADOW_CHOICES } from "../../toolkit/device/shadowProjector";
 import type { V3 } from "../../toolkit/types";
 import { ComparisonSideIcon } from "../ComparisonSideIcon";
@@ -174,6 +175,7 @@ const LAYOUT_LABELS = {
   cascade: "Cascade",
   hero: "Hero",
   "depth-pair": "Depth",
+  v: "V",
 } as const;
 
 export function deviceNavigationFocusTarget(
@@ -914,6 +916,7 @@ export function DeviceDrillIn({
   const pendingNavigationFocus = useRef<"previous" | "next" | null>(null);
   const gizmoMode = useDeviceEditStore((state) => state.gizmoMode);
   const trackOpen = useDeviceTrackEditStore((state) => state.open);
+  const format = useLayoutFormat();
   const devices = doc.devices ?? [];
   const deviceIndex = devices.findIndex((candidate) => candidate.id === deviceId);
   const device = devices[deviceIndex];
@@ -1159,7 +1162,7 @@ export function DeviceDrillIn({
     const at = foldLocalMs();
     const { openDeg } = model.fold;
     const add = (next: SceneDoc) =>
-      addFoldAnimation(next, device.id, direction, at, slot.durationMs, openDeg);
+      addFoldAnimation(next, device.id, direction, at, slot.durationMs, openDeg, format);
     // Probed on a copy first, so a refusal says why instead of silently doing nothing.
     if (!add(structuredClone(doc))) {
       setFoldNotice("No room here. Move the playhead clear of the existing animation.");

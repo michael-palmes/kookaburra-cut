@@ -23617,7 +23617,8 @@
         "height": 2.5038,
         "centre": [0, 0],
         "z": 0.1149,
-        "cornerRadius": 0.1906
+        "cornerRadius": 0.1906,
+        "fillDistance": 0.782
       },
       "fittedHeight": 2.6,
       "layoutWidth": 1.25
@@ -23651,7 +23652,8 @@
         "cornerRadius": 0.2173,
         "frame": {
           "foldDeg": 180
-        }
+        },
+        "fillDistance": 2.3772
       },
       "coverScreen": {
         "width": 1.7151,
@@ -23661,7 +23663,8 @@
         "cornerRadius": 0.2278,
         "frame": {
           "foldDeg": 0
-        }
+        },
+        "fillDistance": 1.1645
       },
       "fittedHeight": 2.6,
       "layoutWidth": 3.65,
@@ -23698,7 +23701,8 @@
         "cornerRadius": 0.0552,
         "frame": {
           "lidDeg": 90
-        }
+        },
+        "fillDistance": 2.2454
       },
       "fittedHeight": 2.305,
       "layoutWidth": 3.4,
@@ -23733,7 +23737,8 @@
         "height": 2.4085,
         "centre": [0.0048, -0.0024],
         "z": 0.0436,
-        "cornerRadius": 0.1046
+        "cornerRadius": 0.1046,
+        "fillDistance": 2.1645
       },
       "fittedHeight": 2.6,
       "layoutWidth": 3.4
@@ -23773,7 +23778,8 @@
         "height": 2.4996,
         "centre": [0, 0.0011],
         "z": 0.1065,
-        "cornerRadius": 0.1678
+        "cornerRadius": 0.1678,
+        "fillDistance": 0.7843
       },
       "fittedHeight": 2.6,
       "layoutWidth": 1.25
@@ -23808,7 +23814,8 @@
         "height": 2.5014,
         "centre": [-0.0127, 0.0068],
         "z": 0.1303,
-        "cornerRadius": 0.1354
+        "cornerRadius": 0.1354,
+        "fillDistance": 0.7643
       },
       "fittedHeight": 2.6,
       "layoutWidth": 1.22
@@ -23935,6 +23942,11 @@
       "id": "depth-pair",
       "label": "Depth",
       "summary": "Two devices split front and back (exactly 2, else toe-in)."
+    },
+    {
+      "id": "v",
+      "label": "V",
+      "summary": "Device 1 forward, pairs stepping back and out, turned in."
     }
   ],
   "deviceMedia": {
@@ -25235,7 +25247,7 @@
         "summary": "Multi-device arrangement preset resolved per aspect.",
         "type": "object",
         "ref": "devices",
-        "values": ["row", "toe-in", "arc", "cascade", "hero", "depth-pair"]
+        "values": ["row", "toe-in", "arc", "cascade", "hero", "depth-pair", "v"]
       },
       {
         "id": "deviceTrack",
@@ -25751,6 +25763,11 @@
         "summary": "Camera-locked layer in frame units with no depth test: order=\"front\" over the finished frame, \"back\" behind everything 3D."
       },
       {
+        "id": "ScreenRegion",
+        "kind": "component",
+        "summary": "Child of Device: lifts a rect of its own screen towards the camera with a soft shadow, or variant lens magnifies a point."
+      },
+      {
         "id": "Scrim",
         "kind": "component",
         "summary": "Clear to a colour, linear or radial, for text to sit on; inside a ScreenLayer."
@@ -26012,6 +26029,11 @@
         "summary": "Samples a persistent-module keyframe track at globalMs."
       },
       {
+        "id": "screenFillPose",
+        "kind": "function",
+        "summary": "screenFillPose(model, pose, { fovDeg }): the cameraRig pose that fills the frame with a device's screen."
+      },
+      {
         "id": "screenUvToMediaPixel",
         "kind": "function",
         "summary": "screenUvToMediaPixel(model, [u, v], { width, height }): screen UV to media pixel."
@@ -26055,6 +26077,11 @@
         "id": "useDeviceScreen",
         "kind": "hook",
         "summary": "Inside Device: { rect, coverRect, local(u, v) } for the screen it renders, or null."
+      },
+      {
+        "id": "useDeviceScreenPoint",
+        "kind": "hook",
+        "summary": "useDeviceScreenPoint(device, u, v): this frame's { position, rotation, scale } of a screen point on a moving device."
       },
       {
         "id": "useFormat",
@@ -26268,10 +26295,16 @@
         "id": "DeviceScreenHinge"
       },
       {
+        "id": "DeviceScreenPointOptions"
+      },
+      {
         "id": "DeviceScreenPose"
       },
       {
         "id": "DeviceScreenRect"
+      },
+      {
+        "id": "DeviceScreenSample"
       },
       {
         "id": "DeviceShadowMode"
@@ -26352,6 +26385,9 @@
         "id": "PulseOptions"
       },
       {
+        "id": "RegionLiftTiming"
+      },
+      {
         "id": "ResolvedChart"
       },
       {
@@ -26409,10 +26445,19 @@
         "id": "SceneTime"
       },
       {
+        "id": "ScreenFillOptions"
+      },
+      {
         "id": "ScreenFillProps"
       },
       {
         "id": "ScreenLayerProps"
+      },
+      {
+        "id": "ScreenRegionProps"
+      },
+      {
+        "id": "ScreenUvRect"
       },
       {
         "id": "ScrimProps"
@@ -26461,6 +26506,9 @@
       },
       {
         "id": "TitleBlockProps"
+      },
+      {
+        "id": "TrackedDevice"
       },
       {
         "id": "V3"

@@ -371,7 +371,15 @@ the field lands.
   export agree. `engine/clipFrame.ts` (unit-tested). Looping consumers (video
   background fills) use the modulo branch (`((raw % n) + n) % n`, exact even for
   negative time), while the clamp path stays byte-untouched for every holding
-  consumer.
+  consumer. That floor lands a frame early at about a third of whole-frame
+  instants (`frame * 1000 / FPS` is inexact), a repeat then a skip, and stays
+  frozen for every legacy consumer. A `VideoClip` with `inMs` takes
+  `clipSourceFrameIndex` instead: the floor of the whole source time
+  (`inMs + localMs − startMs`) with 1e-6 frames of slack, so it shows every
+  source frame exactly once. A screen portal's straight cut from a clip to a
+  screen therefore lands the next frame exactly (unit-tested over scene starts
+  on and off the frame grid); a cut from a screen can skip one, the screen's
+  own floor.
 - **Stream with a small LRU.** Frames load via a Rust `read_clip_frame` command
   (raw bytes → `createImageBitmap` → `THREE.Texture`); only ~12 decoded textures
   are resident at once, so a long 4K clip never holds thousands in memory.
@@ -494,6 +502,11 @@ fixed a real divergent-verify bug:
   UV attribute (never the shared textures). glTF vertex data is often
   INTERLEAVED: reading `attribute.array[i * 2]` gets positions, not UVs; use
   `getX`/`getY`.
+
+`ScreenRegion` (a lifted card or lens of the screen) adds no clip consumer: it
+reads the display material's `map`, power and baked crop
+(`userData.screenUvMap`) in its mesh's `onBeforeRender`, so it samples the
+frame the barrier already awaited, never a stale one from render time.
 
 ### Foldables
 

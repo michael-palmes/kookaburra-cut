@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { resolveDeviceLayout } from "../toolkit/device/layout";
+import { computeFormat, FORMATS } from "./format";
 import {
   deviceFoldRangeAt,
+  deviceSlots,
   deviceTrackPoseAt,
   deviceTrackPoseIsRest,
   deviceTrackSnapshotAt,
@@ -317,5 +320,123 @@ describe("keyed screen power", () => {
     const snapshot = deviceTrackSnapshotAt(wake, [{ id: "duo" }, { id: "phone" }], 500);
     expect(snapshot.duo).toMatchObject({ coverPower: 0.5, screenPower: 0.5 });
     expect(snapshot.phone.coverPower).toBeUndefined();
+  });
+});
+
+describe("slot-relative poses", () => {
+  const wide = computeFormat(FORMATS["16:9"]);
+  const devices = ["hero", "d2", "d3", "d4", "d5"].map((id) => ({
+    id,
+    model: "iphone-17-pro",
+    placement: { ground: true },
+  }));
+  const dealOut: SceneDoc = {
+    version: 1,
+    devices,
+    deviceLayout: { preset: "v" },
+    deviceTrack: {
+      keys: [
+        {
+          id: "k1",
+          tMs: 0,
+          pose: Object.fromEntries(
+            ["d2", "d3", "d4", "d5"].map((id) => [id, { slot: "hero", offset: [0, 0, -0.5] }]),
+          ),
+        },
+        { id: "k2", tMs: 450, pose: {} },
+      ],
+      segments: [{ from: "k1", to: "k2", ease: "outExpo" }],
+    },
+  };
+
+  /** Where a device stands with the track's delta on its slot, the way `Device` composes them. */
+  function placed(doc: SceneDoc, id: string, localMs: number) {
+    const track = resolveDeviceTrack(doc, wide);
+    const slot = deviceSlots(doc, wide)[id];
+    const keyed = deviceTrackPoseAt(track, id, localMs);
+    return {
+      position: slot.position.map((v, i) => v + keyed.offset[i]),
+      rotationDeg: slot.rotationDeg.map((v, i) => v + keyed.rotationDeg[i]),
+      scale: slot.scale * keyed.scale,
+    };
+  }
+
+  it("stacks every wing behind the hero, then deals each out to its own V slot", () => {
+    const slots = resolveDeviceLayout(devices, { preset: "v" }, wide);
+    const hero = slots[0];
+    for (const [i, id] of ["d2", "d3", "d4", "d5"].entries()) {
+      const start = placed(dealOut, id, 0);
+      // Grounded devices keep their own y: the floor sets it.
+      expect(start.position[0]).toBeCloseTo(hero.position?.[0] ?? 0, 12);
+      expect(start.position[2]).toBeCloseTo((hero.position?.[2] ?? 0) - 0.5, 12);
+      expect(start.rotationDeg[1]).toBeCloseTo(hero.rotationDeg?.[1] ?? 0, 12);
+      expect(start.scale).toBeCloseTo(hero.scale ?? 1, 12);
+      const end = placed(dealOut, id, 450);
+      expect(end.position[0]).toBeCloseTo(slots[i + 1].position?.[0] ?? 0, 12);
+      expect(end.position[2]).toBeCloseTo(slots[i + 1].position?.[2] ?? 0, 12);
+      expect(end.rotationDeg[1]).toBeCloseTo(slots[i + 1].rotationDeg?.[1] ?? 0, 12);
+    }
+  });
+
+  it("measures y from the slot too when a device floats, and multiplies the slot's scale", () => {
+    const floating: SceneDoc = {
+      version: 1,
+      devices: [
+        { id: "a", model: "android", placement: { position: [0, 0.5, 0], scale: 2 } },
+        {
+          id: "b",
+          model: "android",
+          placement: { position: [2, -0.3, -1], rotationDeg: [0, 20, 0] },
+        },
+      ],
+      deviceTrack: {
+        keys: [{ id: "k1", tMs: 0, pose: { b: { slot: "a", offset: [0, 0.1, 0], scale: 0.5 } } }],
+        segments: [],
+      },
+    };
+    const b = placed(floating, "b", 0);
+    expect(b.position[0]).toBeCloseTo(0, 12);
+    expect(b.position[1]).toBeCloseTo(0.6, 12);
+    expect(b.position[2]).toBeCloseTo(0, 12);
+    expect(b.rotationDeg[1]).toBeCloseTo(0, 12);
+    expect(b.scale).toBeCloseTo(1, 12);
+  });
+
+  it("stays as authored without a format, and falls back to a plain delta for an unknown slot", () => {
+    const raw = resolveDeviceTrack(dealOut);
+    expect(raw?.keys[0].pose.d2).toEqual({ slot: "hero", offset: [0, 0, -0.5] });
+    const unknown: SceneDoc = {
+      ...dealOut,
+      deviceTrack: {
+        keys: [{ id: "k1", tMs: 0, pose: { d2: { slot: "nobody", offset: [1, 0, 0] } } }],
+        segments: [],
+      },
+    };
+    expect(resolveDeviceTrack(unknown, wide)?.keys[0].pose.d2).toEqual({ offset: [1, 0, 0] });
+  });
+
+  it("leaves a track with no slot poses untouched, so every legacy track resolves as before", () => {
+    expect(resolveDeviceTrack(TRACK, wide)).toEqual(resolveDeviceTrack(TRACK));
+  });
+
+  it("parses a slot as a device id and drops anything else", () => {
+    const parsed = parseSceneDoc(
+      {
+        version: 1,
+        deviceTrack: {
+          keys: [
+            {
+              id: "k1",
+              tMs: 0,
+              pose: { d2: { slot: "hero" }, d3: { slot: 4, offset: [0, 0, 1] } },
+            },
+          ],
+          segments: [],
+        },
+      },
+      "test",
+    );
+    expect(parsed?.deviceTrack?.keys[0].pose.d2).toEqual({ slot: "hero" });
+    expect(parsed?.deviceTrack?.keys[0].pose.d3).toEqual({ offset: [0, 0, 1] });
   });
 });

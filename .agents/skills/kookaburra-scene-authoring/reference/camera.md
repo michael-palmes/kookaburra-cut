@@ -64,6 +64,39 @@ Set `"cameraMode": "rig"`. A pose is a position plus an aim:
 
 `<DepthStage>` (reference/scenes.md) gives a rig layers to fly through.
 
+## Screen portal
+
+A pull-out from inside a screen starts on a rig key whose camera fills the frame with the
+device's display; a push through a screen ends on one. Each display in `./kb catalog devices
+--json` carries `fillDistance`: how far off the glass a 45 degree camera fills a 16:9 frame at
+placement scale 1. For a device facing the camera (rotation 0) at `position` `[x, y, z]`,
+drawn at scale `s` (its placement scale times any multiplier its TSX applies, such as the
+device presets' 0.92), with that display's `centre` `[cx, cy]` and `z`:
+
+- `aim`: `{ "mode": "point", "at": [x + s*cx, y + s*cy, z + s*z] }` (an `object` aim follows
+  the device's origin, not its glass)
+- `position`: the aim point plus `[0, 0, s * fillDistance]`, with `fov` 45; at another lens,
+  multiply the distance by `tan(22.5°) / tan(fov / 2)` and set that `fov` on the key
+- a turned device, or a laptop lid off 90 degrees: `screenFillPose(model, pose, { fovDeg })` in
+  the toolkit is the same maths in any orientation, rolled to the display's own up
+
+Matching the cut between a full-bleed `VideoClip` and the screen:
+
+1. One source time for both sides: `project.json` `"shared": { "portal": { "sourceMs": 2000 } }`,
+   on a whole frame (a multiple of 50 ms), read with `useProjectShared("portal.sourceMs")`.
+2. `cut` is the outgoing scene's `durationMs` minus the incoming scene's transition overlap.
+   A straight cut (no transition) is the exact hand-off; through an overlap both play at once.
+3. Pull-out (clip, then screen): the outgoing scene ends on
+   `<VideoClip src="assets/app.mp4" fit="cover" startMs={0} inMs={sourceMs - cut} />`; the
+   incoming device plays `inMs: sourceMs` (reference/devices.md, "Screen portal") and its first
+   rig key is the fill. The screen picks up on the very next frame.
+4. Push-through (screen, then clip): the device plays `inMs: sourceMs - cut` (so `sourceMs` is
+   at least `cut`: a device's `inMs` can't be negative), its last key is
+   the fill, and the next scene opens on `<VideoClip ... startMs={0} inMs={sourceMs} />`. The
+   screen's own frame rule can skip one frame at a cut that lands exactly on a frame.
+5. Hand off with the camera at rest: hold the fill key (no segment into or out of it at the
+   cut), with no kick, motion preset or device key moving at that moment.
+
 ## Placing by depth
 
 Something behind the text must grow to fill the same share of the frame:

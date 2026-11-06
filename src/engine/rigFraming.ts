@@ -1,9 +1,17 @@
 /** Fitting a camera to content: the maths behind the Frame-content button and the presets' scaling. Pure, so "what distance frames this box at this lens" is a pinned number rather than a feel. */
+import { Euler, Matrix4, Vector3 } from "three";
+import {
+  type DeviceScreenPose,
+  deviceScreenFrame,
+  deviceScreenRect,
+} from "../toolkit/device/screenAnchor";
+import { CAMERA } from "./format";
 import type { LayeredScreenshotPlacement, SceneDoc, SceneDocRigPose } from "./sceneDocSchema";
 import { resolveLayeredScreenshotPlacement } from "./sceneLayeredScreenshot";
 import { resolveSceneDocMedia } from "./sceneMedia";
 
 const DEG2RAD = Math.PI / 180;
+const RAD2DEG = 180 / Math.PI;
 
 /** An axis-aligned world box, the shape three's `Box3` reports. */
 export interface ContentBounds {
@@ -122,4 +130,70 @@ export function frameContentPose(
     ],
     aim: { mode: "point", at: centre },
   };
+}
+
+/** How far a camera at `fovDeg` sits from a flat `width` x `height` rect, square on, for the rect to COVER a frame of `aspect` (the near twin of `frameContentDistance`, which contains). `overscan` above 1 pushes in past the edges. Null for a degenerate rect. */
+export function frameCoverDistance(
+  width: number,
+  height: number,
+  fovDeg: number,
+  aspect: number,
+  overscan = 1,
+): number | null {
+  if (!(width > 0) || !(height > 0) || !(aspect > 0)) return null;
+  const halfV = Math.tan(fovDeg * DEG2RAD * 0.5);
+  const forHeight = height / 2 / halfV;
+  const forWidth = width / 2 / (halfV * aspect);
+  return Math.min(forHeight, forWidth) / Math.max(1, overscan);
+}
+
+export interface ScreenFillOptions {
+  /** The key's lens, written into the pose so the distance and lens agree (default the camera's 45). */
+  fovDeg?: number;
+  /** Frame width / height (default 16:9). */
+  aspect?: number;
+  /** 1 fills edge to edge (default); above 1 pushes past the display's edges. */
+  overscan?: number;
+}
+
+/** A rig pose square on to a device's display, close enough that the display covers the frame and rolled to the display's own up: the first key of a pull-out from inside a screen, or the last of a push into one. `pose` is the device as it renders (placement, layout and grounding, its scale times any multiplier the scene's TSX applies) and the maths reads the model this build renders, so the Android stand-in gets its own display. A point aim at the display's centre, since an object aim follows the device's origin, not its glass. */
+export function screenFillPose(
+  model: string,
+  pose: DeviceScreenPose,
+  options: ScreenFillOptions = {},
+): SceneDocRigPose | null {
+  const fov = options.fovDeg ?? CAMERA.fov;
+  const scale = pose.scale ?? 1;
+  const rect = deviceScreenRect(model, pose.display);
+  const distance = frameCoverDistance(
+    rect.width * scale,
+    rect.height * scale,
+    fov,
+    options.aspect ?? 16 / 9,
+    options.overscan,
+  );
+  if (distance === null) return null;
+  const { position: local, tiltX } = deviceScreenFrame(model, 0.5, 0.5, 0, pose);
+  const [rx, ry, rz] = pose.rotationDeg ?? [0, 0, 0];
+  const turn = new Euler(rx * DEG2RAD, ry * DEG2RAD, rz * DEG2RAD);
+  const glass = new Euler(tiltX, 0, 0);
+  const centre = new Vector3(...local)
+    .multiplyScalar(scale)
+    .applyEuler(turn)
+    .add(new Vector3(...pose.position));
+  const normal = new Vector3(0, 0, 1).applyEuler(glass).applyEuler(turn);
+  const right = new Vector3(1, 0, 0).applyEuler(turn);
+  const eye = centre.clone().addScaledVector(normal, distance);
+  // The basis `applyCameraPose` gets from `camera.lookAt`, so the roll lands the display's right edge on the frame's.
+  const basis = new Matrix4().lookAt(eye, centre, new Vector3(0, 1, 0));
+  const x = new Vector3().setFromMatrixColumn(basis, 0);
+  const y = new Vector3().setFromMatrixColumn(basis, 1);
+  const rollDeg = Math.atan2(right.dot(y), right.dot(x)) * RAD2DEG;
+  const fill: SceneDocRigPose = {
+    position: [eye.x, eye.y, eye.z],
+    aim: { mode: "point", at: [centre.x, centre.y, centre.z] },
+    fov,
+  };
+  if (Math.abs(rollDeg) > 1e-9) fill.rollDeg = rollDeg;
+  return fill;
 }

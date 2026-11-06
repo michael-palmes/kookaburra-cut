@@ -1457,6 +1457,10 @@
     "signature": "interface DeviceScreenHinge { display?: DeviceScreenDisplay; lidDeg?: number; foldDeg?: number; }",
     "doc": "The hinge pose a point is read at; absent angles take the device's defaults."
   },
+  "DeviceScreenPointOptions": {
+    "kind": "type",
+    "signature": "interface DeviceScreenPointOptions { lift?: number; display?: DeviceScreenDisplay; }"
+  },
   "DeviceScreenPose": {
     "kind": "type",
     "signature": "interface DeviceScreenPose extends DeviceScreenHinge { position: V3; rotationDeg?: V3; scale?: number; }",
@@ -1466,6 +1470,11 @@
     "kind": "type",
     "signature": "interface DeviceScreenRect { width: number; height: number; centre: [number, number]; z: number; cornerRadius: number; frame?: { lidDeg?: number; foldDeg?: number }; }",
     "doc": "Where a display's media sits, measured off the glb (`screenGeometry.ts`) in the frame `Device` renders in at placement scale 1 (recentred and fitted). UV (0, 0) is the top-left corner, u runs right and v down."
+  },
+  "DeviceScreenSample": {
+    "kind": "type",
+    "signature": "interface DeviceScreenSample { position: V3; rotation: V3; scale: number; }",
+    "doc": "A screen point this frame: where it is, how its display is turned, and the world size of one fitted unit."
   },
   "DeviceShadowMode": {
     "kind": "type",
@@ -2194,6 +2203,10 @@
     "signature": "interface PulseOptions { attackMs?: number; holdMs?: number; releaseMs: number; ease?: EaseName | ((t: number) => number); }",
     "doc": "One pulse's shape in ms: rise over `attackMs` (default 0, a snap), hold for `holdMs` (default 0), fall over `releaseMs`; `ease` (default `\"outQuad\"`) shapes both ramps."
   },
+  "RegionLiftTiming": {
+    "kind": "type",
+    "signature": "interface RegionLiftTiming { at?: number; durationMs?: number; ease?: string; outAt?: number; outDurationMs?: number; }"
+  },
   "ResolvedChart": {
     "kind": "type",
     "signature": "interface ResolvedChart extends ChartConfig { track: ResolvedChartTrack; }",
@@ -2526,6 +2539,10 @@
     "signature": "interface SceneTime { localMs: number; globalMs: number; progress: number; }",
     "doc": "Time exposed to a scene, all derived purely from the global clock."
   },
+  "ScreenFillOptions": {
+    "kind": "type",
+    "signature": "interface ScreenFillOptions { fovDeg?: number; aspect?: number; overscan?: number; }"
+  },
   "ScreenFillProps": {
     "kind": "type",
     "signature": "interface ScreenFillProps { opacity?: number; keys?: readonly MotionKey[]; }",
@@ -2559,6 +2576,146 @@
   "ScreenLayerProps": {
     "kind": "type",
     "signature": "interface ScreenLayerProps { order?: \"front\" | \"back\"; children?: ReactNode; }"
+  },
+  "ScreenRegion": {
+    "kind": "component",
+    "summary": "Child of Device: lifts a rect of its own screen towards the camera with a soft shadow, or variant lens magnifies a point.",
+    "signature": "function ScreenRegion(props: ScreenRegionProps): ReactElement | null;",
+    "doc": "Lifts part of the parent `Device`'s own display towards the camera, a card with a soft shadow on the glass, or a round lens that magnifies a point: the control that matters rising out of the screen, then settling back. It samples the texture the display shows this frame (video or still), so it never adds a decode. A child of `Device`, like `DeviceScreenAnchor`.",
+    "props": [
+      {
+        "name": "rect",
+        "type": "ScreenUvRect",
+        "required": false,
+        "default": "[0.1, 0.4, 0.9, 0.5]",
+        "doc": "The card's display rectangle, `[u0, v0, u1, v1]` (u right, v down from the top-left)."
+      },
+      {
+        "name": "variant",
+        "type": "\"card\" | \"lens\"",
+        "required": false,
+        "default": "\"card\"",
+        "doc": "`\"lens\"`: a round magnifier over `centre` instead of a card."
+      },
+      {
+        "name": "centre",
+        "type": "[number, number]",
+        "required": false,
+        "default": "the centre",
+        "doc": "Lens: the display point it magnifies (default the centre)."
+      },
+      {
+        "name": "radius",
+        "type": "number",
+        "required": false,
+        "default": "0.32",
+        "doc": "Lens radius in fitted units (default 0.32; a phone display is about 1.15 wide)."
+      },
+      {
+        "name": "zoom",
+        "type": "number",
+        "required": false,
+        "default": "2",
+        "doc": "Lens magnification (default 2)."
+      },
+      {
+        "name": "lift",
+        "type": "number",
+        "required": false,
+        "default": "0.35 for a card",
+        "doc": "How far it rises off the glass at full lift, in fitted units (default 0.35 for a card, 0.22 for a lens)."
+      },
+      {
+        "name": "scale",
+        "type": "number",
+        "required": false,
+        "default": "1.12 for a card",
+        "doc": "Size at full lift (default 1.12 for a card, 1 for a lens)."
+      },
+      {
+        "name": "offset",
+        "type": "[number, number]",
+        "required": false,
+        "default": "none",
+        "doc": "Slide across the display at full lift, `[x, y]` in fitted units (default none)."
+      },
+      {
+        "name": "cornerRadius",
+        "type": "number",
+        "required": false,
+        "default": "22% of the short side",
+        "doc": "Card corner radius in fitted units (default 22% of the short side)."
+      },
+      {
+        "name": "shadow",
+        "type": "number",
+        "required": false,
+        "default": "0.35",
+        "doc": "Shadow strength at full lift, 0 to 1 (default 0.35): on the glass under it, and a softer one round its own edge."
+      },
+      {
+        "name": "rimColour",
+        "type": "string",
+        "required": false,
+        "default": "the theme's text colour",
+        "doc": "Lens rim colour (default the theme's text colour)."
+      },
+      {
+        "name": "display",
+        "type": "DeviceScreenDisplay",
+        "required": false,
+        "default": "\"main\"",
+        "doc": "A foldable's display (default `\"main\"`, the inside one)."
+      },
+      {
+        "name": "at",
+        "type": "number",
+        "required": false,
+        "default": "0",
+        "units": "ms",
+        "doc": "Scene ms the lift starts (default 0)."
+      },
+      {
+        "name": "durationMs",
+        "type": "number",
+        "required": false,
+        "default": "600",
+        "units": "ms",
+        "doc": "Lift length in ms (default 600)."
+      },
+      {
+        "name": "ease",
+        "type": "string",
+        "required": false,
+        "default": "outCubic",
+        "doc": "Both ways (default `outCubic`, so it lands softly too)."
+      },
+      {
+        "name": "outAt",
+        "type": "number",
+        "required": false,
+        "units": "ms",
+        "doc": "Scene ms it starts settling back onto the glass; absent stays up."
+      },
+      {
+        "name": "outDurationMs",
+        "type": "number",
+        "required": false,
+        "default": "durationMs",
+        "units": "ms",
+        "doc": "Settle length in ms (default `durationMs`)."
+      }
+    ],
+    "example": "<ScreenRegion />"
+  },
+  "ScreenRegionProps": {
+    "kind": "type",
+    "signature": "interface ScreenRegionProps extends RegionLiftTiming { rect?: ScreenUvRect; variant?: \"card\" | \"lens\"; centre?: [number, number]; radius?: number; zoom?: number; lift?: number; scale?: number; offset?: [number, number]; cornerRadius?: number; shadow?: number; rimColour?: string; display?: DeviceScreenDisplay; }"
+  },
+  "ScreenUvRect": {
+    "kind": "type",
+    "signature": "type ScreenUvRect = [number, number, number, number];",
+    "doc": "A display rectangle in screen UV, `[u0, v0, u1, v1]`: u runs right and v down from the top-left."
   },
   "Scrim": {
     "kind": "component",
@@ -3050,6 +3207,11 @@
     "kind": "type",
     "signature": "interface TitleBlockProps { title: string; subtitle?: string; align?: SceneTextAlign; from?: number; to?: number; fontSize?: number; position?: V3; maxWidth?: number; titleColor?: \"text\" | \"muted\" | \"accent\" | (string & {}); subtitleColor?: \"text\" | \"muted\" | \"accent\" | (string & {}); subtitleDelayMs?: number; register?: boolean; managedTextRole?: ManagedTextRenderRole; icon?: string; }"
   },
+  "TrackedDevice": {
+    "kind": "type",
+    "signature": "interface TrackedDevice { id?: string; model: string; placement?: DevicePlacement; lidDeg?: number; foldDeg?: number; motionBlur?: MotionBlurOverride; }",
+    "doc": "A device as the scene hands it to `Device`: the same props, so the point lands where that device renders."
+  },
   "V3": {
     "kind": "type",
     "signature": "type V3 = [number, number, number];",
@@ -3075,6 +3237,13 @@
         "doc": "When the clip starts, in ms (local scene time)."
       },
       {
+        "name": "inMs",
+        "type": "number",
+        "required": false,
+        "units": "ms",
+        "doc": "Source ms shown at `startMs` (held before it), so a full-bleed clip can carry on a device screen's video; with it the clip shows every source frame exactly once."
+      },
+      {
         "name": "fit",
         "type": "\"cover\" | \"contain\"",
         "required": false,
@@ -3098,7 +3267,7 @@
   },
   "VideoClipProps": {
     "kind": "type",
-    "signature": "interface VideoClipProps { src: string; startMs: number; fit?: \"cover\" | \"contain\"; position?: V3; scale?: number; }"
+    "signature": "interface VideoClipProps { src: string; startMs: number; inMs?: number; fit?: \"cover\" | \"contain\"; position?: V3; scale?: number; }"
   },
   "VideoWindow": {
     "kind": "component",
@@ -3424,6 +3593,12 @@
     "signature": "function sampleSharedTransform(track: SharedKeyframe[], globalMs: number): SharedTransform;",
     "doc": "Samples the morph track at a global time: linear interpolation between the surrounding keys that define each property, clamped outside the keyed range. Pure: same (track, t) → same transform, so preview and export agree by construction."
   },
+  "screenFillPose": {
+    "kind": "function",
+    "summary": "screenFillPose(model, pose, { fovDeg }): the cameraRig pose that fills the frame with a device's screen.",
+    "signature": "function screenFillPose(model: string, pose: DeviceScreenPose, options?: ScreenFillOptions): SceneDocRigPose | null;",
+    "doc": "A rig pose square on to a device's display, close enough that the display covers the frame and rolled to the display's own up: the first key of a pull-out from inside a screen, or the last of a push into one. `pose` is the device as it renders (placement, layout and grounding, its scale times any multiplier the scene's TSX applies) and the maths reads the model this build renders, so the Android stand-in gets its own display. A point aim at the display's centre, since an object aim follows the device's origin, not its glass."
+  },
   "screenUvToMediaPixel": {
     "kind": "function",
     "summary": "screenUvToMediaPixel(model, [u, v], { width, height }): screen UV to media pixel.",
@@ -3485,6 +3660,12 @@
     "summary": "Inside Device: { rect, coverRect, local(u, v) } for the screen it renders, or null.",
     "signature": "function useDeviceScreen(): DeviceScreen | null;",
     "doc": "Inside a `Device`: the screen it renders this frame, else null."
+  },
+  "useDeviceScreenPoint": {
+    "kind": "hook",
+    "summary": "useDeviceScreenPoint(device, u, v): this frame's { position, rotation, scale } of a screen point on a moving device.",
+    "signature": "function useDeviceScreenPoint(device: TrackedDevice, u: number, v: number, options?: DeviceScreenPointOptions): DeviceScreenSample;",
+    "doc": "In a scene: where a point on one of its devices' displays is this frame, with the scene's device track and staged floor applied, for a match move into a moving screen. Pass the same props the scene hands that `Device`."
   },
   "useFormat": {
     "kind": "hook",

@@ -1,8 +1,13 @@
+import { Euler, PerspectiveCamera, Vector3 } from "three";
 import { describe, expect, it } from "vitest";
+import { type DeviceScreenPose, deviceScreenLocal } from "../toolkit/device/screenAnchor";
+import { applyCameraPose } from "./cameraTrack";
 import {
   type ContentBounds,
   frameContentDistance,
   frameContentPose,
+  frameCoverDistance,
+  screenFillPose,
   stagedContentBounds,
 } from "./rigFraming";
 import type { SceneDocMediaSpec, SceneDocRigPose } from "./sceneDocSchema";
@@ -147,5 +152,104 @@ describe("frameContentPose", () => {
     const framed = frameContentPose(box(2, 2), degenerate, 45, 16 / 9);
     expect(framed?.position[2]).toBeGreaterThan(0);
     expect(framed?.position[0]).toBeCloseTo(0, 10);
+  });
+});
+
+describe("frameCoverDistance", () => {
+  it("binds on the axis that runs out first, so the rect covers the frame", () => {
+    const half = Math.tan((22.5 * Math.PI) / 180);
+    // A portrait 1 x 2 rect at 16:9: the width runs out first.
+    expect(frameCoverDistance(1, 2, 45, 16 / 9)).toBeCloseTo(0.5 / (half * (16 / 9)), 12);
+    // A very wide rect: the height does.
+    expect(frameCoverDistance(10, 1, 45, 16 / 9)).toBeCloseTo(0.5 / half, 12);
+  });
+
+  it("pushes in by the overscan and refuses a degenerate rect", () => {
+    expect(frameCoverDistance(1, 2, 45, 16 / 9, 1.25)).toBeCloseTo(
+      (frameCoverDistance(1, 2, 45, 16 / 9) ?? 0) / 1.25,
+      12,
+    );
+    expect(frameCoverDistance(0, 2, 45, 16 / 9)).toBeNull();
+  });
+});
+
+describe("screenFillPose", () => {
+  /** The display's corners in normalised device coordinates, through a camera posed the way the export applies a rig pose. */
+  function corners(
+    model: string,
+    device: DeviceScreenPose,
+    fill: SceneDocRigPose,
+    aspect = 16 / 9,
+  ) {
+    const camera = new PerspectiveCamera(45, aspect, 0.01, 100);
+    applyCameraPose(camera, {
+      position: fill.position,
+      lookAt: fill.aim.at,
+      fov: fill.fov ?? 45,
+      rollDeg: fill.rollDeg,
+    });
+    camera.updateMatrixWorld();
+    const [rx, ry, rz] = device.rotationDeg ?? [0, 0, 0];
+    const turn = new Euler((rx * Math.PI) / 180, (ry * Math.PI) / 180, (rz * Math.PI) / 180);
+    return (
+      [
+        [0, 0],
+        [1, 0],
+        [0, 1],
+        [1, 1],
+        [0.5, 0.5],
+      ] as const
+    ).map(([u, v]) => {
+      const p = new Vector3(...deviceScreenLocal(model, u, v, 0, device))
+        .multiplyScalar(device.scale ?? 1)
+        .applyEuler(turn)
+        .add(new Vector3(...device.position))
+        .project(camera);
+      return { u, v, x: p.x, y: p.y };
+    });
+  }
+
+  const cases: [string, DeviceScreenPose][] = [
+    ["iphone-17-pro", { position: [0, -0.3, 0], scale: 0.92 }],
+    ["android", { position: [1.2, 0.4, -0.5], rotationDeg: [-6, 14, 0] }],
+    ["android", { position: [0, 0, 0], rotationDeg: [0, 0, 90], scale: 1.3 }],
+    ["android", { position: [-0.4, 0.2, 0.3], rotationDeg: [12, -30, 8], scale: 0.8 }],
+    ["macbook-pro-16", { position: [0, -0.6, 0], rotationDeg: [0, 18, 0], lidDeg: 110 }],
+    ["ipad-pro-13", { position: [0.5, 0, 0], rotationDeg: [-10, 0, 0] }],
+    ["iphone-duo", { position: [0, 0, 0], display: "cover", foldDeg: 0 }],
+  ];
+
+  for (const [model, device] of cases) {
+    it(`fills the frame edge to edge with ${model} at ${JSON.stringify(device)}`, () => {
+      const fill = screenFillPose(model, device, { fovDeg: 30 });
+      expect(fill).not.toBeNull();
+      if (!fill) return;
+      const projected = corners(model, device, fill);
+      const centre = projected[4];
+      expect(centre.x).toBeCloseTo(0, 9);
+      expect(centre.y).toBeCloseTo(0, 9);
+      // Square on and level with the display: its edges run along the frame's axes.
+      const [tl, tr, bl, br] = projected;
+      expect(tl.y).toBeCloseTo(tr.y, 9);
+      expect(bl.y).toBeCloseTo(br.y, 9);
+      expect(tl.x).toBeCloseTo(bl.x, 9);
+      expect(tr.x).toBeCloseTo(br.x, 9);
+      expect(tl.x).toBeLessThan(tr.x);
+      expect(tl.y).toBeGreaterThan(bl.y);
+      // Covering: one axis lands on the frame edge exactly, the other overflows.
+      const halfW = (tr.x - tl.x) / 2;
+      const halfH = (tl.y - bl.y) / 2;
+      expect(Math.min(halfW, halfH)).toBeCloseTo(1, 9);
+      expect(Math.max(halfW, halfH)).toBeGreaterThanOrEqual(1 - 1e-9);
+    });
+  }
+
+  it("writes its lens, stays level when it can, and pushes past the edges by the overscan", () => {
+    const device: DeviceScreenPose = { position: [0, 0, 0] };
+    const fill = screenFillPose("android", device, { overscan: 1.1 });
+    expect(fill?.fov).toBe(45);
+    expect(fill?.rollDeg).toBeUndefined();
+    const projected = corners("android", device, fill as SceneDocRigPose);
+    expect((projected[1].x - projected[0].x) / 2).toBeCloseTo(1.1, 9);
   });
 });

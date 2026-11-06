@@ -230,6 +230,7 @@ export default defineScene({
 | `TitleBlock`, `AnimatedHeadline`, `BrandLockup`, `AnimatedCounter`, `ManagedTextStack`, `ExtrudedText` | Text (reference/text.md) |
 | `AnimatedGroup` | Animate an icon + text lockup as one unit with the text presets |
 | `Device`, `DeviceMockup` (legacy) | Devices (reference/devices.md) |
+| `DeviceScreenAnchor`, `ScreenRegion`, `useDeviceScreenPoint` | Content pinned to a screen, a lifted card or lens of the screen itself, and a moving screen's point for match moves (reference/devices.md) |
 | `ImageCard`, `VideoClip`, `LayeredScreenshot`, `VideoWindow` (legacy) | Media (reference/media.md) |
 | `Chart` | The sidecar chart (reference/charts.md) |
 | `StagedObject`, `HeroObject` | 3D objects |

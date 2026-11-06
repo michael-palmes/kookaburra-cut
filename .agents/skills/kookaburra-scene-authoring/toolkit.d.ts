@@ -623,6 +623,12 @@ declare module "@kookaburra/toolkit" {
     foldDeg?: number;
   }
 
+  export interface DeviceScreenPointOptions {
+    /** Off the glass along the display's normal, in fitted units (default `SCREEN_LIFT`). */
+    lift?: number;
+    display?: DeviceScreenDisplay;
+  }
+
   /** A device's resolved world pose (static: no motion preset or device track). */
   export interface DeviceScreenPose extends DeviceScreenHinge {
     /** The device group's world position, grounding applied (`resolveDeviceWorldAnchor`). */
@@ -643,6 +649,14 @@ declare module "@kookaburra/toolkit" {
     cornerRadius: number;
     /** The hinge pose a riding display was measured at (a laptop's lid; a foldable's fold, the cover closed and the inside open flat, auto-centre included). */
     frame?: { lidDeg?: number; foldDeg?: number };
+  }
+
+  /** A screen point this frame: where it is, how its display is turned, and the world size of one fitted unit. */
+  export interface DeviceScreenSample {
+    position: V3;
+    /** The display plane's orientation, Euler XYZ in radians (a group's `rotation`). */
+    rotation: V3;
+    scale: number;
   }
 
   /** The presentation modes' parameter sets. */
@@ -1013,6 +1027,19 @@ declare module "@kookaburra/toolkit" {
     ease?: EaseName | ((t: number) => number);
   }
 
+  export interface RegionLiftTiming {
+    /** Scene ms the lift starts (default 0). */
+    at?: number;
+    /** Lift length in ms (default 600). */
+    durationMs?: number;
+    /** Both ways (default `outCubic`, so it lands softly too). */
+    ease?: string;
+    /** Scene ms it starts settling back onto the glass; absent stays up. */
+    outAt?: number;
+    /** Settle length in ms (default `durationMs`). */
+    outDurationMs?: number;
+  }
+
   /** The chart block with every default baked and the data track resolved: what the renderers and the editor read. `data.categories` and every `series.values` row are the same length, so a sampled matrix is always rectangular. */
   export interface ResolvedChart extends ChartConfig {
     track: ResolvedChartTrack;
@@ -1287,6 +1314,15 @@ declare module "@kookaburra/toolkit" {
     progress: number;
   }
 
+  export interface ScreenFillOptions {
+    /** The key's lens, written into the pose so the distance and lens agree (default the camera's 45). */
+    fovDeg?: number;
+    /** Frame width / height (default 16:9). */
+    aspect?: number;
+    /** 1 fills edge to edge (default); above 1 pushes past the display's edges. */
+    overscan?: number;
+  }
+
   /** What every fill shares: an opacity and keys over any of its numbers (`tMs` is scene-local). */
   export interface ScreenFillProps {
     /** 0..1 (default 1). */
@@ -1303,6 +1339,39 @@ declare module "@kookaburra/toolkit" {
     order?: "front" | "back";
     children?: ReactNode;
   }
+
+  /** Lifts part of the parent `Device`'s own display towards the camera, a card with a soft shadow on the glass, or a round lens that magnifies a point: the control that matters rising out of the screen, then settling back. It samples the texture the display shows this frame (video or still), so it never adds a decode. A child of `Device`, like `DeviceScreenAnchor`. */
+  export function ScreenRegion(props: ScreenRegionProps): ReactElement | null;
+
+  export interface ScreenRegionProps extends RegionLiftTiming {
+    /** The card's display rectangle, `[u0, v0, u1, v1]` (u right, v down from the top-left). */
+    rect?: ScreenUvRect;
+    /** `"lens"`: a round magnifier over `centre` instead of a card. */
+    variant?: "card" | "lens";
+    /** Lens: the display point it magnifies (default the centre). */
+    centre?: [number, number];
+    /** Lens radius in fitted units (default 0.32; a phone display is about 1.15 wide). */
+    radius?: number;
+    /** Lens magnification (default 2). */
+    zoom?: number;
+    /** How far it rises off the glass at full lift, in fitted units (default 0.35 for a card, 0.22 for a lens). */
+    lift?: number;
+    /** Size at full lift (default 1.12 for a card, 1 for a lens). */
+    scale?: number;
+    /** Slide across the display at full lift, `[x, y]` in fitted units (default none). */
+    offset?: [number, number];
+    /** Card corner radius in fitted units (default 22% of the short side). */
+    cornerRadius?: number;
+    /** Shadow strength at full lift, 0 to 1 (default 0.35): on the glass under it, and a softer one round its own edge. */
+    shadow?: number;
+    /** Lens rim colour (default the theme's text colour). */
+    rimColour?: string;
+    /** A foldable's display (default `"main"`, the inside one). */
+    display?: DeviceScreenDisplay;
+  }
+
+  /** A display rectangle in screen UV, `[u0, v0, u1, v1]`: u runs right and v down from the top-left. */
+  export type ScreenUvRect = [number, number, number, number];
 
   /** Clear to a colour, linear or radial, for text to sit on. Mount inside a `ScreenLayer`. */
   export function Scrim(props: ScrimProps): ReactElement;
@@ -1514,6 +1583,17 @@ declare module "@kookaburra/toolkit" {
     icon?: string;
   }
 
+  /** A device as the scene hands it to `Device`: the same props, so the point lands where that device renders. */
+  export interface TrackedDevice {
+    /** The sidecar id the scene's device track keys on. */
+    id?: string;
+    model: string;
+    placement?: DevicePlacement;
+    lidDeg?: number;
+    foldDeg?: number;
+    motionBlur?: MotionBlurOverride;
+  }
+
   /** A 3D vector, used for positions / rotations / scales. */
   export type V3 = [number, number, number];
 
@@ -1525,6 +1605,8 @@ declare module "@kookaburra/toolkit" {
     src: string;
     /** When the clip starts, in ms (local scene time). */
     startMs: number;
+    /** Source ms shown at `startMs` (held before it), so a full-bleed clip can carry on a device screen's video; with it the clip shows every source frame exactly once. */
+    inMs?: number;
     /** `contain` fits the whole clip in the frame (letterbox); `cover` fills + crops. */
     fit?: "cover" | "contain";
     position?: V3;
@@ -1656,6 +1738,9 @@ declare module "@kookaburra/toolkit" {
   /** Samples the morph track at a global time: linear interpolation between the surrounding keys that define each property, clamped outside the keyed range. Pure: same (track, t) → same transform, so preview and export agree by construction. */
   export function sampleSharedTransform(track: SharedKeyframe[], globalMs: number): SharedTransform;
 
+  /** A rig pose square on to a device's display, close enough that the display covers the frame and rolled to the display's own up: the first key of a pull-out from inside a screen, or the last of a push into one. `pose` is the device as it renders (placement, layout and grounding, its scale times any multiplier the scene's TSX applies) and the maths reads the model this build renders, so the Android stand-in gets its own display. A point aim at the display's centre, since an object aim follows the device's origin, not its glass. */
+  export function screenFillPose(model: string, pose: DeviceScreenPose, options?: ScreenFillOptions): SceneDocRigPose | null;
+
   /** Screen UV to media pixel coordinates (top-left origin), the inverse of `mediaPixelToScreenUv`. */
   export function screenUvToMediaPixel(model: string, uv: [number, number], media: { width: number; height: number }, display?: DeviceScreenDisplay): [number, number];
 
@@ -1682,6 +1767,9 @@ declare module "@kookaburra/toolkit" {
 
   /** Inside a `Device`: the screen it renders this frame, else null. */
   export function useDeviceScreen(): DeviceScreen | null;
+
+  /** In a scene: where a point on one of its devices' displays is this frame, with the scene's device track and staged floor applied, for a match move into a moving screen. Pass the same props the scene hands that `Device`. */
+  export function useDeviceScreenPoint(device: TrackedDevice, u: number, v: number, options?: DeviceScreenPointOptions): DeviceScreenSample;
 
   /** Reactive format info for the currently selected export aspect. Inside a scene rendering through an overlay cutout, `<SceneHost>` supplies a cutout-scoped override (the cutout as its own frame); everywhere else this is null and it falls back to the export format, byte-identical to before overlays. Mirrors the context-first/store-fallback shape of `useTheme()`. */
   export function useFormat(): FormatInfo;
@@ -2033,7 +2121,7 @@ declare module "@kookaburra/toolkit" {
   type Colour = "background" | "text" | "muted" | "accent" | (string & {});
 
   /** Multi-device layout presets, resolved to per-aspect placements in `toolkit/device/layout.ts`. */
-  const DEVICE_LAYOUT_PRESETS: readonly ["row", "toe-in", "arc", "cascade", "hero", "depth-pair"];
+  const DEVICE_LAYOUT_PRESETS: readonly ["row", "toe-in", "arc", "cascade", "hero", "depth-pair", "v"];
 
   interface DashStyleProps {
     /** Line weight in world units (default 0.02). */
@@ -2970,6 +3058,8 @@ declare module "@kookaburra/toolkit" {
 
   /** One device's pose at a key: a DELTA on whatever the scene already resolves for it (the layout block, or its own placement), so the motion presets keep layering on top and deleting the track reverts exactly. Offsets and rotations add, scale multiplies, and the hinge angles (`lidDeg`, `foldDeg`) and screen powers are the absolutes (an angle has no meaningful delta). Every field is optional and an absent one holds the device's resting value, the lighting-pose rule. */
   interface SceneDocDevicePose {
+    /** Another device's id: this pose's offset, rotation and scale measure from that device's resting slot instead of this one's, so a line-up can start stacked behind its hero. */
+    slot?: string;
     offset?: [number, number, number];
     rotationDeg?: [number, number, number];
     scale?: number;
