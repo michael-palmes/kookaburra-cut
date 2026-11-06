@@ -97,11 +97,11 @@ TypeScript, Rust.
 
 | Criterion | Status | Basis |
 |---|---|---|
-| static_analysis | Met | CodeQL (JavaScript/TypeScript, Rust, Actions), clippy, biome, OpenSSF Scorecard. |
+| static_analysis | Met | CodeQL (JavaScript/TypeScript, Rust, Actions, Python), clippy, biome, OpenSSF Scorecard. |
 | static_analysis_common_vulnerabilities | Met | CodeQL's security queries. |
 | static_analysis_fixed | Met | Open Scorecard alerts are the checks this file's own pull requests close; the one CodeQL alert points inside Tauri's `generate_context!` expansion (a hard-coded value the macro emits, not an app key or nonce) and is dismissed as a false positive. |
 | static_analysis_often | Met | On every pull request and push, plus weekly. |
 | dynamic_analysis | Met | The determinism gate exports every gate project twice and compares bytes before a merge; cargo-fuzz runs weekly over the untrusted-input parsers. |
-| dynamic_analysis_unsafe | Unmet | The few `unsafe` blocks (objc2 bridges) are not yet run under a sanitiser; listed under "Not yet" in `SECURITY.md`. |
+| dynamic_analysis_unsafe | Unmet | The `unsafe` blocks (objc2 and libc bridges) are allow-listed, each with a SAFETY line (`docs/decisions.md`, "unsafe is an allow-list"), but none runs under a sanitiser. |
 | dynamic_analysis_enable_assertions | Met | `cargo test` and the fuzz builds run with debug assertions on. |
 | dynamic_analysis_fixed | Met | Nothing outstanding. |
