@@ -600,6 +600,7 @@ pub async fn build_pack(
     meta: PackMetaInput,
     on_progress: Channel<PackProgress>,
 ) -> Result<BuildResult, String> {
+    crate::managed::deny_pack_export()?;
     let out =
         choose_destination(&app, window, &settings, suggested_file_name(&suggested_name)).await?;
     // The sheet can stay open while the workspace moves, so the root is read after it.

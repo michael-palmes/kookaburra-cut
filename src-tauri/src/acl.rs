@@ -418,6 +418,7 @@ fn the_packs_window_handles_packs_and_nothing_else() {
             "inspect_pack",
             "list_packables",
             "list_projects",
+            "managed_policy",
             "next_queued_pack",
             "open_imported_project",
             "open_pack_import",

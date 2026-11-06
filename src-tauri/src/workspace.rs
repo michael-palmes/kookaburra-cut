@@ -741,8 +741,12 @@ pub fn get_settings(
     state: State<'_, SettingsState>,
 ) -> Result<AppSettings, String> {
     let mut settings = load_settings(&app, &state)?;
-    if let Some(root) = &crate::managed::policy().workspace_root {
+    let policy = crate::managed::policy();
+    if let Some(root) = &policy.workspace_root {
         settings.workspace_root = Some(root.clone());
+    }
+    if policy.exports_in_project {
+        settings.keep_exports_in_project = true;
     }
     Ok(settings)
 }
@@ -1125,8 +1129,10 @@ pub fn set_export_to_downloads(
     state: State<'_, SettingsState>,
     enabled: bool,
 ) -> Result<(), String> {
+    // A profile that keeps exports in the project records that, whatever the switch asked for.
+    let keep = !enabled || crate::managed::exports_in_project();
     update_settings(&app, &state, |settings| {
-        settings.keep_exports_in_project = !enabled
+        settings.keep_exports_in_project = keep
     })
 }
 
@@ -1845,8 +1851,11 @@ pub fn create_project(
     })
 }
 
-/// Claude Code provisioning for a project folder (docs/agent-kit.md, "Stamping"; see `kit.rs`). `false` = a shipped skill is missing (a packaging defect); the skills that are there and the rest of the kit are still stamped.
+/// Claude Code provisioning for a project folder (docs/agent-kit.md, "Stamping"; see `kit.rs`). `false` = a shipped skill is missing (a packaging defect); the skills that are there and the rest of the kit are still stamped. Under `DisableAgentKit` nothing is written, moved or healed, and a kit already there stays as it is.
 pub(crate) fn stamp_claude_provisioning(app: &AppHandle, dir: &Path) -> Result<bool, String> {
+    if crate::managed::deny_agent_kit().is_err() {
+        return Ok(true);
+    }
     let root = skills_root(app);
     let (found, missing) = crate::kit::shipped_skills_in(&root);
     for name in &missing {
@@ -2007,6 +2016,9 @@ pub async fn heal_project_kit(
 ) -> Result<bool, String> {
     let dir = project_dir_mut(&app, &state, &slug)?;
     if !dir.join(MANIFEST_FILENAME).is_file() {
+        return Ok(false);
+    }
+    if crate::managed::deny_agent_kit().is_err() {
         return Ok(false);
     }
     tauri::async_runtime::spawn_blocking(move || {

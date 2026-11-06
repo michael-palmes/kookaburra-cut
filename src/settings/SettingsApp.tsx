@@ -23,7 +23,13 @@ import {
   openPrivacyPage,
   setClaudePreferences,
 } from "../engine/claudeApp";
-import { useManagedPolicy } from "../engine/managed";
+import {
+  claudeLocked,
+  updateChecksLocked,
+  updateEndpointUnusable,
+  updateServerHost,
+  useManagedPolicy,
+} from "../engine/managed";
 import { setConformNewVideosSetting } from "../engine/media";
 import { pickFolder } from "../engine/pickedFolders";
 import { revealApp } from "../engine/reveal";
@@ -119,6 +125,36 @@ function PrivacyIcon() {
         fill="none"
         stroke="currentColor"
         strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function AgentKitIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M2.5 5.5h11v7.5h-11zM6 5.5V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M2.5 8.5h11M8 7.5v2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function UpdateIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v2.4h-2.4M8 5.5V8l1.8 1.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
     </svg>
@@ -360,7 +396,18 @@ export function SettingsApp() {
   // Rows a configuration profile governs show the lock in place of their control (docs/mdm.md).
   const managed = useManagedPolicy();
   const workspaceLocked = managed?.workspaceRootLocked ?? false;
-  const claudeLocked = managed?.disableClaude ?? false;
+  const claudeOff = managed !== null && claudeLocked(managed);
+  const kitOff = managed?.disableAgentKit ?? false;
+  const claudeLockDetail = managed?.disableClaude
+    ? "A configuration profile turns Claude off (DisableClaude)."
+    : "A configuration profile turns the agent kit off, and Claude with it (DisableAgentKit).";
+  const exportsPinned = managed?.exportsInProject ?? false;
+  const updatesLocked = updates.managed || (managed !== null && updateChecksLocked(managed));
+  const updateServerBroken = managed !== null && updateEndpointUnusable(managed);
+  const updateServer = managed ? updateServerHost(managed) : null;
+  const updatesLockDetail = updateServerBroken
+    ? "A configuration profile names an update server this app can't use, so it never checks (UpdateEndpoint)."
+    : "A configuration profile turns update checks off (DisableUpdateCheck).";
 
   return (
     <div className="settings-window">
@@ -428,7 +475,7 @@ export function SettingsApp() {
           <div className="settings-row-text">
             <span className="settings-row-title">Claude app</span>
             <span className="muted settings-row-detail">
-              {claudeLocked
+              {claudeOff
                 ? "Turned off by your organisation."
                 : claudeInstalled === null
                   ? "Checking…"
@@ -437,8 +484,8 @@ export function SettingsApp() {
                     : "Not found. Edit with Claude opens projects in it."}
             </span>
           </div>
-          {claudeLocked ? (
-            <ManagedLock />
+          {claudeOff ? (
+            <ManagedLock detail={claudeLockDetail} />
           ) : (
             claudeInstalled === false && (
               <button
@@ -468,8 +515,8 @@ export function SettingsApp() {
               titlebar or with ⌥⌘E.
             </span>
           </div>
-          {claudeLocked ? (
-            <ManagedLock />
+          {claudeOff ? (
+            <ManagedLock detail={claudeLockDetail} />
           ) : (
             <input
               type="checkbox"
@@ -478,6 +525,27 @@ export function SettingsApp() {
               disabled={claudeFirstOpen === null}
               onChange={(e) => toggleClaudeFirstOpen(e.target.checked)}
             />
+          )}
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span
+              className="settings-row-title"
+              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+            >
+              <AgentKitIcon />
+              Agent kit
+            </span>
+            <span className="muted settings-row-detail">
+              {kitOff
+                ? "Turned off by your organisation: projects get no agent files and the agent bridge stays closed."
+                : "The rules, skills and kb tool each project carries for Claude Code."}
+            </span>
+          </div>
+          {kitOff ? (
+            <ManagedLock detail="A configuration profile turns the agent kit off (DisableAgentKit)." />
+          ) : (
+            <span className="muted">On</span>
           )}
         </div>
       </section>
@@ -662,19 +730,30 @@ export function SettingsApp() {
         </div>
         <div className="settings-row">
           <div className="settings-row-text">
-            <span className="settings-row-title">Save exports to Downloads</span>
+            <span
+              className="settings-row-title"
+              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+            >
+              <DownloadIcon />
+              Save exports to Downloads
+            </span>
             <span className="muted settings-row-detail">
-              Finished exports land in your Downloads folder; off keeps them in each project's
-              exports folder. Terminal runs always use the project folder.
+              {exportsPinned
+                ? "Your organisation keeps finished exports in each project's exports folder."
+                : "Finished exports land in your Downloads folder; off keeps them in each project's exports folder. Terminal runs always use the project folder."}
             </span>
           </div>
-          <input
-            type="checkbox"
-            aria-label="Save exports to Downloads"
-            checked={downloadsExport ?? true}
-            disabled={downloadsExport === null}
-            onChange={(e) => toggleDownloadsExport(e.target.checked)}
-          />
+          {exportsPinned ? (
+            <ManagedLock detail="A configuration profile keeps exports in the project (ExportsInProject)." />
+          ) : (
+            <input
+              type="checkbox"
+              aria-label="Save exports to Downloads"
+              checked={downloadsExport ?? true}
+              disabled={downloadsExport === null}
+              onChange={(e) => toggleDownloadsExport(e.target.checked)}
+            />
+          )}
         </div>
       </section>
 
@@ -682,14 +761,19 @@ export function SettingsApp() {
         <h2>Updates</h2>
         <div className="settings-row">
           <div className="settings-row-text">
-            <span className="settings-row-title">Check for updates automatically</span>
-            <span className="muted settings-row-detail">
-              Asks GitHub about once a day whether a newer release exists. No identifiers, nothing
-              about your usage.
+            <span
+              className="settings-row-title"
+              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+            >
+              <UpdateIcon />
+              Check for updates automatically
+            </span>
+            <span className="muted settings-row-detail" title={updateServer ?? undefined}>
+              {`Asks ${updateServer ? "your organisation's update server" : "GitHub"} about once a day whether a newer release exists. No identifiers, nothing about your usage.`}
             </span>
           </div>
-          {updates.managed ? (
-            <ManagedLock detail="A configuration profile turns update checks off (DisableUpdateCheck)." />
+          {updatesLocked ? (
+            <ManagedLock detail={updatesLockDetail} />
           ) : (
             <input
               type="checkbox"
@@ -704,8 +788,10 @@ export function SettingsApp() {
           <div className="settings-row-text">
             <span className="settings-row-title">Status</span>
             <span className="muted settings-row-detail">
-              {updates.managed
-                ? "Turned off by your organisation."
+              {updatesLocked
+                ? updateServerBroken && !managed?.disableUpdateCheck
+                  ? "Off: your organisation's update server address can't be used."
+                  : "Turned off by your organisation."
                 : formatUpdateStatus({
                     phase: updates.phase,
                     devBuild: updates.devBuild,
@@ -716,8 +802,8 @@ export function SettingsApp() {
                   })}
             </span>
           </div>
-          {updates.managed ? (
-            <ManagedLock />
+          {updatesLocked ? (
+            <ManagedLock detail={updatesLockDetail} />
           ) : (
             <button
               type="button"

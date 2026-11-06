@@ -52,15 +52,23 @@ pub enum Key {
     AllowedPublisherKeyIds,
     DisableUpdateCheck,
     WorkspaceRoot,
+    DisableAgentKit,
+    DisablePackExport,
+    ExportsInProject,
+    UpdateEndpoint,
 }
 
 impl Key {
-    pub const ALL: [Key; 5] = [
+    pub const ALL: [Key; 9] = [
         Key::DisableClaude,
         Key::DisableLiveWebsites,
         Key::AllowedPublisherKeyIds,
         Key::DisableUpdateCheck,
         Key::WorkspaceRoot,
+        Key::DisableAgentKit,
+        Key::DisablePackExport,
+        Key::ExportsInProject,
+        Key::UpdateEndpoint,
     ];
 
     pub fn name(self) -> &'static str {
@@ -70,6 +78,10 @@ impl Key {
             Key::AllowedPublisherKeyIds => "AllowedPublisherKeyIds",
             Key::DisableUpdateCheck => "DisableUpdateCheck",
             Key::WorkspaceRoot => "WorkspaceRoot",
+            Key::DisableAgentKit => "DisableAgentKit",
+            Key::DisablePackExport => "DisablePackExport",
+            Key::ExportsInProject => "ExportsInProject",
+            Key::UpdateEndpoint => "UpdateEndpoint",
         }
     }
 
@@ -83,6 +95,10 @@ impl Key {
             }
             Key::DisableUpdateCheck => "Update checks are turned off by your organisation",
             Key::WorkspaceRoot => "Your organisation sets where projects are kept",
+            Key::DisableAgentKit => "The agent kit is turned off by your organisation",
+            Key::DisablePackExport => "Pack export is turned off by your organisation",
+            Key::ExportsInProject => "Your organisation keeps exports in the project folder",
+            Key::UpdateEndpoint => "Your organisation's update server address can't be used",
         }
     }
 
@@ -90,6 +106,7 @@ impl Key {
         match self {
             Key::AllowedPublisherKeyIds => "an array of strings",
             Key::WorkspaceRoot => "an absolute path",
+            Key::UpdateEndpoint => "an https URL",
             _ => "a boolean",
         }
     }
@@ -110,6 +127,14 @@ pub struct ManagedPolicy {
     pub workspace_root: Option<String>,
     /// True whenever WorkspaceRoot is forced, usable or not: relocation is refused either way.
     pub workspace_root_locked: bool,
+    /// No kit stamped, no bridge folder, no Claude handoff; `disable_claude` alone keeps the kit.
+    pub disable_agent_kit: bool,
+    pub disable_pack_export: bool,
+    pub exports_in_project: bool,
+    /// The forced update manifest URL when it was usable.
+    pub update_endpoint: Option<String>,
+    /// True whenever UpdateEndpoint is forced, usable or not: an unusable one means no check at all.
+    pub update_endpoint_locked: bool,
     /// The forced keys by name, for the lock rows and the log.
     pub forced_keys: Vec<String>,
     /// What was wrong with a forced key, one line each; logged, never shown.
@@ -141,6 +166,19 @@ impl ManagedPolicy {
                 Key::WorkspaceRoot => {
                     policy.workspace_root_locked = true;
                     policy.workspace_root = policy.root_or_closed(&value, home_dir().as_deref());
+                }
+                Key::DisableAgentKit => {
+                    policy.disable_agent_kit = policy.bool_or_closed(key, &value)
+                }
+                Key::DisablePackExport => {
+                    policy.disable_pack_export = policy.bool_or_closed(key, &value)
+                }
+                Key::ExportsInProject => {
+                    policy.exports_in_project = policy.bool_or_closed(key, &value)
+                }
+                Key::UpdateEndpoint => {
+                    policy.update_endpoint_locked = true;
+                    policy.update_endpoint = policy.endpoint_or_closed(&value);
                 }
             }
         }
@@ -222,6 +260,39 @@ impl ManagedPolicy {
             }
         }
     }
+
+    /// The forced manifest URL when `usable_endpoint` accepts it; anything else means no update check at all, never the default server.
+    fn endpoint_or_closed(&mut self, value: &PrefValue) -> Option<String> {
+        let PrefValue::String(raw) = value else {
+            self.note(Key::UpdateEndpoint, value, "checking for updates nowhere");
+            return None;
+        };
+        let usable = usable_endpoint(raw);
+        if usable.is_none() {
+            // The value itself stays out of the log: a rejected one may carry a login.
+            self.issues.push(
+                "UpdateEndpoint is not an https URL without a query, fragment, login or template; checking for updates nowhere".into(),
+            );
+        }
+        usable
+    }
+}
+
+/// `https`, a host, and nothing that could carry more than the address: no login, query, fragment or `{{…}}` template (the updater expands `{{current_version}}`, which would put the version in the request).
+fn usable_endpoint(raw: &str) -> Option<String> {
+    let raw = raw.trim();
+    if raw.contains("{{") {
+        return None;
+    }
+    let url = tauri::Url::parse(raw).ok()?;
+    let plain = url.scheme() == "https"
+        && url.host_str().is_some_and(|host| !host.is_empty())
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.query().is_none()
+        && url.fragment().is_none()
+        && !url.as_str().to_ascii_lowercase().contains("%7b%7b");
+    plain.then(|| url.into())
 }
 
 /// `a1b2 c3d4 e5f6 0718` and `A1B2C3D4E5F60718` both read as the stored id.
@@ -343,6 +414,28 @@ pub fn deny_publisher_in(policy: &ManagedPolicy, key_id: Option<&str>) -> Result
     Err(refusal(Key::AllowedPublisherKeyIds))
 }
 
+pub fn deny_agent_kit_in(policy: &ManagedPolicy) -> Result<(), String> {
+    if policy.disable_agent_kit {
+        return Err(refusal(Key::DisableAgentKit));
+    }
+    Ok(())
+}
+
+pub fn deny_pack_export_in(policy: &ManagedPolicy) -> Result<(), String> {
+    if policy.disable_pack_export {
+        return Err(refusal(Key::DisablePackExport));
+    }
+    Ok(())
+}
+
+/// `Some` points the update check at the organisation's server; a forced but unusable value refuses, so the check never falls back to the default.
+pub fn managed_update_endpoint_in(policy: &ManagedPolicy) -> Result<Option<String>, String> {
+    if policy.update_endpoint_locked && policy.update_endpoint.is_none() {
+        return Err(refusal(Key::UpdateEndpoint));
+    }
+    Ok(policy.update_endpoint.clone())
+}
+
 pub fn deny_claude() -> Result<(), String> {
     deny_claude_in(policy())
 }
@@ -361,6 +454,23 @@ pub fn deny_workspace_change() -> Result<(), String> {
 
 pub fn deny_publisher(key_id: Option<&str>) -> Result<(), String> {
     deny_publisher_in(policy(), key_id)
+}
+
+pub fn deny_agent_kit() -> Result<(), String> {
+    deny_agent_kit_in(policy())
+}
+
+pub fn deny_pack_export() -> Result<(), String> {
+    deny_pack_export_in(policy())
+}
+
+pub fn managed_update_endpoint() -> Result<Option<String>, String> {
+    managed_update_endpoint_in(policy())
+}
+
+/// Whether an app-triggered export must stay in the project, whatever the Downloads switch says.
+pub fn exports_in_project() -> bool {
+    policy().exports_in_project
 }
 
 /// The effective policy for the webviews, which hide or lock what it governs.
@@ -442,6 +552,10 @@ mod tests {
         assert!(deny_workspace_change_in(&policy).is_ok());
         assert!(deny_publisher_in(&policy, Some("a1b2c3d4e5f60718")).is_ok());
         assert!(deny_publisher_in(&policy, None).is_ok());
+        assert!(deny_agent_kit_in(&policy).is_ok());
+        assert!(deny_pack_export_in(&policy).is_ok());
+        assert_eq!(managed_update_endpoint_in(&policy), Ok(None));
+        assert!(!policy.exports_in_project);
     }
 
     #[test]
@@ -465,12 +579,23 @@ mod tests {
             ("DisableClaude", PrefValue::Bool(true)),
             ("DisableLiveWebsites", PrefValue::Bool(true)),
             ("DisableUpdateCheck", PrefValue::Bool(true)),
+            ("DisableAgentKit", PrefValue::Bool(true)),
+            ("DisablePackExport", PrefValue::Bool(true)),
+            ("ExportsInProject", PrefValue::Bool(true)),
         ]);
         assert!(on.managed);
         assert!(on.disable_claude && on.disable_live_websites && on.disable_update_check);
+        assert!(on.disable_agent_kit && on.disable_pack_export && on.exports_in_project);
         assert_eq!(
             on.forced_keys,
-            vec!["DisableClaude", "DisableLiveWebsites", "DisableUpdateCheck"]
+            vec![
+                "DisableClaude",
+                "DisableLiveWebsites",
+                "DisableUpdateCheck",
+                "DisableAgentKit",
+                "DisablePackExport",
+                "ExportsInProject"
+            ]
         );
         assert!(on.issues.is_empty());
 
@@ -478,13 +603,30 @@ mod tests {
             ("DisableClaude", PrefValue::Bool(false)),
             ("DisableLiveWebsites", PrefValue::Bool(false)),
             ("DisableUpdateCheck", PrefValue::Bool(false)),
+            ("DisableAgentKit", PrefValue::Bool(false)),
+            ("DisablePackExport", PrefValue::Bool(false)),
+            ("ExportsInProject", PrefValue::Bool(false)),
         ]);
         assert!(
             off.managed,
             "a forced false still marks the install as managed"
         );
         assert!(!off.disable_claude && !off.disable_live_websites && !off.disable_update_check);
+        assert!(!off.disable_agent_kit && !off.disable_pack_export && !off.exports_in_project);
         assert!(deny_claude_in(&off).is_ok());
+        assert!(deny_agent_kit_in(&off).is_ok());
+        assert!(deny_pack_export_in(&off).is_ok());
+    }
+
+    #[test]
+    fn claude_off_keeps_the_kit_and_the_kit_off_leaves_claude_to_its_own_key() {
+        let claude_off = forced(&[("DisableClaude", PrefValue::Bool(true))]);
+        assert!(deny_claude_in(&claude_off).is_err());
+        assert!(deny_agent_kit_in(&claude_off).is_ok());
+
+        let kit_off = forced(&[("DisableAgentKit", PrefValue::Bool(true))]);
+        assert!(!kit_off.disable_claude, "the webviews derive the handoff lock");
+        assert!(deny_agent_kit_in(&kit_off).is_err());
     }
 
     #[test]
@@ -492,12 +634,19 @@ mod tests {
         let policy = forced(&[
             ("DisableClaude", PrefValue::String("yes".into())),
             ("DisableUpdateCheck", PrefValue::Other("a number")),
+            ("DisableAgentKit", PrefValue::String("false".into())),
+            ("DisablePackExport", PrefValue::Array(Vec::new())),
+            ("ExportsInProject", PrefValue::Other("a number")),
         ]);
         assert!(policy.disable_claude);
         assert!(policy.disable_update_check);
-        assert_eq!(policy.issues.len(), 2);
+        assert!(policy.disable_agent_kit && policy.disable_pack_export && policy.exports_in_project);
+        assert_eq!(policy.issues.len(), 5);
         assert!(policy.issues[0].starts_with("DisableClaude is forced but is a string"));
         assert!(policy.issues[1].starts_with("DisableUpdateCheck is forced but is a number"));
+        assert!(policy.issues[2].starts_with("DisableAgentKit is forced but is a string"));
+        assert!(policy.issues[3].starts_with("DisablePackExport is forced but is an array"));
+        assert!(policy.issues[4].starts_with("ExportsInProject is forced but is a number"));
     }
 
     #[test]
@@ -573,6 +722,54 @@ mod tests {
     }
 
     #[test]
+    fn update_endpoint_accepts_https_without_a_query_and_locks_on_anything_else() {
+        let pinned = forced(&[(
+            "UpdateEndpoint",
+            PrefValue::String(" https://updates.example.com/kc/latest.json ".into()),
+        )]);
+        assert_eq!(
+            pinned.update_endpoint.as_deref(),
+            Some("https://updates.example.com/kc/latest.json")
+        );
+        assert!(pinned.update_endpoint_locked);
+        assert!(pinned.issues.is_empty());
+        assert_eq!(
+            managed_update_endpoint_in(&pinned),
+            Ok(Some("https://updates.example.com/kc/latest.json".to_owned()))
+        );
+        assert!(deny_update_check_in(&pinned).is_ok());
+
+        for bad in [
+            PrefValue::String("http://updates.example.com/kc/latest.json".into()),
+            PrefValue::String("https://updates.example.com/kc/latest.json?x=1".into()),
+            PrefValue::String("https://updates.example.com/kc/latest.json?".into()),
+            PrefValue::String("https://updates.example.com/kc/latest.json#f".into()),
+            PrefValue::String("https://user:pw@updates.example.com/kc/latest.json".into()),
+            PrefValue::String("https://user@updates.example.com/kc/latest.json".into()),
+            PrefValue::String(
+                "https://updates.example.com/kc/{{current_version}}/latest.json".into(),
+            ),
+            PrefValue::String(
+                "https://updates.example.com/kc/%7B%7Bcurrent_version%7D%7D/latest.json".into(),
+            ),
+            PrefValue::String("updates.example.com/kc/latest.json".into()),
+            PrefValue::String("file:///Users/x/latest.json".into()),
+            PrefValue::String("".into()),
+            PrefValue::Bool(true),
+            PrefValue::Other("a number"),
+        ] {
+            let locked = forced(&[("UpdateEndpoint", bad.clone())]);
+            assert_eq!(locked.update_endpoint, None, "{bad:?}");
+            assert!(locked.update_endpoint_locked, "{bad:?}");
+            assert_eq!(locked.issues.len(), 1, "{bad:?}");
+            assert!(locked.issues[0].starts_with("UpdateEndpoint"), "{bad:?}");
+            assert!(!locked.issues[0].contains("pw@"), "{bad:?}");
+            let refused = managed_update_endpoint_in(&locked).unwrap_err();
+            assert!(refused.starts_with(REASON_PREFIX) && refused.contains("UpdateEndpoint"));
+        }
+    }
+
+    #[test]
     fn tilde_roots_expand_against_the_home_folder_only() {
         let mut policy = ManagedPolicy::default();
         let home = Path::new("/Users/x");
@@ -601,6 +798,9 @@ mod tests {
                 PrefValue::String("/Users/x/Videos".into()),
             ),
             ("AllowedPublisherKeyIds", strings(&["a1b2c3d4e5f60718"])),
+            ("DisableAgentKit", PrefValue::Bool(true)),
+            ("DisablePackExport", PrefValue::Bool(true)),
+            ("UpdateEndpoint", PrefValue::String("http://example.com".into())),
         ]);
         let refusals = [
             (deny_claude_in(&policy), "DisableClaude"),
@@ -611,6 +811,12 @@ mod tests {
                 deny_publisher_in(&policy, Some("0011223344556677")),
                 "AllowedPublisherKeyIds",
             ),
+            (deny_agent_kit_in(&policy), "DisableAgentKit"),
+            (deny_pack_export_in(&policy), "DisablePackExport"),
+            (
+                managed_update_endpoint_in(&policy).map(|_| ()),
+                "UpdateEndpoint",
+            ),
         ];
         for (outcome, key) in refusals {
             let message = outcome.unwrap_err();
@@ -620,6 +826,17 @@ mod tests {
                 message.to_lowercase().contains("your organisation"),
                 "{message}"
             );
+        }
+    }
+
+    /// What this Mac's profiles force, read through CFPreferences as the app reads it (docs/mdm.md, "Verifying").
+    #[test]
+    #[ignore = "reads this Mac's managed preferences; run by hand with --ignored --nocapture"]
+    fn this_mac_forces() {
+        let policy = ManagedPolicy::from_source(&system_source());
+        println!("{}", serde_json::to_string_pretty(&policy).unwrap());
+        for issue in &policy.issues {
+            println!("[managed] {issue}");
         }
     }
 
@@ -685,6 +902,85 @@ mod tests {
                 "stage_pack",
                 "deny_managed_publisher",
             ),
+            (
+                include_str!("workspace.rs"),
+                "stamp_claude_provisioning",
+                "deny_agent_kit",
+            ),
+            (
+                include_str!("workspace.rs"),
+                "heal_project_kit",
+                "deny_agent_kit",
+            ),
+            (
+                include_str!("claude_app.rs"),
+                "open_in_claude",
+                "deny_agent_kit",
+            ),
+            (
+                include_str!("claude_app.rs"),
+                "open_claude_download",
+                "deny_agent_kit",
+            ),
+            (include_str!("bridge.rs"), "init", "deny_agent_kit"),
+            (include_str!("bridge.rs"), "spawn_heartbeat", "deny_agent_kit"),
+            (include_str!("bridge.rs"), "spawn_native_bridge", "deny_agent_kit"),
+            (include_str!("bridge.rs"), "bridge_root", "deny_agent_kit"),
+            (
+                include_str!("bridge.rs"),
+                "bridge_claim_request",
+                "deny_agent_kit",
+            ),
+            (
+                include_str!("bridge.rs"),
+                "bridge_pending_count",
+                "deny_agent_kit",
+            ),
+            (
+                include_str!("bridge.rs"),
+                "bridge_write_response",
+                "deny_agent_kit",
+            ),
+            (
+                include_str!("pack/commands.rs"),
+                "build_pack",
+                "deny_pack_export",
+            ),
+            (
+                include_str!("pack/publisher.rs"),
+                "manifest_publisher",
+                "deny_pack_export",
+            ),
+            (
+                include_str!("pack/publisher.rs"),
+                "rotate_publisher_key",
+                "deny_pack_export",
+            ),
+            (
+                include_str!("packs_win.rs"),
+                "open_pack_export",
+                "deny_pack_export",
+            ),
+            (
+                include_str!("lib.rs"),
+                "resolve_export_output",
+                "exports_in_project",
+            ),
+            (
+                include_str!("workspace.rs"),
+                "set_export_to_downloads",
+                "exports_in_project",
+            ),
+            (
+                include_str!("updater.rs"),
+                "check_for_update",
+                "managed_update_endpoint",
+            ),
+            (
+                include_str!("updater.rs"),
+                "set_update_consent",
+                "managed_update_endpoint",
+            ),
         ];
         for (src, command, guard) in guarded {
             assert!(
@@ -714,6 +1010,11 @@ mod tests {
         );
         assert_eq!(json["workspaceRoot"], serde_json::Value::Null);
         assert_eq!(json["workspaceRootLocked"], false);
+        assert_eq!(json["disableAgentKit"], false);
+        assert_eq!(json["disablePackExport"], false);
+        assert_eq!(json["exportsInProject"], false);
+        assert_eq!(json["updateEndpoint"], serde_json::Value::Null);
+        assert_eq!(json["updateEndpointLocked"], false);
         assert_eq!(
             json["forcedKeys"],
             serde_json::json!(["DisableClaude", "AllowedPublisherKeyIds"])

@@ -86,7 +86,7 @@ import { useImageEditStore } from "./engine/imageEditStore";
 import { useImageReconciliationStore } from "./engine/imageReconciliationStore";
 import { useLayeredScreenshotEditStore } from "./engine/layeredScreenshotEditStore";
 import { useLightingEditStore } from "./engine/lightingEditStore";
-import { plainError, useManagedPolicy } from "./engine/managed";
+import { claudeLocked, plainError, useManagedPolicy } from "./engine/managed";
 import { conformingAmong, importMedia, importSummary } from "./engine/media";
 import {
   editRenderMatchesPending,
@@ -469,9 +469,9 @@ export default function App() {
   const closeClaudeLauncher = useCallback(() => setClaudeLauncher(null), []);
   // What a configuration profile forces; null until read, and every Claude entry point waits for it so nothing managed flashes open.
   const managed = useManagedPolicy();
-  const claudeAllowed = managed !== null && !managed.disableClaude;
+  const claudeAllowed = managed !== null && !claudeLocked(managed);
   // Copy and the start card only: unknown reads as not yet turned off, so an unmanaged welcome never flashes the managed wording.
-  const claudeOffered = managed?.disableClaude !== true;
+  const claudeOffered = managed === null || !claudeLocked(managed);
   const claudeAllowedRef = useRef(false);
   claudeAllowedRef.current = claudeAllowed;
   // Read by the load-time greeting without re-running it.
@@ -2043,7 +2043,7 @@ export default function App() {
   // Greet a new project's first open with the Claude launcher, and close it where it can't work. Keyed on the id: in-memory doc patches swap the project object per edit and must not reopen what the user closed.
   useEffect(() => {
     if (!loadedProjectId || isAutoRun || !managed) return;
-    const editable = isEditableProjectId(loadedProjectId) && !managed.disableClaude;
+    const editable = isEditableProjectId(loadedProjectId) && !claudeLocked(managed);
     const greet = editable && claimClaudeLauncherGreeting(loadedProjectId);
     setClaudeLauncher(greet && claudeFirstOpenRef.current ? { firstRun: true } : null);
   }, [loadedProjectId, isAutoRun, managed]);
@@ -3492,6 +3492,7 @@ export default function App() {
         <WelcomeDialog
           onAnswer={(on) => void updates.answerConsent(on)}
           updatesManaged={updates.managed}
+          organisationServer={Boolean(managed?.updateEndpoint)}
         />
       )}
       {updates.offerVisible && updates.available && !isAutoRun && !exporting && (

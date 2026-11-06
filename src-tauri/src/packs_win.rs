@@ -91,6 +91,7 @@ pub fn get_packs_target(state: State<'_, PacksState>) -> Option<PacksTarget> {
 
 #[tauri::command]
 pub fn open_pack_export(app: AppHandle) -> Result<(), String> {
+    crate::managed::deny_pack_export()?;
     open_packs_window(&app, PacksTarget::Export)
 }
 
