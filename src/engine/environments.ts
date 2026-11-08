@@ -29,6 +29,7 @@ import { resolveProjectHdrUrl } from "./project";
 import { projectAssetRevision } from "./projectAssetRevision";
 import type { SceneDoc } from "./sceneDocSchema";
 import { resolveLighting, resolveLightingColour } from "./sceneLighting";
+import { buildStripScene, disposeStripScene, stripEnvironmentSpec } from "./stripEnvironment";
 
 /** Environment reflections (IBL): PMREM textures cached by source key for the app's lifetime. Source kinds: bundled CC0 HDRIs (`kookaburra:<name>.hdr`, converted by `pnpm assets:hdri`; provenance in src/assets/hdri/README.md), the procedural `kookaburra:softbox` preset, `"none"` (explicitly no reflections, distinct from absent = inherit), and project-relative `.hdr`/`.exr` user files (cache-keyed `<projectId>|<rel>`; a missing file THROWS at resolve time so autoruns fail loudly, the AssetBoundary lesson). Determinism: RGBE/EXR decode is pure CPU and PMREM is fixed-function GPU work (the MSAA precedent), so it's same-machine deterministic; `preloadEnvironments` is an export-preamble barrier so every themed frame finds its texture already resolved, while the preview calls it too and simply invalidates when textures land. */
 
@@ -129,6 +130,15 @@ async function loadEnvironment(gl: WebGLRenderer, key: string): Promise<Texture 
   try {
     if (key === SOFTBOX_SOURCE) {
       return pmrem.fromScene(buildSoftboxScene(), 0, 0.1, 1000).texture;
+    }
+    const strips = stripEnvironmentSpec(key);
+    if (strips) {
+      const scene = buildStripScene(strips);
+      try {
+        return pmrem.fromScene(scene, 0, 0.1, 1000, { size: strips.size ?? 256 }).texture;
+      } finally {
+        disposeStripScene(scene);
+      }
     }
     // User project sources ("<projectId>|<rel>"): resolve to a loadable URL, throwing on a missing file so the preload barrier fails the run loudly rather than exporting without reflections.
     const split = key.indexOf("|");
