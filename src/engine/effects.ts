@@ -47,6 +47,7 @@ import {
 } from "./effectParams";
 import { useEffectsStore } from "./effectsStore";
 import { MSAA_SAMPLES } from "./format";
+import { LensEffect } from "./LensEffect";
 import { type CubeLut, parseCubeLut } from "./lutCube";
 import { composerToneMapping } from "./renderSettings";
 import { SmearEffect } from "./SmearEffect";
@@ -54,7 +55,7 @@ import { SoftFocusEffect } from "./SoftFocusEffect";
 import type { Resolved } from "./sceneTimeline";
 
 /** Effect keys that are actually wired into the chain (all four starter effects as of cut 2). */
-const WIRED_EFFECTS = new Set(["bloom", "vignette", "grain", "lut"]);
+const WIRED_EFFECTS = new Set(["bloom", "vignette", "grain", "lut", "lens"]);
 
 /** Which dof blur families the loaded project's camera tracks activate (`dofUnionOf`, defined in dof.ts); part of the composer rebuild key, so the chain stays project-stable like the effect-key union. */
 export type { DofUnion } from "./dof";
@@ -87,6 +88,7 @@ interface ComposerState extends DofEffects {
   /** Persistent-layer overlay pass, disabled except on transition frames. */
   overlayPass: RenderPass;
   bloom: BloomEffect | null;
+  lens: LensEffect | null;
   vignette: VignetteEffect | null;
   grain: DeterministicGrainEffect | null;
   exposure: ExposureEffect;
@@ -301,6 +303,7 @@ export function ensureComposer(
   composer.addPass(overlayPass);
 
   const bloom = keys.has("bloom") ? new BloomEffect({ mipmapBlur: true }) : null;
+  const lens = keys.has("lens") ? new LensEffect() : null;
   const vignette = keys.has("vignette") ? new VignetteEffect() : null;
   const grain = keys.has("grain") ? new DeterministicGrainEffect() : null;
   // ToneMapping owns the single display tone-map (the project mode; ACES by default); the pass's one sRGB encode still happens at output. Exposure multiplies immediately BEFORE it, mirroring gl.toneMappingExposure's position in three's pipeline.
@@ -320,10 +323,16 @@ export function ensureComposer(
   }
   // The dof family sits at the chain head: it samples linear HDR colour (+ depth for the CoC modes) pre-everything, and blurred highlights still bloom coherently. Placeholder camera, overwritten per frame via setMainCamera (which copies camera settings into the CoC material). All effects build zeroed; applyDofUniforms drives them per frame. (EffectPass itself orders by attributes, so the convolution smear runs first; modes are exclusive per scene, so only uniforms care.)
   const { dof, tilt, smear, soft } = buildDofChain(dofUnion);
-  const chain = [dof, tilt, smear, soft, bloom, vignette, grain, exposure, tonemap, lut].filter(
-    (e): e is NonNullable<typeof e> => e !== null,
-  );
-  composer.addPass(new EffectPass(undefined, ...chain));
+  const blurs = [dof, tilt, smear, soft].filter(isEffect);
+  if (lens && blurs.length > 0) {
+    // The lens reads its pass's input, so it rides a second pass behind the blur families: a defocused highlight blooms as a disc.
+    composer.addPass(new EffectPass(undefined, ...blurs));
+    const tail = [lens, bloom, vignette, grain, exposure, tonemap, lut].filter(isEffect);
+    composer.addPass(new EffectPass(undefined, ...tail));
+  } else {
+    const chain = [dof, tilt, smear, soft, lens, bloom, vignette, grain, exposure, tonemap, lut];
+    composer.addPass(new EffectPass(undefined, ...chain.filter(isEffect)));
+  }
 
   composerState = {
     gl,
@@ -335,6 +344,7 @@ export function ensureComposer(
     smear,
     soft,
     bloom,
+    lens,
     vignette,
     grain,
     exposure,
@@ -343,6 +353,10 @@ export function ensureComposer(
     key,
   };
   return composerState;
+}
+
+function isEffect<T>(e: T | null): e is T {
+  return e !== null;
 }
 
 /** The chain-shape key bit per blur family (composer rebuild keys, main and side alike). */
@@ -493,6 +507,7 @@ function applyEffectUniforms(cs: ComposerState, cfg: EffectsConfig, seed: number
       cs.bloom.luminanceMaterial.smoothing = cfg.bloom.luminanceSmoothing;
     }
   }
+  if (cs.lens) cs.lens.setParams(cfg.lens);
   if (cs.vignette) {
     cs.vignette.offset = cfg.vignette?.offset ?? 0.5;
     cs.vignette.darkness = cfg.vignette?.darkness ?? 0; // 0 = no vignette

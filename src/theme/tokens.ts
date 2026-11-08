@@ -27,12 +27,29 @@ export interface GrainParams {
   hold?: number;
 }
 
+/** Lens response for hot highlights (engine/LensEffect.ts): energy-conserving bloom, halation and glare on the linear HDR buffer. `intensity` 0 = off. */
+export interface LensParams {
+  intensity: number;
+  bloom?: number;
+  bloomRadius?: number;
+  karis?: number;
+  halation?: number;
+  halationColor?: string;
+  halationThreshold?: number;
+  glare?: number;
+  glarePoints?: number;
+  glareAngleDeg?: number;
+  glareThreshold?: number;
+  glareFalloff?: number;
+}
+
 /** The postprocessing stack: every field is a plain number/string set on the CPU, never time-derived, so effect frames stay a pure function of the timeline. Omitting a key omits that effect. A theme with NO `effects` keeps the byte-identical (composer-free) render path. See docs/determinism.md. */
 export interface EffectsConfig {
   bloom?: BloomParams;
   vignette?: VignetteParams;
   lut?: LutParams;
   grain?: GrainParams;
+  lens?: LensParams;
 }
 
 /** A per-scene override: any subset of the effect stack, each effect itself partial. */
