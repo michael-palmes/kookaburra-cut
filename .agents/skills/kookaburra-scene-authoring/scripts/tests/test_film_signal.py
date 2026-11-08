@@ -68,32 +68,26 @@ class WordTests(KbTestCase):
         p = Project(project)
         result = pc.check(p, tl.project_slots(p))
         first, middle, last = result["scenes"]
-        self.assertEqual((first["words"], first["labelWords"], first["beats"], first["wordsPerBeat"]), (8, 3, 4.0, 2.0))
+        self.assertEqual((first["words"], first["labelWords"], first["beats"], first["wordsPerBeat"], first["readMs"]), (8, 3, 4.0, 2.0, 2500))
         self.assertEqual(first["flag"], "too much to read")
-        self.assertTrue(any("2 a beat over 4 beats" in w for w in result["warnings"]))
+        self.assertTrue(any("need 2.5s (5 beats) to read once" in w for w in result["warnings"]))
         self.assertEqual(middle["flag"], "shorter than a flash")
         self.assertNotIn("flag", last)
 
 
 class MotionTests(KbTestCase):
-    def test_tsx_driven_scenes_count_as_moving(self) -> None:
+    def test_tsx_driven_and_video_scenes_count_as_moving(self) -> None:
         project = three_scenes(self.tmp, [4000, 4000, 4000])
         p = Project(project)
         still = pc.check(p, tl.project_slots(p))
-        self.assertEqual(still["still"]["longestStillMs"], 12000)
-        self.assertTrue(any("no keyed or TSX motion" in w for w in still["warnings"]))
+        self.assertEqual((still["still"]["longestStillMs"], still["still"]["source"]), (4000, "static"))
+        self.assertEqual(sorted(i["scene"] for i in still["issues"]), ["01-a", "02-b", "03-c"])
+        self.assertTrue(all("nothing keyed, scripted or playing moves" in w for w in still["warnings"]))
         tsx = project / "scenes" / "02-b.tsx"
         write(tsx, tsx.read_text().replace("export default", "const spin = () => useTimeline();\nexport default"))
+        write_json(project / "scenes" / "03-c.json", {"version": 1, "devices": [{"id": "d1", "model": "phone", "media": {"src": "assets/a.mp4", "kind": "video"}}]})
         moving = pc.check(Project(project), tl.project_slots(Project(project)))
-        self.assertEqual((moving["still"]["longestStillMs"], moving["still"]["source"]), (4000, "static"))
-        self.assertEqual(moving["warnings"], [])
-
-    def test_still_spans_from_frame_differences(self) -> None:
-        flat, other = bytes([10] * 1024), bytes([10] * 1023 + [40])
-        self.assertEqual(pc.still_spans([flat] * 5, 200), [(0, 800)])
-        self.assertEqual(pc.still_spans([flat, flat, other, other, other], 200, 1000), [(1000, 1200), (1400, 1800)])
-        self.assertFalse(pc.moving(flat, bytes([10, 11] * 512)))
-        self.assertTrue(pc.moving(flat, bytes([11] * 1024)))
+        self.assertEqual([i["scene"] for i in moving["issues"]], ["01-a"])
 
     @needs_ffmpeg
     def test_motion_is_measured_on_the_film(self) -> None:

@@ -225,7 +225,7 @@ under the project lock (`kblib.lock`) and re-validated after writing.
 | `presets [list \| show SLUG]` | Scene presets with what they show and a preview image path to Read (`--json`: `presets`) |
 | `catalog [FAMILY] [--search Q]` | Query `catalog.json` (`--json`: `families`; a family's raw entries as `{ family, items }`, or `{ family, value }` when it is not a list; a search's `items`) |
 | `assets list`, `assets add PATH [--name N] [--dir D] [--no-conform] [--max-size N] [--allow-blank]`, `assets add-folder DIR [--dedupe] [--thumbs WxH] [--limit N] [--dir D] [--no-conform] [--max-size N] [--allow-blank]`, `assets probe ASSET [--deep]`, `assets conform ASSET [--repoint]`, `assets replace NAME FILE [--keep-old archive\|trash\|none] [--as-new] [--allow-blank]`, `assets unused [--kind K] [--archive [DIR]]`, `assets restore [ID \| --list]`, `assets meta NAME [--set K=V]` | Media in (never overwrites, renames on collision; `--name` keeps the source's extension; a video the app's probe flags, or that both decoders disagree on once decoded, is conformed through `<exe> media conform`, gated on `edit caps.media`; stills and SVGs as in "Stills on the way in" below), a whole folder (`assets add-folder`, below), the decode verdict (`ok`, `suspect`, `ffmpeg-misdecodes`; the container's own `elst`/`stts`/`ctts` parse without the app, AVFoundation's view with it; an edit opening inside a sample is `ffmpeg-misdecodes` on both sides, `mp4box.rs` and `mp4box.py` replaying one `edit-start-vectors.json`), an in-place conform (`--repoint` turns a `.mov` into `<stem>.mp4` and rewrites literals), an in-place replace with the old bytes in `.kb/archive/`, the app's shared in-use rule (`unused`, archived and restorable; `media.rs` and `asset_refs.py` replay one `asset-ref-vectors.json`), and `assets/_meta.json` provenance (`list --json`: `assets`, each with a conformed clip's timing and provenance folded in). Code: `kblib/assets_cli.py`, `assets.py`, `asset_folder.py`, `asset_ops.py`, `imagefile.py`, `svgsafe.py`, `contact.py`, `conform.py`, `mp4box.py`, `asset_refs.py`, `archive.py`, `asset_meta.py` |
-| `checkpoint [MESSAGE] [--scene S]... [--files P]...`, `history [--scene S]`, `undo [REV] [--scene S \| --all]`, `diff [REV] [--scene S]` | Git checkpoints of `project.json`, `scenes/`, `edits/` and `flashes.accepted.json`, or only some scenes' files; `undo` checkpoints first, so it is itself undoable, never trashes `edits/`, and names any render it leaves stale (`history --json`: `checkpoints`, each with `atMs`). See Coordination |
+| `checkpoint [MESSAGE] [--scene S]... [--files P]...`, `history [--scene S]`, `undo [REV] [--scene S \| --all]`, `diff [REV] [--scene S]` | Git checkpoints of `project.json`, `scenes/`, `edits/`, `flashes.accepted.json` and `pacing.accepted.json`, or only some scenes' files; `undo` checkpoints first, so it is itself undoable, never trashes `edits/`, and names any render it leaves stale (`history --json`: `checkpoints`, each with `atMs`). See Coordination |
 | `lease S [--ttl 2h] [--note T] [--for NAME]`, `lease S --release [--force]`, `leases [--all]` | Opt-in scene leases (`lease --json`: `scene`, `action`, `lease`; `leases --json`: `leases`) |
 | `note "TEXT" [--scene S]`, `notes [--all]` | Shared notes in `.kb/notes.md` (`notes --json`: `notes`, `total`) |
 | `events [--follow] [--since 10m\|CURSOR\|all] [--kinds ...] [--source app\|kb\|edit\|bash ...] [--all-agents] [--exit-after S]` | The coordination feed, app edits included (`--json` without `--follow`: `events`, `cursor`; every event carries `source`) |
@@ -233,11 +233,12 @@ under the project lock (`kblib.lock`) and re-validated after writing.
 | `plan COMMAND ...` | A structural command's dry run: `writes`, `refusals`, `notes`; writes nothing (below) |
 | `export [--aspect A] [--preset ID] [--fps 30\|60] [--short-edge N] [--poster-frame on\|off\|app] [--verify] [--headless] [--allow-flashes] [--timeout S] [--progress-every S]` | The finished film, exactly as the app's Export button makes it ("kb export") |
 | `flashes [list]`, `flashes accept TIME --why TEXT`, `flashes forget TIME\|ID` | The last flash check at a glance, and accepted warnings ("Accepted flash warnings"; `--json`: `accepted`, `last`) |
+| `pacing [list]`, `pacing accept S --why TEXT [--kind still\|read\|short\|final-hit\|end]`, `pacing forget S\|ID` | Pacing warnings the person kept, per scene and kind, in `pacing.accepted.json`; later `kb check film pacing` runs list them under `accepted` instead of `warnings` (`kblib/pacing_cli.py`; `--json`: `accepted`) |
 | `preview --range SPAN \| --scene S [--aspect A] [--fps N] [--width N] [--gif]` | A low-resolution MP4 or GIF of a span, rendered by the render window, plus a contact sheet to Read ("Ranged checks") |
 | `verify-export FILE [--no-sheet] [--no-flashes] [--allow-flashes] [--loudness-target LUFS] [--standard wcag\|itu\|both]` | Check an exported film against what the project asked for ("Film checks and verify-export") |
 | `sync-check FILE [--bpm N [--offset MS]] [--poster-frame auto\|on\|off] [--threshold PCT] [--window MS]` | Each cut and big picture change against its nearest beat, in ms ("kb sync-check") |
 | `hook session-start \| user-prompt \| pre-edit \| post-edit \| bash-pre \| bash-post` | Hook entry points (stdin JSON from Claude Code); any other event exits 0, so an older kit is safe with newer settings |
-| `beats [--scene S]`, `beats set-grid (--from-analysis [--force] \| --bpm B --offset MS) [--beats-per-bar N]`, `beats set-downbeat AT [--bar N]`, `beats clear-grid`, `beats cue set ID POS \| rm ID`, `beats section set ID --from POS --to POS [--label L] \| rm ID`, `beats resolve POS [--scene S]` | The authored beat grid (`audio.grid`, `cues`, `sections`) and musical positions (`kblib/beats/`, mirroring `src/engine/musicTime.ts` through `kblib/music.py`, pinned by `music-vectors.json` from `pnpm agent:vectors`). Without a grid it shows the analysis's detected beats (`beatSource: "detected"`). Every write validates as `sanitiseAudioMusic` does and rewrites each sidecar's `at` caches in the same transaction (a sidecar leased to someone else is left, with a note) |
+| `beats [--scene S]`, `beats set-grid (--from-analysis [--force] \| --bpm B --offset MS) [--beats-per-bar N]`, `beats set-downbeat AT [--bar N]`, `beats clear-grid`, `beats cue set ID POS \| rm ID`, `beats section set ID --from POS --to POS [--label L] \| rm ID`, `beats resolve POS [--scene S]`, `beats plan [--scenes N] [--from POS] [--to POS] [--apply]` | The authored beat grid (`audio.grid`, `cues`, `sections`) and musical positions (`kblib/beats/`, mirroring `src/engine/musicTime.ts` through `kblib/music.py`, pinned by `music-vectors.json` from `pnpm agent:vectors`). Without a grid it shows the analysis's detected beats (`beatSource: "detected"`). Every write validates as `sanitiseAudioMusic` does and rewrites each sidecar's `at` caches in the same transaction (a sidecar leased to someone else is left, with a note). `beats plan` drafts scenes from the song's shape (`kblib/beats/pulse.py`: musically named sections, else the analysis's parts converted through time, the `final-hit` cue or moment) in `kblib/beats/plan.py`: quiet parts about 2 bars a scene, peaks 1.5, a burst ending the build into the last peak, the payoff on the final hit, the film ending a bar after it; `--json` is a cut plan `kb timeline apply` takes as it is, and `--apply` writes it to the project's scenes in order through `cuts.apply_plan` |
 | `song analyse [--file PATH] [--force] [--tracker nn\|dsp] [--lyrics] [--accept] [--dry-run]` | The app's song analyser through `<exe> song analyse` (works with the app closed): tempo fit, downbeat, sections, form, breaths, audible end, stabs, lyrics on request; cached by the audio's SHA-256 and copied to `.kb/song/<sha12>.json`; `project.json` changes only with `--accept`: the fitted grid (refused past a 33 ms drift) plus the form's parts and moments as `audio.sections` and `audio.cues`, never over an id already there. `--file` reads any audio or video file through kb's reach and `kblib/untrusted.py`, and refuses `--accept`. Code: `kblib/song.py` |
 | `song hits [--bars A-B] [--band low\|mid\|high] [--min-strength N] [--file PATH]` | Strong onsets as `bar:B.beat.16th` with a strength, read from the saved analysis (one fresh pass when it has none), on the project's grid or else the fit (`--json`: `hits`, each with `position`, `bar`, `beat`, `sixteenth`, `offMs`, `trackMs`, `projectMs`, `strength`) |
 | `project fit --to song-end [--hold MS] [--dry-run]` | Sets the last scene's length (unpinning it) so the film ends at the audible end plus the hold, in one transaction with the sidecar caches; warns when the last hit would play inside the soundtrack's fade |
@@ -545,8 +546,8 @@ Hooks:
   `.kb/agents/<name>/` and `.kb/captures/` is allowed), and to the asset records
   (`assets/_meta.json`, `assets/**/*.timing.json`, anything under `assets/.originals/`),
   each reason naming the kb command to use (`kblib/hookfast.py` `asset_record_reason`), and to
-  `flashes.accepted.json` (only `kb flashes accept` and `forget` write it, each entry with a
-  reason). These names compare case-folded, since APFS opens any folded spelling as the same
+  `flashes.accepted.json` and `pacing.accepted.json` (only `kb flashes` and `kb pacing` accept
+  and forget write them, each entry with a reason). These names compare case-folded, since APFS opens any folded spelling as the same
   file, and a respelled project folder still counts as the project. An edit to a scene leased to
   someone else is denied with `permissionDecision: "deny"`, naming the holder, the expiry
   and how to bind or leave a note; the holder's own edit renews the lease. Before the first
@@ -976,15 +977,23 @@ flash check below):
   diff and the luminance step; a hard cut of ΔL 0.10 or more next to a scene under 1 s
   warns, and four such cuts inside a second warn as a strobe. The film's end holds, so its
   last scene is never short (`handoffs.seam_short`).
-- `pacing`: words above label size per scene against 3 a second (label keys such as
-  `cardLabel` or an eyebrow, embedded `useSceneText` labels, TSX text at a literal `fontSize`
-  of 0.18 or less and `text` keys left beside a managed stack count as `labelWords`), with
-  `beats` and `wordsPerBeat` when `audio.grid` exists; the longest stretch with no motion
-  (warning over 6 s): statically keyed camera, rig, device, chart or lighting moves plus
-  scenes whose TSX drives motion (`useTimeline`, `useGroupAnimation`, `useRigTrack`,
-  `AnimatedGroup`, `AnimatedCounter`), with `--file` frame differences on the film
-  (`pacing.film_motion`: 32 x 32 grey at 5 fps; `still.source` says which); scenes under
-  334 ms, never the last one (the end holds).
+- `pacing`: DESIGN.md's pacing rules against the song's shape (`beats/pulse.py`). Words above
+  label size per scene against their reading time, 0.2 s a word and 0.6 s a line rounded up
+  to the beat, in the window no transition covers (label keys such as `cardLabel` or an
+  eyebrow, embedded `useSceneText` labels, TSX text at a literal `fontSize` of 0.18 or less
+  and `text` keys left beside a managed stack count as `labelWords`). Every stretch where
+  nothing new appears against the pulse of its part: a bar in quiet parts, 2 beats in
+  peaks, never past 2.4 s, a bar after the final hit, 2 s without a grid. Statically a
+  change is a cut or a keyed camera, rig, device, chart or lighting move, and scenes whose
+  TSX drives motion (`useTimeline`, `useBeatGrid`, `useGroupAnimation`, `useRigTrack`,
+  `AnimatedGroup`, `AnimatedCounter`) or that play a video count as moving. With `--file`
+  it is measured on the film (`pacing.film_motion`: 32 x 32 grey at 10 fps; a change is six
+  cells moving 6 levels past their own median over the second around, live is that or 60
+  cells moving 8, so a slow drift is neither; film stretches get 250 ms of slack). Also the
+  film running more than a bar past the final hit, nothing landing within half a beat of it
+  (film only), and scenes under 334 ms, never the last one (the end holds). Each issue
+  carries `kind` and `scene`; one the person kept (`kb pacing accept`) moves from
+  `warnings` to `accepted`.
 - `safe-areas` runs in `kb verify` (it needs the app's text boxes).
 
 Flash detection is one Rust core fed frame by frame: `FlashDetector::new(width, height,

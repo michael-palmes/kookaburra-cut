@@ -42,23 +42,60 @@ they say just start, propose a one-line brief from what is in the folder and con
 
 ## Pacing
 
-The shipped templates run 13 to 27 seconds with scenes of 2 to 5 seconds. Norms:
+Pace comes from the music and from how often something new appears, not from the scene
+count: a strong launch film can run ten scenes over 32 bars and still change something
+about twice a bar. These are defaults that help, not rules: the person decides. When they
+want a longer hold, a slower read or another length, do it their way, and keep the
+warning with their reason (`./kb pacing accept S --why "..."`) so it isn't raised again.
 
-| Scene | Length | Notes |
-| --- | --- | --- |
-| Hook or title | 1.8 to 3 s | Reveal done by 0.9 s; hold the rest |
-| Feature on a device | 3.2 to 4.5 s | Or the recording's length (follow-media) |
-| Panel or overlay | 2.5 s + 0.6 s per line | Present holds it for the speaker, so never pad it |
-| Number or stat | 2.4 to 3.4 s | Count over 1 to 1.8 s, hold at least 1 s |
-| Chart | 3.6 to 5 s | Build-in about 0.9 s, then hold or morph |
-| Before/after | 4 to 4.5 s | Divider sweeps over most of the scene |
-| Closing card | 2.2 to 3.8 s | Hold the call to action at least 1.5 s |
+1. **Plan from the song.** No soundtrack yet? Ask for one first: the pulse comes from it.
+   Then `./kb song analyse --accept` (the grid, the song's parts and its final hit) and
+   `./kb beats plan`: a scene per slot in bars, how often something new lands in each and
+   how many words each holds (reference/beats.md). Show the person the plan before
+   writing scenes. With no song at all, count a bar as 2 s.
+2. **Keep a pulse.** Something visibly changes at least this often:
 
-- Reading time: allow about 250 ms per word plus 1 s after the reveal completes.
+   | Part of the song | Something new every | Cut every |
+   | --- | --- | --- |
+   | Intro, build, breakdown | bar | 2 to 4 bars |
+   | Peak, chorus, drop | 2 beats | 1 to 2 bars |
+   | Burst (a montage, double time) | beat | inside one scene |
+   | After the final hit | hold at most a bar | none |
+
+   A change is a cut, a line or word landing or leaving, an element entering, a camera
+   key or kick landing, or a screen moving to its next state; a playing recording counts.
+   A slow drift or a looping background alone does not. Nothing sits still past about
+   2.4 s at any tempo.
+3. **Read once, then move on.** A line needs 0.2 s a word plus 0.6 s once its last word
+   lands, rounded up to the beat (five words at 128 BPM: 1.6 s, so 4 beats). Then it
+   leaves, or the frame changes around it within a bar. Changes around a line never hide
+   or move it while it is read.
+4. **Let the song set the scene count.** Quiet parts take fewer, busier scenes; peaks take
+   short cuts; a burst stays one scene with its cuts inside, since every scene is one more
+   thing to fill. 32 bars at 128 BPM lands near 16 to 20 scenes.
+5. **Land on the beat.** Reveals finish on the beat: give `AnimatedHeadline` a `hitAt` (it
+   starts the motion early for you) and camera keys an `at` on the bar line. The reveal,
+   the name and the payoff take the strongest moments and the starts of parts.
+6. **Pay off on the final hit.** The name or the call to action lands on the song's final
+   hit and holds at most a bar while it rings out; arriving earlier leaves it sitting still.
+
+The `unveil` template is the worked example: 32 bars at 128 BPM in 18 scenes, something
+new each bar through the build (bars 1 to 8) and the breakdown, every two beats through
+the peaks, a montage that doubles from every two beats to every beat (bars 25 to 28), and
+"Available today." on the final hit (bar 32) with a bar of ring-out.
+
+Decks hold each slide for the speaker (Present), so the pulse covers a slide's build, not
+its hold. Other norms:
+
 - Social cuts 12 to 20 s; launch films 30 to 60 s; explainers under 2 minutes.
-- Reveal windows 500 to 900 ms; subtitles 150 to 350 ms behind titles.
+- Reveal windows 500 to 900 ms, finishing on the beat; subtitles 150 to 350 ms behind
+  titles. Counters run 1 to 1.8 s; a chart builds in about 0.9 s, then holds or morphs.
 - Transitions 400 to 700 ms (whip and glitch 300 to 500). Long transitions eat scenes:
   the overlap comes out of both neighbours.
+
+`./kb check film pacing --file exports/<name>.mp4` measures it on the film: every stretch
+where nothing new appears against its part of the song, words against their reading time,
+and the payoff against the final hit (reference/export.md).
 
 ## Composition
 
@@ -285,7 +322,8 @@ or `b.background`. Templates: `before-after-update`, `dark-mode-launch`,
 - [ ] All text inside the safe area, nothing clipped, nothing overlapping a device.
 - [ ] Legible at phone size: no text under the sizes above; contrast holds over moving
       backgrounds.
-- [ ] Durations give every line its reading time; nothing exits before it is read.
+- [ ] Paced to the song: `./kb check film pacing --file <the export>` clean, or each
+      warning fixed or kept by the person with their reason (`./kb pacing accept`).
 - [ ] One theme, consistent transitions, accent used once per scene.
 - [ ] Branded project: checked against `BRAND.md`, and any guideline you bent is named
       in your reply with the reason.

@@ -91,6 +91,9 @@ def blocked_reason(rel: str) -> Optional[str]:
     if folded == "flashes.accepted.json":
         return (f"{rel} holds accepted flash warnings, each with a person's reason; change it only through kb "
                 "(./kb flashes accept TIME --why \"...\", ./kb flashes forget TIME). Failures are never accepted.")
+    if folded == "pacing.accepted.json":
+        return (f"{rel} holds the pacing warnings a person kept, each with their reason; change it only through kb "
+                "(./kb pacing accept S --why \"...\", ./kb pacing forget S).")
     if KB_STATE.match(folded):
         return (f"{rel} is kb's own coordination state; change it only through kb (./kb lease, ./kb note, ./kb events). "
                 "Scratch files belong in .kb/agents/<your name>/ instead.")

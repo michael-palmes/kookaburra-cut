@@ -73,7 +73,7 @@ the user's own Cancel.
 ./kb verify-export exports/<name>.mp4               size, rate, frames, audio, loudness, flashes, swatches, a contact sheet
 ./kb verify-export exports/<name>.mp4 --loudness-target -14
 ./kb check film --file exports/<name>.mp4           flashes, colour, handoffs and pacing on the real film
-./kb check film pacing                              static: words per second, long still stretches, very short scenes
+./kb check film pacing                              static: reading time, still stretches against the song, very short scenes
 ./kb verify --film                                  a 720p 30 fps draft (kept in .kb/verify/, never exports/), then every film check on it
 ./kb sync-check exports/<name>.mp4                  each cut against its nearest beat, in ms (--bpm N [--offset MS] without music)
 ```
@@ -87,10 +87,18 @@ the user's own Cancel.
   The film's last scene never counts as short: the end holds.
 - `check film colour` warns when effects tone-map flat colours (reference/gotchas.md). It
   reads corners at each scene's settled moment, and skips a corner a device covers.
-- `check film pacing` counts only words above label size (card labels and eyebrows are left
-  out), aims for about 3 a second (and reports words per beat with a beat grid), and flags
-  stretches over 6 s with no motion: keyed moves or TSX animation, or with `--file` frame
-  differences on the film.
+- `check film pacing` holds the film to DESIGN.md's pacing against the song's parts: each
+  scene's words above label size against their reading time (0.2 s a word and 0.6 s a
+  line, to the beat; card labels and eyebrows left out), every stretch where nothing new
+  appears against its part's pulse (a bar in quiet parts, 2 beats in peaks, never past
+  2.4 s, a bar after the final hit, 2 s with no song), the payoff against the final hit,
+  and scenes under 334 ms. Statically it sees cuts, keyed moves, TSX that drives motion
+  and playing videos; `--file` measures the film itself (a slow drift or a looping
+  background is not a change), so check the export.
+- Pacing warnings are advice and the person decides. When they keep something it flags,
+  `./kb pacing accept S --why "..."` keeps it with their reason (per scene; `--kind still`,
+  `read`, `short`, `final-hit` or `end` for one kind), and later checks list it as kept.
+  `./kb pacing` lists them; `./kb pacing forget S` drops one.
 - `sync-check` times cuts and big picture changes as a player shows them, poster frame
   taken off. 0 to one frame late (33 ms at 30 fps, 17 at 60) is the frame grid: a cut on a
   beat shows on the first frame at or after it. Never nudge the beat grid to close that; a

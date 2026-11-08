@@ -220,7 +220,8 @@ class PacingTests(KbTestCase):
         p = Project(project)
         result = pc.check(p, tl.project_slots(p))
         self.assertEqual(result["scenes"][0]["flag"], "too much to read")
-        self.assertEqual(result["still"], {"longestStillMs": 2000, "fromMs": 0, "toMs": 2000, "scenes": ["01-title", "02-strobe"], "source": "static"})
+        # The crossfade into 02-strobe starts at 1500 ms and its key lands at 2000 ms: a cut and a key both count as change.
+        self.assertEqual(result["still"], {"longestStillMs": 2000, "fromMs": 2000, "toMs": 4000, "scenes": ["02-strobe"], "source": "static"})
         manifest = json.loads((project / "project.json").read_text())
         manifest["scenes"][1]["durationMs"] = 300
         manifest["scenes"][0]["transition"] = {"type": "crossfade", "durationMs": 0}

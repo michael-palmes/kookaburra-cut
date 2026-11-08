@@ -58,8 +58,11 @@ a strip (the frames before, at and after it, the changing region boxed) to Read.
   colour     effects under ACES tone mapping; corner swatches of flat backgrounds (ΔE over 2 warns)
   handoffs   each seam's last and first frames (or either side of its transition), the
              luminance step and picture change; hard steps next to short scenes warn
-  pacing     words above label size per second (aim for 3) and per beat, the longest stretch
-             without motion (measured on the film with --file), scenes under 334 ms
+  pacing     against the song: each scene's words against their reading time (0.2 s a word and
+             0.6 s a line, to the beat), stretches where nothing new appears against the pulse of
+             their part (a bar quiet, 2 beats in a peak, never past 2.4 s, a bar after the final
+             hit; measured on the film with --file), the payoff on the final hit, scenes under
+             334 ms. Advice: a warning the person keeps is accepted (./kb pacing accept)
   safe-areas runs in ./kb verify (text outside the safe area, by key and aspect)
 
   kb check film pacing
@@ -255,6 +258,29 @@ def emit_verify_text(film: Path, ctx: Dict[str, Any], rows: List[Dict[str, Any]]
 # ── kb check film ────────────────────────────────────────────────────────────
 
 
+def pacing_lines(pace: Dict[str, Any], film: bool) -> List[str]:
+    song = pace["song"]
+    grid = song.get("grid")
+    if grid:
+        parts = ", ".join(f"{p['id']} {p['fromBar']}-{p['toBar'] - 1}" for p in song["parts"]) or "none found (every bar counts as quiet)"
+        head = f"pacing: {grid['bpm']:g} bpm; song parts: {parts}" + (f"; final hit {song['finalHit']}" if song.get("finalHit") else "")
+    else:
+        head = "pacing: no beat grid, so a bar counts as 2 s" + ("" if song.get("soundtrack") else " (no soundtrack: ask the person for a song first)")
+    lines = [head]
+    if film and pace.get("changes"):
+        lines.append(f"  {pace['changes']['count']} changes on the film, {pace['changes']['perBar']:g} a bar")
+    still = pace["still"]
+    lines.append(f"  longest stretch with nothing new: {still['longestStillMs'] / 1000:.1f}s" + ("" if film else " (keyed; --file F measures the film)"))
+    for r in pace["scenes"]:
+        read = f", read in {r['readMs'] / 1000:.1f}s" if r.get("readMs") else ""
+        lines.append(f"  {r['stem']}: {r['words']} words in {r['durationMs'] / 1000:.1f}s{read}"
+                     + (f", {r['labelWords']} label words left out" if r.get("labelWords") else "") + (f"  !! {r['flag']}" if r.get("flag") else ""))
+    lines += [f"  warn  {w}" for w in pace["warnings"]]
+    if pace.get("accepted"):
+        lines.append(f"  {len(pace['accepted'])} kept by the person (./kb pacing lists them)")
+    return lines
+
+
 def film_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="kb check film", description=FILM_HELP, formatter_class=argparse.RawDescriptionHelpFormatter, add_help=True,
                                 usage=argparse.SUPPRESS)
@@ -387,14 +413,7 @@ def run(kbctx: Any, rest: List[str]) -> int:
         pace = pc.check(project, slots, motion)
         payload["pacing"] = pace
         warnings += pace["warnings"]
-        still = pace["still"]
-        moved = "motion in the film" if motion is not None else "a keyed or TSX move"
-        lines.append(f"pacing: {len(pace['scenes'])} scenes; longest stretch without {moved} {still['longestStillMs'] / 1000:.1f}s")
-        lines += [f"  {r['stem']}: {r['words']} words in {r['durationMs'] / 1000:.1f}s ({r['wordsPerSecond']}/s"
-                  + (f", {r['wordsPerBeat']:g} a beat" if "wordsPerBeat" in r else "") + ")"
-                  + (f", {r['labelWords']} label words left out" if r.get("labelWords") else "") + (f"  !! {r['flag']}" if r.get("flag") else "")
-                  for r in pace["scenes"]]
-        lines += [f"  warn  {w}" for w in pace["warnings"]]
+        lines += pacing_lines(pace, motion is not None)
     if payload["skipped"]:
         lines.append(f"skipped {', '.join(payload['skipped'])}: no film (pass --file exports/<name>.mp4)")
     payload["warnings"] = warnings
