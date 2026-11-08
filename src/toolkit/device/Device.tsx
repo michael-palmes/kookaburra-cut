@@ -82,6 +82,12 @@ import { DeviceGizmo } from "./DeviceGizmo";
 import { DeviceScreenContext } from "./DeviceScreenAnchor";
 import { DeviceShadow } from "./DeviceShadow";
 import { DeviceDisplaysContext } from "./deviceDisplays";
+import {
+  addScreenCoats,
+  applyDeviceFinish,
+  type DeviceFinish,
+  resolveDeviceFinish,
+} from "./finish";
 import { clampFoldDeg, foldCentreOffset, foldVisibleWidth } from "./foldPose";
 import {
   applyFoldScreenShader,
@@ -91,6 +97,7 @@ import {
   setFoldScreenState,
 } from "./foldScreenShader";
 import { type DevicePose, deviceGizmoMovedY } from "./gizmoCommit";
+import { GSAA_FRAGMENT } from "./gsaa";
 import { resolveDeviceLayout } from "./layout";
 import { useLayoutFormat } from "./layoutFormat";
 import { HIDDEN_NODES } from "./models";
@@ -183,6 +190,8 @@ export interface DeviceProps {
   foldTransition?: DeviceFoldTransitionSpec;
   /** Motion blur override; absent inherits the scene's Objects switch. */
   motionBlur?: MotionBlurOverride;
+  /** Opt-in hero finish for the body (a preset id or a spec); absent keeps the glb's materials. */
+  finish?: DeviceFinish;
   /** Content riding the device's pose in its fitted frame; `DeviceScreenAnchor` pins it to the screen. */
   children?: ReactNode;
 }
@@ -296,15 +305,6 @@ const TURNTABLE_SWAY_RAD = Math.PI / 4;
 const TARGET_WORLD_HEIGHT = 2.6;
 /** Ground plane sits just under the auto-fit device's bottom edge. */
 const GROUND_EPSILON = 0.02;
-/** Geometric specular AA (Kaplanyan/Tokuyoshi-Kaplanyan): widens roughness by the perturbed-normal's screen-space variance to kill normal-map specular shimmer (three's own geometryRoughness derives from the non-perturbed normal and misses it); the σ²/κ constants are export contract, applied only to Device's private material clones, never the shared drei glTF cache that DeviceMockup/HeroObject also read. */
-const GSAA_FRAGMENT = /* glsl */ `#include <lights_physical_fragment>
-{
-	vec3 gsaaDx = dFdx( normal );
-	vec3 gsaaDy = dFdy( normal );
-	float gsaaVariance = 0.25 * ( dot( gsaaDx, gsaaDx ) + dot( gsaaDy, gsaaDy ) );
-	float gsaaKernel = min( gsaaVariance, 0.18 );
-	material.roughness = min( sqrt( material.roughness * material.roughness + gsaaKernel ), 1.0 );
-}`;
 
 function applyDeviceGsaa(material: Material): void {
   if (!(material as MeshStandardMaterial).isMeshStandardMaterial) return;
@@ -521,6 +521,7 @@ export function Device(props: DeviceProps) {
     bothScreensOn = false,
     foldTransition,
     motionBlur,
+    finish,
     children,
   } = props;
   // The layout stamp wins over the scalar fields (see DevicePlacement.resolvedLayout).
@@ -628,6 +629,9 @@ export function Device(props: DeviceProps) {
   }, [model, renderModel]);
 
   const { scene, animations } = useGLTF(activeSpec.glbUrl);
+  const finishKey = finish === undefined ? "" : JSON.stringify(finish);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the serialised finish is the identity
+  const finishSpec = useMemo(() => resolveDeviceFinish(finish), [finishKey]);
   // Memoised because custom tints mint a fresh spec per call, and colourSpec keys the clone below.
   const colourSpec = useMemo(() => deviceColour(activeSpec, colour), [activeSpec, colour]);
 
@@ -700,12 +704,17 @@ export function Device(props: DeviceProps) {
           const std = preparedMaterial as MeshStandardMaterial;
           if (override?.roughness !== undefined) std.roughness = override.roughness;
           if (override?.metalness !== undefined) std.metalness = override.metalness;
-          applyDeviceGsaa(preparedMaterial);
+          const finished = finishSpec
+            ? applyDeviceFinish(preparedMaterial, name, activeSpec.id, finishSpec, clone)
+            : null;
+          if (finished) preparedMaterial = finished;
+          else applyDeviceGsaa(preparedMaterial);
           prepared.set(mesh.material, preparedMaterial);
         }
         mesh.material = preparedMaterial;
       });
       for (const obj of hide) obj.removeFromParent();
+      if (finishSpec) addScreenCoats(screens, finishSpec);
 
       clone.updateMatrixWorld(true);
       const box = new Box3().setFromObject(clone);
@@ -739,7 +748,7 @@ export function Device(props: DeviceProps) {
           cover: coverMaterial,
         }),
       };
-    }, [scene, animations, activeSpec, colourSpec, screenMaterial, coverMaterial]);
+    }, [scene, animations, activeSpec, colourSpec, screenMaterial, coverMaterial, finishSpec]);
   const fittedHeight = deviceFittedHeight(activeSpec.id);
 
   // The opt-in keyframe track: a delta on the resolved placement, sampled before the motion presets so both layer.
