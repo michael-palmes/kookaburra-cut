@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "name": "Name, matched: today",
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/fairywren-today-dark-phone.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [-1.967, 0.079, -0.318],
+        "rotationDeg": [-29.5, 40.4, 17.8],
+        "scale": 1.571
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "soft"
+    }
+  ],
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "position": [0, -0.985, 11.488],
+          "aim": {
+            "mode": "point",
+            "at": [0, 0, 0]
+          },
+          "fov": 21
+        }
+      }
+    ],
+    "segments": []
+  },
+  "text": {
+    "title": "Meet Fairywren."
+  },
+  "stills": {
+    "marksMs": [2000]
+  }
+}
