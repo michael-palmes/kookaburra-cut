@@ -232,6 +232,9 @@ scope.addEventListener("messageerror", () =>
 
 // With HMR on, a change to a module this realm holds is reported to the window; the React plugin skips Fast Refresh in a worker.
 if (import.meta.hot) {
+  // The React plugin's window preamble defines these; a bundled scene registers no component, so its module has no fallback.
+  scope.$RefreshReg$ ??= () => {};
+  scope.$RefreshSig$ ??= () => (type: unknown) => type;
   const held = (import.meta.hot as unknown as { hmrClient?: { dataMap?: Map<string, unknown> } })
     .hmrClient?.dataMap;
   if (!held)

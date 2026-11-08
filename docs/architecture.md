@@ -132,6 +132,9 @@ frame bodies and the scene trees. The split, and why it is drawn where it is:
   realms. That runtime assigns to `window` as it evaluates, which a worker has
   not got, so `vite.worker-refresh.ts` points those references at `globalThis`
   in that one virtual module (serve only; a build has no refresh). The
+  plugin's preamble, which defines `$RefreshReg$` and `$RefreshSig$`, runs
+  only in a window, and a bundled scene registers no component, so its module
+  carries no fallback: `stageWorker.ts` defines the same no-ops. The
   plugin's footer skips refresh registration in a worker, so a worker cannot
   swap a module in place: `stageWorker.ts` listens to its Vite client for an
   update to a module this realm holds and posts `sourceChanged`, and the
