@@ -68,6 +68,24 @@ export function SceneDevices() {
   );
 }
 
+/** The name on the right, turned to face a camera that looks up at the set. */
+export function NameTitle({
+  position,
+  fontSize,
+  tiltDeg = 0,
+}: {
+  position: [number, number, number];
+  fontSize: number;
+  tiltDeg?: number;
+}) {
+  const title = useSceneText("title", "Meet Fairywren.");
+  return (
+    <group position={position} rotation-x={(tiltDeg * Math.PI) / 180}>
+      <AnimatedHeadline text={title} textKey="title" from={0} to={300} fontSize={fontSize} />
+    </group>
+  );
+}
+
 /** The name shot: the handset on the left third, the name on the right. */
 export function NameShot({ castShadows = false }: { castShadows?: boolean }) {
   const title = useSceneText("title", "Meet Fairywren.");

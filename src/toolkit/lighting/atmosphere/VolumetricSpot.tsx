@@ -3,17 +3,28 @@ import {
   AdditiveBlending,
   BackSide,
   BoxGeometry,
+  type Camera,
   Color,
+  DepthTexture,
+  FloatType,
   Matrix4,
   type Mesh,
+  MeshBasicMaterial,
+  NearestFilter,
   Object3D,
+  type PerspectiveCamera,
+  type Scene,
   ShaderMaterial,
   type SpotLight,
+  Vector2,
   Vector3,
+  type WebGLRenderer,
+  WebGLRenderTarget,
 } from "three";
 import { useTimeline } from "../../../engine/timeline";
 import { BEAM_FRAGMENT, BEAM_VERTEX } from "./beamShader";
 import { GOBO_DEFAULTS, type GoboSpec, goboTexture } from "./gobo";
+import { renderOccluders } from "./occlusionPass";
 
 type V3 = [number, number, number];
 
@@ -31,6 +42,8 @@ export interface BeamHaze {
   heightFalloff: number;
   /** In-scatter gain against the light's surface intensity. */
   strength: number;
+  /** Weight of a sharp second forward lobe: the haze round the source glows hot. */
+  hotspot: number;
 }
 
 export const BEAM_HAZE_DEFAULTS: BeamHaze = {
@@ -41,6 +54,7 @@ export const BEAM_HAZE_DEFAULTS: BeamHaze = {
   drift: [0.05, 0.02, 0.03],
   heightFalloff: 0,
   strength: 1,
+  hotspot: 0,
 };
 
 export interface VolumetricSpotProps {
@@ -68,6 +82,8 @@ export interface VolumetricSpotProps {
   floorY?: number;
   /** How far the beam proxy reaches when `distance` is 0. */
   reach?: number;
+  /** Haze in front of the product too: a depth pre-pass stops each ray at the real surface (one extra depth render a frame). */
+  veil?: boolean;
 }
 
 const FLOOR_LIFT = 0.004;
@@ -116,6 +132,7 @@ export function VolumetricSpot(props: VolumetricSpotProps) {
     beam = true,
     floorY = -1.5,
     reach = 40,
+    veil = false,
   } = props;
   const haze = { ...BEAM_HAZE_DEFAULTS, ...props.haze };
   const gobo = props.gobo === null ? null : { ...GOBO_DEFAULTS, ...props.gobo };
@@ -173,11 +190,37 @@ export function VolumetricSpot(props: VolumetricSpotProps) {
           uShadowMap: { value: null },
           uShadowOn: { value: 0 },
           uShadowBias: { value: 0 },
+          uHotspot: { value: 0 },
+          uSceneDepth: { value: null },
+          uVeilOn: { value: 0 },
+          uDepthSize: { value: new Vector2(1, 1) },
+          uCamForward: { value: new Vector3(0, 0, -1) },
+          uCamNear: { value: 0.1 },
+          uCamFar: { value: 1000 },
         },
       }),
     [],
   );
   useLayoutEffect(() => () => material.dispose(), [material]);
+
+  // The veil's depth pre-pass: opaque content only, at the size of whatever the beam draws into.
+  const depthPass = useMemo(() => {
+    const depthTexture = new DepthTexture(1, 1, FloatType);
+    depthTexture.minFilter = NearestFilter;
+    depthTexture.magFilter = NearestFilter;
+    return {
+      target: new WebGLRenderTarget(1, 1, { depthBuffer: true, depthTexture }),
+      material: new MeshBasicMaterial({ colorWrite: false }),
+    };
+  }, []);
+  useLayoutEffect(
+    () => () => {
+      depthPass.target.dispose();
+      depthPass.target.depthTexture?.dispose();
+      depthPass.material.dispose();
+    },
+    [depthPass],
+  );
 
   const seconds = time.globalMs / 1000;
   useLayoutEffect(() => {
@@ -201,12 +244,16 @@ export function VolumetricSpot(props: VolumetricSpotProps) {
     u.uGobo.value = map;
     u.uGoboOn.value = map ? 1 : 0;
     u.uShadowBias.value = shadowBias;
+    u.uHotspot.value = haze.hotspot;
+    u.uVeilOn.value = veil ? 1 : 0;
+    material.depthTest = !veil;
   });
 
   // Per draw: the light's world pose and shadow matrix are only final once the renderer has updated them for this render.
   const onBeforeRender = useMemo(() => {
     const aim = new Vector3();
-    return () => {
+    const size = new Vector2();
+    return (renderer: WebGLRenderer, scene: Scene, camera: Camera) => {
       const light = lightRef.current;
       const u = material.uniforms;
       const apex = u.uApex.value as Vector3;
@@ -219,8 +266,21 @@ export function VolumetricSpot(props: VolumetricSpotProps) {
       const shadowMap = light.castShadow ? light.shadow.map : null;
       u.uShadowMap.value = shadowMap ? shadowMap.texture : null;
       u.uShadowOn.value = shadowMap ? 1 : 0;
+      if (u.uVeilOn.value < 0.5) return;
+      const outer = renderer.getRenderTarget();
+      if (outer) size.set(outer.width, outer.height);
+      else renderer.getDrawingBufferSize(size);
+      const { target } = depthPass;
+      if (target.width !== size.x || target.height !== size.y) target.setSize(size.x, size.y);
+      renderOccluders(renderer, scene, camera, target, depthPass.material, 0x000000);
+      const cam = camera as PerspectiveCamera;
+      u.uSceneDepth.value = target.depthTexture;
+      (u.uDepthSize.value as Vector2).set(target.width / size.x, target.height / size.y);
+      cam.getWorldDirection(u.uCamForward.value as Vector3);
+      u.uCamNear.value = cam.near;
+      u.uCamFar.value = cam.far;
     };
-  }, [material, targetObject]);
+  }, [material, targetObject, depthPass]);
 
   return (
     <>
@@ -251,7 +311,7 @@ export function VolumetricSpot(props: VolumetricSpotProps) {
           material={material}
           frustumCulled={false}
           renderOrder={-20}
-          onBeforeRender={onBeforeRender}
+          onBeforeRender={onBeforeRender as unknown as Mesh["onBeforeRender"]}
         />
       )}
     </>

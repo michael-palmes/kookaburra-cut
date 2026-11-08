@@ -6,52 +6,32 @@
   "formats": ["16:9"],
   "scenes": [
     {
-      "file": "scenes/01-name-today.tsx",
-      "durationMs": 2000
+      "file": "scenes/21-name-today.tsx",
+      "durationMs": 3000
     },
     {
-      "file": "scenes/02-name-shafts-full.tsx",
-      "durationMs": 2000
+      "file": "scenes/22-name-refined.tsx",
+      "durationMs": 3000
     },
     {
-      "file": "scenes/03-name-volumetric.tsx",
-      "durationMs": 2000
+      "file": "scenes/23-name-refined-veil.tsx",
+      "durationMs": 3000
     },
     {
-      "file": "scenes/03b-name-volumetric-reach.tsx",
-      "durationMs": 2000
+      "file": "scenes/31-lineup-today.tsx",
+      "durationMs": 3000
     },
     {
-      "file": "scenes/04-name-volumetric-unshadowed.tsx",
-      "durationMs": 2000
+      "file": "scenes/32-lineup-refined.tsx",
+      "durationMs": 3000
     },
     {
-      "file": "scenes/05-name-screen-rays.tsx",
-      "durationMs": 2000
+      "file": "scenes/41-card-today.tsx",
+      "durationMs": 3000
     },
     {
-      "file": "scenes/06-name-side-shadow.tsx",
-      "durationMs": 2000
-    },
-    {
-      "file": "scenes/07-name-side-unshadowed.tsx",
-      "durationMs": 2000
-    },
-    {
-      "file": "scenes/08-lineup-today.tsx",
-      "durationMs": 2000
-    },
-    {
-      "file": "scenes/09-lineup-volumetric.tsx",
-      "durationMs": 2000
-    },
-    {
-      "file": "scenes/10-card-today.tsx",
-      "durationMs": 2000
-    },
-    {
-      "file": "scenes/11-card-volumetric.tsx",
-      "durationMs": 2000
+      "file": "scenes/42-card-refined.tsx",
+      "durationMs": 3000
     }
   ]
 }

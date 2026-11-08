@@ -15,6 +15,12 @@ export interface GoboSpec {
   /** Rotation of the pattern in the light's view, degrees. */
   angleDeg: number;
   seed: number;
+  /** Per-bar brightness spread (slats, blinds): 0 even, 1 lets some bars fall near dark. */
+  gain?: number;
+  /** How far each bar's edges wander along its length, as a fraction of one period. */
+  ragged?: number;
+  /** Light the dark parts still pass, 0..1: lowers the contrast. */
+  fill?: number;
 }
 
 export const GOBO_DEFAULTS: GoboSpec = {
@@ -56,6 +62,39 @@ function bandValue(s: number, intervals: [number, number][], edge: number): numb
   return Math.min(1, Math.max(0, v));
 }
 
+const RAGGED_CELLS = 9;
+
+/** Bars with their own brightness and wandering edges, from a second seeded stream so plain bars keep their bytes. */
+function raggedBands(spec: GoboSpec, intervals: [number, number][], edge: number) {
+  const rand = createSeededRandom((spec.seed ^ 0x9e3779b9) >>> 0);
+  const period = 1 / intervals.length;
+  const amp = (spec.ragged ?? 0) * period;
+  const bars = intervals.map(([a, b]) => ({
+    a,
+    b,
+    gain: 1 - (spec.gain ?? 0) * rand(),
+    lo: Array.from({ length: RAGGED_CELLS + 1 }, () => rand() - 0.5),
+    hi: Array.from({ length: RAGGED_CELLS + 1 }, () => rand() - 0.5),
+  }));
+  const wander = (table: number[], t: number) => {
+    const x = Math.min(0.999999, Math.max(0, t)) * RAGGED_CELLS;
+    const i = Math.floor(x);
+    const f = x - i;
+    const u = f * f * (3 - 2 * f);
+    return table[i] + (table[i + 1] - table[i]) * u;
+  };
+  return (s: number, t: number) => {
+    let v = 0;
+    for (const bar of bars) {
+      const a = bar.a + amp * wander(bar.lo, t);
+      const b = bar.b + amp * wander(bar.hi, t);
+      if (b <= a) continue;
+      v += bar.gain * (smooth(a - edge, a + edge, s) - smooth(b - edge, b + edge, s));
+    }
+    return Math.min(1, Math.max(0, v));
+  };
+}
+
 function valueNoise(rand: () => number, cells: number): (x: number, y: number) => number {
   const grid = new Float32Array((cells + 1) * (cells + 1));
   for (let i = 0; i < grid.length; i++) grid[i] = rand();
@@ -87,16 +126,26 @@ export function goboSampler(spec: GoboSpec): (u: number, v: number) => number {
   };
   const n = Math.max(1, Math.round(spec.count));
   const edge = Math.max(1e-4, (spec.softness / n) * 0.5);
+  const fill = Math.min(1, Math.max(0, spec.fill ?? 0));
+  const shaped = (f: (u: number, v: number) => number) =>
+    fill > 0 ? (u: number, v: number) => fill + (1 - fill) * f(u, v) : f;
   switch (spec.pattern) {
     case "slats":
     case "blinds": {
       const intervals = slatIntervals(spec, spec.pattern === "blinds");
-      return (u, v) => bandValue(rotate(u, v)[0], intervals, edge);
+      if (!spec.gain && !spec.ragged) {
+        return shaped((u, v) => bandValue(rotate(u, v)[0], intervals, edge));
+      }
+      const bands = raggedBands(spec, intervals, edge);
+      return shaped((u, v) => {
+        const [s, t] = rotate(u, v);
+        return bands(s, t);
+      });
     }
     case "window": {
       const rows = Math.max(1, Math.round(n * 1.5));
       const mullion = (1 - spec.duty) / 2;
-      return (u, v) => {
+      return shaped((u, v) => {
         const [x, y] = rotate(u, v);
         const fx = (x * n) % 1;
         const fy = (y * rows) % 1;
@@ -104,7 +153,7 @@ export function goboSampler(spec: GoboSpec): (u: number, v: number) => number {
         const across = smooth(mullion - edge * n, mullion + edge * n, Math.min(fx, 1 - fx));
         const down = smooth(mullion - edge * rows, mullion + edge * rows, Math.min(fy, 1 - fy));
         return frame * across * down;
-      };
+      });
     }
     case "dapple": {
       const rand = createSeededRandom(spec.seed);
@@ -112,11 +161,11 @@ export function goboSampler(spec: GoboSpec): (u: number, v: number) => number {
       const fine = valueNoise(rand, n * 3);
       const threshold = 1 - spec.duty;
       const width = Math.max(0.01, spec.softness * 0.5);
-      return (u, v) => {
+      return shaped((u, v) => {
         const [x, y] = rotate(u, v);
         const f = 0.7 * coarse(x, y) + 0.3 * fine(x, y);
         return smooth(threshold - width, threshold + width, f);
-      };
+      });
     }
   }
 }

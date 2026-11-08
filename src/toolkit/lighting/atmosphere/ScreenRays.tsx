@@ -5,10 +5,8 @@ import {
   BufferGeometry,
   type Camera,
   Color,
-  type Material,
   type Mesh,
   MeshBasicMaterial,
-  type Object3D,
   type Scene,
   ShaderMaterial,
   Vector2,
@@ -17,6 +15,7 @@ import {
   WebGLRenderTarget,
 } from "three";
 import { LOOK_GLSL_HASH } from "../../stage/scene3d/kit/glsl";
+import { renderOccluders } from "./occlusionPass";
 
 type V3 = [number, number, number];
 
@@ -118,16 +117,6 @@ function fullScreenTriangle(): BufferGeometry {
   return g;
 }
 
-/** Content the occlusion pass leaves out: backgrounds, the frame layers, translucent parts, text and anything flagged. */
-function occludes(o: Object3D): boolean {
-  const mesh = o as Mesh;
-  if (!mesh.isMesh) return false;
-  if (o.renderOrder < 0 || o.userData.atmosNoOcclude) return false;
-  if ("_private_text" in o) return false;
-  const mats = (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) as Material[];
-  return !mats.some((m) => m.transparent);
-}
-
 /** Prototype: screen-space light shafts (Mitchell's radial march). A quarter-size pass draws everything that blocks light black on white; a full-frame triangle then marches each pixel toward the light's screen position, so the handset casts streaks. */
 export function ScreenRays({
   source,
@@ -197,7 +186,6 @@ export function ScreenRays({
   const onBeforeRender = useMemo(() => {
     const world = new Vector3();
     const size = new Vector2();
-    const clear = new Color();
     return (renderer: WebGLRenderer, scene: Scene, camera: Camera) => {
       const self = meshRef.current;
       if (!self) return;
@@ -212,32 +200,7 @@ export function ScreenRays({
       const u = material.uniforms;
       (u.uSource.value as Vector2).set(world.x * 0.5 + 0.5, world.y * 0.5 + 0.5);
       u.uAspect.value = size.x / size.y;
-
-      const hidden: Object3D[] = [];
-      scene.traverseVisible((o) => {
-        if ((o as Mesh).isMesh && !occludes(o)) hidden.push(o);
-      });
-      for (const o of hidden) o.visible = false;
-      const prevOverride = scene.overrideMaterial;
-      const prevBackground = scene.background;
-      const prevAutoClear = renderer.autoClear;
-      const prevShadows = renderer.shadowMap.autoUpdate;
-      renderer.getClearColor(clear);
-      const prevAlpha = renderer.getClearAlpha();
-      scene.overrideMaterial = black;
-      scene.background = null;
-      renderer.shadowMap.autoUpdate = false;
-      renderer.autoClear = true;
-      renderer.setRenderTarget(target);
-      renderer.setClearColor(0xffffff, 1);
-      renderer.render(scene, camera);
-      renderer.setRenderTarget(outer);
-      renderer.setClearColor(clear, prevAlpha);
-      renderer.autoClear = prevAutoClear;
-      renderer.shadowMap.autoUpdate = prevShadows;
-      scene.background = prevBackground;
-      scene.overrideMaterial = prevOverride;
-      for (const o of hidden) o.visible = true;
+      renderOccluders(renderer, scene, camera, target, black, 0xffffff);
     };
   }, [material, target, black, source[0], source[1], source[2]]);
 

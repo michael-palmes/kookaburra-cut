@@ -1,0 +1,124 @@
+{
+  "version": 1,
+  "name": "Lineup, matched: today",
+  "devices": [
+    {
+      "id": "p1",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/fairywren-today-dark-phone.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [-3.358, -1.397604, -1.341],
+        "rotationDeg": [-90, 0, 0.7],
+        "scale": 1.113
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "soft"
+    },
+    {
+      "id": "p2",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/fairywren-focus-phone.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [-1.739, -1.397604, 0.055],
+        "rotationDeg": [-90, 0, 1.9],
+        "scale": 1.113
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "soft"
+    },
+    {
+      "id": "p3",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/fairywren-sorted-dark-phone.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [0.032, -1.397604, 0.772],
+        "rotationDeg": [-90, 0, 0.7],
+        "scale": 1.113
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "soft"
+    },
+    {
+      "id": "p4",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/fairywren-insights-phone.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [1.778, -1.397604, 0.089],
+        "rotationDeg": [-90, 0, 0.6],
+        "scale": 1.113
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "soft"
+    },
+    {
+      "id": "p5",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/fairywren-today-dark-phone.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [3.341, -1.397604, -1.258],
+        "rotationDeg": [-90, 0, 0.5],
+        "scale": 1.113
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "soft"
+    }
+  ],
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "position": [0, 8.089, 6.015],
+          "aim": {
+            "mode": "point",
+            "at": [0, -1.5, 0]
+          },
+          "fov": 25
+        }
+      }
+    ],
+    "segments": []
+  },
+  "backdrop": {
+    "type": "floor",
+    "color": "#141110"
+  },
+  "text": {
+    "title": ""
+  },
+  "stills": {
+    "marksMs": [2000]
+  }
+}

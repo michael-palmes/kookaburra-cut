@@ -48,4 +48,17 @@ describe("gobo raster", () => {
       expect(sample(t, 0.5)).toBeLessThanOrEqual(1);
     }
   });
+
+  it("keeps plain bars byte-identical when the ragged options are off", () => {
+    const plain = rasterGobo(GOBO_DEFAULTS, 64);
+    expect(sha(rasterGobo({ ...GOBO_DEFAULTS, gain: 0, ragged: 0, fill: 0 }, 64))).toBe(sha(plain));
+  });
+
+  it("dims bars with gain, wanders their edges and lifts the gaps with fill", () => {
+    const base = { ...GOBO_DEFAULTS, count: 12, duty: 0.4, softness: 0.1 };
+    expect(mean({ ...base, gain: 0.8 })).toBeLessThan(mean(base));
+    expect(sha(rasterGobo({ ...base, ragged: 0.5 }, 64))).not.toBe(sha(rasterGobo(base, 64)));
+    const lifted = goboSampler({ ...base, fill: 0.3 });
+    for (let k = 0; k < 64; k++) expect(lifted(k / 63, 0.5)).toBeGreaterThanOrEqual(0.3 - 1e-9);
+  });
 });

@@ -6,47 +6,27 @@
   "formats": ["16:9"],
   "scenes": [
     {
-      "file": "scenes/01-name-today.tsx",
+      "file": "scenes/21-name-today.tsx",
       "durationMs": 4000
     },
     {
-      "file": "scenes/02-name-shafts-full.tsx",
+      "file": "scenes/22-name-refined.tsx",
       "durationMs": 4000
     },
     {
-      "file": "scenes/03-name-volumetric.tsx",
-      "durationMs": 4000,
-      "transition": {
-        "type": "crossfade",
-        "durationMs": 600
-      }
-    },
-    {
-      "file": "scenes/04-name-volumetric-unshadowed.tsx",
-      "durationMs": 4000,
-      "transition": {
-        "type": "crossfade",
-        "durationMs": 600
-      }
-    },
-    {
-      "file": "scenes/05-name-screen-rays.tsx",
+      "file": "scenes/23-name-refined-veil.tsx",
       "durationMs": 4000
     },
     {
-      "file": "scenes/09-lineup-volumetric.tsx",
+      "file": "scenes/32-lineup-refined.tsx",
       "durationMs": 4000
     },
     {
-      "file": "scenes/10-card-today.tsx",
-      "durationMs": 4000,
-      "transition": {
-        "type": "crossfade",
-        "durationMs": 600
-      }
+      "file": "scenes/41-card-today.tsx",
+      "durationMs": 4000
     },
     {
-      "file": "scenes/11-card-volumetric.tsx",
+      "file": "scenes/42-card-refined.tsx",
       "durationMs": 4000
     }
   ]

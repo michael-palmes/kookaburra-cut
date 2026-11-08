@@ -2,6 +2,8 @@ import { LOOK_GLSL_HASH, LOOK_GLSL_NOISE } from "../../stage/scene3d/kit/glsl";
 
 /** Fixed march length: export contract once shipped (every lane, preview included). */
 export const BEAM_STEPS = 48;
+/** The sharp second phase lobe that makes the haze round the source glow hot. */
+const HOTSPOT_G = "0.9";
 
 // language=GLSL
 export const BEAM_VERTEX = /* glsl */ `
@@ -28,6 +30,7 @@ uniform float uSoftRadius;
 uniform vec3 uRadiance;
 uniform float uDensity;
 uniform float uG;
+uniform float uHotspot;
 uniform float uFloorY;
 uniform float uHeightFalloff;
 uniform vec3 uDrift;
@@ -39,7 +42,22 @@ uniform mat4 uLightMatrix;
 uniform sampler2D uShadowMap;
 uniform float uShadowOn;
 uniform float uShadowBias;
+uniform sampler2D uSceneDepth;
+uniform float uVeilOn;
+uniform vec2 uDepthSize;
+uniform vec3 uCamForward;
+uniform float uCamNear;
+uniform float uCamFar;
 varying vec3 vWorld;
+
+// Distance along the view ray to the opaque surface behind this pixel, from the veil's depth pre-pass.
+float sceneDistance(vec3 rd) {
+  float d = texelFetch(uSceneDepth, ivec2(gl_FragCoord.xy * uDepthSize), 0).r;
+  if (d >= 1.0) return 1e6;
+  float z = d * 2.0 - 1.0;
+  float viewZ = 2.0 * uCamNear * uCamFar / (uCamFar + uCamNear - z * (uCamFar - uCamNear));
+  return viewZ / max(dot(rd, uCamForward), 1e-4);
+}
 
 // The ray's span inside the forward cone (apex, unit axis, cos of the half angle); x > y is a miss.
 vec2 coneSpan(vec3 ro, vec3 rd, vec3 apex, vec3 axis, float cosA) {
@@ -96,6 +114,7 @@ void main() {
   vec2 span = coneSpan(ro, rd, uApex, uAxis, uCosOuter);
   float t0 = max(span.x, 0.0);
   float t1 = min(span.y, tMax);
+  if (uVeilOn > 0.5) t1 = min(t1, sceneDistance(rd));
   if (rd.y < 0.0 && ro.y > uFloorY) t1 = min(t1, (uFloorY - ro.y) / rd.y);
   if (uRange > 0.0) {
     vec3 oc = ro - uApex;
@@ -133,7 +152,10 @@ void main() {
       float n = vnoise3(p * uNoiseScale + uDrift) * 0.65 + vnoise3(p * uNoiseScale * 2.7 - uDrift * 1.3) * 0.35;
       dens *= mix(1.0, smoothstep(0.15, 0.85, n) * 2.0, uNoiseAmount);
     }
-    sum += light * dens * hgPhase(dot(ldir, -rd), uG);
+    float cosTheta = dot(ldir, -rd);
+    float phase = hgPhase(cosTheta, uG);
+    if (uHotspot > 0.0) phase = mix(phase, hgPhase(cosTheta, ${HOTSPOT_G}), uHotspot);
+    sum += light * dens * phase;
   }
   vec3 col = uRadiance * (sum * dt);
   gl_FragColor = vec4(col, 1.0);
