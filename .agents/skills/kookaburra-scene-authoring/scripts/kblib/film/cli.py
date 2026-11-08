@@ -267,7 +267,7 @@ def pacing_lines(pace: Dict[str, Any], film: bool) -> List[str]:
     else:
         head = "pacing: no beat grid, so a bar counts as 2 s" + ("" if song.get("soundtrack") else " (no soundtrack: ask the person for a song first)")
     lines = [head]
-    if film and pace.get("changes"):
+    if film and pace.get("changes") and pace["changes"].get("perBar") is not None:
         lines.append(f"  {pace['changes']['count']} changes on the film, {pace['changes']['perBar']:g} a bar")
     still = pace["still"]
     lines.append(f"  longest stretch with nothing new: {still['longestStillMs'] / 1000:.1f}s" + ("" if film else " (keyed; --file F measures the film)"))

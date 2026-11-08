@@ -96,13 +96,15 @@ def song_shape(project: Project, manifest: Optional[Dict[str, Any]] = None) -> D
         return use["offsetMs"] + (b - 1) * bar - offset
 
     parts: List[Dict[str, Any]] = []
-    for ident, s in ((m or {}).get("sections") or {}).items():
-        kind = part_kind(ident)
-        lo = model.resolve(f"section:{ident}", m)
-        to = s.get("to")
-        hi = model.resolve(to, m) if isinstance(to, str) else {"ok": is_number(to), "projectMs": to}
-        if kind and lo["ok"] and hi["ok"]:
-            parts.append({"id": ident, "label": s.get("label") or ident, "kind": kind, "fromMs": lo["projectMs"], "toMs": hi["projectMs"]})
+    sections = (m or {}).get("sections") or {}
+    # Sections are the song's parts only when every one is named like a part; story sections (a reveal, a lockup) leave the analysis's.
+    if sections and all(part_kind(ident) for ident in sections):
+        for ident, s in sections.items():
+            lo = model.resolve(f"section:{ident}", m)
+            to = s.get("to")
+            hi = model.resolve(to, m) if isinstance(to, str) else {"ok": is_number(to), "projectMs": to}
+            if lo["ok"] and hi["ok"]:
+                parts.append({"id": ident, "label": s.get("label") or ident, "kind": part_kind(ident), "fromMs": lo["projectMs"], "toMs": hi["projectMs"]})
     source = "sections" if parts else None
     form = analysis.get("form") if analysis is not None and isinstance(analysis.get("form"), dict) else {}
     if not parts and fit:

@@ -79,7 +79,7 @@ def window(shape: Dict[str, Any], project: Project, manifest: Dict[str, Any], fi
 
 def parts_in(shape: Dict[str, Any], lo: int, hi: int) -> List[Dict[str, Any]]:
     """The song's parts within bars lo..hi (hi exclusive) with any stretch between them a quiet part; one under 2 bars
-    joins the part after it (the one before at the end)."""
+    joins the part before it, or the quiet part after it at the start (a peak keeps its downbeat)."""
     out: List[Dict[str, Any]] = []
     cursor = lo
 
@@ -99,10 +99,14 @@ def parts_in(shape: Dict[str, Any], lo: int, hi: int) -> List[Dict[str, Any]]:
     while i < len(out):
         p = out[i]
         if p["gap"] and p["toBar"] - p["fromBar"] < GAP_BARS and len(out) > 1:
-            if i + 1 < len(out):
-                out[i + 1]["fromBar"] = p["fromBar"]
-            else:
+            if i > 0:
                 out[i - 1]["toBar"] = p["toBar"]
+            elif out[1]["kind"] == "quiet":
+                out[1]["fromBar"] = p["fromBar"]
+            else:
+                p["gap"] = False
+                i += 1
+                continue
             del out[i]
             continue
         i += 1
@@ -127,20 +131,22 @@ def _preferred(unit: Dict[str, Any]) -> float:
     return PEAK_BARS if unit["kind"] == "peak" else QUIET_BARS
 
 
-def _most(unit: Dict[str, Any]) -> int:
-    """Scenes a stretch can hold: a bar each when quiet, two beats each in a peak, one burst."""
+def _most(unit: Dict[str, Any], per_bar: int) -> int:
+    """Scenes a stretch can hold: a bar each when quiet, two beats each in a peak (split's half bars), one burst."""
     if unit["kind"] == "burst":
         return 1
-    return max(1, unit["bars"] * (2 if unit["kind"] == "peak" else 1))
+    if unit["kind"] == "peak" and per_bar >= 4 and per_bar % 2 == 0:
+        return unit["bars"] * per_bar // 2
+    return max(1, unit["bars"])
 
 
-def fit_counts(units: List[Dict[str, Any]], target: Optional[int]) -> List[int]:
+def fit_counts(units: List[Dict[str, Any]], target: Optional[int], per_bar: int = 4) -> List[int]:
     """Scenes per stretch: its bars over the preferred length, then grown or shrunk to target where the scenes run
     longest or shortest against that length."""
     counts = [1 if u["kind"] == "burst" else max(1, _half_up(u["bars"] / _preferred(u))) for u in units]
     if target is None:
         return counts
-    ceiling = sum(_most(u) for u in units)
+    ceiling = sum(_most(u, per_bar) for u in units)
     if target > ceiling:
         raise KbError(f"{target} scenes don't fit these bars: at most {ceiling} (a bar each in quiet parts, two beats in peaks)",
                       EXIT_PROBLEMS, kind="invalid", hint="plan fewer scenes, or a longer stretch of the song with --from and --to")
@@ -152,7 +158,7 @@ def fit_counts(units: List[Dict[str, Any]], target: Optional[int]) -> List[int]:
         return units[j]["bars"] / counts[j] / _preferred(units[j])
 
     while sum(counts) < target:
-        i = max((j for j in range(len(units)) if counts[j] < _most(units[j])), key=lambda j: (ratio(j), -j))
+        i = max((j for j in range(len(units)) if counts[j] < _most(units[j], per_bar)), key=lambda j: (ratio(j), -j))
         counts[i] += 1
     while sum(counts) > target:
         i = min((j for j in range(len(units)) if counts[j] > 1), key=lambda j: (ratio(j), j))
@@ -190,7 +196,7 @@ def draft(project: Project, scenes: Optional[int] = None, first: Optional[str] =
             units.append(dict(p, kind="burst", fromBar=p["toBar"] - size, bars=size, part=i))
         else:
             units.append(dict(p, part=i))
-    counts = fit_counts(units, scenes)
+    counts = fit_counts(units, scenes, per)
     first_peak = next((p["fromBar"] for p in parts if p["kind"] == "peak"), None)
     slots: List[Dict[str, Any]] = []
     for unit, count in zip(units, counts):

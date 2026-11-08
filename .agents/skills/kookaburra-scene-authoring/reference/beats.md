@@ -269,7 +269,8 @@ Or a markdown table with `scene`, `cut`, `transition`, `length` and `align` colu
 ```
 
 - It needs the authored grid, and takes the song's parts (`intro`, `build-N`, `peak-N`,
-  `breakdown-N`, `outro`) from sections named that way, else from the analysis. With no
+  `breakdown-N`, `outro`) from the sections when every one is named that way, else from the
+  analysis. With no
   parts every bar plans as quiet.
 - Each part gets scenes of the length its energy suits (about 2 bars in quiet parts, 1 to
   2 in peaks), the build into the last peak ends in a burst (one scene, a cut every beat),

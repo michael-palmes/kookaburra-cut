@@ -44,6 +44,8 @@ class ShapeTests(KbTestCase):
         self.assertEqual((shape["finalHit"], shape["finalHitMs"], shape["partsSource"]), ("bar:32", 62000, "sections"))
         story = song_project(self.tmp / "b", stems(2), sections=[{"id": "reveal", "from": "bar:9", "to": "bar:11"}])
         self.assertEqual(pulse.song_shape(Project(story))["parts"], [])
+        mixed = song_project(self.tmp / "c", stems(2), sections=[{"id": "intro", "from": "bar:1", "to": "bar:9"}, {"id": "reveal", "from": "bar:9", "to": "bar:11"}])
+        self.assertEqual(pulse.song_shape(Project(mixed))["parts"], [])
 
     def test_analysis_parts_convert_through_time(self) -> None:
         project = song_project(self.tmp, stems(2), sections=[], cues={})
@@ -120,6 +122,18 @@ class PacingCheckTests(KbTestCase):
         self.assertIn("with no soundtrack, something new every 2 s", out["warnings"][0])
 
 
+class StaticChangeTests(KbTestCase):
+    def test_camera_kicks_count_as_changes(self) -> None:
+        project = song_project(self.tmp, stems(2), [8000, 2000])
+        p = Project(project)
+        bare = pc.check(p, tl.project_slots(p))
+        self.assertEqual([i["scene"] for i in bare["issues"] if i["kind"] == "still"], ["01-s1"])
+        write_json(project / "scenes" / "01-s1.json", {"version": 1, "cameraKicks": [
+            {"at": "bar:2", "zoom": 1.04, "releaseMs": 300}, {"at": 4000, "zoom": 1.04, "releaseMs": 300}, {"at": "bar:4", "zoom": 1.04, "releaseMs": 300}]})
+        kicked = pc.check(Project(project), tl.project_slots(Project(project)))
+        self.assertEqual([i for i in kicked["issues"] if i["kind"] == "still"], [])
+
+
 class ChangeDetectorTests(KbTestCase):
     def test_a_change_splits_the_stillness_and_a_slow_drift_does_not(self) -> None:
         flat = bytes([10] * 1024)
@@ -190,6 +204,18 @@ class BeatsPlanTests(KbTestCase):
         self.assertEqual([e["cutAt"] for e in entries], [c["cutAt"] for c in data["cuts"]])
         self.assertEqual(entries[-1]["cutAt"], "bar:33")
         self.assertExit(self.kb(["beats", "plan", "--apply", "--scenes", "5"], cwd=project), 2)
+
+    def test_a_pickup_before_a_peak_keeps_the_reveal_on_its_downbeat(self) -> None:
+        project = song_project(self.tmp, stems(3), sections=[{"id": "peak-1", "from": "bar:2", "to": "bar:10"}], cues={})
+        data = self.plan(project, "--to", "bar:10")
+        self.assertEqual([(p["id"], p["fromBar"]) for p in data["parts"]], [("unnamed", 1), ("peak-1", 2)])
+        self.assertEqual(next(s for s in data["slots"] if s["role"].startswith("reveal"))["from"], "bar:2")
+
+    def test_two_four_time_caps_peaks_at_a_scene_a_bar(self) -> None:
+        project = song_project(self.tmp, stems(3), grid={"bpm": 120, "offsetMs": 0, "beatsPerBar": 2},
+                               sections=[{"id": "peak-1", "from": "bar:1", "to": "bar:9"}], cues={})
+        self.assertEqual(len(self.plan(project, "--to", "bar:9", "--scenes", "8")["slots"]), 8)
+        self.assertIn("don't fit", self.plan(project, "--to", "bar:9", "--scenes", "9", code=1)["error"])
 
     def test_no_song_asks_for_one_first(self) -> None:
         out = self.plan(make_project(self.tmp, scenes=stems(2)), code=1)

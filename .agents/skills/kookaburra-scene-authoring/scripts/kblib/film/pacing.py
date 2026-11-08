@@ -27,9 +27,7 @@ LABEL_TOKENS = frozenset(("label", "labels", "chip", "chips", "tag", "tags", "ba
                           "kicker", "footnote", "legend", "unit", "units", "axis", "meta"))
 MOTION_SIDE = 32
 MOTION_FPS = 10
-# A cell changing this much past its own level over the second around it (out of 255), in this many cells at once, is a
-# change: a cut, a line landing, a kick. This many cells changing by BUSY_DIFF at once is steady fast motion (a flight, a
-# playing recording). A slow drift or a looping background is neither.
+# A change: EVENT_CELLS cells moving EVENT_DIFF (of 255) past their own median; live: that, or BUSY_CELLS moving BUSY_DIFF.
 EVENT_DIFF = 6
 EVENT_CELLS = 6
 BUSY_DIFF = 8
@@ -206,8 +204,7 @@ def change_marks(samples: List[bytes]) -> Tuple[List[int], List[bool]]:
                 if hits >= EVENT_CELLS:
                     break
         if hits >= EVENT_CELLS:
-            if not events or events[-1] < k:
-                events.append(k + 1)
+            events.append(k + 1)
             live[k + 1] = True
         elif sum(1 for x in row if x >= BUSY_DIFF) >= BUSY_CELLS:
             live[k + 1] = True
@@ -218,10 +215,13 @@ def change_marks(samples: List[bytes]) -> Tuple[List[int], List[bool]]:
 
 def still_spans(samples: List[bytes], step_ms: float, start_ms: float = 0.0) -> List[Tuple[float, float]]:
     """Stretches where nothing new appears, as project (from, to) ms: between one live sample and the next."""
-    if not samples:
+    return spans_of(change_marks(samples)[1], step_ms, start_ms) if samples else []
+
+
+def spans_of(live: List[bool], step_ms: float, start_ms: float = 0.0) -> List[Tuple[float, float]]:
+    if not live:
         return []
-    _events, live = change_marks(samples)
-    marks = [0] + [k for k, flag in enumerate(live) if flag] + [len(samples) - 1]
+    marks = [0] + [k for k, flag in enumerate(live) if flag] + [len(live) - 1]
     return [(start_ms + a * step_ms, start_ms + b * step_ms) for a, b in zip(marks, marks[1:]) if b > a + 1 or (b > a and not live[b])]
 
 
@@ -240,8 +240,8 @@ def film_motion(ffmpeg: str, path: Path, fps: float, offset: int, slots: List[Di
     step = 1000.0 / MOTION_FPS
     poster_ms = offset * 1000.0 / fps if fps else 0.0
     total = float(slots[-1]["endMs"]) if slots else 0.0
-    events, _live = change_marks(samples)
-    spans = [(max(0.0, a - poster_ms), min(total, b - poster_ms)) for a, b in still_spans(samples, step)]
+    events, live = change_marks(samples)
+    spans = [(max(0.0, a - poster_ms), min(total, b - poster_ms)) for a, b in spans_of(live, step)]
     changes = [k * step - poster_ms for k in events if 0 <= k * step - poster_ms <= total]
     return {"source": "film", "stepMs": int(step), "samples": len(samples), "spans": [(a, b) for a, b in spans if b > a], "changes": changes}
 
@@ -263,9 +263,28 @@ def _subtract(spans: List[Tuple[float, float]], cut: Tuple[float, float]) -> Lis
     return out
 
 
+def kick_times(doc: Optional[Dict[str, Any]], m: Optional[Dict[str, Any]], start_ms: float) -> List[float]:
+    """Scene-local ms of each camera kick: `at` in ms, or a position resolved against the grid."""
+    from ..beats import model
+
+    out: List[float] = []
+    for kick in (doc or {}).get("cameraKicks") or []:
+        at = kick.get("at") if isinstance(kick, dict) else None
+        if is_number(at):
+            out.append(float(at))
+        elif isinstance(at, str):
+            r = model.resolve_local(at, m, start_ms)
+            if r["ok"]:
+                out.append(float(r["projectMs"]))
+    return out
+
+
 def static_still_spans(project: Project, slots: List[Dict[str, Any]], docs: List[Optional[Dict[str, Any]]], tsx: List[str]) -> List[Tuple[float, float]]:
-    """Gaps between cuts and keyed moves (scene and project camera keys), with scenes whose TSX drives motion or that play
-    a video taken out."""
+    """Gaps between cuts, keyed moves (scene and project camera keys) and camera kicks, with scenes whose TSX drives
+    motion or that play a video taken out."""
+    from ..beats import model
+
+    m = model.project_music(project.manifest())
     events: List[float] = []
     track = project.manifest().get("camera")
     for key in track if isinstance(track, list) else []:
@@ -273,7 +292,7 @@ def static_still_spans(project: Project, slots: List[Dict[str, Any]], docs: List
             events.append(float(key["tMs"]))
     for slot, doc in zip(slots, docs):
         events.append(float(slot["startMs"]))
-        events += [slot["startMs"] + t for t in keyed_times(doc) if 0 <= t <= slot["durationMs"]]
+        events += [slot["startMs"] + t for t in keyed_times(doc) + kick_times(doc, m, slot["startMs"]) if 0 <= t <= slot["durationMs"]]
     total = float(slots[-1]["endMs"]) if slots else 0.0
     marks = sorted(set([0.0, total] + [e for e in events if 0 <= e <= total]))
     spans = list(zip(marks, marks[1:]))
