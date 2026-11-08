@@ -1,0 +1,118 @@
+{
+  "version": 1,
+  "name": "Lineup: today",
+  "devices": [
+    {
+      "id": "p1",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/fairywren-today-dark-phone.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [-4.2, -1.42, -1.6],
+        "rotationDeg": [-90, 0, 6],
+        "scale": 1
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "soft"
+    },
+    {
+      "id": "p2",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/fairywren-focus-phone.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [-2.1, -1.42, 0.15],
+        "rotationDeg": [-90, 0, -4],
+        "scale": 1
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "soft"
+    },
+    {
+      "id": "p3",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/fairywren-insights-phone.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [0, -1.42, 1.3],
+        "rotationDeg": [-90, 0, 2],
+        "scale": 1
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "soft"
+    },
+    {
+      "id": "p4",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/fairywren-sorted-dark-phone.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [2.1, -1.42, 0.15],
+        "rotationDeg": [-90, 0, -5],
+        "scale": 1
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "soft"
+    },
+    {
+      "id": "p5",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/fairywren-today-dark-phone.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [4.2, -1.42, -1.6],
+        "rotationDeg": [-90, 0, 7],
+        "scale": 1
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "soft"
+    }
+  ],
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "azimuthDeg": 0,
+          "elevationDeg": 56,
+          "distance": 8.2,
+          "target": [0, -1.5, 0]
+        }
+      }
+    ],
+    "segments": []
+  },
+  "backdrop": {
+    "type": "floor",
+    "color": "#141110"
+  },
+  "stills": {
+    "marksMs": [1000]
+  }
+}

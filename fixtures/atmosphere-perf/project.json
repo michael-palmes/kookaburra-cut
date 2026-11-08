@@ -1,0 +1,53 @@
+{
+  "id": "atmosphere-perf",
+  "name": "Atmosphere Perf (research fixture)",
+  "version": 2,
+  "themeId": "kookaburra-obsidian-stage",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/01-name-today.tsx",
+      "durationMs": 4000
+    },
+    {
+      "file": "scenes/02-name-shafts-full.tsx",
+      "durationMs": 4000
+    },
+    {
+      "file": "scenes/03-name-volumetric.tsx",
+      "durationMs": 4000,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 600
+      }
+    },
+    {
+      "file": "scenes/04-name-volumetric-unshadowed.tsx",
+      "durationMs": 4000,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 600
+      }
+    },
+    {
+      "file": "scenes/05-name-screen-rays.tsx",
+      "durationMs": 4000
+    },
+    {
+      "file": "scenes/09-lineup-volumetric.tsx",
+      "durationMs": 4000
+    },
+    {
+      "file": "scenes/10-card-today.tsx",
+      "durationMs": 4000,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 600
+      }
+    },
+    {
+      "file": "scenes/11-card-volumetric.tsx",
+      "durationMs": 4000
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "name": "Name: volumetric spot, shadow map off",
+  "text": {
+    "title": "Meet Fairywren."
+  },
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/fairywren-today-dark-phone.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [-1.72, -0.06, 0.25],
+        "rotationDeg": [-9, 27, 8],
+        "scale": 1.42
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "soft"
+    }
+  ],
+  "background": {
+    "type": "color",
+    "color": "#0a0908"
+  },
+  "lighting": {
+    "environment": {
+      "source": "kookaburra:monochrome-studio",
+      "intensity": 0.22,
+      "rotationDeg": 0
+    },
+    "sun": {
+      "azimuthDeg": -55,
+      "elevationDeg": 32,
+      "intensity": 0.9,
+      "color": "#ffc888"
+    },
+    "fills": [],
+    "ambient": 0.05
+  },
+  "stills": {
+    "marksMs": [1000]
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "azimuthDeg": 0,
+          "elevationDeg": 0,
+          "distance": 5,
+          "target": [0, 0, 0]
+        }
+      }
+    ],
+    "segments": []
+  }
+}

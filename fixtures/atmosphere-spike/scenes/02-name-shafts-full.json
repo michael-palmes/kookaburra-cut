@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "name": "Name: clerestory pushed past the calm rule",
+  "text": {
+    "title": "Meet Fairywren."
+  },
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/fairywren-today-dark-phone.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [-1.72, -0.06, 0.25],
+        "rotationDeg": [-9, 27, 8],
+        "scale": 1.42
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "soft"
+    }
+  ],
+  "background": {
+    "type": "scene3d",
+    "look": "clerestory-shafts",
+    "colors": ["#c09058", "#5a4128", "#1a1410", "#e0b070"],
+    "speed": 1,
+    "params": {
+      "shaftCount": 5,
+      "tilt": 40,
+      "sweep": 0,
+      "haze": 1,
+      "dust": 0.4,
+      "poolSoftness": 0.5
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0a0908"
+    }
+  },
+  "lighting": {
+    "environment": {
+      "source": "kookaburra:interior",
+      "intensity": 0.3,
+      "rotationDeg": 0
+    },
+    "sun": {
+      "azimuthDeg": -75,
+      "elevationDeg": 50,
+      "intensity": 2.2,
+      "kelvin": 3200,
+      "angularDeg": 3
+    },
+    "ambient": 0.12
+  },
+  "stills": {
+    "marksMs": [1000]
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "azimuthDeg": 0,
+          "elevationDeg": 0,
+          "distance": 5,
+          "target": [0, 0, 0]
+        }
+      }
+    ],
+    "segments": []
+  }
+}
