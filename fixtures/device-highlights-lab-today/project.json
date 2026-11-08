@@ -1,0 +1,29 @@
+{
+  "id": "device-highlights-lab-today",
+  "name": "Device highlights lab, today (research, dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-obsidian-stage",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/01-hero.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/03-card.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/04-edge.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/05-glass.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/07-camera.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

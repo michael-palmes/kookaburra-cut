@@ -1,0 +1,131 @@
+{
+  "id": "device-highlights-lab",
+  "name": "Device highlights lab (research, dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-obsidian-stage",
+  "formats": ["16:9"],
+  "render": {
+    "toneMapping": "neutral"
+  },
+  "scenes": [
+    {
+      "file": "scenes/01-hero.tsx",
+      "durationMs": 1000,
+      "effects": {
+        "lens": {
+          "intensity": 1,
+          "bloom": 0.07,
+          "bloomRadius": 0.82,
+          "halation": 0.8,
+          "halationThreshold": 1,
+          "halationColor": "#ff7a30"
+        }
+      }
+    },
+    {
+      "file": "scenes/02-hero-glare.tsx",
+      "durationMs": 1000,
+      "effects": {
+        "lens": {
+          "intensity": 1,
+          "bloom": 0.07,
+          "bloomRadius": 0.82,
+          "halation": 0.8,
+          "halationThreshold": 1,
+          "halationColor": "#ff7a30",
+          "glare": 0.35,
+          "glarePoints": 4,
+          "glareAngleDeg": 25,
+          "glareThreshold": 4,
+          "glareFalloff": 0.9
+        }
+      }
+    },
+    {
+      "file": "scenes/03-card-glass.tsx",
+      "durationMs": 1000,
+      "effects": {
+        "lens": {
+          "intensity": 1,
+          "bloom": 0.05,
+          "bloomRadius": 0.8,
+          "halation": 0.3,
+          "halationThreshold": 1.5
+        }
+      }
+    },
+    {
+      "file": "scenes/04-edge.tsx",
+      "durationMs": 1000,
+      "effects": {
+        "lens": {
+          "intensity": 1,
+          "bloom": 0.05,
+          "bloomRadius": 0.8,
+          "halation": 0.3,
+          "halationThreshold": 1.5
+        }
+      }
+    },
+    {
+      "file": "scenes/05-glass.tsx",
+      "durationMs": 1000,
+      "effects": {
+        "lens": {
+          "intensity": 1,
+          "bloom": 0.05,
+          "bloomRadius": 0.8,
+          "halation": 0.3,
+          "halationThreshold": 1.5
+        }
+      }
+    },
+    {
+      "file": "scenes/06-glass-sweep.tsx",
+      "durationMs": 1000,
+      "effects": {
+        "lens": {
+          "intensity": 1,
+          "bloom": 0.05,
+          "bloomRadius": 0.8,
+          "halation": 0.3,
+          "halationThreshold": 1.5
+        }
+      }
+    },
+    {
+      "file": "scenes/07-camera.tsx",
+      "durationMs": 1000,
+      "effects": {
+        "lens": {
+          "intensity": 1,
+          "bloom": 0.05,
+          "bloomRadius": 0.8,
+          "halation": 0.3,
+          "halationThreshold": 1.5
+        }
+      }
+    },
+    {
+      "file": "scenes/08-edge-17-pro.tsx",
+      "durationMs": 1000,
+      "effects": {
+        "lens": {
+          "intensity": 1,
+          "bloom": 0.05,
+          "bloomRadius": 0.8,
+          "halation": 0.3,
+          "halationThreshold": 1.5
+        }
+      }
+    },
+    {
+      "file": "scenes/09-probe-hero.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/10-probe-edge.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

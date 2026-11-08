@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "name": "10-probe-edge",
+  "background": {
+    "type": "none"
+  },
+  "text": {
+    "probe": "1"
+  },
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "position": [0, 0, 4.2],
+          "aim": {
+            "mode": "point",
+            "at": [0, 0, 0]
+          },
+          "fov": 40
+        }
+      }
+    ],
+    "segments": []
+  },
+  "devices": [],
+  "lighting": {
+    "ambient": 0,
+    "fills": [],
+    "sun": {
+      "azimuthDeg": -125,
+      "elevationDeg": 22,
+      "intensity": 0,
+      "kelvin": 3000,
+      "enabled": false
+    },
+    "environment": {
+      "source": "kookaburra:strips-edge",
+      "intensity": 1,
+      "rotationDeg": 0
+    }
+  },
+  "stills": {
+    "marksMs": [500]
+  }
+}

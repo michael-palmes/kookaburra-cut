@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "name": "03-card-glass",
+  "background": {
+    "type": "none"
+  },
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "position": [-1.55, 0.45, 1.05],
+          "aim": {
+            "mode": "point",
+            "at": [0.05, -0.05, -0.35]
+          },
+          "fov": 34,
+          "dof": {
+            "mode": "depth",
+            "blur": 0.5,
+            "range": 0.3,
+            "focus": 1.45
+          }
+        }
+      }
+    ],
+    "segments": []
+  },
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "shadow": "none",
+      "placement": {
+        "position": [0, 0, 0],
+        "rotationDeg": [-62, 0, -20],
+        "scale": 1
+      },
+      "media": {
+        "src": "assets/screen-today.jpg",
+        "kind": "image"
+      },
+      "finish": "studio"
+    }
+  ],
+  "text": {
+    "card": "glass"
+  },
+  "lighting": {
+    "ambient": 0,
+    "fills": [],
+    "sun": {
+      "azimuthDeg": -125,
+      "elevationDeg": 22,
+      "intensity": 0,
+      "kelvin": 3000,
+      "enabled": false
+    },
+    "environment": {
+      "source": "kookaburra:strips-card",
+      "intensity": 1,
+      "rotationDeg": 0
+    }
+  },
+  "stills": {
+    "marksMs": [500]
+  }
+}
