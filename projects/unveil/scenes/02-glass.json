@@ -3,8 +3,9 @@
   "name": "Glass",
   "text": {
     "label": "02 · Glass",
-    "bars": "Bars 3–4 · Build",
+    "bars": "Bars 3–4 · Quiet build",
     "title": "",
-    "note": "A specular streak crosses the glass: slow dolly, motion blur"
+    "note": "A streak crosses the glass",
+    "e1": "A second streak, slower and wider"
   }
 }

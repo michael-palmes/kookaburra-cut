@@ -3,8 +3,9 @@
   "name": "Edge",
   "text": {
     "label": "01 · Edge",
-    "bars": "Bars 1–2 · Intro pulse",
+    "bars": "Bars 1–2 · Quiet build: a change each bar",
     "title": "",
-    "note": "Light finds the device's edge in the dark: macro, shallow focus, an area light sweeps"
+    "note": "Light finds the device's edge",
+    "e1": "The sweep runs along the frame"
   }
 }

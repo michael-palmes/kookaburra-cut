@@ -13,16 +13,27 @@ import {
   useTimeline,
 } from "@kookaburra/toolkit";
 
-// Animatic card: the bars this scene owns, the hits it marks, and how its copy builds.
-const FROM_BAR = 17;
-const TO_BAR = 18;
-const HITS: [number, number][] = [[17, 1]];
-const PRESET = "build";
-const STAGGER_BEATS = 0.5;
+// Animatic card: the bars this scene owns, its music hits, and every planned change, lit on its beat.
+const FROM_BAR = 22;
+const TO_BAR = 24;
+const HITS: [number, number][] = [[22, 1]];
+const LINES: [number, number][] = [
+  [22, 1],
+  [23, 1],
+  [23, 3],
+];
+const EXTRA: [number, number][] = [
+  [22, 2],
+  [22, 3],
+  [22, 4],
+];
+const TITLE_AT: [number, number] | null = null;
+const TITLE_MODE = "stamp" as "stamp" | "word";
+const MODE = "list" as "list" | "single";
 
 export default defineScene({
-  id: "unveil-09-claim-2",
-  durationMs: 1875,
+  id: "unveil-14-lineup",
+  durationMs: 3750,
   Scene() {
     const time = useTimeline();
     const { frame, safe } = useFormat();
@@ -30,9 +41,15 @@ export default defineScene({
     const grid = useBeatGrid();
     const label = useSceneText("label", "", "embedded");
     const bars = useSceneText("bars", "", "embedded");
-    const kicker = useSceneText("kicker", "", "embedded");
     const title = useSceneText("title", "");
     const note = useSceneText("note", "", "embedded");
+    const e1 = useSceneText("e1", "", "embedded");
+    const e2 = useSceneText("e2", "", "embedded");
+    const lines: [string, string][] = [
+      ["note", note],
+      ["e1", e1],
+      ["e2", e2],
+    ];
 
     const left = -frame.width / 2 + safe.left;
     const right = frame.width / 2 - safe.right;
@@ -44,12 +61,33 @@ export default defineScene({
 
     const perBar = grid?.beatsPerBar ?? 4;
     const span = TO_BAR - FROM_BAR;
-    const startMs = grid ? grid.bar(FROM_BAR) : 0;
-    const endMs = grid ? grid.bar(TO_BAR) : 1;
+    const at = (bar: number, beat = 1) => (grid ? grid.bar(bar, beat) : 0);
+    const startMs = at(FROM_BAR);
+    const endMs = grid ? at(TO_BAR) : 1;
     const progress = grid ? clamp01((time.localMs - startMs) / (endMs - startMs)) : 0;
+    const lineMs = LINES.map(([bar, beat]) => at(bar, beat));
+    const titleMs = TITLE_AT ? at(TITLE_AT[0], TITLE_AT[1]) : 0;
+    const titleWords = title ? title.split(/\s+/).filter(Boolean).length : 0;
+    const wordMs =
+      TITLE_AT && TITLE_MODE === "word"
+        ? Array.from({ length: titleWords }, (_, i) => titleMs + i * (grid?.beatMs ?? 469))
+        : TITLE_AT
+          ? [titleMs]
+          : [];
+    const changeMs = [
+      ...lineMs.slice(1),
+      ...EXTRA.map(([bar, beat]) => at(bar, beat)),
+      ...wordMs.filter((ms) => ms > startMs + 1),
+    ];
+    let active = 0;
+    for (let i = 0; i < lineMs.length; i++) if (time.localMs >= lineMs[i] - 1) active = i;
+    const kick = 1 + 0.025 * pulse(time, changeMs, { attackMs: 17, holdMs: 40, releaseMs: 320 });
+
     const railY = bottom + 0.08;
     const railLeft = left + 0.82;
     const railWidth = right - railLeft;
+    const xAtMs = (ms: number) =>
+      railLeft + railWidth * clamp01((ms - startMs) / (endMs - startMs));
     const xAt = (bar: number, beat = 1) =>
       railLeft + (railWidth * (bar - FROM_BAR + (beat - 1) / perBar)) / span;
     const fill = Math.max(railWidth * progress, 0.03);
@@ -57,6 +95,11 @@ export default defineScene({
     const beatsInBar = Array.from({ length: perBar }, (_, i) => i + 1);
     const beatTimes = (beat: number) =>
       grid ? Array.from({ length: span }, (_, i) => grid.bar(FROM_BAR + i, beat)) : [];
+    const listSize = title ? 0.15 : 0.24;
+    const listStep = listSize * 1.45;
+    const listTop = title
+      ? railY + 0.3 + (lines.length - 1) * listStep
+      : 0.12 + ((lines.length - 1) * listStep) / 2;
 
     return (
       <group>
@@ -91,47 +134,54 @@ export default defineScene({
           textAlign="right"
           position={[right, top - 0.08, 0.01]}
         />
-        {title && kicker ? (
-          <AnimatedHeadline
-            text={kicker}
-            textKey="kicker"
-            managedTextRole="embedded"
-            preset="static"
-            face="body"
-            defaultColor="muted"
-            fontSize={0.18}
-            position={[0, 0.78, 0.01]}
-          />
-        ) : null}
-        {title ? (
-          <AnimatedHeadline
-            text={title}
-            textKey="title"
-            preset={PRESET}
-            stagger="word"
-            staggerMs={Math.round((grid?.beatMs ?? 469) * STAGGER_BEATS)}
-            from={0}
-            to={420}
-            fontSize={0.72}
-            fit="width"
-            maxWidth={width * 0.9}
-            position={[0, 0.12, 0.01]}
-          />
-        ) : null}
-        <AnimatedHeadline
-          text={note}
-          textKey="note"
-          managedTextRole="embedded"
-          preset="static"
-          face="body"
-          defaultColor="muted"
-          fontSize={title ? 0.15 : 0.26}
-          maxWidth={title ? width * 0.8 : width * 0.74}
-          anchorX={title ? "left" : "center"}
-          anchorY={title ? "bottom" : "middle"}
-          textAlign={title ? "left" : "center"}
-          position={title ? [left, railY + 0.3, 0.01] : [0, 0.12, 0.01]}
-        />
+        <group scale={[kick, kick, 1]}>
+          {title ? (
+            <AnimatedHeadline
+              text={title}
+              textKey="title"
+              preset={TITLE_MODE === "word" ? "build" : "stamp"}
+              stagger="word"
+              staggerMs={TITLE_MODE === "word" ? Math.round(grid?.beatMs ?? 469) : 0}
+              hitAt={titleMs}
+              fontSize={0.72}
+              fit="width"
+              maxWidth={width * 0.9}
+              position={[0, 0.12, 0.01]}
+            />
+          ) : null}
+          {MODE === "single" ? (
+            <AnimatedHeadline
+              key={`line-${active}`}
+              text={lines[active][1]}
+              textKey={lines[active][0]}
+              managedTextRole="embedded"
+              preset="static"
+              face="headline"
+              defaultColor="text"
+              fontSize={0.6}
+              position={[0, 0.12, 0.01]}
+            />
+          ) : (
+            lines.map(([key, text], i) => (
+              <AnimatedHeadline
+                key={key}
+                text={text}
+                textKey={key}
+                managedTextRole="embedded"
+                preset="static"
+                face="body"
+                defaultColor={i === active ? "text" : "muted"}
+                opacity={i === active ? 1 : i < active ? 0.55 : 0.32}
+                fontSize={listSize}
+                maxWidth={title ? width * 0.8 : width * 0.74}
+                anchorX={title ? "left" : "center"}
+                anchorY="middle"
+                textAlign={title ? "left" : "center"}
+                position={[title ? left : 0, listTop - i * listStep, 0.01]}
+              />
+            ))
+          )}
+        </group>
         {beatsInBar.map((beat) => (
           <group key={`beat-${beat}`} position={[left + 0.05 + (beat - 1) * 0.18, railY, 0.01]}>
             <Pill width={0.1} height={0.1} color={rail} />
@@ -164,6 +214,15 @@ export default defineScene({
             height={0.12}
             color={rail}
             position={[xAt(bar), railY, 0.012]}
+          />
+        ))}
+        {changeMs.map((ms) => (
+          <Pill
+            key={`change-${Math.round(ms)}`}
+            width={0.05}
+            height={0.05}
+            color={time.localMs >= ms - 1 ? colors.accent : rail}
+            position={[xAtMs(ms), railY - 0.1, 0.012]}
           />
         ))}
         {HITS.map(([bar, beat]) => (

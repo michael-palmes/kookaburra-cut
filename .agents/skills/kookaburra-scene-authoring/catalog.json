@@ -27004,7 +27004,7 @@
         "bpm": 128
       },
       "looks": ["kookaburra-onyx", "kookaburra-daylight", "kookaburra-ink"],
-      "sceneCount": 16,
+      "sceneCount": 18,
       "durationMs": 59975,
       "aspects": ["16:9"],
       "themeId": "kookaburra-onyx",
@@ -27022,86 +27022,98 @@
           "blocks": ["text"]
         },
         {
-          "file": "scenes/03-question.tsx",
+          "file": "scenes/03-macro.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/04-question.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/05-reveal.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/06-name.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/07-claim-1.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/08-proof-1.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/09-detail-1.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/10-claim-2.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/11-proof-2.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/12-detail-2.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/13-claim-3.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/14-lineup.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/15-flyby.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/16-montage.tsx",
           "durationMs": 7500,
           "transition": null,
           "blocks": ["text"]
         },
         {
-          "file": "scenes/04-reveal.tsx",
+          "file": "scenes/17-hero.tsx",
           "durationMs": 3750,
           "transition": null,
           "blocks": ["text"]
         },
         {
-          "file": "scenes/05-name.tsx",
+          "file": "scenes/18-lockup.tsx",
           "durationMs": 3750,
-          "transition": null,
-          "blocks": ["text"]
-        },
-        {
-          "file": "scenes/06-claim-1.tsx",
-          "durationMs": 1875,
-          "transition": null,
-          "blocks": ["text"]
-        },
-        {
-          "file": "scenes/07-proof-1.tsx",
-          "durationMs": 3750,
-          "transition": null,
-          "blocks": ["text"]
-        },
-        {
-          "file": "scenes/08-detail-1.tsx",
-          "durationMs": 1875,
-          "transition": null,
-          "blocks": ["text"]
-        },
-        {
-          "file": "scenes/09-claim-2.tsx",
-          "durationMs": 1875,
-          "transition": null,
-          "blocks": ["text"]
-        },
-        {
-          "file": "scenes/10-proof-2.tsx",
-          "durationMs": 3750,
-          "transition": null,
-          "blocks": ["text"]
-        },
-        {
-          "file": "scenes/11-detail-2.tsx",
-          "durationMs": 1875,
-          "transition": null,
-          "blocks": ["text"]
-        },
-        {
-          "file": "scenes/12-claim-3.tsx",
-          "durationMs": 1875,
-          "transition": null,
-          "blocks": ["text"]
-        },
-        {
-          "file": "scenes/13-lineup.tsx",
-          "durationMs": 3750,
-          "transition": null,
-          "blocks": ["text"]
-        },
-        {
-          "file": "scenes/14-flyby.tsx",
-          "durationMs": 1875,
-          "transition": null,
-          "blocks": ["text"]
-        },
-        {
-          "file": "scenes/15-montage.tsx",
-          "durationMs": 7500,
-          "transition": null,
-          "blocks": ["text"]
-        },
-        {
-          "file": "scenes/16-lockup.tsx",
-          "durationMs": 7500,
           "transition": null,
           "blocks": ["text"]
         }

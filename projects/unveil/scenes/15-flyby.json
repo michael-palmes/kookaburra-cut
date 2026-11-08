@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "name": "Fly-by",
+  "text": {
+    "label": "15 · Fly-by",
+    "bars": "Bar 24 · Fill into 25",
+    "title": "",
+    "note": "Fly past the line-up",
+    "e1": "A foreground device wipes the frame"
+  }
+}

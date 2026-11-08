@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "name": "Montage",
+  "text": {
+    "label": "16 · Montage",
+    "bars": "Bars 25–28 · Every two beats, then every beat",
+    "title": "",
+    "note": "1 · Macro",
+    "e1": "2 · Screen",
+    "e2": "3 · Macro",
+    "e3": "4 · Screen",
+    "e4": "5 · Macro",
+    "e5": "6 · Screen",
+    "e6": "7 · Macro",
+    "e7": "8 · Screen",
+    "e8": "9 · Macro",
+    "e9": "10 · Screen",
+    "e10": "11 · Macro",
+    "e11": "12 · Screen"
+  }
+}

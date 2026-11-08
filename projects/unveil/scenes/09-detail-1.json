@@ -2,9 +2,10 @@
   "version": 1,
   "name": "Detail 1",
   "text": {
-    "label": "08 · Detail 1",
+    "label": "09 · Detail 1",
     "bars": "Bar 16 · Fill into 17",
     "title": "",
-    "note": "Macro on the lifted card, shallow focus"
+    "note": "Macro on the lifted card",
+    "e1": "Fill: whip towards the next"
   }
 }
