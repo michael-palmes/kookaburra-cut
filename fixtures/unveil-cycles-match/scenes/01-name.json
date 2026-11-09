@@ -1,0 +1,228 @@
+{
+  "version": 1,
+  "name": "01 Name",
+  "text": {
+    "title": "Meet Fairywren."
+  },
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "media": {
+        "src": "assets/fairywren-today-dark-phone.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [-1.967, 0.079, -0.318],
+        "rotationDeg": [-29.5, 40.4, 17.8],
+        "scale": 1.571,
+        "ground": true
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "none",
+      "finish": {
+        "frame": {
+          "roughness": 0.3,
+          "metalness": 1,
+          "anisotropy": 0.4,
+          "grain": 1,
+          "grainScale": 20000,
+          "brushedMap": 0,
+          "chamferRoughness": 0.08,
+          "envIntensity": 1.6,
+          "iblTaps": 7
+        },
+        "polished": {
+          "roughness": 0.06,
+          "envIntensity": 1.8
+        },
+        "glass": {
+          "roughness": 0.05,
+          "ior": 1.5,
+          "specularIntensity": 1,
+          "envIntensity": 1.5
+        },
+        "back": {
+          "roughness": 0.45,
+          "metalness": 0,
+          "tint": 0.55,
+          "clearcoat": 0.6,
+          "clearcoatRoughness": 0.12,
+          "envIntensity": 1.3
+        }
+      }
+    }
+  ],
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "position": [0, -0.985, 11.488],
+          "aim": {
+            "mode": "point",
+            "at": [0, 0, 0]
+          },
+          "fov": 21
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 2000,
+        "pose": {
+          "position": [0.15, -0.95, 11.1],
+          "aim": {
+            "mode": "point",
+            "at": [0, 0, 0]
+          },
+          "fov": 21
+        }
+      },
+      {
+        "id": "k3",
+        "tMs": 4000,
+        "pose": {
+          "position": [0, -0.985, 11.488],
+          "aim": {
+            "mode": "point",
+            "at": [0, 0, 0]
+          },
+          "fov": 21
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutSine"
+      },
+      {
+        "from": "k2",
+        "to": "k3",
+        "ease": "inOutSine"
+      }
+    ]
+  },
+  "background": {
+    "type": "gradient",
+    "spec": {
+      "type": "linear",
+      "angleDeg": 135,
+      "stops": [["#201007", 0], ["#0d0704", 0.42], ["#050302", 1]],
+      "space": "oklch"
+    }
+  },
+  "lighting": {
+    "ambient": 0,
+    "fills": [],
+    "sun": {
+      "azimuthDeg": -55,
+      "elevationDeg": 32,
+      "intensity": 0,
+      "color": "#ffc888"
+    },
+    "environment": {
+      "source": "kookaburra:strips",
+      "intensity": 1,
+      "rotationDeg": 0,
+      "strips": [
+        {
+          "azimuthDeg": -107.33,
+          "elevationDeg": 8.72,
+          "rollDeg": -13.82,
+          "lengthDeg": 59.49,
+          "widthDeg": 24.19,
+          "color": "#ffc07a",
+          "intensity": 30,
+          "feather": 0.95,
+          "falloff": 0.35
+        },
+        {
+          "azimuthDeg": 179.1,
+          "elevationDeg": 6.22,
+          "rollDeg": 14.95,
+          "lengthDeg": 45.24,
+          "widthDeg": 5.72,
+          "color": "#9ccfff",
+          "intensity": 80,
+          "feather": 0.6,
+          "falloff": 0.5
+        },
+        {
+          "azimuthDeg": -152.32,
+          "elevationDeg": 20.4,
+          "rollDeg": 0,
+          "lengthDeg": 7.63,
+          "widthDeg": 7.63,
+          "color": "#ffd2a0",
+          "intensity": 1583,
+          "feather": 0.3,
+          "falloff": 0.3
+        },
+        {
+          "azimuthDeg": -79.81,
+          "elevationDeg": 49.47,
+          "rollDeg": 0,
+          "lengthDeg": 12.2,
+          "widthDeg": 12.2,
+          "color": "#ffb070",
+          "intensity": 119,
+          "feather": 0.3,
+          "falloff": 0.3
+        }
+      ]
+    }
+  },
+  "stills": {
+    "marksMs": [2000]
+  },
+  "deviceTrack": {
+    "keys": [
+      {
+        "id": "d1",
+        "tMs": 0,
+        "pose": {
+          "hero": {
+            "rotationDeg": [0, 0, 0]
+          }
+        }
+      },
+      {
+        "id": "d2",
+        "tMs": 2000,
+        "pose": {
+          "hero": {
+            "rotationDeg": [0, -5, 0]
+          }
+        }
+      },
+      {
+        "id": "d3",
+        "tMs": 4000,
+        "pose": {
+          "hero": {
+            "rotationDeg": [0, 0, 0]
+          }
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "d1",
+        "to": "d2",
+        "ease": "inOutSine"
+      },
+      {
+        "from": "d2",
+        "to": "d3",
+        "ease": "inOutSine"
+      }
+    ]
+  }
+}
