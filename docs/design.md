@@ -156,13 +156,14 @@ extra weight. Contrast ratios are measured against `--surface-panel` (`#15181F`)
 |---|---|---|---|---|
 | `--text-primary` | `#F0EFEB` | Primary text, values, active labels | ~15.4:1 | AAA |
 | `--text-secondary` | `#ACAFB1` | Labels, secondary info, inactive tabs | ~8.1:1 | AA (clears AAA) |
-| `--text-tertiary` | `#6B737D` | Hints, units, placeholder, ruler ticks | ~3.7:1 | UI/non-essential only |
+| `--text-tertiary` | `#8A929C` | Hints, units, placeholder, ruler ticks | ~5.6:1 | AA (4.7:1 or better on every tier) |
 | `--text-disabled` | `#474D58` | Disabled controls | ~2.1:1 | Decorative only |
 | `--text-on-accent` | `#0B1014` | Text/icon on a filled accent surface | n/a | see §4.6 |
 
-`--text-tertiary` sits right at the UI-component threshold; use it for non-essential metadata (units,
-tick numbers), **never** for primary actions or running labels you need read. `--text-disabled` is
-decorative: disabled controls must also change shape or opacity, never rely on colour alone.
+`--text-tertiary` is the quietest readable tier: it clears 4.5:1 on every surface tier (4.7:1 on
+`--surface-elevated`, the lightest), so it may carry hints, values and metadata, but **never** primary
+actions. `--text-disabled` is for disabled controls only, never running text: disabled controls must
+also change shape or opacity, never rely on colour alone.
 
 ### 4.4 Accent: dusty wing blue
 
@@ -187,7 +188,8 @@ Muted for dark; never candy.
 |---|---|---|
 | `--focus-ring` | `#4C9FEF` | Keyboard focus ring: bright saturated blue, **independent of the accent** |
 | `--selection` | `rgba(76,159,239,0.30)` | Text selection / multi-select range |
-| `--danger` | `#E5654B` | Destructive intent (text/icon/border); text variant `#F07A62` for AA |
+| `--danger` | `#E5654B` | Destructive intent (icon/border; text on anchored panels) |
+| `--danger-text` | `#F07A62` | Danger as text on floating surfaces (dialogs, menus, popovers): 5.4:1 on elevated |
 | `--danger-fill` | `#C8472F` | Destructive button fill (with near-black text) |
 | `--success` | `#5FB87A` | Export complete / valid; text variant `#7AC994` |
 | `--warning` | `#D98C2B` | Non-blocking warnings: amber, clear of both the accent and danger |
@@ -207,8 +209,9 @@ expectation.
   hover, ≈ 4.6:1 on pressed, all AA. (The brief's pressed `#587C91` measured 4.29:1 and was lifted
   to `#5D8296`; keep the pairing AA if you re-tune.)
 - `--focus-ring` (`#4C9FEF`) maintains ≥3:1 against every surface tier (measured 5.3–7.0:1).
-- `--text-tertiary` / `--text-disabled` are non-essential / decorative; never the sole carrier of
-  meaning, never running text.
+- `--text-tertiary` clears 4.5:1 on every tier; `--text-disabled` is for disabled controls only.
+- **Danger as text on a floating surface uses `--danger-text`**: `--danger` reads 4.4:1 on elevated.
+- `src/ui/accessibility.test.tsx` holds these pairings: re-tune a token and the test says whether it still clears.
 
 ### 4.7 Claude guest palette (Edit with Claude only)
 
@@ -568,13 +571,17 @@ bounds for tiny controls (timeline grips, stepper arrows).
 - **Colour is never the sole signal**: selected/active states pair the accent with a shape change
   (border, marker, fill); danger/success pair colour with an icon. Survives colour-blindness.
 - **Keyboard**: full transport + timeline map; ⌘K reachable; dialogs trap focus and restore it on
-  close; Esc closes popovers/dialogs.
+  close (every `aria-modal` layer that registers with `useEscapeClose` gets this from
+  `ui/modalFocus.ts`); Esc closes popovers/dialogs; a right-click menu also opens from the menu key
+  or ⇧F10 (`opensContextMenu`). Hidden chrome that stays mounted is `inert`, not just transparent.
 - **Reduced motion**: §9, respected everywhere.
 - **Hit targets**: §11, ≥28px.
 - **Screen reader**: label icon-only buttons (`aria-label`); announce export progress via a polite
   live region; mark the preview canvas region.
 - **Option groups**: use borderless fieldsets for accessible grouping. Any visible container border
   must use an explicit app style, never the browser's default fieldset border.
+- **Conformance**: the WCAG 2.2 AA report, keyboard map and open findings live in
+  [accessibility.md](./accessibility.md).
 - **Definition of done per screen**: AA contrast holds; focus is visible; reduced-motion respected;
   no accent fill competing with content; and (borrowing the old discipline) **remove one decoration
   before shipping.** If a screen reads as generic chrome that distracts from the preview, quiet it.
@@ -658,7 +665,7 @@ wing blue) and no alternate.
   /* ── Text (§4.3) ───────────────────────────────────────────── */
   --text-primary:   #F0EFEB;
   --text-secondary: #ACAFB1;
-  --text-tertiary:  #6B737D;
+  --text-tertiary:  #8A929C;
   --text-disabled:  #474D58;
   --text-on-accent: #0B1014;
 
@@ -674,6 +681,7 @@ wing blue) and no alternate.
   --focus-ring:  #4C9FEF;
   --selection:   rgba(76,159,239,0.30);
   --danger:      #E5654B;
+  --danger-text: #F07A62;
   --danger-fill: #C8472F;
   --success:     #5FB87A;
   --warning:     #D98C2B;

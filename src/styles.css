@@ -27,7 +27,7 @@
   /* ── Text (§4.3) ───────────────────────────────────────────── */
   --text-primary: #f0efeb;
   --text-secondary: #acafb1;
-  --text-tertiary: #6b737d;
+  --text-tertiary: #8a929c;
   --text-disabled: #474d58;
   --text-on-accent: #0b1014;
 
@@ -43,6 +43,7 @@
   --focus-ring: #4c9fef;
   --selection: rgba(76, 159, 239, 0.3);
   --danger: #e5654b;
+  --danger-text: #f07a62;
   --danger-fill: #c8472f;
   --success: #5fb87a;
   --warning: #d98c2b;
@@ -2338,7 +2339,7 @@ button.beat-status {
 }
 
 .modal-error {
-  color: var(--danger);
+  color: var(--danger-text);
   font-size: var(--text-sm);
 }
 
@@ -4027,14 +4028,14 @@ button.beat-status {
 .welcome-legal {
   margin: 0;
   font-size: var(--text-2xs);
-  color: var(--text-disabled);
+  color: var(--text-tertiary);
   user-select: none;
 }
 
 .version-label {
   font: inherit;
   font-size: var(--text-2xs);
-  color: var(--text-disabled);
+  color: var(--text-tertiary);
   background: transparent;
   border: 0;
   cursor: default;
@@ -6397,7 +6398,7 @@ button.beat-status {
   border-color: var(--danger);
 }
 .dropdown-item.danger {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 /* ── Animation lane (v13 · M7 — the restyled camera mini-timeline) ─────────── */
@@ -8085,7 +8086,7 @@ button.beat-status {
 }
 
 .export-danger {
-  color: #e05c5c;
+  color: var(--danger-text);
   border-color: #e05c5c;
 }
 
@@ -8709,7 +8710,7 @@ button.beat-status {
 }
 
 .inspector-popover-item.danger {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 /* Slowdown badge: live fps stacked in an amber warning triangle (SVG shape, rounded points), bottom-right of the stage during lag. */
@@ -12477,7 +12478,7 @@ textarea.text-inspector-copy-input {
 }
 
 .context-menu-item.danger {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 .context-menu-item-icon {
@@ -12686,7 +12687,7 @@ textarea.text-inspector-copy-input {
 
 .colour-popover-error {
   margin: 0 0 var(--space-3);
-  color: var(--danger);
+  color: var(--danger-text);
   font-size: 11px;
 }
 
