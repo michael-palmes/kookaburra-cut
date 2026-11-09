@@ -1,6 +1,6 @@
 {
   "name": "kookaburra-cut",
-  "version": "0.22.2",
+  "version": "0.22.3",
   "private": true,
   "type": "module",
   "license": "MIT OR Apache-2.0",

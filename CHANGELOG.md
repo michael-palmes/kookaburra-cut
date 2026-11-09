@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.22.3] - 2026-11-09
+
+### Fixed
+
+- Scrubbing or playing quickly through a scene whose device moves no longer
+  stops the preview with "The preview didn't start".
+
 ### Added
 
 - Four managed preferences for fleets: `DisableAgentKit` (no agent files in
