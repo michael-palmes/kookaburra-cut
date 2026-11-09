@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "name": "Card, matched: warm smoky glow",
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/fairywren-sorted-dark-phone.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [0.155, -0.556, -0.045],
+        "rotationDeg": [-39.7, 29.9, 35.6],
+        "scale": 1.6
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "none"
+    }
+  ],
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "position": [0, 0.2, 3.05],
+          "aim": {
+            "mode": "point",
+            "at": [0, 0.25, 0]
+          },
+          "fov": 38,
+          "dof": {
+            "mode": "depth",
+            "blur": 0.5,
+            "focus": 2.7,
+            "range": 0.35
+          }
+        }
+      }
+    ],
+    "segments": []
+  },
+  "background": {
+    "type": "gradient",
+    "spec": {
+      "type": "linear",
+      "angleDeg": 225,
+      "stops": [["#3a1d0c", 0], ["#2a150b", 0.5], ["#1f1009", 1]],
+      "space": "oklch"
+    }
+  },
+  "lighting": {
+    "environment": {
+      "source": "kookaburra:monochrome-studio",
+      "intensity": 0.2,
+      "rotationDeg": 0
+    },
+    "sun": {
+      "azimuthDeg": -55,
+      "elevationDeg": 32,
+      "intensity": 0.7,
+      "color": "#ffc888"
+    },
+    "fills": [],
+    "ambient": 0.04
+  },
+  "text": {
+    "title": ""
+  }
+}

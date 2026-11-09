@@ -19,7 +19,15 @@ export interface RenderSettings {
   motionBlur?: MotionBlurSettings;
   /** SDF text renders with tone mapping off, so theme colours land exactly on effect-free frames; a no-op under effects, where the composer tone-maps every pixel once. Absent keeps today's programs and bytes. */
   exactText?: true;
+  /** Antialiasing after the tone map on effect frames: MSAA resolves linear HDR, so a highlight far brighter than white keeps a hard edge. Absent keeps today's chain and bytes. */
+  antialias?: AntialiasId;
+  /** Export only: each frame averages this many renders, each offset by a fraction of a pixel, after the tone map. Fixes what MSAA can't (slivers thinner than its samples, hot edges) at that many times the render cost. */
+  supersample?: (typeof SUPERSAMPLES)[number];
 }
+
+export type AntialiasId = "fxaa" | "smaa";
+const SUPERSAMPLES = [4, 8, 16] as const;
+const ANTIALIAS: AntialiasId[] = ["fxaa", "smaa"];
 
 export const DEFAULT_TONE_MAPPING: ToneMappingId = "aces";
 export const DEFAULT_EXPOSURE = 1;
@@ -66,6 +74,16 @@ export function parseRenderSettings(raw: unknown, source: string): RenderSetting
   if (block.exactText === true) settings.exactText = true;
   else if (block.exactText !== undefined && block.exactText !== false) {
     parseWarn(`[render] ${source}: exactText must be true or false; text stays tone-mapped`);
+  }
+  if (ANTIALIAS.includes(block.antialias as AntialiasId)) {
+    settings.antialias = block.antialias as AntialiasId;
+  } else if (block.antialias !== undefined) {
+    parseWarn(`[render] ${source}: antialias must be "fxaa" or "smaa"; left off`);
+  }
+  const supersample = SUPERSAMPLES.find((n) => n === block.supersample);
+  if (supersample) settings.supersample = supersample;
+  else if (block.supersample !== undefined) {
+    parseWarn(`[render] ${source}: supersample must be 4, 8 or 16; left off`);
   }
   return settings;
 }

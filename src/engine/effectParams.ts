@@ -21,9 +21,10 @@ const AMOUNT_KEY = {
   vignette: "darkness",
   lut: "intensity",
   grain: "intensity",
+  lens: "intensity",
 } as const;
 
-const EFFECT_KEYS = ["bloom", "vignette", "lut", "grain"] as const;
+const EFFECT_KEYS = ["bloom", "vignette", "lut", "grain", "lens"] as const;
 
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 
@@ -98,7 +99,7 @@ export function resolveEffectParams(
 ): EffectsConfig {
   if (!override) return { ...base };
   const out: EffectsConfig = { ...base };
-  const keys = ["bloom", "vignette", "lut", "grain"] as const;
+  const keys = ["bloom", "vignette", "lut", "grain", "lens"] as const;
   for (const k of keys) {
     const merged = mergeEffect(base[k], override[k] as never);
     if (merged !== undefined) out[k] = merged as never;

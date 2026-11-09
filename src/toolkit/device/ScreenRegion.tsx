@@ -20,6 +20,7 @@ import {
   deviceScreenRect,
   SCREEN_LIFT,
 } from "./screenAnchor";
+import { glassCardMaterial } from "./screenRegionGlass";
 import {
   lensRect,
   type RegionLiftTiming,
@@ -53,6 +54,8 @@ export interface ScreenRegionProps extends RegionLiftTiming {
   rimColour?: string;
   /** A foldable's display (default `"main"`, the inside one). */
   display?: DeviceScreenDisplay;
+  /** Card only: render it as glass with a bevel this wide (fitted units), lit by the scene's environment; absent keeps the flat card. */
+  glassEdge?: number;
 }
 
 const VERTEX = /* glsl */ `
@@ -223,6 +226,15 @@ export function ScreenRegion(props: ScreenRegionProps) {
   const theme = useTheme();
   const { localMs } = useTimeline();
   const parts = useMemo(regionMaterials, []);
+  const glassEdge = lens ? 0 : (props.glassEdge ?? 0);
+  const glassOn = glassEdge > 0;
+  const bevel = useMemo(() => ({ value: 0 }), []);
+  const glass = useMemo(
+    () => (glassOn ? glassCardMaterial(parts.card, bevel) : null),
+    [glassOn, parts, bevel],
+  );
+  useLayoutEffect(() => () => glass?.dispose(), [glass]);
+  bevel.value = glassEdge;
   useLayoutEffect(
     () => () => {
       parts.cardMaterial.dispose();
@@ -318,7 +330,7 @@ export function ScreenRegion(props: ScreenRegionProps) {
       </mesh>
       <mesh
         ref={cardRef}
-        material={parts.cardMaterial}
+        material={glass ?? parts.cardMaterial}
         position={[offset[0] * p, offset[1] * p, cardZ]}
         scale={[width * grown, height * grown, 1]}
       >

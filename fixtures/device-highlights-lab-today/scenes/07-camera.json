@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "name": "07-camera",
+  "background": {
+    "type": "none"
+  },
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "position": [-0.05, 1.1, 1.05],
+          "aim": {
+            "mode": "point",
+            "at": [-0.32, 0.86, 0.08]
+          },
+          "fov": 32
+        }
+      }
+    ],
+    "segments": []
+  },
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "shadow": "none",
+      "placement": {
+        "position": [0, 0, 0],
+        "rotationDeg": [0, 180, 0],
+        "scale": 1
+      }
+    }
+  ],
+  "stills": {
+    "marksMs": [500]
+  }
+}

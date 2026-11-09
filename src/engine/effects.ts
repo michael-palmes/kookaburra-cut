@@ -4,11 +4,16 @@ import {
   BloomEffect,
   CopyPass,
   DepthOfFieldEffect,
+  EdgeDetectionMode,
   EffectComposer,
   EffectPass,
+  FXAAEffect,
   LUT3DEffect,
   RenderPass,
   type ShaderPass,
+  SMAAEffect,
+  SMAAImageLoader,
+  SMAAPreset,
   TiltShiftEffect,
   ToneMappingEffect,
   VignetteEffect,
@@ -18,16 +23,19 @@ import {
   Camera,
   ClampToEdgeWrapping,
   Data3DTexture,
+  DataTexture,
   DepthTexture,
   FramebufferTexture,
   HalfFloatType,
   LinearFilter,
   NearestFilter,
+  NoColorSpace,
   NoToneMapping,
   PerspectiveCamera,
   RGBAFormat,
   Scene,
   type ShaderMaterial,
+  type Texture,
   Uniform,
   UnsignedByteType,
   Vector2,
@@ -46,7 +54,9 @@ import {
   sceneBaseEffects,
 } from "./effectParams";
 import { useEffectsStore } from "./effectsStore";
+import { isExporting } from "./exportState";
 import { MSAA_SAMPLES } from "./format";
+import { LensEffect } from "./LensEffect";
 import { type CubeLut, parseCubeLut } from "./lutCube";
 import { composerToneMapping } from "./renderSettings";
 import { SmearEffect } from "./SmearEffect";
@@ -54,7 +64,7 @@ import { SoftFocusEffect } from "./SoftFocusEffect";
 import type { Resolved } from "./sceneTimeline";
 
 /** Effect keys that are actually wired into the chain (all four starter effects as of cut 2). */
-const WIRED_EFFECTS = new Set(["bloom", "vignette", "grain", "lut"]);
+const WIRED_EFFECTS = new Set(["bloom", "vignette", "grain", "lut", "lens"]);
 
 /** Which dof blur families the loaded project's camera tracks activate (`dofUnionOf`, defined in dof.ts); part of the composer rebuild key, so the chain stays project-stable like the effect-key union. */
 export type { DofUnion } from "./dof";
@@ -87,6 +97,7 @@ interface ComposerState extends DofEffects {
   /** Persistent-layer overlay pass, disabled except on transition frames. */
   overlayPass: RenderPass;
   bloom: BloomEffect | null;
+  lens: LensEffect | null;
   vignette: VignetteEffect | null;
   grain: DeterministicGrainEffect | null;
   exposure: ExposureEffect;
@@ -268,7 +279,9 @@ export function ensureComposer(
     [...keys].sort().join(",") +
     (lutUrls.length ? `|${lutUrls.join("|")}` : "") +
     `|tm:${renderSettings.toneMapping}` +
-    `|dof:${dofKeyOf(dofUnion)}`;
+    `|dof:${dofKeyOf(dofUnion)}` +
+    (renderSettings.antialias ? `|aa:${renderSettings.antialias}` : "") +
+    (renderSettings.antialias === "smaa" && !smaaTextures ? "-pending" : "");
   if (
     composerState &&
     composerState.gl === gl &&
@@ -301,6 +314,7 @@ export function ensureComposer(
   composer.addPass(overlayPass);
 
   const bloom = keys.has("bloom") ? new BloomEffect({ mipmapBlur: true }) : null;
+  const lens = keys.has("lens") ? new LensEffect() : null;
   const vignette = keys.has("vignette") ? new VignetteEffect() : null;
   const grain = keys.has("grain") ? new DeterministicGrainEffect() : null;
   // ToneMapping owns the single display tone-map (the project mode; ACES by default); the pass's one sRGB encode still happens at output. Exposure multiplies immediately BEFORE it, mirroring gl.toneMappingExposure's position in three's pipeline.
@@ -320,10 +334,19 @@ export function ensureComposer(
   }
   // The dof family sits at the chain head: it samples linear HDR colour (+ depth for the CoC modes) pre-everything, and blurred highlights still bloom coherently. Placeholder camera, overwritten per frame via setMainCamera (which copies camera settings into the CoC material). All effects build zeroed; applyDofUniforms drives them per frame. (EffectPass itself orders by attributes, so the convolution smear runs first; modes are exclusive per scene, so only uniforms care.)
   const { dof, tilt, smear, soft } = buildDofChain(dofUnion);
-  const chain = [dof, tilt, smear, soft, bloom, vignette, grain, exposure, tonemap, lut].filter(
-    (e): e is NonNullable<typeof e> => e !== null,
-  );
-  composer.addPass(new EffectPass(undefined, ...chain));
+  const blurs = [dof, tilt, smear, soft].filter(isEffect);
+  if (lens && blurs.length > 0) {
+    // The lens reads its pass's input, so it rides a second pass behind the blur families: a defocused highlight blooms as a disc.
+    composer.addPass(new EffectPass(undefined, ...blurs));
+    const tail = [lens, bloom, vignette, grain, exposure, tonemap, lut].filter(isEffect);
+    composer.addPass(new EffectPass(undefined, ...tail));
+  } else {
+    const chain = [dof, tilt, smear, soft, lens, bloom, vignette, grain, exposure, tonemap, lut];
+    composer.addPass(new EffectPass(undefined, ...chain.filter(isEffect)));
+  }
+  // Antialiasing reads its pass's input, so it rides its own pass after the tone map: on display values, where MSAA's linear resolve leaves hot highlights hard-edged.
+  if (renderSettings.antialias)
+    composer.addPass(new EffectPass(undefined, antialiasEffect(renderSettings.antialias)));
 
   composerState = {
     gl,
@@ -335,6 +358,7 @@ export function ensureComposer(
     smear,
     soft,
     bloom,
+    lens,
     vignette,
     grain,
     exposure,
@@ -343,6 +367,10 @@ export function ensureComposer(
     key,
   };
   return composerState;
+}
+
+function isEffect<T>(e: T | null): e is T {
+  return e !== null;
 }
 
 /** The chain-shape key bit per blur family (composer rebuild keys, main and side alike). */
@@ -493,6 +521,7 @@ function applyEffectUniforms(cs: ComposerState, cfg: EffectsConfig, seed: number
       cs.bloom.luminanceMaterial.smoothing = cfg.bloom.luminanceSmoothing;
     }
   }
+  if (cs.lens) cs.lens.setParams(cfg.lens);
   if (cs.vignette) {
     cs.vignette.offset = cfg.vignette?.offset ?? 0.5;
     cs.vignette.darkness = cfg.vignette?.darkness ?? 0; // 0 = no vignette
@@ -806,6 +835,78 @@ export function dofSideScratch(
   return st.scratch;
 }
 
+let smaaTextures: [DataTexture, DataTexture] | null = null;
+
+/** A lookup image's pixels as RGBA bytes, bottom row first when `flip` (what flipY would do). Decoded from its data URL as an ImageBitmap in this realm, with no colour conversion: the stage's GL context and canvases reject an image element made by the page. */
+async function lookupTexture(src: string, flip: boolean, nearest: boolean): Promise<DataTexture> {
+  const blob = await (await fetch(src)).blob();
+  const bitmap = await createImageBitmap(blob, {
+    premultiplyAlpha: "none",
+    colorSpaceConversion: "none",
+  });
+  const { width: w, height: h } = bitmap;
+  const ctx = new OffscreenCanvas(w, h).getContext("2d");
+  if (!ctx) throw new Error("SMAA: no 2d context to decode its lookup images");
+  ctx.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  const pixels = ctx.getImageData(0, 0, w, h).data;
+  const out = new Uint8Array(pixels.length);
+  const row = w * 4;
+  for (let y = 0; y < h; y++) {
+    const from = (flip ? h - 1 - y : y) * row;
+    out.set(pixels.subarray(from, from + row), y * row);
+  }
+  const tex = new DataTexture(out, w, h, RGBAFormat);
+  tex.minFilter = nearest ? NearestFilter : LinearFilter;
+  tex.magFilter = nearest ? NearestFilter : LinearFilter;
+  tex.generateMipmaps = false;
+  tex.colorSpace = NoColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/** Decodes SMAA's lookup images once into byte textures, so the effect builds complete and synchronously: left to itself it decodes them after its first frames. Best effort; only an SMAA project needs them. The loader needs its callback: without one it calls undefined inside the image's load event, past any catch. */
+async function preloadSmaaImages(): Promise<void> {
+  if (smaaTextures) return;
+  try {
+    // Its typings declare three's url-first Loader signature; at runtime a lone function is the load callback.
+    const loader = new SMAAImageLoader() as unknown as {
+      load(onLoad: (images: unknown) => void): Promise<unknown>;
+    };
+    const [search, area] = (await loader.load(() => {})) as [HTMLImageElement, HTMLImageElement];
+    smaaTextures = await Promise.all([
+      lookupTexture(search.src, true, true),
+      lookupTexture(area.src, false, false),
+    ]);
+  } catch (err) {
+    console.warn("[effects] SMAA lookup images failed to decode", err);
+    smaaTextures = null;
+  }
+}
+
+/** SMAA with the preloaded lookup textures (its legacy constructor takes placeholder images and builds at once, then the real textures go in), or FXAA, which has nothing to load. Until the textures land, the preview shows FXAA; an export never renders without them. */
+function antialiasEffect(mode: "fxaa" | "smaa"): FXAAEffect | SMAAEffect {
+  if (mode === "fxaa") return new FXAAEffect();
+  if (!smaaTextures) {
+    if (isExporting()) {
+      throw new Error(
+        "SMAA lookup images are not loaded: await preloadEffectLuts() before rendering an effects project.",
+      );
+    }
+    void preloadSmaaImages();
+    return new FXAAEffect();
+  }
+  const Smaa = SMAAEffect as unknown as new (...args: unknown[]) => SMAAEffect;
+  const effect = new Smaa({}, {}, SMAAPreset.HIGH, EdgeDetectionMode.COLOR);
+  const weights = effect.weightsMaterial as unknown as {
+    searchTexture: Texture;
+    areaTexture: Texture;
+  };
+  weights.searchTexture = smaaTextures[0];
+  weights.areaTexture = smaaTextures[1];
+  return effect;
+}
+
 /** Loads + parses every LUT the project could bind (project default + per-scene overrides) before frame 0, mirroring preloadDeviceModels/preloadProjectImages, since the capture loop must never race an async effect-asset decode and a mid-run swap must find its texture already cached. The project loader awaits this before publishing effects to the store so the composer chain never builds against a missing texture; the export preamble awaits it again (a cached no-op) with `gl` so every texture is uploaded before frame 0, never a lazy first-use upload mid-run. See docs/determinism.md. Enforces that all of a project's LUTs share one LUT_3D_SIZE, since mid-project swaps write the `lut` uniform directly, so the pass's compiled size defines must fit every texture. */
 export async function preloadEffectLuts(opts?: {
   /** When given, force-uploads each LUT texture to the GPU (export preamble). */
@@ -816,6 +917,7 @@ export async function preloadEffectLuts(opts?: {
   /** Per-scene theme-swap base stacks, see effectsStore. */
   sceneDefaults?: Record<number, EffectsConfig>;
 }): Promise<void> {
+  await preloadSmaaImages();
   const store = useEffectsStore.getState();
   const urls = collectLutUrls(
     opts?.effects ?? store.projectDefault,

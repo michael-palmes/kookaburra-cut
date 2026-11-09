@@ -1,0 +1,92 @@
+{
+  "version": 1,
+  "name": "01 Edge",
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "placement": {
+        "position": [0, 0, 0],
+        "rotationDeg": [-90, 0, 90],
+        "scale": 1
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "none",
+      "finish": "studio"
+    }
+  ],
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "position": [1.6, 0.48, 1.32],
+          "aim": {
+            "mode": "point",
+            "at": [0.95, 0.04, 0.6]
+          },
+          "fov": 30,
+          "dof": {
+            "mode": "depth",
+            "blur": 0.5,
+            "focus": 0.95,
+            "range": 0.3
+          }
+        }
+      }
+    ],
+    "segments": []
+  },
+  "background": {
+    "type": "color",
+    "color": "#000000"
+  },
+  "lighting": {
+    "ambient": 0,
+    "fills": [],
+    "sun": {
+      "azimuthDeg": -55,
+      "elevationDeg": 32,
+      "intensity": 0,
+      "color": "#ffc888",
+      "enabled": false
+    },
+    "environment": {
+      "source": "kookaburra:strips",
+      "strips": [
+        {
+          "azimuthDeg": -64.5,
+          "elevationDeg": 36,
+          "lengthDeg": 45,
+          "widthDeg": 12,
+          "rollDeg": 37.6,
+          "color": "#ffe0b8",
+          "intensity": 40,
+          "falloff": 0.6,
+          "feather": 0.7
+        },
+        {
+          "azimuthDeg": -45,
+          "elevationDeg": -24,
+          "lengthDeg": 26,
+          "widthDeg": 12,
+          "rollDeg": -65,
+          "color": "#ff9a52",
+          "intensity": 2,
+          "falloff": 0.9,
+          "feather": 0.9
+        }
+      ],
+      "intensity": 1,
+      "rotationDeg": 0
+    }
+  },
+  "stills": {
+    "marksMs": [2000]
+  }
+}

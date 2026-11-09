@@ -46,6 +46,34 @@ describe("parseRenderSettings", () => {
       expect("exactText" in parsed).toBe(false);
     }
   });
+
+  it("carries a known supersample count only", () => {
+    for (const supersample of [4, 8, 16] as const) {
+      expect(parseRenderSettings({ supersample }, "t")).toEqual({
+        ...DEFAULT_RENDER_SETTINGS,
+        supersample,
+      });
+    }
+    for (const supersample of [2, 1, "4", true, null]) {
+      const parsed = parseRenderSettings({ supersample }, "t");
+      expect(parsed).toEqual(DEFAULT_RENDER_SETTINGS);
+      expect("supersample" in parsed).toBe(false);
+    }
+  });
+
+  it("carries a known antialias mode only", () => {
+    for (const antialias of ["fxaa", "smaa"] as const) {
+      expect(parseRenderSettings({ antialias }, "t")).toEqual({
+        ...DEFAULT_RENDER_SETTINGS,
+        antialias,
+      });
+    }
+    for (const antialias of [true, "msaa", 1, null]) {
+      const parsed = parseRenderSettings({ antialias }, "t");
+      expect(parsed).toEqual(DEFAULT_RENDER_SETTINGS);
+      expect("antialias" in parsed).toBe(false);
+    }
+  });
 });
 
 describe("mode mapping (the two render paths MUST agree)", () => {

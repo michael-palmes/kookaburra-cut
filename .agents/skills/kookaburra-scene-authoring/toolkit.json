@@ -1316,6 +1316,12 @@
         "doc": "Motion blur override; absent inherits the scene's Objects switch."
       },
       {
+        "name": "finish",
+        "type": "DeviceFinish",
+        "required": false,
+        "doc": "Opt-in hero finish for the body (a preset id or a spec); absent keeps the glb's materials."
+      },
+      {
         "name": "children",
         "type": "ReactNode",
         "required": false,
@@ -1410,7 +1416,7 @@
   },
   "DeviceProps": {
     "kind": "type",
-    "signature": "interface DeviceProps { id?: string; model: DeviceId; colour?: string; media?: DeviceMediaSpec; coverMedia?: DeviceMediaSpec; placement?: DevicePlacement; motion?: DeviceMotionSpec; shadow?: DeviceShadowMode; lit?: boolean; lidDeg?: number; foldDeg?: number; bothScreensOn?: boolean; foldTransition?: DeviceFoldTransitionSpec; motionBlur?: MotionBlurOverride; children?: ReactNode; }"
+    "signature": "interface DeviceProps { id?: string; model: DeviceId; colour?: string; media?: DeviceMediaSpec; coverMedia?: DeviceMediaSpec; placement?: DevicePlacement; motion?: DeviceMotionSpec; shadow?: DeviceShadowMode; lit?: boolean; lidDeg?: number; foldDeg?: number; bothScreensOn?: boolean; foldTransition?: DeviceFoldTransitionSpec; motionBlur?: MotionBlurOverride; finish?: DeviceFinish; children?: ReactNode; }"
   },
   "DeviceScreen": {
     "kind": "type",
@@ -2911,6 +2917,12 @@
         "doc": "A foldable's display (default `\"main\"`, the inside one)."
       },
       {
+        "name": "glassEdge",
+        "type": "number",
+        "required": false,
+        "doc": "Card only: render it as glass with a bevel this wide (fitted units), lit by the scene's environment; absent keeps the flat card."
+      },
+      {
         "name": "at",
         "type": "number",
         "required": false,
@@ -2953,7 +2965,7 @@
   },
   "ScreenRegionProps": {
     "kind": "type",
-    "signature": "interface ScreenRegionProps extends RegionLiftTiming { rect?: ScreenUvRect; variant?: \"card\" | \"lens\"; centre?: [number, number]; radius?: number; zoom?: number; lift?: number; scale?: number; offset?: [number, number]; cornerRadius?: number; shadow?: number; rimColour?: string; display?: DeviceScreenDisplay; }"
+    "signature": "interface ScreenRegionProps extends RegionLiftTiming { rect?: ScreenUvRect; variant?: \"card\" | \"lens\"; centre?: [number, number]; radius?: number; zoom?: number; lift?: number; scale?: number; offset?: [number, number]; cornerRadius?: number; shadow?: number; rimColour?: string; display?: DeviceScreenDisplay; glassEdge?: number; }"
   },
   "ScreenUvRect": {
     "kind": "type",

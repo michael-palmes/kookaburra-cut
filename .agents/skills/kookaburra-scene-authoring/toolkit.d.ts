@@ -590,6 +590,8 @@ declare module "@kookaburra/toolkit" {
     foldTransition?: DeviceFoldTransitionSpec;
     /** Motion blur override; absent inherits the scene's Objects switch. */
     motionBlur?: MotionBlurOverride;
+    /** Opt-in hero finish for the body (a preset id or a spec); absent keeps the glb's materials. */
+    finish?: DeviceFinish;
     /** Content riding the device's pose in its fitted frame; `DeviceScreenAnchor` pins it to the screen. */
     children?: ReactNode;
   }
@@ -1557,6 +1559,8 @@ declare module "@kookaburra/toolkit" {
     rimColour?: string;
     /** A foldable's display (default `"main"`, the inside one). */
     display?: DeviceScreenDisplay;
+    /** Card only: render it as glass with a bevel this wide (fitted units), lit by the scene's environment; absent keeps the flat card. */
+    glassEdge?: number;
   }
 
   /** A display rectangle in screen UV, `[u0, v0, u1, v1]`: u runs right and v down from the top-left. */
@@ -2371,6 +2375,31 @@ declare module "@kookaburra/toolkit" {
     renderOrder?: number;
   }
 
+  type DeviceFinish = string | DeviceFinishSpec;
+
+  interface DeviceFinishSpec {
+    frame?: DeviceFrameFinish;
+    polished?: { roughness?: number; envIntensity?: number };
+    /** A specular-only coat over the display: Fresnel reflections add onto the media, which stays exact where nothing reflects. */
+    glass?: {
+      roughness?: number;
+      ior?: number;
+      specularIntensity?: number;
+      envIntensity?: number;
+    };
+    back?: {
+      roughness?: number;
+      metalness?: number;
+      /** Multiplies the colour the device colour set. */
+      tint?: number;
+      clearcoat?: number;
+      clearcoatRoughness?: number;
+      envIntensity?: number;
+    };
+    /** Research only: paints these glb materials magenta to map roles. */
+    debug?: string[];
+  }
+
   /** How auto-fit normalises the model into the scene (Device.tsx's Box3 fit). */
   interface DeviceFitSpec {
     /** World-space extent the fit normalises; default "height" (the phone behaviour). */
@@ -2405,6 +2434,26 @@ declare module "@kookaburra/toolkit" {
     /** 0 to 1 multipliers on the blur radius and the dimming depth alone (default 1). */
     blur?: number;
     darken?: number;
+  }
+
+  interface DeviceFrameFinish {
+    roughness?: number;
+    metalness?: number;
+    /** 0..1 stretch of the highlight across the brushing (KHR anisotropy strength). */
+    anisotropy?: number;
+    /** Stretch along the grooves instead of across them (the unphysical but sometimes prettier choice). */
+    anisotropyAlong?: boolean;
+    /** 0..1 procedural hairline grain along the band, band-limited so it fades instead of aliasing. */
+    grain?: number;
+    /** Grain cells per metre across the band (the band is about 8 mm tall). */
+    grainScale?: number;
+    /** Scale on the glb's own brushed normal map; 0 removes it and its roughness map. */
+    brushedMap?: number;
+    /** Roughness where the band rolls over into the glass and the back (a polished chamfer line); absent keeps one roughness. */
+    chamferRoughness?: number;
+    envIntensity?: number;
+    /** Environment lookups fanned across the grooves around the true mirror direction, in place of three's bent normal, which swings the band's reflection towards the viewer. A strip placed on the band's mirror direction then lands on it, as it would in a path tracer. */
+    iblTaps?: number;
   }
 
   type DeviceLayoutPreset = (typeof DEVICE_LAYOUT_PRESETS)[number];
@@ -2508,6 +2557,7 @@ declare module "@kookaburra/toolkit" {
     vignette?: VignetteParams;
     lut?: LutParams;
     grain?: GrainParams;
+    lens?: LensParams;
   }
 
   /** One quad's fully resolved frame state; every field is in the parent Text's local space (offsets already × fontSize). */
@@ -2535,12 +2585,36 @@ declare module "@kookaburra/toolkit" {
     scaleY?: number;
   }
 
+  /** One environment strip: reflection-only light. Azimuth from +Z toward +X, elevation up, like the light rig. */
+  interface EnvStripSpec {
+    azimuthDeg: number;
+    elevationDeg: number;
+    /** Angular length along the strip's long axis. */
+    lengthDeg: number;
+    /** Angular width across it. */
+    widthDeg: number;
+    /** 0 stands the strip upright; 90 lays it level. */
+    rollDeg?: number;
+    /** sRGB hex. */
+    color: string;
+    /** Linear radiance: 10 to 60 reads as a hot line on polished metal. */
+    intensity: number;
+    /** 0 even, 1 falls to black at both ends. */
+    falloff?: number;
+    /** 0 hard edge, 1 fades to black across the width. */
+    feather?: number;
+  }
+
   /** Environment reflections for the lighting block: same shape as `ThemeEnvironment` plus the explicit `"none"` source ("no reflections", distinct from absent = inherit the layer below). Lighting only; never a visible background. */
   interface EnvironmentSpec {
     /** `"kookaburra:<slug>"` | `"kookaburra:softbox"` | a project-relative `.hdr`/`.exr` path | `"none"`. */
     source: string;
     intensity: number;
     rotationDeg: number;
+    /** Emissive strips baked into a black environment (engine/stripSpec.ts); present, they replace `source`. */
+    strips?: EnvStripSpec[];
+    /** Linear floor of the strips' sphere. */
+    stripsAmbient?: number;
   }
 
   interface FaceLine {
@@ -2836,6 +2910,22 @@ declare module "@kookaburra/toolkit" {
     id: string;
     model: string;
     placement?: DevicePlacement;
+  }
+
+  /** Lens response for hot highlights (engine/LensEffect.ts): energy-conserving bloom, halation and glare on the linear HDR buffer. `intensity` 0 = off. */
+  interface LensParams {
+    intensity: number;
+    bloom?: number;
+    bloomRadius?: number;
+    karis?: number;
+    halation?: number;
+    halationColor?: string;
+    halationThreshold?: number;
+    glare?: number;
+    glarePoints?: number;
+    glareAngleDeg?: number;
+    glareThreshold?: number;
+    glareFalloff?: number;
   }
 
   interface LightBase {

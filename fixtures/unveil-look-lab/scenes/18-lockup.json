@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "name": "18 Lockup",
+  "text": {
+    "title": "Fairywren",
+    "line": "Available today."
+  },
+  "background": {
+    "type": "color",
+    "color": "#0a0605"
+  },
+  "lighting": {
+    "ambient": 0.02,
+    "fills": [],
+    "sun": {
+      "azimuthDeg": -55,
+      "elevationDeg": 32,
+      "intensity": 0.4,
+      "color": "#ffc888"
+    }
+  },
+  "stills": {
+    "marksMs": [2000]
+  }
+}

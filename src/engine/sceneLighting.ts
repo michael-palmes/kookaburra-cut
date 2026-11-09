@@ -18,6 +18,7 @@ import type {
 import { ease } from "./ease";
 import { KELVIN_MAX, KELVIN_MIN, kelvinToHex } from "./kelvin";
 import { parseWarn } from "./parseWarnings";
+import { parseEnvStrips, stripsSourceKey } from "./stripSpec";
 
 /** v9 lighting: deep validation + the three-layer resolve (mirrors sceneCamera.ts). Pure (no three.js, no clock reads, no store imports — theme/schema.ts imports this module, so it must stay leaf-level) so preview and export agree by construction. Parsing follows parseSceneDoc's degrade-don't-crash contract: a malformed block drops whole, a malformed entry inside `lights`/`fixtures` drops that entry only, out-of-range numbers clamp, missing/duplicate ids drop the entry. Byte-identity invariant: `resolveLighting` returns undefined whenever no layer contributes a renderable rig, so pre-v9 projects run the legacy path verbatim. See docs/determinism.md. */
 
@@ -346,12 +347,19 @@ export function normalizeLighting(
   }
 
   if (raw.environment !== undefined) {
-    if (isRecord(raw.environment) && isStr(raw.environment.source)) {
+    const env = raw.environment;
+    const strips = isRecord(env) ? parseEnvStrips(env.strips) : undefined;
+    if (isRecord(env) && (isStr(env.source) || strips)) {
+      const ambient = isNum(env.stripsAmbient) ? Math.max(0, env.stripsAmbient) : undefined;
       out.environment = {
-        source: raw.environment.source,
-        intensity: isNum(raw.environment.intensity) ? raw.environment.intensity : 1,
-        rotationDeg: isNum(raw.environment.rotationDeg) ? raw.environment.rotationDeg : 0,
+        source: strips
+          ? stripsSourceKey(ambient === undefined ? { strips } : { strips, ambient })
+          : (env.source as string),
+        intensity: isNum(env.intensity) ? env.intensity : 1,
+        rotationDeg: isNum(env.rotationDeg) ? env.rotationDeg : 0,
       };
+      if (strips) out.environment.strips = strips;
+      if (strips && ambient !== undefined) out.environment.stripsAmbient = ambient;
     } else {
       parseWarn(`[lighting] ${source}: "environment" needs a string source, dropped`);
     }

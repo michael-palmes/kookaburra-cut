@@ -571,6 +571,15 @@ const EFFECTS: Record<keyof EffectsConfig, { summary: string; fields: Record<str
       hold: "frames each pattern holds, the paper boil (5 is 12 fps; default 1)",
     },
   },
+  lens: {
+    summary: "Lens response for hot highlights: energy-conserving bloom, warm halation, glare.",
+    fields: {
+      intensity: "0 turns it off",
+      bloom: "0..0.3 mix of the wide glow (default 0.05)",
+      halation: "warm glow round hot edges (default 0)",
+      glare: "streaks on the hottest speculars (default 0)",
+    },
+  },
 };
 
 const DOF_MODES: Record<DofMode, { label: string; summary: string; fields: string[] }> = {
