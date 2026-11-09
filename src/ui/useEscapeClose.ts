@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { syncModalFocus } from "./modalFocus";
 
 /** Escape-closes the current top-most layer: a module-level stack arbitrates so one Escape closes exactly one layer, innermost first; listeners run in the capture phase so App-level key handling never sees an Escape meant for a layer; `enabled` gates registration so a busy wizard isn't dismissable mid-scaffold. */
 const stack: symbol[] = [];
@@ -26,4 +27,10 @@ export function useEscapeClose(onClose: () => void, enabled = true): void {
       window.removeEventListener("keydown", onKey, true);
     };
   }, [enabled]);
+
+  // Mount and unmount, whatever `enabled` says: a dialog that closes while busy still hands focus back.
+  useEffect(() => {
+    syncModalFocus();
+    return syncModalFocus;
+  }, []);
 }

@@ -178,6 +178,11 @@ body {
   outline-offset: 1px;
 }
 
+/* A modal layer holds focus itself until Tab moves into it (ui/modalFocus.ts); the container draws no ring. */
+[aria-modal="true"][tabindex="-1"]:focus {
+  outline: none;
+}
+
 /* macOS overlay scrollbars: thin + lightly tinted, never forced visible (§13). */
 ::-webkit-scrollbar {
   width: 10px;
