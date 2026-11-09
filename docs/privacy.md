@@ -5,7 +5,7 @@ plain words, what can leave the Mac, what the app keeps, how to clear it, and
 how an organisation can lock it down. The engineering version, with the file or
 command behind every sentence, is [SECURITY.md](../SECURITY.md).
 
-This page describes version 0.22.2. On 0.21.1, pressing Allow on a shared project
+This page describes version 0.22.3. On 0.21.1, pressing Allow on a shared project
 runs its code with your account, and the app's own data is not private to your
 account. Update once a newer release is out, and until then open only projects
 you'd trust as a program.

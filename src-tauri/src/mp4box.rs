@@ -275,41 +275,13 @@ fn edit_start_of(moov: &[u8]) -> Option<EditStart> {
         }
     }
     let video = video?;
-    if video
-        .stts
-        .iter()
-        .map(|&(count, _)| u64::from(count))
-        .sum::<u64>()
-        > MAX_SAMPLES
-    {
+    let samples: u64 = video.stts.iter().map(|&(count, _)| u64::from(count)).sum();
+    if samples > MAX_SAMPLES {
         return None;
     }
-    let deltas: Vec<i64> = video
-        .stts
-        .iter()
-        .flat_map(|&(count, delta)| std::iter::repeat(delta).take(count as usize))
-        .collect();
-    let mut offsets: Vec<i64> = video
-        .ctts
-        .iter()
-        .flat_map(|&(count, offset)| std::iter::repeat(offset).take(count as usize))
-        .take(deltas.len())
-        .collect();
-    offsets.resize(deltas.len(), 0);
-    let mut dts = 0i64;
-    let mut times: Vec<i64> = deltas
-        .iter()
-        .zip(&offsets)
-        .map(|(delta, offset)| {
-            let cts = dts + offset;
-            dts += delta;
-            cts
-        })
-        .collect();
-    if times.is_empty() || video.timescale == 0 {
+    if samples == 0 || video.timescale == 0 {
         return Some(EditStart::None);
     }
-    times.sort_unstable();
     let edits: Vec<_> = video
         .edits
         .unwrap_or_default()
@@ -319,19 +291,32 @@ fn edit_start_of(moov: &[u8]) -> Option<EditStart> {
     let Some(&(_, media, rate)) = edits.first() else {
         return Some(EditStart::None);
     };
-    Some(
-        if edits.len() > 1 || media < 0 || (rate - 1.0).abs() > 1e-3 {
-            EditStart::Complex
-        } else if media == times[0] {
-            EditStart::FirstFrame
-        } else if media < times[0] {
-            EditStart::Gap
-        } else if times.binary_search(&media).is_ok() {
-            EditStart::Frame
-        } else {
-            EditStart::MidSample
-        },
-    )
+    if edits.len() > 1 || media < 0 || (rate - 1.0).abs() > 1e-3 {
+        return Some(EditStart::Complex);
+    }
+    // Streamed, never expanded: a few bytes of table can claim millions of samples.
+    let mut offsets = video
+        .ctts
+        .iter()
+        .flat_map(|&(count, offset)| std::iter::repeat(offset).take(count as usize));
+    let (mut dts, mut first, mut on_sample) = (0i64, i64::MAX, false);
+    for &(count, delta) in &video.stts {
+        for _ in 0..count {
+            let cts = dts + offsets.next().unwrap_or(0);
+            first = first.min(cts);
+            on_sample |= cts == media;
+            dts += delta;
+        }
+    }
+    Some(if media == first {
+        EditStart::FirstFrame
+    } else if media < first {
+        EditStart::Gap
+    } else if on_sample {
+        EditStart::Frame
+    } else {
+        EditStart::MidSample
+    })
 }
 
 #[cfg(test)]

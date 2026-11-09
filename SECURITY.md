@@ -1,8 +1,10 @@
 # Security policy
 
-**As of version 0.22.2.** This file describes that version. Older versions have
-less: 0.22.1 asks the Keychain for the pack key whenever Settings or Export
-opens, and its Later stops the launch check offering that version again; 0.22.0
+**As of version 0.22.3.** This file describes that version. Older versions have
+less: 0.22.2 has no managed keys for the agent kit, pack export, exports in the
+project or the update endpoint; 0.22.1 asks the Keychain for the pack key
+whenever Settings or Export opens, and its Later stops the launch check offering
+that version again; 0.22.0
 is 0.22.1 built before the pinned toolchain and the whole-bundle record
 ("Release integrity"); and "Version 0.21.1" below lists what that version lacks.
 Each release from 0.22.0 on carries its own copy of this file in its assets.
