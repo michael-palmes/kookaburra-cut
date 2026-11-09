@@ -1,4 +1,5 @@
 import type { KeyboardEvent, MouseEvent, ReactNode, Ref } from "react";
+import { opensContextMenu } from "../ContextMenu";
 
 export interface SceneOverviewContextRequest {
   x: number;
@@ -196,7 +197,7 @@ export function SceneOverviewEntityRow({
   };
   const requestKeyboardMenu = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (!onContextMenu) return;
-    if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+    if (!opensContextMenu(event)) return;
     event.preventDefault();
     event.stopPropagation();
     const rect = event.currentTarget.getBoundingClientRect();

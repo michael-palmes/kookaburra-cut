@@ -633,6 +633,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
     <div
       className={`anim-lane${open ? " open" : ""}${laneClassName ? ` ${laneClassName}` : ""}`}
       aria-hidden={!open}
+      inert={!open}
     >
       <div className="anim-lane-row">
         <button

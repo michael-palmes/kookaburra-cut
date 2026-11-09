@@ -2006,6 +2006,7 @@ export function EditorApp() {
                 onClick={togglePlay}
                 disabled={doc.clips.length === 0}
                 title="Play/pause the preview (Space)"
+                aria-label={playing ? "Pause" : "Play"}
               >
                 {playing ? "⏸" : "▶"}
               </button>
@@ -2050,19 +2051,39 @@ export function EditorApp() {
                         className="editor-nudge"
                         title="Slide the reference in time by whole frames; positive means it runs ahead"
                       >
-                        <button type="button" className="btn" onClick={() => nudgeReference(-10)}>
+                        <button
+                          type="button"
+                          className="btn"
+                          aria-label="Reference 10 frames earlier"
+                          onClick={() => nudgeReference(-10)}
+                        >
                           ‹‹
                         </button>
-                        <button type="button" className="btn" onClick={() => nudgeReference(-1)}>
+                        <button
+                          type="button"
+                          className="btn"
+                          aria-label="Reference 1 frame earlier"
+                          onClick={() => nudgeReference(-1)}
+                        >
                           ‹
                         </button>
                         <span className="editor-nudge-value muted">
                           {Math.round(doc.reference.offsetMs)}ms
                         </span>
-                        <button type="button" className="btn" onClick={() => nudgeReference(1)}>
+                        <button
+                          type="button"
+                          className="btn"
+                          aria-label="Reference 1 frame later"
+                          onClick={() => nudgeReference(1)}
+                        >
                           ›
                         </button>
-                        <button type="button" className="btn" onClick={() => nudgeReference(10)}>
+                        <button
+                          type="button"
+                          className="btn"
+                          aria-label="Reference 10 frames later"
+                          onClick={() => nudgeReference(10)}
+                        >
                           ››
                         </button>
                       </div>
@@ -2099,6 +2120,7 @@ export function EditorApp() {
                             className="btn"
                             onClick={() => setActiveMark(null)}
                             title="Forget the mark"
+                            aria-label="Forget the mark"
                           >
                             ✕
                           </button>

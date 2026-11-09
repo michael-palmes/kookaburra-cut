@@ -137,6 +137,7 @@ export function PublisherPane() {
               type="text"
               size={18}
               aria-label="Publisher name"
+              autoComplete="name"
               placeholder={view?.effectiveName ?? "Asked for on your first pack export"}
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -157,6 +158,7 @@ export function PublisherPane() {
               type="text"
               size={18}
               aria-label="Organisation"
+              autoComplete="organization"
               value={organisation}
               onChange={(e) => setOrganisation(e.target.value)}
               onBlur={save}
@@ -176,6 +178,7 @@ export function PublisherPane() {
               type="text"
               size={18}
               aria-label="Website"
+              autoComplete="url"
               placeholder="https://"
               value={website}
               onChange={(e) => setWebsite(e.target.value)}

@@ -28,6 +28,7 @@ const GROUPS: { title: string; rows: [string, string][] }[] = [
         "Gizmos, text, hero charts and decorations: turn off alignment snapping",
       ],
       ["Right-click", "Scenes · theme cards · animation segments: context menu"],
+      ["⇧F10", "Scenes list, scene overview and text rows: the same menu from the keyboard"],
     ],
   },
   {

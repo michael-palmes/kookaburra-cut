@@ -1,4 +1,8 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
+
+const reducedMotion = () =>
+  typeof window !== "undefined" &&
+  (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
 
 /** One option-picker card: a still image, or a clip while hovered/selected; missing assets fall back to a text swatch. */
 export function OptionCard({
@@ -29,6 +33,13 @@ export function OptionCard({
   onSelect: () => void;
   onHoverChange?: (hovering: boolean) => void;
 }) {
+  const [near, setNear] = useState(false);
+  // Under Reduce motion a clip plays only while the pointer or focus is on its card.
+  const live = !!clip && (reducedMotion() ? near : playing);
+  const hover = (on: boolean) => {
+    setNear(on);
+    onHoverChange?.(on);
+  };
   return (
     // biome-ignore lint/a11y/useSemanticElements: a real <button> drops the img in WKWebView
     <div
@@ -38,8 +49,10 @@ export function OptionCard({
       title={title ?? (size === "compact" ? label : undefined)}
       className={`theme-card${size === "compact" ? " compact" : ""}${selected ? " selected" : ""}`}
       onClick={onSelect}
-      onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
-      onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
+      onMouseEnter={() => hover(true)}
+      onMouseLeave={() => hover(false)}
+      onFocus={() => setNear(true)}
+      onBlur={() => setNear(false)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -48,7 +61,7 @@ export function OptionCard({
       }}
     >
       <div className="theme-card-thumb">
-        {clip && playing ? (
+        {live ? (
           <video src={clip} poster={image ?? undefined} autoPlay loop muted playsInline />
         ) : icon ? (
           <div className="option-card-icon">{icon}</div>

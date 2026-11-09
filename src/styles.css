@@ -6134,7 +6134,6 @@ button.beat-status {
   background: var(--surface-recessed);
   border-color: var(--border-default);
   cursor: text;
-  outline: none;
   user-select: text;
 }
 .range-value-edit:focus {
@@ -8236,7 +8235,6 @@ button.beat-status {
 
 .palette-input:focus {
   border-color: var(--border-strong);
-  outline: none;
 }
 
 .palette-input::placeholder {
@@ -13219,7 +13217,6 @@ textarea.text-inspector-copy-input {
 .chart-series-name:focus {
   background: var(--surface-recessed);
   border-color: var(--border-default);
-  outline: none;
 }
 
 .chart-series-tools {

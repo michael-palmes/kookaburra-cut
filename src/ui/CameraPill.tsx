@@ -146,6 +146,7 @@ export function CameraPill({
       type="button"
       className={`camera-pill-mode${armedTool === tool ? " active" : ""}`}
       aria-pressed={armedTool === tool}
+      aria-label={label.split(" (")[0]}
       title={label}
       onClick={() => armTool(tool)}
     >
@@ -229,7 +230,7 @@ export function CameraPill({
           Animate scene
         </button>
 
-        <div className="camera-pill-active" aria-hidden={!open}>
+        <div className="camera-pill-active" aria-hidden={!open} inert={!open}>
           <SegmentedRow
             className="camera-pill-modes"
             ariaLabel="Camera mode"
