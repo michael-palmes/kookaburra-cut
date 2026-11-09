@@ -17,6 +17,7 @@ architecture → determinism → decisions.
 | --- | --- |
 | [design.md](./design.md) | Design language for the macOS application chrome (the editor UI) |
 | [voice.md](./voice.md) | Voice, tone, lexicon and the locked copy lines |
+| [accessibility.md](./accessibility.md) | Accessibility statement, keyboard map, how to report a problem, and the WCAG 2.2 AA conformance report (VPAT) |
 
 ## Security and privacy
 
