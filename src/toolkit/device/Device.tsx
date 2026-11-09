@@ -559,9 +559,10 @@ export function Device(props: DeviceProps) {
   const raw = dragged ?? committed;
   // `patchDoc` is async, so the drag pose holds until the COMMITTED placement changes (a commit, a slider, a preset or an undo), never on pointer-up.
   const poseKey = `${position.join()}|${rotationDeg.join()}|${scale}`;
+  // An animated placement changes poseKey every tick, so only a live drag may queue a render.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the committed pose IS the clear signal
   useEffect(() => {
-    setDrag(null);
+    if (drag) setDrag(null);
   }, [poseKey]);
   useEffect(() => {
     if (!gizmoOn) {
