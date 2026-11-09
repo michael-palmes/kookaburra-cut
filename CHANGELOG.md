@@ -23,6 +23,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- Checking an imported video's edit list no longer expands its sample table, so
+  a crafted file of a few kilobytes can't make the app allocate hundreds of
+  megabytes. Fuzzing found it.
 - `anyhow` moves to 1.0.104 (RUSTSEC-2026-0190) and `webpki-root-certs` to
   1.0.11 (RUSTSEC-2026-0383, distrusted emSign roots). `glib` (RUSTSEC-2024-0429)
   and `proc-macro-error` (RUSTSEC-2024-0370) sit in the Linux GTK stack the Mac
