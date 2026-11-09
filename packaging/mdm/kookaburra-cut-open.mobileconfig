@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>PayloadContent</key>
+  <array>
+    <dict>
+      <key>PayloadType</key>
+      <string>com.apple.ManagedClient.preferences</string>
+      <key>PayloadIdentifier</key>
+      <string>com.example.kookaburracut.open.preferences</string>
+      <key>PayloadUUID</key>
+      <string>0CF9AFBB-5A03-4EC8-A870-273BBCF59014</string>
+      <key>PayloadVersion</key>
+      <integer>1</integer>
+      <key>PayloadDisplayName</key>
+      <string>Kookaburra Cut managed preferences</string>
+      <key>PayloadContent</key>
+      <dict>
+        <key>com.mpalmes.kookaburracut</key>
+        <dict>
+          <key>Forced</key>
+          <array>
+            <dict>
+              <key>mcx_preference_settings</key>
+              <dict>
+                <key>ExportsInProject</key>
+                <true/>
+              </dict>
+            </dict>
+          </array>
+        </dict>
+      </dict>
+    </dict>
+  </array>
+  <key>PayloadDisplayName</key>
+  <string>Kookaburra Cut: open</string>
+  <key>PayloadDescription</key>
+  <string>Every feature stays as each person sets it. Exports stay in each project rather than Downloads.</string>
+  <key>PayloadIdentifier</key>
+  <string>com.example.kookaburracut.open</string>
+  <key>PayloadScope</key>
+  <string>System</string>
+  <key>PayloadType</key>
+  <string>Configuration</string>
+  <key>PayloadUUID</key>
+  <string>50B42C37-E368-4C19-B86D-B64455FBF13F</string>
+  <key>PayloadVersion</key>
+  <integer>1</integer>
+</dict>
+</plist>

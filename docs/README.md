@@ -26,6 +26,7 @@ architecture → determinism → decisions.
 | [security-overview.md](./security-overview.md) | The security lead, CTO or engineering manager | What leaves the Mac, subprocessors, where data rests, how releases are built, questionnaire answers and what is not done yet, every line linked to its proof |
 | [SECURITY.md](../SECURITY.md) | The security engineer, auditor and contributor | The engineering record: the threat model, every control with the file or command behind it, release integrity, and how to report a vulnerability |
 | [fleet.md](./fleet.md) | The IT team deploying it | Verifying a release, the keys to force, Claude Code's own managed settings, shared folders, what to expect in EDR, retention, in-app or MDM updates |
+| [fleet-deployment.md](./fleet-deployment.md) | The IT team deploying it | Recipes for Jamf Pro, Kandji (Iru), Mosyle and Intune: the install script, three ready profiles, checks on a Mac, an update mirror and removal |
 | [mdm.md](./mdm.md) | The administrator writing the profile | Managed preferences: the keys a configuration profile can force, a sample profile, and how to verify |
 | [security-assessment-scope.md](./security-assessment-scope.md) | A third-party security assessor | The threat model, trust boundaries and their entry files, existing tests and fuzzing, rules of engagement, deliverables and a vendor shortlist |
 

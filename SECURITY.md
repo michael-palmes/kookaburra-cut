@@ -929,7 +929,8 @@ Deliberately deferred, recorded so nobody mistakes them for done:
 - An App Sandbox for the app itself: kb's headless CLI is the same binary, the
   updater swaps the bundle in place, and each workspace or linked `assets/`
   root would need a dialog (`docs/decisions.md`, "No App Sandbox").
-- A Homebrew cask, so MDM fleets can install and pin versions without the DMG.
+- A published Homebrew tap: the cask is staged in `packaging/homebrew/` until
+  the tap repository `michael-palmes/homebrew-kookaburra-cut` exists.
 - A per-project website data store: approved projects share one login profile
   today (`docs/scene-website.md`, "Accepted residual risk").
 - Bridge signing against same-user processes. Since 0.23.0 every request and
