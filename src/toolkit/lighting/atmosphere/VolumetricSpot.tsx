@@ -134,6 +134,7 @@ export const BEAM_DUST_DEFAULTS: BeamDust = {
 
 /** The share of `haze.density` the smoke averages, for the extinction estimate along light paths. */
 const SMOKE_MEAN = 0.45;
+const LIGHT_COLOR = new Color();
 const EVOLVE_DIR = new Vector3(0.31, -0.57, 0.76).normalize();
 const WARP_DIR = new Vector3(-0.62, 0.21, 0.75).normalize();
 
@@ -471,7 +472,7 @@ export function VolumetricSpot(props: VolumetricSpotProps) {
       d.uShadowBias.value = shadowBias;
       (d.uColor.value as Color)
         .set(dust.color)
-        .multiply(new Color(color))
+        .multiply(LIGHT_COLOR.set(color))
         .multiplyScalar(intensity * dust.gain);
     }
   });

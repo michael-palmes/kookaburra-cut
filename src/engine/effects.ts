@@ -866,8 +866,16 @@ async function lookupTexture(src: string, flip: boolean, nearest: boolean): Prom
 }
 
 /** Decodes SMAA's lookup images once into byte textures, so the effect builds complete and synchronously: left to itself it decodes them after its first frames. Best effort; only an SMAA project needs them. The loader needs its callback: without one it calls undefined inside the image's load event, past any catch. */
-async function preloadSmaaImages(): Promise<void> {
-  if (smaaTextures) return;
+let smaaLoading: Promise<void> | null = null;
+function preloadSmaaImages(): Promise<void> {
+  if (smaaTextures) return Promise.resolve();
+  smaaLoading ??= decodeSmaaImages().finally(() => {
+    smaaLoading = null;
+  });
+  return smaaLoading;
+}
+
+async function decodeSmaaImages(): Promise<void> {
   try {
     // Its typings declare three's url-first Loader signature; at runtime a lone function is the load callback.
     const loader = new SMAAImageLoader() as unknown as {
@@ -917,7 +925,7 @@ export async function preloadEffectLuts(opts?: {
   /** Per-scene theme-swap base stacks, see effectsStore. */
   sceneDefaults?: Record<number, EffectsConfig>;
 }): Promise<void> {
-  await preloadSmaaImages();
+  if (useEffectsStore.getState().renderSettings.antialias === "smaa") await preloadSmaaImages();
   const store = useEffectsStore.getState();
   const urls = collectLutUrls(
     opts?.effects ?? store.projectDefault,
