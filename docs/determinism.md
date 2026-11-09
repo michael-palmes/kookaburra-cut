@@ -690,6 +690,26 @@ math on fixed geometry → deterministic like any shader. Scope discipline: the
 filter applies ONLY to `Device`'s private material clones, never the shared drei
 glTF cache; `DeviceMockup`/`HeroObject` read the same glb.
 
+**Post-tone-map AA and supersampled export** (opt-in project `render` settings;
+absent keeps today's chain and bytes). MSAA resolves linear HDR, so a highlight
+many times brighter than white keeps a hard edge whatever the sample count.
+
+- **`render.antialias: "smaa" | "fxaa"`** adds one EffectPass after the tone map
+  on effect frames, so it sees display values. Fixed shaders and taps; part of
+  the composer's rebuild key. SMAA's lookup images decode in
+  `preloadEffectLuts` into byte textures (`createImageBitmap`: the stage realm's
+  GL context rejects the page's image elements), and the effect builds from
+  them synchronously. An export never renders a frame without them; the preview
+  shows FXAA until they land.
+- **`render.supersample: 4 | 8 | 16`** (export only) is the escalation path
+  above. Each draw averages that many renders of the same instant, the camera's
+  projection offset by a fixed sub-pixel table (`engine/supersample.ts`: a
+  rotated grid at 4, Halton (2, 3) beyond; export contract), through the
+  motion blur lane's accumulator after the tone map. Pure in t. It fixes
+  geometry thinner than MSAA's sample spacing, such as an edge-on band dotting
+  along a rim, at about 2.2× the export cost at 4. Frames on a shutter lane keep
+  their own samples, and transition frames jitter only the main camera.
+
 Changing `MSAA_SAMPLES` (engine/format.ts) is a full baseline rebase.
 
 ## Per-scene camera
