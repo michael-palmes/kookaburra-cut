@@ -66,6 +66,9 @@ optional Claude Code integration. It runs on corporate Macs holding
 confidential, unreleased work. This file lists everything it touches and the
 control behind each claim, at the version named on its first line.
 [docs/privacy.md](docs/privacy.md) says the same in plain words.
+Questionnaire answers (SIG Lite, CAIQ v4) are in
+[docs/vendor-questionnaire.md](docs/vendor-questionnaire.md), and every third
+party a Mac can reach in [docs/subprocessors.md](docs/subprocessors.md).
 
 It is built for these risks:
 
