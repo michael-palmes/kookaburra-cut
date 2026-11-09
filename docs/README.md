@@ -27,6 +27,7 @@ architecture → determinism → decisions.
 | [SECURITY.md](../SECURITY.md) | The security engineer, auditor and contributor | The engineering record: the threat model, every control with the file or command behind it, release integrity, and how to report a vulnerability |
 | [fleet.md](./fleet.md) | The IT team deploying it | Verifying a release, the keys to force, Claude Code's own managed settings, shared folders, what to expect in EDR, retention, in-app or MDM updates |
 | [mdm.md](./mdm.md) | The administrator writing the profile | Managed preferences: the keys a configuration profile can force, a sample profile, and how to verify |
+| [security-assessment-scope.md](./security-assessment-scope.md) | A third-party security assessor | The threat model, trust boundaries and their entry files, existing tests and fuzzing, rules of engagement, deliverables and a vendor shortlist |
 
 ## Features
 
