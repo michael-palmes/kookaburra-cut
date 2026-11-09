@@ -3,6 +3,8 @@ import {
   AdditiveBlending,
   BackSide,
   BoxGeometry,
+  BufferAttribute,
+  BufferGeometry,
   type Camera,
   Color,
   DepthTexture,
@@ -13,6 +15,7 @@ import {
   NearestFilter,
   Object3D,
   type PerspectiveCamera,
+  type Points,
   type Scene,
   ShaderMaterial,
   type SpotLight,
@@ -21,9 +24,12 @@ import {
   type WebGLRenderer,
   WebGLRenderTarget,
 } from "three";
+import { createSeededRandom } from "../../../engine/rng";
 import { useTimeline } from "../../../engine/timeline";
 import { BEAM_FRAGMENT, BEAM_VERTEX } from "./beamShader";
+import { DUST_FRAGMENT, DUST_VERTEX } from "./dustShader";
 import { GOBO_DEFAULTS, type GoboSpec, goboTexture } from "./gobo";
+import { type GrateSpec, grateTexture } from "./grate";
 import { renderOccluders } from "./occlusionPass";
 
 type V3 = [number, number, number];
@@ -44,6 +50,8 @@ export interface BeamHaze {
   strength: number;
   /** Weight of a sharp second forward lobe: the haze round the source glows hot. */
   hotspot: number;
+  /** Height over which the haze thins into the floor, so a ray never ends on a hard line where it meets the ground (0 = off). */
+  groundFade?: number;
 }
 
 export const BEAM_HAZE_DEFAULTS: BeamHaze = {
@@ -57,6 +65,78 @@ export const BEAM_HAZE_DEFAULTS: BeamHaze = {
   hotspot: 0,
 };
 
+/** Smoke the shafts pass through: a seeded field that drifts and churns with the clock alone. */
+export interface BeamSmoke {
+  /** Feature scale. Keep the shapes large (0.2 is about five units): edge-on rays average the smoke along a long path, which washes out small wisps. */
+  scale: number;
+  /** How far a slower field folds the smoke into wisps. */
+  warp: number;
+  warpScale: number;
+  /** The noise band mapped onto [floor, 1]. */
+  contrast: [number, number];
+  floor: number;
+  /** World units per second. */
+  drift: V3;
+  /** How fast the smoke churns in place. */
+  evolve: number;
+  warpEvolve: number;
+  offset: V3;
+  /** Thins the smoke in front of the subject: density falls to `min` between `z0` and `z1`. */
+  frontFade?: { z0: number; z1: number; min: number };
+}
+
+export const BEAM_SMOKE_DEFAULTS: BeamSmoke = {
+  scale: 0.2,
+  warp: 1.2,
+  warpScale: 0.1,
+  contrast: [0.38, 0.62],
+  floor: 0.05,
+  drift: [0.25, 0.18, 0],
+  evolve: 0.12,
+  warpEvolve: 0.06,
+  offset: [3.1, 7.7, 1.3],
+};
+
+/** Motes that glint only where a shaft lights them: seeded, drifting with the clock and wrapping inside a box. Keep them few, small and dim, or they read as a starfield. */
+export interface BeamDust {
+  count: number;
+  min: V3;
+  max: V3;
+  /** Each mote's radius is picked in this range, world units. */
+  radius: [number, number];
+  seed: number;
+  /** World units per second. */
+  drift: V3;
+  /** How far each mote wanders off its drift. */
+  jitter: number;
+  jitterScale: number;
+  jitterSpeed: number;
+  color: string;
+  /** How much a mote glows when lit from behind (Henyey-Greenstein g). */
+  forward: number;
+  gain: number;
+}
+
+export const BEAM_DUST_DEFAULTS: BeamDust = {
+  count: 1800,
+  min: [-8, -1, -9],
+  max: [0, 6, 1],
+  radius: [0.002, 0.006],
+  seed: 11,
+  drift: [0.08, 0.1, 0],
+  jitter: 0.35,
+  jitterScale: 0.5,
+  jitterSpeed: 0.3,
+  color: "#b8a890",
+  forward: 0.6,
+  gain: 1,
+};
+
+/** The share of `haze.density` the smoke averages, for the extinction estimate along light paths. */
+const SMOKE_MEAN = 0.45;
+const EVOLVE_DIR = new Vector3(0.31, -0.57, 0.76).normalize();
+const WARP_DIR = new Vector3(-0.62, 0.21, 0.75).normalize();
+
 export interface VolumetricSpotProps {
   position: V3;
   target: V3;
@@ -69,6 +149,15 @@ export interface VolumetricSpotProps {
   /** Cutoff distance; 0 runs to the beam's own reach. */
   distance?: number;
   gobo?: Partial<GoboSpec> | null;
+  /** Bars aimed at the lens (replaces `gobo`): crisp rays fanning from the source. `position` and `target` must be world space. */
+  grate?: GrateSpec;
+  /** Haze only inside this world box, like a stage's smoke. */
+  box?: { min: V3; max: V3 };
+  /** Moving smoke in place of `haze.noise`. */
+  smoke?: Partial<BeamSmoke>;
+  /** The haze dims light on its way in and out, as real smoke does. */
+  extinction?: boolean;
+  dust?: Partial<BeamDust>;
   castShadow?: boolean;
   shadowMapSize?: number;
   shadowBias?: number;
@@ -135,15 +224,28 @@ export function VolumetricSpot(props: VolumetricSpotProps) {
     veil = false,
   } = props;
   const haze = { ...BEAM_HAZE_DEFAULTS, ...props.haze };
-  const gobo = props.gobo === null ? null : { ...GOBO_DEFAULTS, ...props.gobo };
+  const gobo = props.gobo === null || props.grate ? null : { ...GOBO_DEFAULTS, ...props.gobo };
   const goboKey = gobo ? JSON.stringify(gobo) : "";
+  const grateKey = props.grate ? JSON.stringify([props.grate, position, target, angleDeg]) : "";
+  const smoke = props.smoke ? { ...BEAM_SMOKE_DEFAULTS, ...props.smoke } : null;
+  const boxKey = props.box ? JSON.stringify(props.box) : "";
+  const dust = props.dust ? { ...BEAM_DUST_DEFAULTS, ...props.dust } : null;
+  const dustKey = dust ? JSON.stringify([dust.count, dust.seed]) : "";
+  const extinction = props.extinction ?? false;
+  const groundFade = Math.max(0, haze.groundFade ?? 0);
   const time = useTimeline();
   const lightRef = useRef<SpotLight>(null);
   const meshRef = useRef<Mesh>(null);
   const targetObject = useMemo(() => new Object3D(), []);
   const halfAngle = (angleDeg * Math.PI) / 360;
 
-  const map = useMemo(() => (goboKey ? goboTexture(JSON.parse(goboKey)) : null), [goboKey]);
+  const map = useMemo(() => {
+    if (grateKey) {
+      const [grate, p, t, a] = JSON.parse(grateKey) as [GrateSpec, V3, V3, number];
+      return grateTexture(grate, { position: p, target: t, halfAngle: (a * Math.PI) / 360 });
+    }
+    return goboKey ? goboTexture(JSON.parse(goboKey)) : null;
+  }, [goboKey, grateKey]);
 
   const poseKey = `${position.join(",")}|${target.join(",")}`;
   const geometry = useMemo(() => {
@@ -151,16 +253,35 @@ export function VolumetricSpot(props: VolumetricSpotProps) {
     const apex = new Vector3(p[0], p[1], p[2]);
     const axis = new Vector3(t[0], t[1], t[2]).sub(apex).normalize();
     const { min, max } = coneBox(apex, axis, halfAngle, distance > 0 ? distance : reach, floorY);
+    if (boxKey) {
+      const box = JSON.parse(boxKey) as { min: V3; max: V3 };
+      const lo = new Vector3(...box.min);
+      const hi = new Vector3(...box.max);
+      const cutMin = min.clone().max(lo);
+      const cutMax = max.clone().min(hi);
+      const empty = cutMax.x <= cutMin.x || cutMax.y <= cutMin.y || cutMax.z <= cutMin.z;
+      min.copy(empty ? lo : cutMin);
+      max.copy(empty ? hi : cutMax);
+    }
     const box = new BoxGeometry(max.x - min.x, max.y - min.y, max.z - min.z);
     box.translate((min.x + max.x) / 2, (min.y + max.y) / 2, (min.z + max.z) / 2);
     return box;
-  }, [poseKey, halfAngle, distance, reach, floorY]);
+  }, [poseKey, halfAngle, distance, reach, floorY, boxKey]);
   useLayoutEffect(() => () => geometry.dispose(), [geometry]);
 
+  const hasBox = boxKey !== "";
+  const hasSmoke = smoke !== null;
+  const hasGround = groundFade > 0;
   const material = useMemo(
     () =>
       new ShaderMaterial({
         name: "kookaburra-volumetric-spot",
+        defines: {
+          ...(hasBox ? { BEAM_BOX: 1 } : {}),
+          ...(hasSmoke ? { BEAM_SMOKE: 1 } : {}),
+          ...(extinction ? { BEAM_EXTINCT: 1 } : {}),
+          ...(hasGround ? { BEAM_GROUND: 1 } : {}),
+        },
         vertexShader: BEAM_VERTEX,
         fragmentShader: BEAM_FRAGMENT,
         transparent: true,
@@ -197,9 +318,73 @@ export function VolumetricSpot(props: VolumetricSpotProps) {
           uCamForward: { value: new Vector3(0, 0, -1) },
           uCamNear: { value: 0.1 },
           uCamFar: { value: 1000 },
+          uBoxMin: { value: new Vector3() },
+          uBoxMax: { value: new Vector3() },
+          uSmokeScale: { value: 0.2 },
+          uSmokeWarp: { value: 1 },
+          uSmokeWarpScale: { value: 0.1 },
+          uSmokeContrast: { value: new Vector2(0.4, 0.6) },
+          uSmokeFloor: { value: 0 },
+          uSmokeShift: { value: new Vector3() },
+          uWarpShift: { value: new Vector3() },
+          uSmokeOffset: { value: new Vector3() },
+          uFrontFade: { value: new Vector3(0, 1, 1) },
+          uMeanDensity: { value: 0 },
+          uGroundFade: { value: 1 },
         },
       }),
-    [],
+    [hasBox, hasSmoke, extinction, hasGround],
+  );
+
+  const dustPoints = useMemo(() => {
+    if (!dustKey) return null;
+    const [count, seed] = JSON.parse(dustKey) as [number, number];
+    const rand = createSeededRandom(seed);
+    const seeds = new Float32Array(count * 4);
+    for (let i = 0; i < seeds.length; i++) seeds[i] = rand();
+    const geometry = new BufferGeometry();
+    geometry.setAttribute("position", new BufferAttribute(new Float32Array(count * 3), 3));
+    geometry.setAttribute("aSeed", new BufferAttribute(seeds, 4));
+    const material = new ShaderMaterial({
+      name: "kookaburra-beam-dust",
+      vertexShader: DUST_VERTEX,
+      fragmentShader: DUST_FRAGMENT,
+      transparent: true,
+      depthWrite: false,
+      depthTest: true,
+      blending: AdditiveBlending,
+      uniforms: {
+        uMin: { value: new Vector3() },
+        uMax: { value: new Vector3() },
+        uShift: { value: new Vector3() },
+        uWander: { value: new Vector3() },
+        uJitter: { value: 0 },
+        uJitterScale: { value: 1 },
+        uRadius: { value: new Vector2() },
+        uPxPerUnit: { value: 1000 },
+        uApex: { value: new Vector3() },
+        uAxis: { value: new Vector3(0, -1, 0) },
+        uCosOuter: { value: 0.9 },
+        uCosInner: { value: 0.95 },
+        uDecay: { value: 2 },
+        uG: { value: 0.6 },
+        uLightMatrix: { value: new Matrix4() },
+        uGobo: { value: null },
+        uGoboOn: { value: 0 },
+        uShadowMap: { value: null },
+        uShadowOn: { value: 0 },
+        uShadowBias: { value: 0 },
+        uColor: { value: new Color() },
+      },
+    });
+    return { geometry, material };
+  }, [dustKey]);
+  useLayoutEffect(
+    () => () => {
+      dustPoints?.geometry.dispose();
+      dustPoints?.material.dispose();
+    },
+    [dustPoints],
   );
   useLayoutEffect(() => () => material.dispose(), [material]);
 
@@ -247,17 +432,57 @@ export function VolumetricSpot(props: VolumetricSpotProps) {
     u.uHotspot.value = haze.hotspot;
     u.uVeilOn.value = veil ? 1 : 0;
     material.depthTest = !veil;
+    if (props.box) {
+      (u.uBoxMin.value as Vector3).set(...props.box.min);
+      (u.uBoxMax.value as Vector3).set(...props.box.max);
+    }
+    if (smoke) {
+      u.uSmokeScale.value = smoke.scale;
+      u.uSmokeWarp.value = smoke.warp;
+      u.uSmokeWarpScale.value = smoke.warpScale;
+      (u.uSmokeContrast.value as Vector2).set(smoke.contrast[0], smoke.contrast[1]);
+      u.uSmokeFloor.value = smoke.floor;
+      (u.uSmokeShift.value as Vector3).set(...smoke.drift).multiplyScalar(seconds);
+      (u.uWarpShift.value as Vector3).copy(WARP_DIR).multiplyScalar(smoke.warpEvolve * seconds);
+      (u.uSmokeOffset.value as Vector3)
+        .set(...smoke.offset)
+        .addScaledVector(EVOLVE_DIR, smoke.evolve * seconds);
+      const fade = smoke.frontFade;
+      (u.uFrontFade.value as Vector3).set(fade?.z0 ?? 0, fade?.z1 ?? 1, fade?.min ?? 1);
+    }
+    u.uGroundFade.value = groundFade > 0 ? groundFade : 1;
+    u.uMeanDensity.value =
+      haze.density * (smoke ? smoke.floor + (1 - smoke.floor) * SMOKE_MEAN : 1);
+    if (dust && dustPoints) {
+      const d = dustPoints.material.uniforms;
+      (d.uMin.value as Vector3).set(...dust.min);
+      (d.uMax.value as Vector3).set(...dust.max);
+      (d.uShift.value as Vector3).set(...dust.drift).multiplyScalar(seconds);
+      (d.uWander.value as Vector3).copy(WARP_DIR).multiplyScalar(dust.jitterSpeed * seconds);
+      d.uJitter.value = dust.jitter;
+      d.uJitterScale.value = dust.jitterScale;
+      (d.uRadius.value as Vector2).set(dust.radius[0], dust.radius[1]);
+      d.uCosOuter.value = u.uCosOuter.value;
+      d.uCosInner.value = u.uCosInner.value;
+      d.uDecay.value = decay;
+      d.uG.value = dust.forward;
+      d.uGobo.value = map;
+      d.uGoboOn.value = map ? 1 : 0;
+      d.uShadowBias.value = shadowBias;
+      (d.uColor.value as Color)
+        .set(dust.color)
+        .multiply(new Color(color))
+        .multiplyScalar(intensity * dust.gain);
+    }
   });
 
   // Per draw: the light's world pose and shadow matrix are only final once the renderer has updated them for this render.
-  const onBeforeRender = useMemo(() => {
+  const syncLight = useMemo(() => {
     const aim = new Vector3();
-    const size = new Vector2();
-    return (renderer: WebGLRenderer, scene: Scene, camera: Camera) => {
+    return (u: ShaderMaterial["uniforms"]) => {
       const light = lightRef.current;
-      const u = material.uniforms;
+      if (!light) return false;
       const apex = u.uApex.value as Vector3;
-      if (!light) return;
       light.getWorldPosition(apex);
       targetObject.getWorldPosition(aim);
       (u.uAxis.value as Vector3).copy(aim.sub(apex).normalize());
@@ -266,6 +491,29 @@ export function VolumetricSpot(props: VolumetricSpotProps) {
       const shadowMap = light.castShadow ? light.shadow.map : null;
       u.uShadowMap.value = shadowMap ? shadowMap.texture : null;
       u.uShadowOn.value = shadowMap ? 1 : 0;
+      return true;
+    };
+  }, [targetObject]);
+
+  const onDustBeforeRender = useMemo(() => {
+    const size = new Vector2();
+    return (renderer: WebGLRenderer, _scene: Scene, camera: Camera) => {
+      if (!dustPoints) return;
+      const u = dustPoints.material.uniforms;
+      syncLight(u);
+      const outer = renderer.getRenderTarget();
+      if (outer) size.set(outer.width, outer.height);
+      else renderer.getDrawingBufferSize(size);
+      const fov = ((camera as PerspectiveCamera).fov ?? 45) * (Math.PI / 180);
+      u.uPxPerUnit.value = size.y / (2 * Math.tan(fov / 2));
+    };
+  }, [dustPoints, syncLight]);
+
+  const onBeforeRender = useMemo(() => {
+    const size = new Vector2();
+    return (renderer: WebGLRenderer, scene: Scene, camera: Camera) => {
+      const u = material.uniforms;
+      if (!syncLight(u)) return;
       if (u.uVeilOn.value < 0.5) return;
       const outer = renderer.getRenderTarget();
       if (outer) size.set(outer.width, outer.height);
@@ -280,7 +528,7 @@ export function VolumetricSpot(props: VolumetricSpotProps) {
       u.uCamNear.value = cam.near;
       u.uCamFar.value = cam.far;
     };
-  }, [material, targetObject, depthPass]);
+  }, [material, depthPass, syncLight]);
 
   return (
     <>
@@ -312,6 +560,15 @@ export function VolumetricSpot(props: VolumetricSpotProps) {
           frustumCulled={false}
           renderOrder={-20}
           onBeforeRender={onBeforeRender as unknown as Mesh["onBeforeRender"]}
+        />
+      )}
+      {dustPoints && (
+        <points
+          geometry={dustPoints.geometry}
+          material={dustPoints.material}
+          frustumCulled={false}
+          renderOrder={-19}
+          onBeforeRender={onDustBeforeRender as unknown as Points["onBeforeRender"]}
         />
       )}
     </>

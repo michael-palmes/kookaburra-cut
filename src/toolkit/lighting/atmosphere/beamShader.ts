@@ -48,6 +48,27 @@ uniform vec2 uDepthSize;
 uniform vec3 uCamForward;
 uniform float uCamNear;
 uniform float uCamFar;
+#ifdef BEAM_BOX
+uniform vec3 uBoxMin;
+uniform vec3 uBoxMax;
+#endif
+#ifdef BEAM_EXTINCT
+uniform float uMeanDensity;
+#endif
+#ifdef BEAM_GROUND
+uniform float uGroundFade;
+#endif
+#ifdef BEAM_SMOKE
+uniform float uSmokeScale;
+uniform float uSmokeWarp;
+uniform float uSmokeWarpScale;
+uniform vec2 uSmokeContrast;
+uniform float uSmokeFloor;
+uniform vec3 uSmokeShift;
+uniform vec3 uWarpShift;
+uniform vec3 uSmokeOffset;
+uniform vec3 uFrontFade;
+#endif
 varying vec3 vWorld;
 
 // Distance along the view ray to the opaque surface behind this pixel, from the veil's depth pre-pass.
@@ -101,6 +122,18 @@ float lightVisibility(vec3 p) {
   return clamp((pMax - 0.3) / 0.65, 0.0, 1.0);
 }
 
+#ifdef BEAM_SMOKE
+// Seeded smoke that drifts and churns with the clock alone: a slower warp field folds the drifting field into wisps.
+float smokeAt(vec3 p) {
+  vec3 wq = p * uSmokeWarpScale + uWarpShift;
+  vec3 warp = vec3(vnoise3(wq), vnoise3(wq + vec3(31.4, 17.9, 5.3)), vnoise3(wq + vec3(9.2, 41.7, 23.1))) - 0.5;
+  float n = fbm3((p - uSmokeShift) * uSmokeScale + warp * uSmokeWarp + uSmokeOffset);
+  float d = mix(uSmokeFloor, 1.0, smoothstep(uSmokeContrast.x, uSmokeContrast.y, n));
+  float front = clamp((p.z - uFrontFade.x) / max(uFrontFade.y - uFrontFade.x, 1e-4), 0.0, 1.0);
+  return d * mix(1.0, uFrontFade.z, front);
+}
+#endif
+
 float goboAt(vec3 p) {
   vec4 c = uLightMatrix * vec4(p, 1.0);
   return textureLod(uGobo, c.xy / c.w, 0.0).r;
@@ -116,6 +149,19 @@ void main() {
   float t1 = min(span.y, tMax);
   if (uVeilOn > 0.5) t1 = min(t1, sceneDistance(rd));
   if (rd.y < 0.0 && ro.y > uFloorY) t1 = min(t1, (uFloorY - ro.y) / rd.y);
+#if defined(BEAM_BOX) || defined(BEAM_EXTINCT)
+  float tEnter = t0;
+#endif
+#ifdef BEAM_BOX
+  vec3 inv = 1.0 / rd;
+  vec3 ta = (uBoxMin - ro) * inv;
+  vec3 tb = (uBoxMax - ro) * inv;
+  vec3 lo = min(ta, tb);
+  vec3 hi = max(ta, tb);
+  tEnter = max(max(max(lo.x, lo.y), lo.z), 0.0);
+  t0 = max(t0, tEnter);
+  t1 = min(t1, min(min(hi.x, hi.y), hi.z));
+#endif
   if (uRange > 0.0) {
     vec3 oc = ro - uApex;
     float b = dot(oc, rd);
@@ -129,12 +175,27 @@ void main() {
   float dt = (t1 - t0) / ${BEAM_STEPS}.0;
   float jitter = hash21(ivec2(gl_FragCoord.xy));
   float sum = 0.0;
+#ifdef BEAM_EXTINCT
+  // Haze between entering the box and reaching the beam dims it too.
+  float tau = uMeanDensity * max(t0 - tEnter, 0.0);
+#endif
   for (int i = 0; i < ${BEAM_STEPS}; i++) {
     float t = t0 + (float(i) + jitter) * dt;
     vec3 p = ro + rd * t;
     vec3 l = p - uApex;
     float dist = length(l);
     vec3 ldir = l / max(dist, 1e-5);
+#ifdef BEAM_EXTINCT
+    float stepDens = uDensity * exp(-max(p.y - uFloorY, 0.0) * uHeightFalloff);
+#ifdef BEAM_GROUND
+    stepDens *= smoothstep(uFloorY, uFloorY + uGroundFade, p.y);
+#endif
+#ifdef BEAM_SMOKE
+    stepDens *= smokeAt(p);
+#endif
+    float seen = exp(-tau) * exp(-uMeanDensity * dist);
+    tau += stepDens * dt;
+#endif
     float cone = smoothstep(uCosOuter, uCosInner, dot(ldir, uAxis));
     if (cone <= 0.0) continue;
     float fall = 1.0 / pow(dist * dist + uSoftRadius * uSoftRadius, 0.5 * uDecay);
@@ -147,11 +208,24 @@ void main() {
     if (uGoboOn > 0.5) light *= goboAt(p);
     if (light <= 1e-5) continue;
     if (uShadowOn > 0.5) light *= lightVisibility(p);
+#ifdef BEAM_EXTINCT
+    float dens = stepDens * seen;
+#else
     float dens = uDensity * exp(-max(p.y - uFloorY, 0.0) * uHeightFalloff);
+#ifdef BEAM_GROUND
+    dens *= smoothstep(uFloorY, uFloorY + uGroundFade, p.y);
+#endif
+#endif
+#ifdef BEAM_SMOKE
+#ifndef BEAM_EXTINCT
+    dens *= smokeAt(p);
+#endif
+#else
     if (uNoiseAmount > 0.0) {
       float n = vnoise3(p * uNoiseScale + uDrift) * 0.65 + vnoise3(p * uNoiseScale * 2.7 - uDrift * 1.3) * 0.35;
       dens *= mix(1.0, smoothstep(0.15, 0.85, n) * 2.0, uNoiseAmount);
     }
+#endif
     float cosTheta = dot(ldir, -rd);
     float phase = hgPhase(cosTheta, uG);
     if (uHotspot > 0.0) phase = mix(phase, hgPhase(cosTheta, ${HOTSPOT_G}), uHotspot);
