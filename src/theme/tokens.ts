@@ -110,6 +110,30 @@ export interface EnvironmentSpec {
   source: string;
   intensity: number;
   rotationDeg: number;
+  /** Emissive strips baked into a black environment (engine/stripSpec.ts); present, they replace `source`. */
+  strips?: EnvStripSpec[];
+  /** Linear floor of the strips' sphere. */
+  stripsAmbient?: number;
+}
+
+/** One environment strip: reflection-only light. Azimuth from +Z toward +X, elevation up, like the light rig. */
+export interface EnvStripSpec {
+  azimuthDeg: number;
+  elevationDeg: number;
+  /** Angular length along the strip's long axis. */
+  lengthDeg: number;
+  /** Angular width across it. */
+  widthDeg: number;
+  /** 0 stands the strip upright; 90 lays it level. */
+  rollDeg?: number;
+  /** sRGB hex. */
+  color: string;
+  /** Linear radiance: 10 to 60 reads as a hot line on polished metal. */
+  intensity: number;
+  /** 0 even, 1 falls to black at both ends. */
+  falloff?: number;
+  /** 0 hard edge, 1 fades to black across the width. */
+  feather?: number;
 }
 
 /** The promoted key light. `azimuthDeg`/`elevationDeg`/`intensity`/`color` are byte-compatible with `ThemeLightSpec`, so a v8 `key` block parses straight in. */

@@ -8,6 +8,7 @@ import {
   MeshPhysicalMaterial,
   MeshStandardMaterial,
   type Object3D,
+  ShaderChunk,
   type SkinnedMesh,
 } from "three";
 import type { DeviceId } from "./catalog";
@@ -54,6 +55,8 @@ export interface DeviceFrameFinish {
   /** Roughness where the band rolls over into the glass and the back (a polished chamfer line); absent keeps one roughness. */
   chamferRoughness?: number;
   envIntensity?: number;
+  /** Environment lookups fanned across the grooves around the true mirror direction, in place of three's bent normal, which swings the band's reflection towards the viewer. A strip placed on the band's mirror direction then lands on it, as it would in a path tracer. */
+  iblTaps?: number;
 }
 
 export interface DeviceFinishSpec {
@@ -200,6 +203,30 @@ const FRAME_ANISOTROPY = /* glsl */ `
 #endif
 `;
 
+/** The stretched lobe as `taps` lookups fanned across the grooves, each at the base roughness, spanning three's own alphaT. */
+function frameIblTaps(taps: number): string {
+  return /* glsl */ `
+#if defined( USE_ENVMAP ) && defined( USE_ANISOTROPY )
+vec3 kbAnisoIBL( const in vec3 viewDir, const in vec3 normal, const in float roughness, const in vec3 bitangent, const in float anisotropy ) {
+	vec3 across = cross( bitangent, normal );
+	float acrossLen = length( across );
+	if ( acrossLen < 1e-5 ) return getIBLRadiance( viewDir, normal, roughness );
+	across /= acrossLen;
+	float spread = mix( pow2( roughness ), 1.0, pow2( anisotropy ) );
+	vec3 sum = vec3( 0.0 );
+	float total = 0.0;
+	for ( int i = 0; i < ${taps}; i ++ ) {
+		float t = ( float( i ) + 0.5 ) / ${taps}.0 * 2.0 - 1.0;
+		float w = exp( - 2.0 * t * t );
+		sum += w * getIBLRadiance( viewDir, normalize( normal + across * ( t * spread ) ), roughness );
+		total += w;
+	}
+	return sum / total;
+}
+#endif
+`;
+}
+
 function mustReplace(source: string, anchor: string, replacement: string): string {
   if (!source.includes(anchor)) throw new Error(`device finish: shader anchor missing: ${anchor}`);
   return source.replace(anchor, replacement);
@@ -241,6 +268,7 @@ function applyFrame(source: Material, spec: DeviceFrameFinish, root: Object3D): 
     }
   }
   material.anisotropy = spec.anisotropy ?? 0;
+  const taps = Math.max(0, Math.min(16, Math.round(spec.iblTaps ?? 0)));
   const uniforms = {
     kbDeviceMatrix: { value: new Matrix4() },
     kbDeviceInverse: { value: new Matrix4() },
@@ -278,9 +306,25 @@ function applyFrame(source: Material, spec: DeviceFrameFinish, root: Object3D): 
       "#include <lights_physical_fragment>",
       `${GSAA_FRAGMENT}${FRAME_ANISOTROPY}`,
     );
+    if (taps > 0) {
+      fs = mustReplace(
+        fs,
+        "#include <envmap_physical_pars_fragment>",
+        `#include <envmap_physical_pars_fragment>${frameIblTaps(taps)}`,
+      );
+      fs = mustReplace(
+        fs,
+        "#include <lights_fragment_maps>",
+        mustReplace(ShaderChunk.lights_fragment_maps, "getIBLAnisotropyRadiance(", "kbAnisoIBL("),
+      );
+    }
     shader.fragmentShader = fs;
   };
-  material.customProgramCacheKey = () => "kookaburra-device-finish-frame-v1";
+  const frameKey =
+    taps > 0
+      ? `kookaburra-device-finish-frame-v1-taps${taps}`
+      : "kookaburra-device-finish-frame-v1";
+  material.customProgramCacheKey = () => frameKey;
   // World matrices are final by draw time, so the device frame is read here, never cached across frames.
   material.onBeforeRender = () => {
     uniforms.kbDeviceMatrix.value.copy(root.matrixWorld);

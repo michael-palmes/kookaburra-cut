@@ -2452,6 +2452,8 @@ declare module "@kookaburra/toolkit" {
     /** Roughness where the band rolls over into the glass and the back (a polished chamfer line); absent keeps one roughness. */
     chamferRoughness?: number;
     envIntensity?: number;
+    /** Environment lookups fanned across the grooves around the true mirror direction, in place of three's bent normal, which swings the band's reflection towards the viewer. A strip placed on the band's mirror direction then lands on it, as it would in a path tracer. */
+    iblTaps?: number;
   }
 
   type DeviceLayoutPreset = (typeof DEVICE_LAYOUT_PRESETS)[number];
@@ -2583,12 +2585,36 @@ declare module "@kookaburra/toolkit" {
     scaleY?: number;
   }
 
+  /** One environment strip: reflection-only light. Azimuth from +Z toward +X, elevation up, like the light rig. */
+  interface EnvStripSpec {
+    azimuthDeg: number;
+    elevationDeg: number;
+    /** Angular length along the strip's long axis. */
+    lengthDeg: number;
+    /** Angular width across it. */
+    widthDeg: number;
+    /** 0 stands the strip upright; 90 lays it level. */
+    rollDeg?: number;
+    /** sRGB hex. */
+    color: string;
+    /** Linear radiance: 10 to 60 reads as a hot line on polished metal. */
+    intensity: number;
+    /** 0 even, 1 falls to black at both ends. */
+    falloff?: number;
+    /** 0 hard edge, 1 fades to black across the width. */
+    feather?: number;
+  }
+
   /** Environment reflections for the lighting block: same shape as `ThemeEnvironment` plus the explicit `"none"` source ("no reflections", distinct from absent = inherit the layer below). Lighting only; never a visible background. */
   interface EnvironmentSpec {
     /** `"kookaburra:<slug>"` | `"kookaburra:softbox"` | a project-relative `.hdr`/`.exr` path | `"none"`. */
     source: string;
     intensity: number;
     rotationDeg: number;
+    /** Emissive strips baked into a black environment (engine/stripSpec.ts); present, they replace `source`. */
+    strips?: EnvStripSpec[];
+    /** Linear floor of the strips' sphere. */
+    stripsAmbient?: number;
   }
 
   interface FaceLine {

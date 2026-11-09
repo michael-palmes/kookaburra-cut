@@ -9,27 +9,12 @@ import {
   Scene,
   SphereGeometry,
 } from "three";
+import type { EnvStripSpec } from "../theme/tokens";
+import { inlineStripsFromKey } from "./stripSpec";
 
 /** Product-studio environments built from emissive strips (research prototype): reflection-only light that never shows in frame and costs nothing per frame past the IBL lookup every lit material already pays. Directions use the light rig's convention (azimuth from +Z toward +X, elevation up). Baked once per renderer into a PMREM by environments.ts, like the softbox. */
 
-export interface EnvStrip {
-  azimuthDeg: number;
-  elevationDeg: number;
-  /** Angular length along the strip's long axis. */
-  lengthDeg: number;
-  /** Angular width across it. */
-  widthDeg: number;
-  /** 0 stands the strip upright; 90 lays it level. */
-  rollDeg?: number;
-  /** sRGB hex. */
-  color: string;
-  /** Linear radiance multiplier: HDR, so 10 to 40 reads as a hot line on polished metal. */
-  intensity: number;
-  /** 0 is an even strip; 1 falls off to black at both ends (a gradient softbox). */
-  falloff?: number;
-  /** 0 is a hard edge; 1 fades to black across the width (diffusion fabric), so a magnified reflection stays smooth. */
-  feather?: number;
-}
+export type EnvStrip = EnvStripSpec;
 
 export interface StripEnvironmentSpec {
   strips: EnvStrip[];
@@ -136,7 +121,10 @@ export const STRIP_ENVIRONMENTS: Record<string, StripEnvironmentSpec> = {
 };
 
 export function stripEnvironmentSpec(source: string): StripEnvironmentSpec | undefined {
-  return STRIP_ENVIRONMENTS[source];
+  const preset = STRIP_ENVIRONMENTS[source];
+  if (preset) return preset;
+  const inline = inlineStripsFromKey(source);
+  return inline ? { ...inline, size: 512 } : undefined;
 }
 
 /** 1 across the plateau, easing to exactly 0 at the edge over the outer `fade` of the half-extent, so no hard step survives magnification. */
