@@ -6,6 +6,7 @@ import { placementPosition } from "../../engine/orbit";
 import { useSceneContext } from "../../engine/sceneContext";
 import { resolveLightingColour, spotHalfAngleRad } from "../../engine/sceneLighting";
 import type { LightSpec, Theme, ThemeShadowSpec } from "../../theme/tokens";
+import { SpotBeam, useSpotGrate } from "../lighting/atmosphere/SpotBeam";
 import {
   SHADOW_BLUR_SAMPLES,
   SHADOW_FAR,
@@ -42,6 +43,7 @@ function FreeLight({
   // Directional and spot lights aim via a target Object3D (three's classic gotcha: without one they point at the origin regardless); area lights aim themselves via lookAt.
   const targetObject = useMemo(() => new Object3D(), []);
   const aimed = spec.type === "directional" || spec.type === "spot";
+  const grate = useSpotGrate(spec, position, aim);
 
   // Area lights orient toward their aim point (world lights once per value change; relative lights are re-aimed at the seam anyway).
   useLayoutEffect(() => {
@@ -122,7 +124,8 @@ function FreeLight({
           decay={spec.decay ?? 2}
         />
       );
-    case "spot":
+    case "spot": {
+      const spotMapSize = spec.volumetric?.shadowMapSize ?? mapSize;
       return (
         <>
           <spotLight
@@ -136,8 +139,9 @@ function FreeLight({
             distance={spec.distance ?? 0}
             decay={spec.decay ?? 2}
             target={targetObject}
+            map={grate}
             castShadow={castShadow}
-            shadow-mapSize={[mapSize, mapSize]}
+            shadow-mapSize={[spotMapSize, spotMapSize]}
             shadow-radius={radius}
             shadow-blurSamples={SHADOW_BLUR_SAMPLES}
             shadow-bias={bias}
@@ -145,8 +149,17 @@ function FreeLight({
             shadow-camera-far={spec.distance && spec.distance > 0 ? spec.distance : SHADOW_FAR}
           />
           <primitive object={targetObject} position={aim} />
+          {spec.volumetric && (
+            <SpotBeam
+              light={lightRef}
+              target={targetObject}
+              spec={spec.volumetric}
+              rest={{ position, aim, angleDeg: spec.angleDeg }}
+            />
+          )}
         </>
       );
+    }
     case "area":
       // Lights only Standard/Physical materials and never casts shadows (three.js #14161).
       return (
