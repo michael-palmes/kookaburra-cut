@@ -1,0 +1,108 @@
+{
+  "version": 1,
+  "name": "06 Name",
+  "text": {
+    "title": "Meet Fairywren."
+  },
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "media": {
+        "src": "assets/fairywren-today-dark-phone.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [-1.967, 0.079, -0.318],
+        "rotationDeg": [-29.5, 40.4, 17.8],
+        "scale": 1.571
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "none",
+      "finish": "studio"
+    }
+  ],
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "position": [0, -0.985, 11.488],
+          "aim": {
+            "mode": "point",
+            "at": [0, 0, 0]
+          },
+          "fov": 21
+        }
+      }
+    ],
+    "segments": []
+  },
+  "background": {
+    "type": "gradient",
+    "spec": {
+      "type": "linear",
+      "angleDeg": 135,
+      "stops": [["#2b170c", 0], ["#140b07", 0.42], ["#080504", 1]],
+      "space": "oklch"
+    }
+  },
+  "lighting": {
+    "ambient": 0,
+    "fills": [],
+    "sun": {
+      "azimuthDeg": -55,
+      "elevationDeg": 32,
+      "intensity": 0.5,
+      "color": "#ffc888"
+    },
+    "environment": {
+      "source": "kookaburra:strips",
+      "intensity": 1,
+      "rotationDeg": 0,
+      "strips": [
+        {
+          "azimuthDeg": -106,
+          "elevationDeg": 8,
+          "lengthDeg": 50,
+          "widthDeg": 10,
+          "rollDeg": 0,
+          "color": "#ff9a52",
+          "intensity": 5,
+          "falloff": 0.6,
+          "feather": 0.8
+        },
+        {
+          "azimuthDeg": -53.5,
+          "elevationDeg": 26.5,
+          "lengthDeg": 45,
+          "widthDeg": 10,
+          "rollDeg": -26,
+          "color": "#ffe0b8",
+          "intensity": 40,
+          "falloff": 0.6,
+          "feather": 0.7
+        },
+        {
+          "azimuthDeg": 180,
+          "elevationDeg": 8,
+          "lengthDeg": 50,
+          "widthDeg": 6,
+          "rollDeg": 0,
+          "color": "#7fbdf4",
+          "intensity": 8,
+          "falloff": 0.6,
+          "feather": 0.6
+        }
+      ]
+    }
+  },
+  "stills": {
+    "marksMs": [2000]
+  }
+}
