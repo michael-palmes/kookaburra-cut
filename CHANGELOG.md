@@ -6,6 +6,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.22.4] - 2026-11-10
+
+### Fixed
+
+- Present opens again: it no longer stays on "Opening" for every project.
+- A long, high-resolution video plays in the editor and in Present instead of
+  staying on "Preparing video". Pressing play prepares the rest of the clip in
+  one pass, so a 51 second 4K clip is ready in under 20 seconds.
+
+## [0.22.3] - 2026-11-09
+
+### Fixed
+
+- Scrubbing or playing quickly through a scene whose device moves no longer
+  stops the preview with "The preview didn't start".
+
 ### Added
 
 - Four managed preferences for fleets: `DisableAgentKit` (no agent files in
@@ -16,6 +32,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- Checking an imported video's edit list no longer expands its sample table, so
+  a crafted file of a few kilobytes can't make the app allocate hundreds of
+  megabytes. Fuzzing found it.
 - `anyhow` moves to 1.0.104 (RUSTSEC-2026-0190) and `webpki-root-certs` to
   1.0.11 (RUSTSEC-2026-0383, distrusted emSign roots). `glib` (RUSTSEC-2024-0429)
   and `proc-macro-error` (RUSTSEC-2024-0370) sit in the Linux GTK stack the Mac

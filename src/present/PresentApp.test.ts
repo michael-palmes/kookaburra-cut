@@ -46,3 +46,20 @@ describe("Present lighting scope", () => {
     expect(source).toContain("animatedFixtureLightIds={animatedFixtureLightSets[i]}");
   });
 });
+
+const appSource = testProcess
+  .getBuiltinModule("fs")
+  .readFileSync(new URL("./PresentApp.tsx", import.meta.url), "utf8");
+
+describe("Present stage handoff", () => {
+  it("hands the project to the stage its view mounts, never the global handle", () => {
+    expect(appSource).not.toContain("stageOrNull");
+    expect(appSource).toContain("onClient={setStage}");
+    const mount = appSource.indexOf("{target && !error && (");
+    expect(mount).toBeGreaterThan(-1);
+    expect(appSource.indexOf("<StageView", mount)).toBeLessThan(appSource.indexOf(")}", mount));
+    expect(appSource).toMatch(
+      /if \(!stage \|\| !project \|\| !target\) return;[\s\S]*stage\.applyProject\(project\)/,
+    );
+  });
+});
