@@ -83,6 +83,43 @@ own space. Rim lights: `dark-rim` places two accent area lights in `camera` spac
 `[-2.4, 0.4, -2.5]` and `[2.4, 0.4, -2.5]` aimed at `[0, 0, -4]` (beside and just in front
 of a subject at the default distance); copy that pattern.
 
+## Visible beams
+
+A spot with a `volumetric` block shows its beam in haze, lit by its own cone, colour,
+intensity and shadow, so its keys and `castShadow` reach the shafts:
+
+```json
+{ "id": "key", "type": "spot", "intensity": 520, "color": "#ffb877", "angleDeg": 100, "penumbra": 0.35,
+  "decay": 2, "castShadow": true, "placement": { "mode": "point", "position": [-7, 4.85, -7.6] },
+  "target": [1, -1.2, -1],
+  "volumetric": {
+    "grate": { "lens": "camera" },
+    "box": { "min": [-10, -1.9, -30], "max": [10, 7, 3] },
+    "smoke": { "scale": 0.4, "warp": 1.6, "contrast": [0.47, 0.53], "floor": 0 },
+    "extinction": true, "dust": true } }
+```
+
+| Field | Meaning |
+| --- | --- |
+| `haze` | `density` (0.08), `anisotropy` (0.65; towards 1 the haze glows looking into the light), `strength` (1), `heightFalloff` (0), `groundFade` (1.5: thins into a staged floor instead of ending on a hard line; 0 off) |
+| `box` | Haze only inside world `{ min, max }`; without it the haze fills the cone |
+| `smoke` | Drifting wisps in place of even haze: `scale` (0.2; keep it large, edge-on rays average small wisps away), `warp`, `contrast` [lo, hi], `floor` (density between wisps, 0..1), `drift` [x, y, z] per second, `evolve`, `frontFade` `{ z0, z1, min }` thins it in front of the subject |
+| `extinction` | `true` dims the light on its way through the haze, as real smoke does |
+| `grate` | Bars aimed at the lens, so the rays fan crisply from the source: `lens` (`"camera"`, the default, is the scene's first camera key; or [x, y, z]), `offset`, `along`, `width`, `slat`, `gap`, `seed`, `soft`, or explicit `bars` [[a, b], ...]. World lights only; it also casts the bars' pools on surfaces |
+| `dust` | `true` or `{ count (1800), radius, color, drift, gain, min, max }`: motes that glint only in the beam, filling the `box` (else the cone). Keep them few and dim or they read as stars |
+| `shadowMapSize` | 512, 1024, 2048 or 4096 for this light alone |
+
+- Shadow shafts (the subject cutting the beam) need `castShadow`, a caster slot and
+  real shadows (a staged backdrop with `shadow.technique: "map"`).
+- A floor, gradient or image backdrop's back wall stands at z -6: it hides the haze
+  behind it and, with shadows on, blocks a light behind it. Keep the light in front of
+  the wall and give the haze a `box` whose min z clears it (-3.4 on a floor backdrop,
+  clear of its curve).
+- `lights.<id>` keys drive the beam too. A keyed `placement` moves it, but the grate
+  stays baked where the light rests, so its rays soften as it moves away.
+- Each beam marches every pixel it covers: a tight `box` is cheaper and keeps the haze
+  off the titles.
+
 ## Fixtures
 
 ```json
@@ -160,6 +197,11 @@ stay exact.
 more softly with truer saturated colour; `neutral` keeps product colours closest;
 `linear` is flat and clips. Applies to the whole project. The same block's `motionBlur`
 is in reference/camera.md.
+
+Edges: `"antialias": "smaa"` (or `"fxaa"`) smooths after the tone map, where hot
+highlights otherwise stay stepped; `"supersample": 4` (8 or 16) renders each exported
+frame that many times at sub-pixel offsets and averages them, the cleanest edges at that
+many times the export time (the preview is unchanged).
 
 Text colour: backdrops, fixed backgrounds and device screens skip tone mapping and land on
 their exact hex, but troika text is tone-mapped by default, so under `aces` a `#F5F7FA` text

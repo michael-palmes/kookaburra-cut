@@ -175,6 +175,72 @@ interface LightBase {
   target?: [number, number, number];
 }
 
+type Vec3 = [number, number, number];
+type Pair = [number, number];
+
+/** A spot's visible beam (engine/volumetricSpec.ts parses it): single-scatter haze in its cone, lit through its shadow map, with optional bars aimed at the lens, moving smoke and dust. Absent, the spot is a plain light. */
+export interface LightVolumetricSpec {
+  /** Bars parallel to the line from the light to the lens, so every shadow plane holds the lens and the rays fan crisply from the source. World lights only. */
+  grate?: {
+    /** The lens the bars aim at; "camera" (the default) takes the scene's opening camera. */
+    lens?: Vec3 | "camera";
+    offset?: number;
+    along?: Pair;
+    width?: number;
+    slat?: Pair;
+    gap?: Pair;
+    wideGap?: { p: number; range: Pair };
+    seed?: number;
+    /** Explicit bars across the row, in place of the seeded layout. */
+    bars?: Pair[];
+    /** The light's radius: how far each bar's shadow edge blurs. */
+    soft?: number;
+  };
+  /** Haze only inside this world box. */
+  box?: { min: Vec3; max: Vec3 };
+  haze?: {
+    /** Scattering per world unit. */
+    density?: number;
+    /** Henyey-Greenstein g: towards 1 the haze glows looking into the light. */
+    anisotropy?: number;
+    strength?: number;
+    heightFalloff?: number;
+    /** Height over which the haze thins into the floor. */
+    groundFade?: number;
+  };
+  smoke?: {
+    scale?: number;
+    warp?: number;
+    warpScale?: number;
+    contrast?: Pair;
+    floor?: number;
+    drift?: Vec3;
+    evolve?: number;
+    warpEvolve?: number;
+    offset?: Vec3;
+    frontFade?: { z0: number; z1: number; min: number };
+  };
+  /** The haze dims light on its way in and out. */
+  extinction?: boolean;
+  /** Motes that glint only in the beam; they fill the haze box, else the cone at rest, unless `min` and `max` are set. */
+  dust?: {
+    count?: number;
+    min?: Vec3;
+    max?: Vec3;
+    radius?: Pair;
+    seed?: number;
+    drift?: Vec3;
+    jitter?: number;
+    jitterScale?: number;
+    jitterSpeed?: number;
+    color?: string;
+    forward?: number;
+    gain?: number;
+  };
+  /** This light's shadow map size, in place of the stage's. */
+  shadowMapSize?: number;
+}
+
 /** One free light. `angleDeg` is the FULL cone in degrees (three's `angle` is radian half-angle); `distance`/`decay` default to three's own defaults (0 and 2). */
 export type LightSpec =
   | (LightBase & { type: "directional" })
@@ -185,6 +251,7 @@ export type LightSpec =
       penumbra: number;
       distance?: number;
       decay?: number;
+      volumetric?: LightVolumetricSpec;
     })
   | (LightBase & { type: "area"; width: number; height: number });
 

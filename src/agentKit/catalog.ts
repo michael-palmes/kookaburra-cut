@@ -508,9 +508,10 @@ const LIGHT_TYPES: Record<
     optional: ["distance", "decay"],
   },
   spot: {
-    summary: "Cone light; angleDeg is the FULL cone (1..179), penumbra 0..1.",
+    summary:
+      "Cone light; angleDeg is the FULL cone (1..179), penumbra 0..1; volumetric shows its beam in haze.",
     required: ["id", "intensity", "placement", "angleDeg", "penumbra"],
-    optional: ["distance", "decay", "castShadow", "target"],
+    optional: ["distance", "decay", "castShadow", "target", "volumetric"],
   },
   area: {
     summary: "Rect soft light; lights Standard/Physical materials only, no shadows.",

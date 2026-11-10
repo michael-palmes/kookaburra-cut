@@ -1,15 +1,11 @@
 import { useLayoutEffect, useMemo, useRef } from "react";
 import {
-  AdditiveBlending,
-  BackSide,
   BoxGeometry,
-  BufferAttribute,
-  BufferGeometry,
   type Camera,
   Color,
   DepthTexture,
   FloatType,
-  Matrix4,
+  type Matrix4,
   type Mesh,
   MeshBasicMaterial,
   NearestFilter,
@@ -17,17 +13,15 @@ import {
   type PerspectiveCamera,
   type Points,
   type Scene,
-  ShaderMaterial,
+  type ShaderMaterial,
   type SpotLight,
   Vector2,
   Vector3,
   type WebGLRenderer,
   WebGLRenderTarget,
 } from "three";
-import { createSeededRandom } from "../../../engine/rng";
 import { useTimeline } from "../../../engine/timeline";
-import { BEAM_FRAGMENT, BEAM_VERTEX } from "./beamShader";
-import { DUST_FRAGMENT, DUST_VERTEX } from "./dustShader";
+import { createBeamDust, createBeamMaterial } from "./beamParts";
 import { GOBO_DEFAULTS, type GoboSpec, goboTexture } from "./gobo";
 import { type GrateSpec, grateTexture } from "./grate";
 import { renderOccluders } from "./occlusionPass";
@@ -274,111 +268,14 @@ export function VolumetricSpot(props: VolumetricSpotProps) {
   const hasSmoke = smoke !== null;
   const hasGround = groundFade > 0;
   const material = useMemo(
-    () =>
-      new ShaderMaterial({
-        name: "kookaburra-volumetric-spot",
-        defines: {
-          ...(hasBox ? { BEAM_BOX: 1 } : {}),
-          ...(hasSmoke ? { BEAM_SMOKE: 1 } : {}),
-          ...(extinction ? { BEAM_EXTINCT: 1 } : {}),
-          ...(hasGround ? { BEAM_GROUND: 1 } : {}),
-        },
-        vertexShader: BEAM_VERTEX,
-        fragmentShader: BEAM_FRAGMENT,
-        transparent: true,
-        depthWrite: false,
-        depthTest: true,
-        side: BackSide,
-        blending: AdditiveBlending,
-        uniforms: {
-          uApex: { value: new Vector3() },
-          uAxis: { value: new Vector3(0, -1, 0) },
-          uCosOuter: { value: 0.9 },
-          uCosInner: { value: 0.95 },
-          uRange: { value: 0 },
-          uDecay: { value: 1.2 },
-          uSoftRadius: { value: 0.6 },
-          uRadiance: { value: new Color() },
-          uDensity: { value: 0.3 },
-          uG: { value: 0.5 },
-          uFloorY: { value: -1.5 },
-          uHeightFalloff: { value: 0 },
-          uDrift: { value: new Vector3() },
-          uNoiseScale: { value: 0.5 },
-          uNoiseAmount: { value: 0.5 },
-          uGobo: { value: null },
-          uGoboOn: { value: 0 },
-          uLightMatrix: { value: new Matrix4() },
-          uShadowMap: { value: null },
-          uShadowOn: { value: 0 },
-          uShadowBias: { value: 0 },
-          uHotspot: { value: 0 },
-          uSceneDepth: { value: null },
-          uVeilOn: { value: 0 },
-          uDepthSize: { value: new Vector2(1, 1) },
-          uCamForward: { value: new Vector3(0, 0, -1) },
-          uCamNear: { value: 0.1 },
-          uCamFar: { value: 1000 },
-          uBoxMin: { value: new Vector3() },
-          uBoxMax: { value: new Vector3() },
-          uSmokeScale: { value: 0.2 },
-          uSmokeWarp: { value: 1 },
-          uSmokeWarpScale: { value: 0.1 },
-          uSmokeContrast: { value: new Vector2(0.4, 0.6) },
-          uSmokeFloor: { value: 0 },
-          uSmokeShift: { value: new Vector3() },
-          uWarpShift: { value: new Vector3() },
-          uSmokeOffset: { value: new Vector3() },
-          uFrontFade: { value: new Vector3(0, 1, 1) },
-          uMeanDensity: { value: 0 },
-          uGroundFade: { value: 1 },
-        },
-      }),
+    () => createBeamMaterial({ box: hasBox, smoke: hasSmoke, extinction, ground: hasGround }),
     [hasBox, hasSmoke, extinction, hasGround],
   );
 
   const dustPoints = useMemo(() => {
     if (!dustKey) return null;
     const [count, seed] = JSON.parse(dustKey) as [number, number];
-    const rand = createSeededRandom(seed);
-    const seeds = new Float32Array(count * 4);
-    for (let i = 0; i < seeds.length; i++) seeds[i] = rand();
-    const geometry = new BufferGeometry();
-    geometry.setAttribute("position", new BufferAttribute(new Float32Array(count * 3), 3));
-    geometry.setAttribute("aSeed", new BufferAttribute(seeds, 4));
-    const material = new ShaderMaterial({
-      name: "kookaburra-beam-dust",
-      vertexShader: DUST_VERTEX,
-      fragmentShader: DUST_FRAGMENT,
-      transparent: true,
-      depthWrite: false,
-      depthTest: true,
-      blending: AdditiveBlending,
-      uniforms: {
-        uMin: { value: new Vector3() },
-        uMax: { value: new Vector3() },
-        uShift: { value: new Vector3() },
-        uWander: { value: new Vector3() },
-        uJitter: { value: 0 },
-        uJitterScale: { value: 1 },
-        uRadius: { value: new Vector2() },
-        uPxPerUnit: { value: 1000 },
-        uApex: { value: new Vector3() },
-        uAxis: { value: new Vector3(0, -1, 0) },
-        uCosOuter: { value: 0.9 },
-        uCosInner: { value: 0.95 },
-        uDecay: { value: 2 },
-        uG: { value: 0.6 },
-        uLightMatrix: { value: new Matrix4() },
-        uGobo: { value: null },
-        uGoboOn: { value: 0 },
-        uShadowMap: { value: null },
-        uShadowOn: { value: 0 },
-        uShadowBias: { value: 0 },
-        uColor: { value: new Color() },
-      },
-    });
-    return { geometry, material };
+    return createBeamDust(count, seed);
   }, [dustKey]);
   useLayoutEffect(
     () => () => {

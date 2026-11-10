@@ -19,6 +19,7 @@ import { ease } from "./ease";
 import { KELVIN_MAX, KELVIN_MIN, kelvinToHex } from "./kelvin";
 import { parseWarn } from "./parseWarnings";
 import { parseEnvStrips, stripsSourceKey } from "./stripSpec";
+import { parseVolumetric } from "./volumetricSpec";
 
 /** v9 lighting: deep validation + the three-layer resolve (mirrors sceneCamera.ts). Pure (no three.js, no clock reads, no store imports — theme/schema.ts imports this module, so it must stay leaf-level) so preview and export agree by construction. Parsing follows parseSceneDoc's degrade-don't-crash contract: a malformed block drops whole, a malformed entry inside `lights`/`fixtures` drops that entry only, out-of-range numbers clamp, missing/duplicate ids drop the entry. Byte-identity invariant: `resolveLighting` returns undefined whenever no layer contributes a renderable rig, so pre-v9 projects run the legacy path verbatim. See docs/determinism.md. */
 
@@ -210,6 +211,11 @@ function parseLight(v: unknown, source: string): LightSpec | undefined {
       if (isNum(v.distance)) light.distance = Math.max(0, v.distance);
       if (isNum(v.decay)) light.decay = Math.max(0, v.decay);
       if (castShadow) light.castShadow = true;
+      if (v.volumetric !== undefined) {
+        const where = `${source} light "${base.id}"`;
+        const volumetric = parseVolumetric(v.volumetric, where, base.space);
+        if (volumetric) light.volumetric = volumetric;
+      }
       return light;
     }
     case "area": {

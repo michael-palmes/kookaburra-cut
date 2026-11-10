@@ -1111,6 +1111,15 @@ camera exactly:
 - **Sidecar staging overrides** (`backdrop`, partial `lighting`, field-level
   replacement via `mergeLighting`) resolve at mount; gate sidecars that carry
   them are structure-pinned like every other gate asset.
+- **Volumetric beams are pure per-draw work.** A spot's `volumetric` block mounts
+  `toolkit/lighting/atmosphere/SpotBeam.tsx`, which reads the stage spot live
+  before each draw (pose, cone, colour times intensity, shadow matrix and VSM map,
+  its grate `map`) and writes its proxy box's `matrixWorld` there, as the fixed
+  background does. The 48-step march with its `gl_FragCoord` hash jitter, the smoke
+  and the dust are pure functions of scene time; the grate is a 2048² cookie
+  rasterised in JS from the sidecar and the scene's first camera key
+  (`grate.ts`). Its size, the seeded bar layout and the beam constants are
+  contract. No `volumetric`, nothing mounts and the spot's `map` stays null.
 
 ### The fixed background
 
