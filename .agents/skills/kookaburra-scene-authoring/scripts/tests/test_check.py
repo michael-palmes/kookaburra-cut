@@ -178,6 +178,12 @@ class CheckTests(KbTestCase):
         self.assertTrue(any("extraThing" in w for w in warnings))
         self.assertTrue(any("is not a theme token" in w for w in warnings))
 
+    def test_satin_backdrop_needs_a_hex_colour(self) -> None:
+        write_json(self.root / "scenes" / "02-hero.json", {"version": 1, "backdrop": {"type": "satin", "roughness": 0.3}})
+        self.assertHasError(self.run_check(["scenes/02-hero.json"]), "a satin floor needs a hex colour")
+        write_json(self.root / "scenes" / "02-hero.json", {"version": 1, "backdrop": {"type": "satin", "color": "#3a2c22"}})
+        self.assertEqual(messages(self.run_check(["scenes/02-hero.json"]), "error"), [])
+
     def test_text_colour_takes_theme_tokens(self) -> None:
         doc = {"version": 1, "textStyle": {"titleColor": "text", "subtitleColor": "muted", "statColor": "accent", "bodyColor": "#ff5a36"}}
         write_json(self.root / "scenes" / "02-hero.json", doc)

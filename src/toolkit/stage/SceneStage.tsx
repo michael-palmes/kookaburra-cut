@@ -46,7 +46,7 @@ export function SceneStage({
   floorY,
 }: {
   children?: ReactNode;
-  /** Stage floor height for a floor backdrop (world y; default −1.5). */
+  /** Stage floor height for a floor or satin backdrop (world y; default −1.5). */
   floorY?: number;
 }) {
   const theme = useTheme();
@@ -62,7 +62,8 @@ export function SceneStage({
   const shadow = lighting?.shadow;
   const mapShadows = stageMapShadowsEnabled(hasBackdrop, shadow);
   const sun = lighting?.sun;
-  const stageFloorY = backdrop?.type === "floor" ? (floorY ?? DEFAULT_FLOOR_Y) : null;
+  const floored = backdrop?.type === "floor" || backdrop?.type === "satin";
+  const stageFloorY = floored ? (floorY ?? DEFAULT_FLOOR_Y) : null;
   const renderedFloorY = lighting ? stageFloorY : null;
 
   // Report staging to the registry so the Background editor can warn about occluded fills.

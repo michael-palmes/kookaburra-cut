@@ -29,7 +29,7 @@ import {
 } from "three";
 import { createSeededRandom } from "../../engine/rng";
 
-/** A satin stage floor (research prototype): a planar reflection blurred with the height of what it reflects, an albedo and sheen that fade with distance so it dissolves into the void, sparse glitter flakes, and floor-only pools standing in for caustics. Deterministic: fixed passes, no history. */
+/** A satin stage floor (the `satin` backdrop): a planar reflection blurred with the height of what it reflects, an albedo and sheen that fade with distance so it dissolves into the void, sparse glitter flakes, and floor-only pools standing in for caustics. Deterministic: fixed passes, no history. */
 
 type V2 = [number, number];
 

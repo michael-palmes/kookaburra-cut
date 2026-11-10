@@ -1120,6 +1120,14 @@ camera exactly:
   rasterised in JS from the sidecar and the scene's first camera key
   (`grate.ts`). Its size, the seeded bar layout and the beam constants are
   contract. No `volumetric`, nothing mounts and the spot's `map` stays null.
+- **The satin floor is the lit exception.** `backdrop: {type: "satin"}` mounts
+  `toolkit/stage/SatinFloor.tsx`, a `MeshStandardMaterial` that takes real shadows
+  itself (no catcher), with a planar reflection on its own draw (three's Reflector:
+  the mirrored eye and an oblique near plane at the floor, a full-size MSAA HalfFloat
+  target, then a half-size 12-tap Karis-weighted separable blur), a seeded 512²
+  mipmapped flake map and up to four floor-only pools. Fixed passes, no history. The
+  plane, the flake map size, the blur taps and the defaults in `backdrops.tsx` are
+  contract.
 
 ### The fixed background
 
