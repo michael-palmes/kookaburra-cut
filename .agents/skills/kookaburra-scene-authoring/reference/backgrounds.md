@@ -113,12 +113,13 @@ Lit looks need light to read; unlit looks keep exact colours.
 `satin` reflects the scene, blurring each reflection with its height above the floor
 (`reflection`: `strength` 0.7, `blur` 30, `heightBlur` 0.6, `contact` 0.55, or `false`
 to save the second render it costs), glitters (`glitter`: `scale` 30, `density` 0.2,
-`grain` 0.6, `seed`) and fades to black between the `fade` radii (3, 11) around
-`centre`. `pools` (up to four) are soft patches only the floor receives, such as light
-thrown off a polished rail: `{ "at": [x, z], "radius": [rx, rz], "angleDeg", "color",
-"intensity" }`. Unlike the other backdrops it is lit, so it needs stage `lighting` (with
-none it reads black). It takes real shadows itself, with no catcher, and volumetric beams
-read best over it (reference/lighting.md).
+`grain` 0.6, `seed`) and dissolves into the layers behind it (`background`, else
+`colors.background`) between the `fade` radii (3, 11) around `centre`, so it shows no
+edge from any camera height. `pools` (up to four) are soft patches only the floor
+receives, such as light thrown off a polished rail: `{ "at": [x, z], "radius": [rx, rz],
+"angleDeg", "color", "intensity" }`. Unlike the other backdrops it is lit, so it needs
+stage `lighting` (with none it reads black). It takes real shadows itself, with no
+catcher, and volumetric beams read best over it (reference/lighting.md).
 
 Real cast shadows need a staged backdrop AND a lighting `shadow` with
 `technique: "map"` (reference/lighting.md). The floor sits at y = -1.5 by default
