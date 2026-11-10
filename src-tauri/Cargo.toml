@@ -146,7 +146,7 @@ objc2-vision = { version = "0.3.2", default-features = false, features = [
   "VNTypes",
 ] }
 # Never imported: pins the webview layer to tauri-runtime-wry's wry, so move it with tauri (one wry in the lock).
-wry = "=0.57.0"
+wry = "=0.57.1"
 
 [dev-dependencies]
 walkdir = "2"
