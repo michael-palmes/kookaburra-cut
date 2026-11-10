@@ -3,6 +3,7 @@ import { useLayoutEffect, useMemo, useRef } from "react";
 import {
   type Camera,
   Color,
+  CustomBlending,
   DataTexture,
   DepthTexture,
   FloatType,
@@ -13,6 +14,8 @@ import {
   Mesh,
   MeshStandardMaterial,
   NoColorSpace,
+  OneFactor,
+  OneMinusSrcAlphaFactor,
   OrthographicCamera,
   PerspectiveCamera,
   Plane,
@@ -29,7 +32,7 @@ import {
 } from "three";
 import { createSeededRandom } from "../../engine/rng";
 
-/** A satin stage floor (the `satin` backdrop): a planar reflection blurred with the height of what it reflects, an albedo and sheen that fade with distance so it dissolves into the void, sparse glitter flakes, and floor-only pools standing in for caustics. Deterministic: fixed passes, no history. */
+/** A satin stage floor (the `satin` backdrop): a planar reflection blurred with the height of what it reflects, an albedo and sheen that fade with distance, blended over whatever is behind so it dissolves into the background, sparse glitter flakes, and floor-only pools standing in for caustics. Deterministic: fixed passes, no history. */
 
 type V2 = [number, number];
 
@@ -64,7 +67,7 @@ export interface SatinFloorProps {
   /** Dielectric reflectance, 0.5 being the usual 4%. */
   specular?: number;
   centre?: V2;
-  /** The albedo and sheen fall to black between these radii. */
+  /** The floor dissolves into what is behind it between these radii. */
   fade?: V2;
   reflection?: {
     strength?: number;
@@ -82,6 +85,8 @@ export interface SatinFloorProps {
 }
 
 const MAX_POOLS = 4;
+/** How far the plane reaches past the fade: its edge never shows. */
+const PLANE_MARGIN = 1;
 const BLUR_TAPS = 12;
 
 const GLITTER_DEFAULTS: FloorGlitter = {
@@ -156,7 +161,7 @@ varying vec4 vKbRefl;
 
 const COLOR = /* glsl */ `
 float kbFadeK = 1.0 - smoothstep( kbFade.x, kbFade.y, length( vKbWorld.xz - kbCentre ) );
-diffuseColor.rgb *= kbFadeK;
+diffuseColor *= kbFadeK;
 vec4 kbF = texture2D( kbFlakeMap, vKbWorld.xz * ( kbGlitter.x / ${FLAKE_SIZE}.0 ) );
 float kbFlake = kbF.r * kbGlitter.y;
 `;
@@ -344,6 +349,12 @@ export function SatinFloor({
 
   const material = useMemo(() => {
     const m = new MeshStandardMaterial({ metalness: 0, envMapIntensity: 0 });
+    // Premultiplied over: the fade already scales the colour, so writing it as alpha lets the background through.
+    m.blending = CustomBlending;
+    m.blendSrc = OneFactor;
+    m.blendDst = OneMinusSrcAlphaFactor;
+    m.blendSrcAlpha = OneFactor;
+    m.blendDstAlpha = OneMinusSrcAlphaFactor;
     m.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, uniforms);
       let vs = mustReplace(
@@ -388,7 +399,7 @@ export function SatinFloor({
       );
       shader.fragmentShader = fs;
     };
-    m.customProgramCacheKey = () => "kookaburra-satin-floor-v5";
+    m.customProgramCacheKey = () => "kookaburra-satin-floor-v6";
     return m;
   }, [uniforms]);
   useLayoutEffect(() => () => material.dispose(), [material]);
@@ -515,7 +526,11 @@ export function SatinFloor({
     };
   }, [passes, uniforms, y, reflect?.scale, reflect?.blur]);
 
-  const geometry = useMemo(() => new PlaneGeometry(80, 80, 1, 1).rotateX(-Math.PI / 2), []);
+  const reach = fade[1] + PLANE_MARGIN;
+  const geometry = useMemo(
+    () => new PlaneGeometry(2 * reach, 2 * reach, 1, 1).rotateX(-Math.PI / 2),
+    [reach],
+  );
   useLayoutEffect(() => () => geometry.dispose(), [geometry]);
 
   return (
@@ -523,7 +538,7 @@ export function SatinFloor({
       ref={meshRef}
       geometry={geometry}
       material={material}
-      position={[0, y, 0]}
+      position={[centre[0], y, centre[1]]}
       receiveShadow
       onBeforeRender={onBeforeRender as unknown as Mesh["onBeforeRender"]}
     />

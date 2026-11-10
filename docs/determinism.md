@@ -1125,9 +1125,10 @@ camera exactly:
   itself (no catcher), with a planar reflection on its own draw (three's Reflector:
   the mirrored eye and an oblique near plane at the floor, a full-size MSAA HalfFloat
   target, then a half-size 12-tap Karis-weighted separable blur), a seeded 512²
-  mipmapped flake map and up to four floor-only pools. Fixed passes, no history. The
-  plane, the flake map size, the blur taps and the defaults in `backdrops.tsx` are
-  contract.
+  mipmapped flake map and up to four floor-only pools. It fades out with premultiplied
+  alpha over whatever drew first (the fixed background), on a plane fitted to the fade,
+  so no edge shows. Fixed passes, no history. The plane margin, the blend, the flake
+  map size, the blur taps and the defaults in `backdrops.tsx` are contract.
 
 ### The fixed background
 

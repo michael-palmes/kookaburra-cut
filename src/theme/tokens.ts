@@ -422,7 +422,7 @@ export interface SatinBackdropSpec {
   specular?: number;
   /** Where the fade is centred, [x, z]. */
   centre?: [number, number];
-  /** The albedo and sheen fall to black between these radii. */
+  /** The floor dissolves into the layers behind it between these radii. */
   fade?: [number, number];
   /** `false` turns the reflection off. `blur` is in pixels of a 1080p frame; `heightBlur` is the height over which a reflection goes from sharp to fully blurred; `contact` is the blur kept even at the contact. */
   reflection?: false | { strength?: number; blur?: number; heightBlur?: number; contact?: number };
