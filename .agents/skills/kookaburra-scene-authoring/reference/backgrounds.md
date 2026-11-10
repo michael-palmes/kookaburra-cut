@@ -5,8 +5,8 @@ Three layers, back to front:
 1. `colors.background` (theme): clears the frame.
 2. `background`: a camera-locked fill (or a world-space 3D look) behind all content.
    Renders on EVERY scene with no TSX. Set it on the theme or per scene in the sidecar.
-3. `backdrop`: world-space staging (cyclorama floor, gradient or image plane) that
-   catches real shadows. Needs `<SceneStage>` in the TSX.
+3. `backdrop`: world-space staging (cyclorama floor, satin floor, gradient or image
+   plane) that catches real shadows. Needs `<SceneStage>` in the TSX.
 
 A sidecar `background` or `backdrop` replaces the theme's whole; `{ "type": "none" }`
 cancels it. The inspector's "Apply to all" writes the same value into every scene and
@@ -108,6 +108,17 @@ Lit looks need light to read; unlit looks keep exact colours.
 | `floor` | `color` (hex), `filletRadius`: a cyclorama that catches real shadows |
 | `gradient` | `gradient` (theme name) or `spec` |
 | `image` | `src`, `fit` (`cover` default, `contain`) |
+| `satin` | `color` (hex), `roughness`, `specular`, `centre` [x, z], `fade` [inner, outer], `reflection`, `glitter`, `pools`: a lit floor fading into the void |
+
+`satin` reflects the scene, blurring each reflection with its height above the floor
+(`reflection`: `strength` 0.7, `blur` 30, `heightBlur` 0.6, `contact` 0.55, or `false`
+to save the second render it costs), glitters (`glitter`: `scale` 30, `density` 0.2,
+`grain` 0.6, `seed`) and fades to black between the `fade` radii (3, 11) around
+`centre`. `pools` (up to four) are soft patches only the floor receives, such as light
+thrown off a polished rail: `{ "at": [x, z], "radius": [rx, rz], "angleDeg", "color",
+"intensity" }`. Unlike the other backdrops it is lit, so it needs stage `lighting` (with
+none it reads black). It takes real shadows itself, with no catcher, and volumetric beams
+read best over it (reference/lighting.md).
 
 Real cast shadows need a staged backdrop AND a lighting `shadow` with
 `technique: "map"` (reference/lighting.md). The floor sits at y = -1.5 by default

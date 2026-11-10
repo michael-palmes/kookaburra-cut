@@ -444,7 +444,9 @@ function StackRenderer({
   const safeTop = rawTop - Math.max(0, topInset);
   const rawBottom = -format.frame.height / 2 + format.safe.bottom;
   const safeBottom =
-    stagedBackdrop === "floor" ? Math.max(rawBottom, STAGE_FLOOR_Y + FLOOR_CLEARANCE) : rawBottom;
+    stagedBackdrop === "floor" || stagedBackdrop === "satin"
+      ? Math.max(rawBottom, STAGE_FLOOR_Y + FLOOR_CLEARANCE)
+      : rawBottom;
   const fit = fitStackScale(
     layouts,
     format.frame.width - format.safe.left - format.safe.right,

@@ -31,7 +31,7 @@ HEX_RE = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
 # textStyle.<key>Emphasis: "<colour>" or "<colour>@<weight>", optionally then "pill" or "battery" (toolkit/text/emphasis.ts).
 EMPHASIS_RE = re.compile(r"^(text|muted|accent|#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6})(?:@(\d{1,4}))?(?:\s+(pill|battery))?$")
 FALLBACK_BACKGROUND_TYPES = ["none", "color", "gradient", "image", "video", "scene3d", "shader"]
-BACKDROP_TYPES = ["none", "floor", "gradient", "image"]
+BACKDROP_TYPES = ["none", "floor", "gradient", "image", "satin"]
 PATH_KEYS = {"src", "file", "poster"}
 KEYED_TRACKS = [
     ("camera",), ("cameraRig",), ("deviceTrack",), ("lighting",), ("compare", "track"),
@@ -523,6 +523,10 @@ class Checker:
             kinds = self.ctx.ids("backgrounds.backdrops", BACKDROP_TYPES) or BACKDROP_TYPES
             if not isinstance(bd, dict) or bd.get("type") not in kinds:
                 rep.error(file, "backdrop.type", f'must be one of {", ".join(kinds)}')
+            elif bd["type"] == "satin":
+                colour = bd.get("color")
+                if not (isinstance(colour, str) and HEX_RE.match(colour) and len(colour) in (4, 7)):
+                    rep.error(file, "backdrop.color", "a satin floor needs a hex colour, or the app drops it")
         self.text_animation(file, "textAnimation", doc.get("textAnimation"))
         overrides = doc.get("textAnimationOverrides")
         if isinstance(overrides, dict):

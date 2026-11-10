@@ -1490,7 +1490,7 @@ declare module "@kookaburra/toolkit" {
     theme: Theme;
   }
 
-  export function SceneStage(props: { children?: ReactNode; /** Stage floor height for a floor backdrop (world y; default −1.5). */ floorY?: number; }): ReactElement;
+  export function SceneStage(props: { children?: ReactNode; /** Stage floor height for a floor or satin backdrop (world y; default −1.5). */ floorY?: number; }): ReactElement;
 
   /** Troika's textAlign values, 1:1 (never localise these; UI labels may). */
   export type SceneTextAlign = "left" | "center" | "right";
@@ -3254,6 +3254,39 @@ declare module "@kookaburra/toolkit" {
       : never;
   };
 
+  /** A lit satin floor that fades into the void: a reflection blurred with height, sheen, glitter and floor-only pools. It stands at the stage's floorY like the cyclorama and takes real shadows itself. */
+  interface SatinBackdropSpec {
+    type: "satin";
+    color: string;
+    roughness?: number;
+    /** Dielectric reflectance, 0.5 being the usual 4%. */
+    specular?: number;
+    /** Where the fade is centred, [x, z]. */
+    centre?: [number, number];
+    /** The albedo and sheen fall to black between these radii. */
+    fade?: [number, number];
+    /** `false` turns the reflection off. `blur` is in pixels of a 1080p frame; `heightBlur` is the height over which a reflection goes from sharp to fully blurred; `contact` is the blur kept even at the contact. */
+    reflection?: false | { strength?: number; blur?: number; heightBlur?: number; contact?: number };
+    /** Glossy flakes: `scale` flakes per unit, `density` the share that is flake, `grain` how much the sheen varies grain to grain. */
+    glitter?: {
+      scale?: number;
+      density?: number;
+      roughness?: number;
+      tilt?: number;
+      weight?: number;
+      grain?: number;
+      seed?: number;
+    };
+    /** Up to four soft patches the floor alone receives, such as light thrown off a polished rail. */
+    pools?: {
+      at: [number, number];
+      radius: [number, number];
+      angleDeg?: number;
+      color: string;
+      intensity: number;
+    }[];
+  }
+
   interface SceneDocCameraKey {
     id: string;
     /** Scene-local time, ms. */
@@ -4115,7 +4148,8 @@ declare module "@kookaburra/toolkit" {
     | { type: "floor"; color: string; filletRadius?: number }
     /** `gradient` names a THEME gradient; `spec` carries an inline self-contained gradient (the unified Background editor's write-through). One must be present; `spec` wins when both are. */
     | { type: "gradient"; gradient?: string; spec?: GradientSpec }
-    | { type: "image"; src: string; fit?: "cover" | "contain" };
+    | { type: "image"; src: string; fit?: "cover" | "contain" }
+    | SatinBackdropSpec;
 
   /** Camera-locked, frame-filling background, drawn behind ALL world content and COMPOSABLE with `backdrop` (a fixed image can sit behind a shadowed cyclorama). Vocabulary: `colors.background` clears the frame, `background` is a camera-locked fill over that clear and behind world content, `backdrop` is world-space staging. Image/gradient fills cover-crop, centred, one asset serves every aspect. `parallax` (0..0.5, default 0 = hard-locked) drifts the fill at that fraction of the content's screen motion; `image.src` is `kookaburra:<name>` (bundled) or a project-relative path. */
   type ThemeBackground =

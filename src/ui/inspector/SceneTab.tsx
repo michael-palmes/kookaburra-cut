@@ -3061,6 +3061,9 @@ export function SceneTab({
   const stagedBackdropBefore = useSceneHostStageBackdrop(sceneIndex, undefined);
   const stagedBackdropAfter = useSceneHostStageBackdrop(sceneIndex, "b");
   const bgStagedBackdrop = bgTarget === "compareB" ? stagedBackdropAfter : stagedBackdropBefore;
+  // A satin floor leaves the fill showing above it, so a new fill keeps it.
+  const stageHidesFill =
+    bgStagedBackdrop !== null && bgStagedBackdrop !== "none" && bgStagedBackdrop !== "satin";
   const [themeChoices, setThemeChoices] = useState<ThemeChoice[]>(builtinThemeChoices);
   const [themeDraft, setThemeDraft] = useState<string>("");
 
@@ -4256,7 +4259,7 @@ export function SceneTab({
             ? { type: "video", src: rel, parallax }
             : { type: "video", src: rel };
         // A staged backdrop would hide the video: clear it in the same undoable entry.
-        if (bgStagedBackdrop !== null && bgStagedBackdrop !== "none") {
+        if (stageHidesFill) {
           next.backdrop = { type: "none" };
         }
       },
@@ -4277,7 +4280,7 @@ export function SceneTab({
           ? { type: "image", src: rel, parallax }
           : { type: "image", src: rel };
       // A staged backdrop would hide the image: clear it in the same undoable entry.
-      if (bgStagedBackdrop !== null && bgStagedBackdrop !== "none") {
+      if (stageHidesFill) {
         next.backdrop = { type: "none" };
       }
     });
@@ -5583,7 +5586,7 @@ export function SceneTab({
         next.background = value;
         // Theme resets both layers; a fresh colour writes through to the stage (one visual, one edit).
         if (value === undefined) next.backdrop = undefined;
-        else if (value.type === "color" && stagingOn) next.backdrop = floorFor(value.color);
+        else if (value.type === "color" && stageHidesFill) next.backdrop = floorFor(value.color);
       });
     };
     const shaderSpec = bgActive?.type === "shader" ? bgActive : null;
@@ -6300,7 +6303,7 @@ export function SceneTab({
                                 speed: 1,
                               };
                           // A staged backdrop would hide the animation: clear it in the same undoable entry.
-                          if (stagingOn) next.backdrop = { type: "none" };
+                          if (stageHidesFill) next.backdrop = { type: "none" };
                         });
                       }}
                       onHoverChange={(h) => setBgHover((cur) => (h ? id : cur === id ? null : cur))}
@@ -6475,7 +6478,7 @@ export function SceneTab({
                         : undefined;
                     next.background = parallax !== undefined ? { ...value, parallax } : value;
                     // A staged backdrop would hide the gradient: clear it in the same undoable entry.
-                    if (stagingOn) next.backdrop = { type: "none" };
+                    if (stageHidesFill) next.backdrop = { type: "none" };
                   });
                 }}
               />

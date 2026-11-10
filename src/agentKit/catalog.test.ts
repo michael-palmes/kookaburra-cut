@@ -135,6 +135,7 @@ describe("agent catalogue", () => {
       floor: { type: "floor", color: "#ffffff" },
       gradient: { type: "gradient", gradient: "brand" },
       image: { type: "image", src: "assets/bg.jpg" },
+      satin: { type: "satin", color: "#3a2c22" },
     };
     for (const type of ids("backgrounds.backdrops")) {
       expect(parseBackdropSpec(backdrops[type], "test")?.type).toBe(type);

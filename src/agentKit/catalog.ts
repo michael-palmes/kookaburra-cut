@@ -491,6 +491,10 @@ const BACKDROP_TYPES: Record<ThemeBackdrop["type"], { summary: string; fields: s
   },
   gradient: { summary: "Gradient plane behind the content.", fields: ["gradient", "spec"] },
   image: { summary: "Image plane behind the content.", fields: ["src", "fit"] },
+  satin: {
+    summary: "Lit satin floor fading into the void: blurred reflection, glitter, pools.",
+    fields: ["color", "roughness", "specular", "centre", "fade", "reflection", "glitter", "pools"],
+  },
 };
 
 const LIGHT_TYPES: Record<

@@ -3,6 +3,7 @@ import { parseMotionBlurOverride } from "../engine/motionBlur";
 import { parseWarn } from "../engine/parseWarnings";
 import { normalizeLighting, resolveLighting } from "../engine/sceneLighting";
 import { parseFontString } from "./fontRef";
+import { parseSatinBackdrop } from "./satinBackdrop";
 import type {
   EffectsConfig,
   FontRef,
@@ -132,6 +133,8 @@ export function parseBackdropSpec(v: unknown, source: string): ThemeBackdrop | u
       }
       break;
     }
+    case "satin":
+      return parseSatinBackdrop(v, source);
     case "image":
       if (isStr(v.src)) {
         return {

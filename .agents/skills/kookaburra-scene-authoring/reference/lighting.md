@@ -111,10 +111,10 @@ intensity and shadow, so its keys and `castShadow` reach the shafts:
 
 - Shadow shafts (the subject cutting the beam) need `castShadow`, a caster slot and
   real shadows (a staged backdrop with `shadow.technique: "map"`).
-- A floor, gradient or image backdrop's back wall stands at z -6: it hides the haze
-  behind it and, with shadows on, blocks a light behind it. Keep the light in front of
-  the wall and give the haze a `box` whose min z clears it (-3.4 on a floor backdrop,
-  clear of its curve).
+- Shafts read best over the `satin` backdrop or none. A floor, gradient or image
+  backdrop's back wall stands at z -6: it hides the haze behind it and, with shadows on,
+  blocks a light behind it. Keep the light in front of the wall and give the haze a
+  `box` whose min z clears it (-3.4 on a floor backdrop, clear of its curve).
 - `lights.<id>` keys drive the beam too. A keyed `placement` moves it, but the grate
   stays baked where the light rests, so its rays soften as it moves away.
 - Each beam marches every pixel it covers: a tight `box` is cheaper and keeps the haze

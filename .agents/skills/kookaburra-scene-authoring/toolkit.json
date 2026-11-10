@@ -2773,7 +2773,7 @@
         "type": "number",
         "required": false,
         "default": "−1.5",
-        "doc": "Stage floor height for a floor backdrop (world y; default −1.5)."
+        "doc": "Stage floor height for a floor or satin backdrop (world y; default −1.5)."
       }
     ],
     "example": "<SceneStage />"

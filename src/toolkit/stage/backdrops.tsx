@@ -20,9 +20,10 @@ import { hexToOklch, mixOklch, type Oklch, oklchToBytes } from "../../theme/oklc
 import type { GradientSpec, ThemeBackdrop, ThemeShadowSpec } from "../../theme/tokens";
 import { AssetBoundary } from "../media/AssetBoundary";
 import { backdropCoverCrop, useBackdropImageTexture } from "./backdropTexture";
+import { SatinFloor } from "./SatinFloor";
 import { stageShadowCatcherMode } from "./shadowRig";
 
-/** Staging backdrops, mounted by `<SceneStage>` from the scene's resolved backdrop spec: all three surface kinds render UNLIT with `toneMapped: false` so theme hexes/gradients/images land EXACTLY (a `#ffffff` background through ACES would render grey, the device-screen precedent), and receive real shadows through a `ShadowMaterial` catcher overlay drawn just in front (polygon offset); geometry/texture constants below are EXPORT CONTRACT. See docs/determinism.md ("Staging"). */
+/** Staging backdrops, mounted by `<SceneStage>` from the scene's resolved backdrop spec: all three surface kinds render UNLIT with `toneMapped: false` so theme hexes/gradients/images land EXACTLY (a `#ffffff` background through ACES would render grey, the device-screen precedent), and receive real shadows through a `ShadowMaterial` catcher overlay drawn just in front (polygon offset); geometry/texture constants below are EXPORT CONTRACT. The satin floor is the lit exception: it takes real shadows itself. See docs/determinism.md ("Staging"). */
 
 // ── Stage geometry constants (export contract) ────────────────────────────────
 /** Cyclorama width along x; generous so every aspect/camera orbit stays covered. */
@@ -425,6 +426,43 @@ function ImagePlaneBundled({
   return <ImagePlaneMesh texture={texture} spec={spec} shadow={shadow} />;
 }
 
+const SATIN = {
+  roughness: 0.32,
+  specular: 0.6,
+  fade: [3, 11] as [number, number],
+  reflection: { strength: 0.7, blur: 30, heightBlur: 0.6, contact: 0.55 },
+  glitter: {
+    scale: 30,
+    density: 0.2,
+    roughness: 0.15,
+    tilt: 0.5,
+    weight: 0.8,
+    grain: 0.6,
+    seed: 5,
+  },
+};
+
+function SatinBackdrop({
+  spec,
+  floorY = DEFAULT_FLOOR_Y,
+}: BackdropProps & { spec: Extract<ThemeBackdrop, { type: "satin" }> }) {
+  return (
+    <SatinFloor
+      y={floorY}
+      color={spec.color}
+      roughness={spec.roughness ?? SATIN.roughness}
+      specular={spec.specular ?? SATIN.specular}
+      centre={spec.centre}
+      fade={spec.fade ?? SATIN.fade}
+      reflection={
+        spec.reflection === false ? undefined : { ...SATIN.reflection, ...spec.reflection }
+      }
+      glitter={{ ...SATIN.glitter, ...spec.glitter }}
+      pools={spec.pools}
+    />
+  );
+}
+
 /** The stage's backdrop, switched on the resolved spec. `none` renders nothing. */
 export function StageBackdrop({ spec, shadow, floorY }: BackdropProps) {
   switch (spec.type) {
@@ -434,6 +472,8 @@ export function StageBackdrop({ spec, shadow, floorY }: BackdropProps) {
       return <GradientPlane spec={spec} shadow={shadow} />;
     case "image":
       return <ImagePlane spec={spec} shadow={shadow} />;
+    case "satin":
+      return <SatinBackdrop spec={spec} floorY={floorY} />;
     default:
       return null;
   }
