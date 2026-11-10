@@ -7,6 +7,7 @@ const revs = new Map<string, string>();
 const frameCounts = new Map<string, number>();
 const conformJobs = new Map<string, { slug: string; rel: string; frame: number; total: number }>();
 const ensureCalls: { srcAbs: string; chunks: number[] }[] = [];
+const previewCalls: number[] = [];
 const pinCalls: string[][] = [];
 const infoCalls: string[] = [];
 let failExtract = false;
@@ -47,7 +48,9 @@ const fakePort: NativePort = {
     if (failChunks) throw new Error("ffmpeg died");
     ensureCalls.push({ srcAbs: key, chunks: [...chunks] });
   },
-  async clipEnsurePreviews() {},
+  async clipEnsurePreviews(_cacheDir, chunk) {
+    previewCalls.push(chunk);
+  },
   async clipReadFrame() {
     return new ArrayBuffer(8);
   },
@@ -109,6 +112,7 @@ beforeEach(() => {
   frameCounts.clear();
   conformJobs.clear();
   ensureCalls.length = 0;
+  previewCalls.length = 0;
   pinCalls.length = 0;
   infoCalls.length = 0;
   eventHandlers.clear();
@@ -555,6 +559,53 @@ describe("ClipFrames chunks", () => {
     }
     clips.releaseIdleClipFrames();
     expect(frames.census()).toEqual({ textures: 1, bytes: 8 * 8 * 4 });
+  });
+
+  it("reads the rest of the clip ahead as one request while playback runs, then its previews", async () => {
+    const { frames } = await readyEntry();
+    (await import("./previewMedia")).setPreviewPlaybackActive(true);
+    frames.request({}, 130);
+    await frames.get(130);
+    await flush();
+    expect(ensureCalls).toEqual([{ srcAbs: src("assets/a.mp4"), chunks: [1, 2, 3, 4] }]);
+    expect(previewCalls.sort()).toEqual([1, 2, 3, 4]);
+  });
+
+  it("reads ahead in Present whatever the quality, without previews", async () => {
+    const { frames } = await readyEntry();
+    (await import("./previewMedia")).setPresentClock(true);
+    frames.request({}, 250);
+    await frames.get(250);
+    await flush();
+    expect(ensureCalls).toEqual([{ srcAbs: src("assets/a.mp4"), chunks: [2, 3, 4] }]);
+    expect(previewCalls).toEqual([]);
+  });
+
+  it("falls back to chunk by chunk when a read-ahead run fails, without failing the chunk", async () => {
+    const { frames } = await readyEntry();
+    (await import("./previewMedia")).setPreviewPlaybackActive(true);
+    failChunks = true;
+    frames.request({}, 130);
+    await expect(frames.get(130)).rejects.toThrow();
+    await flush();
+    failChunks = false;
+    frames.request({}, 131);
+    await frames.get(131);
+    expect(ensureCalls).toEqual([{ srcAbs: src("assets/a.mp4"), chunks: [1] }]);
+  });
+
+  it("never reads ahead while exporting", async () => {
+    const { frames } = await readyEntry();
+    (await import("./previewMedia")).setPreviewPlaybackActive(true);
+    const { setExporting } = await import("./exportState");
+    setExporting(true);
+    try {
+      frames.request({}, 130);
+      await frames.get(130);
+    } finally {
+      setExporting(false);
+    }
+    expect(ensureCalls).toEqual([{ srcAbs: src("assets/a.mp4"), chunks: [1] }]);
   });
 
   it("maps frame indices to their chunks for ensureFrames", async () => {

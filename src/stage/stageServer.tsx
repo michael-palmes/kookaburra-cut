@@ -47,6 +47,7 @@ import { memoryCensus } from "../engine/memoryCensus";
 import { perfColdWaits, runPerfProbe } from "../engine/perfProbe";
 import { setPresentSlideshowActive } from "../engine/presentMode";
 import {
+  setPresentClock,
   setPreviewClipStride,
   setPreviewMotionBlurPlayback,
   setPreviewPlaybackActive,
@@ -638,6 +639,7 @@ function dispatch(req: WindowRequest): Promise<{ value: unknown; transfer?: Tran
 
 async function boot(init: Extract<WindowNotice, { type: "init" }>): Promise<void> {
   role = init.role;
+  setPresentClock(role === "present");
   canvas = init.canvas;
   size = init.size;
   (canvas as OffscreenCanvas & { __css?: StageSize }).__css = size;
