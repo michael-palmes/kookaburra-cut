@@ -1,11 +1,213 @@
 {
   "version": 1,
   "name": "Edge",
-  "text": {
-    "label": "01 · Edge",
-    "bars": "Bars 1–2 · Quiet build: a change each bar",
-    "title": "",
-    "note": "Light finds the device's edge",
-    "e1": "The sweep runs along the frame"
+  "background": {
+    "type": "none"
+  },
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "placement": {
+        "position": [0, 0, 0],
+        "rotationDeg": [-90, 0, 0],
+        "scale": 1
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "none",
+      "finish": {
+        "frame": {
+          "roughness": 0.3,
+          "metalness": 1,
+          "anisotropy": 0.4,
+          "grain": 1,
+          "grainScale": 20000,
+          "brushedMap": 0,
+          "chamferRoughness": 0.08,
+          "envIntensity": 1.6,
+          "iblTaps": 7
+        },
+        "polished": {
+          "roughness": 0.06,
+          "envIntensity": 1.8
+        },
+        "glass": {
+          "roughness": 0.05,
+          "ior": 1.5,
+          "specularIntensity": 1,
+          "envIntensity": 1.5
+        },
+        "back": {
+          "roughness": 0.45,
+          "metalness": 0,
+          "tint": 0.55,
+          "clearcoat": 0.6,
+          "clearcoatRoughness": 0.12,
+          "envIntensity": 1.3
+        }
+      }
+    }
+  ],
+  "deviceTrack": {
+    "keys": [
+      {
+        "id": "d1",
+        "tMs": 0,
+        "pose": {
+          "hero": {
+            "screenPower": 0
+          }
+        }
+      }
+    ],
+    "segments": []
+  },
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "position": [-1.28, 0.25, 1.955],
+          "aim": {
+            "mode": "point",
+            "at": [-0.62, 0.02, 1.05]
+          },
+          "fov": 24,
+          "dof": {
+            "mode": "depth",
+            "blur": 0.85,
+            "range": 0.35,
+            "focus": "auto"
+          }
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1858,
+        "pose": {
+          "position": [-1.23, 0.245, 1.9075],
+          "aim": {
+            "mode": "point",
+            "at": [-0.61, 0.02, 1.025]
+          },
+          "fov": 24
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutSine"
+      }
+    ]
+  },
+  "lighting": {
+    "environment": {
+      "source": "kookaburra:monochrome-studio",
+      "intensity": 0.12,
+      "rotationDeg": 0
+    },
+    "sun": {
+      "azimuthDeg": -55,
+      "elevationDeg": 32,
+      "intensity": 1,
+      "enabled": false
+    },
+    "ambient": 0,
+    "fills": [],
+    "lights": [
+      {
+        "id": "key",
+        "type": "spot",
+        "intensity": 40,
+        "kelvin": 2700,
+        "angleDeg": 30,
+        "penumbra": 0.7,
+        "castShadow": false,
+        "placement": {
+          "mode": "point",
+          "position": [-2.4, 0.9, -1.0]
+        },
+        "target": [-0.6, 0.03, 1.0]
+      }
+    ],
+    "keys": [
+      {
+        "id": "l1",
+        "tMs": 0,
+        "pose": {
+          "lights": {
+            "key": {
+              "intensity": 0
+            }
+          },
+          "environmentIntensity": 0
+        }
+      },
+      {
+        "id": "l2",
+        "tMs": 600,
+        "pose": {
+          "lights": {
+            "key": {
+              "intensity": 40
+            }
+          },
+          "environmentIntensity": 0.12
+        }
+      },
+      {
+        "id": "l3",
+        "tMs": 920,
+        "at": "bar:1.3",
+        "pose": {
+          "lights": {
+            "key": {
+              "placement": {
+                "mode": "point",
+                "position": [-2.4, 0.9, -1.0]
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "l4",
+        "tMs": 1858,
+        "pose": {
+          "lights": {
+            "key": {
+              "placement": {
+                "mode": "point",
+                "position": [-2.6, 0.9, 1.4]
+              }
+            }
+          }
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "l1",
+        "to": "l2",
+        "ease": "outCubic"
+      },
+      {
+        "from": "l2",
+        "to": "l3",
+        "ease": "jump"
+      },
+      {
+        "from": "l3",
+        "to": "l4",
+        "ease": "inOutSine"
+      }
+    ]
   }
 }

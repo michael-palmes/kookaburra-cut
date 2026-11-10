@@ -2,17 +2,17 @@
   "id": "unveil",
   "name": "Unveil",
   "version": 2,
-  "themeId": "kookaburra-onyx",
+  "themeId": "kookaburra-obsidian-stage",
   "formats": ["16:9"],
   "audio": {
     "file": "assets/song.flac",
     "fadeOutMs": 400,
     "grid": {
       "bpm": 128,
-      "offsetMs": -24.715,
+      "offsetMs": -17.358,
       "beatsPerBar": 4,
       "source": {
-        "sha256": "5cbf67ab063d94abf98e661cc0f21341f5055dcf71fcc69899535157b11a1612",
+        "sha256": "7386c587334d0bcb5b79356a083effb1ca6ed9831db7546fb0308fe9126bd54c",
         "analysisVersion": 3,
         "tracker": "nn"
       }
@@ -84,17 +84,37 @@
   "scenes": [
     {
       "file": "scenes/01-edge.tsx",
-      "durationMs": 3725,
-      "cutAt": "bar:3"
+      "durationMs": 1858,
+      "cutAt": "bar:2",
+      "effects": {
+        "lens": {
+          "intensity": 1,
+          "bloom": 0.14,
+          "bloomRadius": 0.88,
+          "halation": 0.4,
+          "halationThreshold": 1,
+          "halationColor": "#ff7a30"
+        }
+      }
     },
     {
       "file": "scenes/02-glass.tsx",
-      "durationMs": 3750,
-      "cutAt": "bar:5"
+      "durationMs": 1875,
+      "cutAt": "bar:3",
+      "effects": {
+        "lens": {
+          "intensity": 1,
+          "bloom": 0.14,
+          "bloomRadius": 0.88,
+          "halation": 0.4,
+          "halationThreshold": 1,
+          "halationColor": "#ff7a30"
+        }
+      }
     },
     {
-      "file": "scenes/03-macro.tsx",
-      "durationMs": 3750,
+      "file": "scenes/03-glimpses.tsx",
+      "durationMs": 7500,
       "cutAt": "bar:7"
     },
     {
@@ -105,12 +125,32 @@
     {
       "file": "scenes/05-reveal.tsx",
       "durationMs": 3750,
-      "cutAt": "bar:11"
+      "cutAt": "bar:11",
+      "effects": {
+        "lens": {
+          "intensity": 1,
+          "bloom": 0.14,
+          "bloomRadius": 0.88,
+          "halation": 0.4,
+          "halationThreshold": 1,
+          "halationColor": "#ff7a30"
+        }
+      }
     },
     {
       "file": "scenes/06-name.tsx",
       "durationMs": 3750,
-      "cutAt": "bar:13"
+      "cutAt": "bar:13",
+      "effects": {
+        "lens": {
+          "intensity": 1,
+          "bloom": 0.14,
+          "bloomRadius": 0.88,
+          "halation": 0.4,
+          "halationThreshold": 1,
+          "halationColor": "#ff7a30"
+        }
+      }
     },
     {
       "file": "scenes/07-claim-1.tsx",
@@ -172,5 +212,10 @@
       "durationMs": 3750,
       "cutAt": "bar:33"
     }
-  ]
+  ],
+  "render": {
+    "toneMapping": "neutral",
+    "antialias": "smaa",
+    "supersample": 4
+  }
 }

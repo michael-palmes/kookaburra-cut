@@ -2,10 +2,28 @@
   "version": 1,
   "name": "Claim 3",
   "text": {
-    "label": "13 · Claim 3",
-    "bars": "Bar 21 · Rising: a change every two beats",
-    "title": "Shares in one tap.",
-    "note": "The line stamps",
-    "e1": "Kick on beat 3"
-  }
+    "title": "Shares in one tap."
+  },
+  "textAnimation": {
+    "in": "stamp",
+    "out": "fade"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "at": "bar:21",
+        "pose": { "target": [0, 0, 0], "azimuthDeg": 0, "elevationDeg": 0, "distance": 5 }
+      },
+      {
+        "id": "k2",
+        "tMs": 1875,
+        "at": "bar:22",
+        "pose": { "target": [0, 0, 0], "azimuthDeg": 0, "elevationDeg": 0, "distance": 4.545 }
+      }
+    ],
+    "segments": [{ "from": "k1", "to": "k2", "ease": "linear" }]
+  },
+  "cameraKicks": [{ "at": "bar:21.3", "zoom": 1.04, "releaseMs": 300 }]
 }

@@ -7,7 +7,7 @@
   "personas": ["marketer", "co-founder"],
   "level": "showcase",
   "tier": "bold",
-  "uses": ["audio"],
+  "uses": ["audio", "background", "camera-rig", "device", "multi-device", "text-motion"],
   "highlights": [
     "Cut to an original song: the device rises into the light on bar 9",
     "Three features, each a claim, its proof and a close look",
@@ -25,7 +25,7 @@
     "title": "First Light",
     "bpm": 128
   },
-  "looks": ["kookaburra-onyx", "kookaburra-daylight", "kookaburra-ink"],
+  "looks": ["kookaburra-obsidian-stage", "kookaburra-daylight", "kookaburra-ink"],
   "preview": {
     "poster": 5,
     "frames": [4, 5, 7, 17],

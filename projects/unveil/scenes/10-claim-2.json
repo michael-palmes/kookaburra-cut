@@ -2,9 +2,27 @@
   "version": 1,
   "name": "Claim 2",
   "text": {
-    "label": "10 · Claim 2",
-    "bars": "Bar 17 · Breakdown: a change each bar",
-    "title": "Moves when you do.",
-    "note": "Breakdown: the line stamps"
+    "title": "Moves when you do."
+  },
+  "textAnimation": {
+    "in": "stamp",
+    "out": "fade"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "at": "bar:17",
+        "pose": { "target": [0, 0, 0], "azimuthDeg": 0, "elevationDeg": 0, "distance": 5 }
+      },
+      {
+        "id": "k2",
+        "tMs": 1875,
+        "at": "bar:18",
+        "pose": { "target": [0, 0, 0], "azimuthDeg": 0, "elevationDeg": 0, "distance": 4.545 }
+      }
+    ],
+    "segments": [{ "from": "k1", "to": "k2", "ease": "linear" }]
   }
 }
