@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.22.4] - 2026-11-10
+
+### Fixed
+
+- Present opens again: it no longer stays on "Opening" for every project.
+- A long, high-resolution video plays in the editor and in Present instead of
+  staying on "Preparing video". Pressing play prepares the rest of the clip in
+  one pass, so a 51 second 4K clip is ready in under 20 seconds.
+
 ## [0.22.3] - 2026-11-09
 
 ### Fixed
