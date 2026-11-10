@@ -11,7 +11,7 @@
     "order": 70
   },
   "colors": {
-    "background": "#0b0c0f",
+    "background": "#070504",
     "text": "#efe9df",
     "accent": "#e8a867",
     "muted": "#c2bbaf"
@@ -20,7 +20,7 @@
     "brand": {
       "type": "linear",
       "angleDeg": 135,
-      "stops": [["#221b15", 0], ["#111113", 0.45], ["#0b0c0f", 1]],
+      "stops": [["#221b15", 0], ["#100d0b", 0.45], ["#070504", 1]],
       "space": "oklch"
     }
   },
@@ -81,7 +81,7 @@
   "background": {
     "type": "scene3d",
     "look": "clerestory-shafts",
-    "colors": ["#33271a", "#1a1612", "#0e0d0c", "#32261a"],
+    "colors": ["#302419", "#1a1612", "#0e0d0c", "#2f2419"],
     "speed": 1,
     "params": {
       "shaftCount": 5,
@@ -93,7 +93,7 @@
     },
     "backing": {
       "type": "color",
-      "color": "#0b0c0f"
+      "color": "#070504"
     }
   }
 }
