@@ -14,6 +14,7 @@ from typing import Any, BinaryIO, Dict, Iterator, List, Optional, Tuple
 
 CONTAINERS = {b"moov", b"trak", b"mdia", b"minf", b"stbl", b"edts"}
 MAX_MOOV_BYTES = 64 * 1024 * 1024
+MAX_SAMPLES = 1 << 24  # mp4box.rs's cap: far past any real recording (77 hours at 60 fps)
 VIDEO_HANDLERS = (b"vide",)
 VFR_TOLERANCE_FPS = 0.5
 SPAN_TOLERANCE_MS = 2.0
@@ -278,30 +279,71 @@ def read_movie(path: Path) -> Dict[str, Any]:
 # ── the video track's timeline ────────────────────────────────────────────────
 
 
-def _expand(rows: List[Tuple[int, int]], n: int) -> List[int]:
-    out: List[int] = []
-    for count, value in rows:
-        out.extend([value] * count)
-        if len(out) >= n:
-            break
-    out.extend([0] * (n - len(out)))
-    return out[:n]
+def _runs(track: Dict[str, Any]) -> Iterator[Tuple[int, int, int]]:
+    """(count, first composition time, step) per stretch sharing a delta and an offset, never expanded per sample."""
+    offsets = iter(track["ctts"])
+    left = offset = dts = 0
+    for count, delta in track["stts"]:
+        while count:
+            if not left:
+                left, offset = next(offsets, (count, 0))
+                continue
+            take = min(count, left)
+            yield take, dts + offset, delta
+            dts += take * delta
+            count -= take
+            left -= take
 
 
-def presentation(track: Dict[str, Any]) -> Tuple[List[int], List[int]]:
-    """(composition times sorted, each one's duration) in media units; the last lasts its own decode delta."""
-    deltas = [d for count, d in track["stts"] for _ in range(count)]
-    n = len(deltas)
-    offsets = _expand(track["ctts"], n) if track["ctts"] else [0] * n
-    dts = 0
-    cts: List[Tuple[int, int]] = []
-    for i in range(n):
-        cts.append((dts + offsets[i], deltas[i]))
-        dts += deltas[i]
-    cts.sort(key=lambda c: c[0])
-    times = [c for c, _ in cts]
-    durations = [times[i + 1] - times[i] for i in range(n - 1)] + ([cts[-1][1]] if n else [])
-    return times, durations
+def _below(count: int, start: int, step: int, bound: int) -> int:
+    """How many of the count terms start, start + step, ... fall below bound."""
+    if step == 0:
+        return count if start < bound else 0
+    if step > 0:
+        return min(max(-((start - bound) // step), 0), count)
+    return count - min(max((start - bound) // -step + 1, 0), count)
+
+
+def _holds(count: int, start: int, step: int, value: int) -> bool:
+    if step == 0:
+        return value == start
+    k, rest = divmod(value - start, step)
+    return rest == 0 and 0 <= k < count
+
+
+def _span(track: Dict[str, Any]) -> Tuple[Optional[int], Optional[int], int, bool]:
+    """(earliest composition time, latest, the latest's own decode delta, whether decode order ever steps back); None times without samples."""
+    first = last = prev = None
+    tail, back = 0, False
+    for count, start, step in _runs(track):
+        end = start + (count - 1) * step
+        back = back or end < start or (prev is not None and start < prev)
+        prev = end
+        first = min(start, end) if first is None else min(first, start, end)
+        if last is None or max(start, end) >= last:
+            last, tail = max(start, end), step
+    return first, last, tail, back
+
+
+def _shown(track: Dict[str, Any], n: int, span: Tuple[int, int, int, bool], start: int, end: int) -> Tuple[int, Optional[int], Optional[int]]:
+    """(frames, first time, last time) shown in [start, end): sorted frame i shows when t[i] < end and t[i + 1] > start."""
+    first, last, tail, _back = span
+    before = upto = 0
+    latest = None
+    for count, s, step in _runs(track):
+        k = _below(count, s, step, end)
+        before += k
+        upto += _below(count, s, step, start + 1)
+        if k:
+            top = s + ((k - 1) if step > 0 else (count - k)) * step
+            latest = top if latest is None else max(latest, top)
+    inner = max(min(before, n - 1) - max(upto - 1, 0), 0)
+    final = before == n and last + tail > start
+    if not inner and not final:
+        return 0, None, None
+    head = first if inner else last
+    foot = last if final else latest
+    return inner + int(final), max(head - start, 0), max(foot - start, 0)
 
 
 def _ms(units: float, scale: int) -> float:
@@ -320,8 +362,11 @@ def analyse(movie: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if video is None:
         return None
     scale = video["timescale"]
-    times, durations = presentation(video)
-    n = len(times)
+    n = sum(count for count, _ in video["stts"])
+    if n > MAX_SAMPLES:
+        raise BoxError(f"the video track claims {n} samples, over {MAX_SAMPLES}")
+    span = _span(video)
+    first, last, tail, back = span
     out: Dict[str, Any] = {
         "codec": video["entry"].get("codec"),
         "width": video["entry"].get("width"),
@@ -330,7 +375,7 @@ def analyse(movie: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "samples": n,
         "durationMs": tenth(_ms(video["duration"], scale)),
         "fragmented": bool(movie["fragmented"]),
-        "reorders": bool(video["ctts"]) and any(times[i] != v for i, v in enumerate(_decode_order_cts(video))),
+        "reorders": bool(video["ctts"]) and back,
         "keyframes": len(video["stss"]) if video["stss"] is not None else None,
         "colour": video["entry"].get("colour"),
         "vfr": False,
@@ -341,7 +386,7 @@ def analyse(movie: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     }
     if n == 0 or scale <= 0:
         return out
-    seconds = video["duration"] / scale if video["duration"] else sum(durations) / scale
+    seconds = video["duration"] / scale if video["duration"] else (last - first + tail) / scale
     deltas = [d for _c, d in video["stts"] if d > 0]
     if seconds > 0 and deltas:
         nominal = n / seconds
@@ -353,7 +398,7 @@ def analyse(movie: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         {"mediaTimeMs": None if media < 0 else tenth(_ms(media, scale)), "durationMs": tenth(_ms(seg, movie_scale)), "rate": round(rate, 4)}
         for seg, media, rate in edits
     ]
-    window_start, window_end = times[0], times[-1] + durations[-1]
+    window_start, window_end = first, last + tail
     if not edits:
         out["editStart"] = "none"
     elif len(edits) > 1 or edits[0][1] < 0 or abs(edits[0][2] - 1.0) > 1e-3:
@@ -364,34 +409,25 @@ def analyse(movie: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         window_start = media
         if seg > 0:
             window_end = min(window_end, media + seg * scale // movie_scale if movie_scale else window_end)
-        if media == times[0]:
+        if media == first:
             out["editStart"] = "first-frame"
-        elif media < times[0]:
+        elif media < first:
             out["editStart"] = "gap"
             out["edited"] = True
         else:
-            starts = set(times)
-            out["editStart"] = "frame" if media in starts else "mid-sample"
+            on_frame = any(_holds(*run, media) for run in _runs(video))
+            out["editStart"] = "frame" if on_frame else "mid-sample"
             out["edited"] = True
     if out["editStart"] != "complex":
-        shown = [(max(t, window_start) - window_start) for t, d in zip(times, durations) if t < window_end and t + d > window_start]
         if out["editStart"] == "none":
-            shown = [t - times[0] for t in times]
+            frames, head, foot = n, 0, last - first
+        else:
+            frames, head, foot = _shown(video, n, span, window_start, window_end)
         out["expected"] = {
-            "frames": len(shown),
-            "firstPtsMs": tenth(_ms(shown[0], scale)) if shown else None,
-            "lastPtsMs": tenth(_ms(shown[-1], scale)) if shown else None,
+            "frames": frames,
+            "firstPtsMs": None if head is None else tenth(_ms(head, scale)),
+            "lastPtsMs": None if foot is None else tenth(_ms(foot, scale)),
         }
-    return out
-
-
-def _decode_order_cts(track: Dict[str, Any]) -> List[int]:
-    deltas = [d for count, d in track["stts"] for _ in range(count)]
-    offsets = _expand(track["ctts"], len(deltas))
-    out, dts = [], 0
-    for d, o in zip(deltas, offsets):
-        out.append(dts + o)
-        dts += d
     return out
 
 

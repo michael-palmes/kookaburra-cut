@@ -47,9 +47,10 @@ def movie(
     large_mdat: bool = False,
     fragmented: bool = False,
     codec: bytes = b"avc1",
+    stts_rows: Optional[Sequence[Tuple[int, int]]] = None,
 ) -> bytes:
     """A one-track video: decode deltas (stts), composition offsets (ctts), an edit list (segment duration in movie units,
-    media time in media units or -1, rate)."""
+    media time in media units or -1, rate). stts_rows writes that table as given, claiming samples the file never holds."""
     n = len(deltas)
     media_duration = sum(deltas)
     movie_duration = media_duration * movie_scale // timescale
@@ -66,7 +67,7 @@ def movie(
     hdlr = full(b"hdlr", 0, b"\0\0\0\0" + b"vide" + b"\0" * 12 + b"VideoHandler\0")
     entry = b"\0" * 6 + b"\0\x01" + b"\0" * 16 + struct.pack(">HH", *size) + struct.pack(">IIIH", 0x480000, 0x480000, 0, 1) + b"\0" * 32 + struct.pack(">Hh", 24, -1)
     stsd = full(b"stsd", 0, struct.pack(">I", 1) + box(codec, entry + (colr or b"")))
-    stts_rows = runs(deltas)
+    stts_rows = runs(deltas) if stts_rows is None else stts_rows
     stts = full(b"stts", 0, struct.pack(">I", len(stts_rows)) + b"".join(struct.pack(">II", c, d) for c, d in stts_rows))
     ctts = b""
     if offsets is not None:

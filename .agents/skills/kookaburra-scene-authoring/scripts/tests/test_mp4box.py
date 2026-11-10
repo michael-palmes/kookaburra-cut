@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import random
 import shutil
 import subprocess
 import tempfile
@@ -100,6 +101,43 @@ class EditStartVectorTests(unittest.TestCase):
                              (case["verdict"], case["reasons"], case["recommended"]), case["name"])
 
 
+def expanded(track):
+    """(decode-order times, sorted times, durations) sample by sample: the walk mp4box replaced, kept as the reference."""
+    deltas = [d for count, d in track["stts"] for _ in range(count)]
+    offsets = [o for count, o in track["ctts"] for _ in range(count)][:len(deltas)]
+    offsets += [0] * (len(deltas) - len(offsets))
+    cts, dts = [], 0
+    for d, o in zip(deltas, offsets):
+        cts.append((dts + o, d))
+        dts += d
+    decode = [c for c, _ in cts]
+    cts.sort(key=lambda c: c[0])
+    times = [c for c, _ in cts]
+    return decode, times, [b - a for a, b in zip(times, times[1:])] + [cts[-1][1]] if cts else []
+
+
+class SampleWalkTests(unittest.TestCase):
+    def test_the_run_walk_matches_the_sample_walk(self) -> None:
+        rng = random.Random(20261110)
+        rows = lambda lo, hi: [(rng.choice([0, 1, 1, 2, 3, 6]), rng.randint(lo, hi)) for _ in range(rng.randint(0, 7))]  # noqa: E731
+        for _ in range(3000):
+            track = {"stts": rows(rng.choice([0, -15]), 25), "ctts": rows(-30, 60) if rng.random() < 0.6 else []}
+            decode, times, durations = expanded(track)
+            n = len(times)
+            span = mp4box._span(track)
+            if not n:
+                self.assertIsNone(span[0])
+                continue
+            self.assertEqual(span, (times[0], times[-1], durations[-1], decode != sorted(decode)), track)
+            for start in {times[0] - 7, times[-1] + 7, rng.choice(times), rng.choice(times) + 1}:
+                self.assertEqual(any(mp4box._holds(*run, start) for run in mp4box._runs(track)), start in times, (track, start))
+                for end in {times[-1] + durations[-1], start + rng.randint(1, 120), rng.choice(times)}:
+                    end = min(end, times[-1] + durations[-1])
+                    shown = [max(t, start) - start for t, d in zip(times, durations) if t < end and t + d > start]
+                    want = (len(shown), shown[0] if shown else None, shown[-1] if shown else None)
+                    self.assertEqual(mp4box._shown(track, n, span, start, end), want, (track, start, end))
+
+
 class ContainerTests(unittest.TestCase):
     def test_vfr_from_the_sample_table(self) -> None:
         self.assertFalse(analyse(ms.movie([10] * 60))["vfr"])
@@ -129,6 +167,15 @@ class ContainerTests(unittest.TestCase):
         self.assertIsNone(analyse(b""))
         good = ms.movie([10] * 30)
         self.assertIsNone(analyse(good[:-20]), "a truncated moov is unreadable, never a crash")
+
+    def test_a_table_claiming_more_samples_than_any_recording(self) -> None:
+        # Over mp4box.rs's cap it is no movie; at it, the walk goes run by run, never sample by sample.
+        over = ms.movie([10] * 30, stts_rows=[(mp4box.MAX_SAMPLES, 10), (1, 10)], edits=[(1000, 300, 1.0)])
+        self.assertLess(len(over), 4096)
+        self.assertIsNone(analyse(over))
+        at = analyse(ms.movie([10] * 30, stts_rows=[(mp4box.MAX_SAMPLES, 10)], edits=[(1000, 300, 1.0)]))
+        self.assertEqual((at["samples"], at["editStart"]), (mp4box.MAX_SAMPLES, "frame"))
+        self.assertEqual(at["expected"], {"frames": 60, "firstPtsMs": 0.0, "lastPtsMs": 983.3})
 
     def test_decoder_comparison(self) -> None:
         expected = {"frames": 91, "firstPtsMs": 0.0, "lastPtsMs": 3433.3}
