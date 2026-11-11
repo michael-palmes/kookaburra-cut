@@ -2426,15 +2426,28 @@ pub(crate) fn forget_trust_at(
     if folders.is_empty() {
         return Ok(());
     }
-    {
-        let mut session = trust
+    let landing = Landing::new(folders);
+    let ids: Vec<String> = trust
+        .session
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .iter()
+        .cloned()
+        .collect();
+    let dirs: HashMap<String, PathBuf> = ids
+        .into_iter()
+        .filter_map(|id| project_dir(app, state, &id).ok().map(|dir| (id, dir)))
+        .collect();
+    forget_session_at(
+        &mut trust
             .session
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        forget_session_at(&mut session, folders, |id| project_dir(app, state, id).ok());
-    }
-    crate::website::forget_loopback_grants_at(app, |key| lands_in_any(Path::new(key), folders));
-    update_settings(app, state, |settings| forget_stored_at(settings, folders))
+            .unwrap_or_else(std::sync::PoisonError::into_inner),
+        &landing,
+        |id| dirs.get(id).cloned(),
+    );
+    crate::website::forget_loopback_grants_at(app, |key| landing.holds(Path::new(key)));
+    update_settings(app, state, |settings| forget_stored_at(settings, &landing))
 }
 
 /// Settings ▸ Clear all app data: every session allow and unredeemed Allow goes, so no project passes on this launch's word.
@@ -2466,32 +2479,60 @@ fn drop_session_then(
 
 fn forget_session_at(
     session: &mut HashSet<String>,
-    folders: &[PathBuf],
+    landing: &Landing,
     dir_of: impl Fn(&str) -> Option<PathBuf>,
 ) {
-    session.retain(|id| dir_of(id).is_some_and(|dir| !lands_in_any(&dir, folders)));
+    session.retain(|id| dir_of(id).is_some_and(|dir| !landing.holds(&dir)));
 }
 
-fn forget_stored_at(settings: &mut AppSettings, folders: &[PathBuf]) {
+fn forget_stored_at(settings: &mut AppSettings, landing: &Landing) {
     settings
         .trusted_projects
-        .retain(|_, record| !lands_in_any(Path::new(&record.path), folders));
+        .retain(|_, record| !landing.holds(Path::new(&record.path)));
     settings
         .website_origin_grants
-        .retain(|key, _| !lands_in_any(Path::new(key), folders));
+        .retain(|key, _| !landing.holds(Path::new(key)));
 }
 
-fn lands_in_any(path: &Path, folders: &[PathBuf]) -> bool {
-    folders.iter().any(|folder| same_folder(path, folder))
+/// The folders a pack or a delete is about to change, each read from disk once: by inode where it exists, else by its path in any case (the side that forgets more).
+struct Landing {
+    inodes: HashSet<(u64, u64)>,
+    absent: HashSet<String>,
+    spelt: HashSet<String>,
 }
 
-/// The same folder on disk: one inode when both exist, else the same path in any case (the side that forgets more).
-pub(crate) fn same_folder(a: &Path, b: &Path) -> bool {
-    use std::os::unix::fs::MetadataExt;
-    if let (Ok(x), Ok(y)) = (std::fs::metadata(a), std::fs::metadata(b)) {
-        return x.dev() == y.dev() && x.ino() == y.ino();
+impl Landing {
+    fn new(folders: &[PathBuf]) -> Self {
+        let mut landing = Landing {
+            inodes: HashSet::new(),
+            absent: HashSet::new(),
+            spelt: HashSet::new(),
+        };
+        for folder in folders {
+            let name = folder.to_string_lossy().to_lowercase();
+            match folder_inode(folder) {
+                Some(inode) => landing.inodes.insert(inode),
+                None => landing.absent.insert(name.clone()),
+            };
+            landing.spelt.insert(name);
+        }
+        landing
     }
-    a.to_string_lossy().to_lowercase() == b.to_string_lossy().to_lowercase()
+
+    fn holds(&self, path: &Path) -> bool {
+        let name = path.to_string_lossy().to_lowercase();
+        match folder_inode(path) {
+            Some(inode) => self.inodes.contains(&inode) || self.absent.contains(&name),
+            None => self.spelt.contains(&name),
+        }
+    }
+}
+
+fn folder_inode(path: &Path) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    std::fs::metadata(path)
+        .ok()
+        .map(|meta| (meta.dev(), meta.ino()))
 }
 
 /// One consent the native sheet (or an autorun launch) issued and `trust_project` has not consumed yet.
@@ -4318,7 +4359,7 @@ mod tests {
             .insert(key(&other), vec!["https://example.com".into()]);
         let mut session = HashSet::from(["product-tour".to_owned(), "other".to_owned()]);
 
-        let landing = [root.join("Product-Tour")];
+        let landing = Landing::new(&[root.join("Product-Tour")]);
         forget_session_at(&mut session, &landing, |id| Some(root.join(id)));
         forget_stored_at(&mut settings, &landing);
 
@@ -4344,7 +4385,7 @@ mod tests {
         };
         let mut session = HashSet::from(["demo".to_owned(), "other".to_owned()]);
         // The session allow goes first; the settings write that follows may fail.
-        forget_session_at(&mut session, &[dir.to_path_buf()], |id| {
+        forget_session_at(&mut session, &Landing::new(&[dir.to_path_buf()]), |id| {
             Some(dir.with_file_name(id))
         });
         assert_eq!(
