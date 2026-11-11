@@ -1242,8 +1242,11 @@ fn verdict_body(request: &BridgeRequest, p: &RequestPeek, verdict: &Verdict) -> 
 /// The native loop's triage of this instance's pending render requests: wedged, too large and throttled ones are answered at once (claimed first, so the render window never serves them too). Returns how many are left for the render window.
 pub(crate) fn triage(app: &AppHandle, root: &Path, pid: u32) -> usize {
     let now = now_ms();
+    let Some(auth) = crate::bridge::auth() else {
+        return 0;
+    };
     let own = crate::bridge::own_workspace_root(app);
-    let pending = crate::bridge::pending_claimable_requests(root, own.as_deref(), pid, now);
+    let pending = crate::bridge::pending_claimable_requests(root, own.as_deref(), pid, now, auth);
     if pending.is_empty() {
         return 0;
     }
@@ -1270,6 +1273,9 @@ pub(crate) fn triage(app: &AppHandle, root: &Path, pid: u32) -> usize {
         let from = requests.join(format!("{}.json", request.id));
         if std::fs::rename(&from, claimed.join(format!("{}.json", request.id))).is_err() {
             continue;
+        }
+        if let Ok(deadline) = auth.deadline(request, now) {
+            auth.accept(&request.id, deadline);
         }
         write_answer(app, &request.id, verdict_body(request, p, verdict));
     }

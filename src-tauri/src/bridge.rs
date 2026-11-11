@@ -1314,21 +1314,22 @@ pub(crate) fn served_pending_count(app: &AppHandle) -> usize {
         return 0;
     };
     let own = own_workspace_root(app);
-    render_pending_count(&root, true, own.as_deref(), std::process::id())
+    render_pending_count(&root, auth(), own.as_deref(), std::process::id())
 }
 
+/// `auth` is the serving instance's; without one nothing counts.
 pub(crate) fn render_pending_count(
     root: &Path,
-    serving: bool,
+    auth: Option<&BridgeAuth>,
     own_root: Option<&Path>,
     pid: u32,
 ) -> usize {
-    if !serving {
+    let Some(auth) = auth else {
         return 0;
-    }
+    };
     pending_routes(root)
         .iter()
-        .filter(|(_, path, route)| !route.native() && pending_claimable(path, own_root, pid))
+        .filter(|(_, path, route)| !route.native() && pending_claimable(path, own_root, pid, auth))
         .count()
 }
 
@@ -1340,33 +1341,46 @@ pub(crate) fn served_pending(app: &AppHandle) -> Vec<(BridgeRequest, u64)> {
     let Ok(root) = bridge_root(app) else {
         return Vec::new();
     };
-    let own = own_workspace_root(app);
-    pending_claimable_requests(&root, own.as_deref(), std::process::id(), now_ms())
+    let (Some(auth), own) = (auth(), own_workspace_root(app)) else {
+        return Vec::new();
+    };
+    pending_claimable_requests(&root, own.as_deref(), std::process::id(), now_ms(), auth)
 }
 
+/// Fresh render requests this instance would serve, signed with its key and not yet accepted: the capture service's triage and queue depth see nothing a claim would drop.
 pub(crate) fn pending_claimable_requests(
     root: &Path,
     own_root: Option<&Path>,
     pid: u32,
     now: u64,
+    auth: &BridgeAuth,
 ) -> Vec<(BridgeRequest, u64)> {
     pending_routes(root)
         .into_iter()
         .filter(|(_, _, route)| !route.native())
-        .filter_map(|(_, path, _)| {
-            let request = parse_request(&std::fs::read_to_string(&path).ok()?).ok()?;
+        .filter_map(|(id, path, _)| {
+            let text = std::fs::read_to_string(&path).ok()?;
+            let request = parse_request(&text).ok()?;
             let age = file_age_ms(&path);
-            (request_fresh(&request, age, now) && claimable(own_root, &request, pid))
-                .then_some((request, age))
+            (request_fresh(&request, age, now)
+                && claimable(own_root, &request, pid)
+                && request.id == id
+                && auth.check(&text) == Mac::Good
+                && auth.deadline(&request, now).is_ok()
+                && !auth.replayed(&id, now))
+            .then_some((request, age))
         })
         .collect()
 }
 
-/// An unreadable or unparseable request counts: the claim answers its error.
-fn pending_claimable(path: &Path, own_root: Option<&Path>, pid: u32) -> bool {
-    match std::fs::read_to_string(path).map(|text| parse_request(&text)) {
-        Ok(Ok(request)) => claimable(own_root, &request, pid),
-        _ => true,
+/// A parsed request counts (the claim serves, answers or drops it); an unparseable one only when signed with this key, since only then does the claim answer it.
+fn pending_claimable(path: &Path, own_root: Option<&Path>, pid: u32, auth: &BridgeAuth) -> bool {
+    match std::fs::read_to_string(path) {
+        Ok(text) => match parse_request(&text) {
+            Ok(request) => claimable(own_root, &request, pid),
+            Err(_) => auth.check(&text) == Mac::Good,
+        },
+        Err(_) => true,
     }
 }
 
@@ -1621,12 +1635,11 @@ pub(crate) fn claim_next_ordered(
             continue;
         };
         let age_ms = file_age_ms(&path);
-        let mac = auth.check(&text);
         let request = match parse_request(&text) {
             Ok(request) => request,
             Err(error) => {
                 // Only a request signed with this key is answered; anything else may be another instance's, so it waits out the 120 s prune.
-                if mac == Mac::Good
+                if auth.check(&text) == Mac::Good
                     && !auth.replayed(&id, now)
                     && std::fs::remove_file(&path).is_ok()
                 {
@@ -1646,6 +1659,7 @@ pub(crate) fn claim_next_ordered(
         if !serves(&request) {
             continue;
         }
+        let mac = auth.check(&text);
         let refused = match (&mac, request.id == id) {
             (_, false) => Err("its id differs from its file name"),
             (Mac::Absent, true) => {
@@ -1845,7 +1859,8 @@ pub(crate) fn stamped_response(
 }
 
 /// Answer one claimed request (atomic tmp + rename; the client polls for this file).
-#[tauri::command]
+/// Async so hashing the frames it names stays off the main thread.
+#[tauri::command(async)]
 pub fn bridge_write_response(app: AppHandle, id: String, json_text: String) -> Result<(), String> {
     crate::managed::deny_agent_kit()?;
     if !valid_id(&id) {
@@ -2789,13 +2804,13 @@ mod tests {
         queue(&root, "0004-1-d", &request_body("0004-1-d", None));
         queue(&root, ".0005-1-e", &request_body("0005-1-e", None));
         assert_eq!(pending_requests(&root).len(), 4);
-        assert_eq!(render_pending_count(&root, true, None, 1), 2);
+        assert_eq!(render_pending_count(&root, Some(&test_auth()), None, 1), 2);
         let wanted = |kind: Option<&str>| !is_native_kind(kind);
         assert_eq!(claim_next(&root, wanted).unwrap().unwrap().id, "0003-1-c");
         assert_eq!(claim_next(&root, wanted).unwrap().unwrap().id, "0004-1-d");
         assert_eq!(claim_next(&root, wanted).unwrap(), None);
         assert!(native.is_file());
-        assert_eq!(render_pending_count(&root, true, None, 1), 0);
+        assert_eq!(render_pending_count(&root, Some(&test_auth()), None, 1), 0);
         assert!(root.join("requests/.claimed/0003-1-c.json").is_file());
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -3325,9 +3340,15 @@ mod tests {
             "0007-1-g",
             r#"{ "id": "0007-1-g", "kind": "capture", "scene": ["x"] }"#,
         );
-        assert_eq!(render_pending_count(&bridge, true, Some(&ours), 1), 4);
-        assert_eq!(render_pending_count(&bridge, true, Some(&theirs), 2), 4);
-        assert_eq!(render_pending_count(&bridge, false, Some(&ours), 1), 0);
+        assert_eq!(
+            render_pending_count(&bridge, Some(&test_auth()), Some(&ours), 1),
+            4
+        );
+        assert_eq!(
+            render_pending_count(&bridge, Some(&test_auth()), Some(&theirs), 2),
+            4
+        );
+        assert_eq!(render_pending_count(&bridge, None, Some(&ours), 1), 0);
         let claim = || {
             claim_render_request(&bridge, true, Some(&ours), 1, || Some(served()))
                 .unwrap()
@@ -3344,7 +3365,10 @@ mod tests {
         .unwrap();
         assert_eq!(answer["ok"], false);
         assert_eq!(answer["servedBy"], served());
-        assert_eq!(render_pending_count(&bridge, true, Some(&ours), 1), 0);
+        assert_eq!(
+            render_pending_count(&bridge, Some(&test_auth()), Some(&ours), 1),
+            0
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -3376,7 +3400,7 @@ mod tests {
         );
         assert!(fresh.is_file() && stale.is_file() && broken.is_file());
         assert!(!bridge.join("responses").exists() && !bridge.join("requests/.claimed").exists());
-        assert_eq!(render_pending_count(&bridge, false, Some(&ours), 1), 0);
+        assert_eq!(render_pending_count(&bridge, None, Some(&ours), 1), 0);
         let claimed = claim_render_request(&bridge, true, Some(&ours), 1, || Some(served()))
             .unwrap()
             .unwrap();
@@ -3462,6 +3486,45 @@ mod tests {
         assert_eq!(claim(), None, "a replay inside the session is refused");
         assert!(!root.join("requests/0001-1-a.json").exists());
         assert!(!root.join("responses").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn triage_and_the_pending_count_see_only_what_a_claim_would_serve() {
+        let root = scratch("signed-pending");
+        let auth = test_auth();
+        let now = now_ms();
+        queue(
+            &root,
+            "0001-1-a",
+            &request_body("0001-1-a", Some("capture")),
+        );
+        queue_raw(
+            &root,
+            "0002-1-b",
+            &request_body("0002-1-b", Some("capture")),
+        );
+        let forged =
+            bridge_auth::sign_text(&[9u8; 32], &request_body("0003-1-c", Some("capture")), None);
+        queue_raw(&root, "0003-1-c", &forged.unwrap());
+        queue_raw(&root, "0004-1-d", "{");
+        let ids = |auth: &BridgeAuth| {
+            pending_claimable_requests(&root, None, 1, now, auth)
+                .into_iter()
+                .map(|(r, _)| r.id)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids(&auth), ["0001-1-a"]);
+        assert_eq!(
+            render_pending_count(&root, Some(&auth), None, 1),
+            3,
+            "the garbage file waits out the prune"
+        );
+        auth.accept("0001-1-a", now + 60_000);
+        assert!(
+            ids(&auth).is_empty(),
+            "an accepted id is never triaged again"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -3813,7 +3876,7 @@ mod tests {
                 json!({ "op": "lose-context", "window": "editor", "instancePid": 1 }),
             ),
         );
-        assert_eq!(render_pending_count(&root, true, None, 1), 1);
+        assert_eq!(render_pending_count(&root, Some(&test_auth()), None, 1), 1);
         let render = claim_render_request(&root, true, None, 1, || None)
             .unwrap()
             .unwrap();

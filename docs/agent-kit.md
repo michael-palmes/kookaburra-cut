@@ -1539,7 +1539,9 @@ exit and pruned with dead heartbeats. An instance that can't write its key does 
   deleted and logged (`[bridge] dropped request "<id>": <reason>`, never the bytes) with no
   answer. An accepted id is held until its signed deadline (`deadlineAtMs`, else
   `requestedAtMs` + 120 s, capped at an hour), after which the request is stale anyway; a
-  request from an earlier session fails the key. No counter.
+  request from an earlier session fails the key. No counter. The capture service's triage (throttled, too large,
+  wedged), its queue depth and the render pending count see only what a claim would serve,
+  so neither path answers or counts a request the claim would drop.
 - **`kit-outdated`.** A request with no `auth` at all (a kit stamped before 0.23.0, or v1
   `capture.py`) gets one fixed answer, `{ ok: false, code: "kit-outdated", error: "... open the
   project in Kookaburra Cut once to update its kit, then rerun" }`, so it fails fast instead of
