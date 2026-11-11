@@ -388,8 +388,12 @@ fn pick_refusal(dir: &Path, home: Option<&Path>) -> Option<&'static str> {
     if too_broad_to_pick(dir, home) {
         return Some("that folder is too broad to hand to Claude");
     }
-    home.is_some_and(|home| NEVER_PICKED.iter().any(|rel| dir.starts_with(home.join(rel))))
-        .then_some("that folder holds credentials and is never handed to Claude")
+    home.is_some_and(|home| {
+        NEVER_PICKED
+            .iter()
+            .any(|rel| crate::kit::starts_with_folded(dir, &home.join(rel)))
+    })
+    .then_some("that folder holds credentials and is never handed to Claude")
 }
 
 /// Record a folder a Rust-run dialog just returned (a Save dialog's parent counts), unless the rules keep it off kb's write roots.
@@ -3684,7 +3688,16 @@ mod tests {
         assert!(too_broad_to_pick(Path::new("/Users/x"), Some(home)));
         assert!(!too_broad_to_pick(Path::new("/Users/x/Desktop"), Some(home)));
         assert!(!too_broad_to_pick(Path::new("/Volumes/Work/review"), None));
-        for refused in ["/", "/Users", "/Users/x", "/Users/x/.ssh/keys", "/Users/x/Library/Keychains"] {
+        for refused in [
+            "/",
+            "/Users",
+            "/Users/x",
+            "/Users/x/.ssh/keys",
+            "/Users/x/Library/Keychains",
+            "/Users/x/.SSH/keys",
+            "/Users/x/.\u{17F}\u{17F}h",
+            "/Users/x/library/application support/claude",
+        ] {
             assert!(pick_refusal(Path::new(refused), Some(home)).is_some(), "{refused}");
         }
         for allowed in ["/Users/x/Desktop", "/Users/x/Library/Movies", "/Volumes/Work/review"] {

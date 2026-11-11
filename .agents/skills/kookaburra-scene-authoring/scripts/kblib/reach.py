@@ -8,16 +8,18 @@ only in a folder the app's own file dialog returned this session (the heartbeat'
 from __future__ import annotations
 
 import os
+import unicodedata
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from .util import EXIT_ENV, WORKSPACE_DIR_NAME, KbError, bridge_dir, emit_err, home
 
 # Folders under the home directory that hold keys and credentials.
-DENIED_DIRS = (".ssh", ".aws", ".config", ".gnupg", "Library/Keychains", ".docker", ".kube", ".azure", ".claude")
+DENIED_DIRS = (".ssh", ".aws", ".config", ".gnupg", "Library/Keychains", ".docker", ".kube", ".azure", ".claude",
+               "Library/Application Support/Claude")
 DENIED_NAMES = (".netrc", ".bash_history", ".zsh_history", ".zhistory", ".sh_history", ".history",
                 ".python_history", ".node_repl_history", ".lesshst", "fish_history",
-                ".git-credentials", ".npmrc", ".pypirc")
+                ".git-credentials", ".npmrc", ".pypirc", ".claude.json")
 DENIED_PREFIXES = (".env", "id_rsa", "id_ed25519", "id_ecdsa", "id_dsa")
 DENIED_SUFFIXES = (".pem", ".p12", ".key", ".jks", ".keystore", ".tfstate")
 
@@ -33,6 +35,16 @@ def _inside(path: Path, root: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _fold(text: str) -> str:
+    """A name as APFS compares it: case and Unicode folded, so `~/.AWS` and `~/.aws` are one folder."""
+    return unicodedata.normalize("NFD", unicodedata.normalize("NFD", text).casefold())
+
+
+def _under_folded(path: Path, root: Path) -> bool:
+    parts, prefix = [_fold(p) for p in path.parts], [_fold(p) for p in root.parts]
+    return parts[:len(prefix)] == prefix
 
 
 def workspace_roots(project_root: Path) -> List[Path]:
@@ -61,17 +73,17 @@ def denied_reason(path: Path) -> Optional[str]:
         return keys
     user_home = resolve(str(home()))
     for rel in DENIED_DIRS:
-        if _inside(path, user_home / rel):
+        if _under_folded(path, user_home / rel):
             return f"~/{rel} holds keys and credentials"
-    name = path.name
+    name = _fold(path.name)
     if name in DENIED_NAMES:
-        return f"{name} is a credential or history file"
+        return f"{path.name} is a credential or history file"
     if any(name == p or name.startswith(p + ".") for p in DENIED_PREFIXES):
-        return f"{name} is an environment or key file (secrets)"
+        return f"{path.name} is an environment or key file (secrets)"
     if any(name.endswith(s) for s in DENIED_SUFFIXES):
-        return f"{name} is a key or certificate"
+        return f"{path.name} is a key or certificate"
     if name.startswith("credentials") and name.endswith(".json"):
-        return f"{name} is a credential file"
+        return f"{path.name} is a credential file"
     return None
 
 

@@ -53,6 +53,18 @@ class CleanTextTests(KbTestCase):
         for name in ["id_card.png", "credentials.mp4", "hero.mp4"]:
             self.assertIsNone(reach.denied_reason(work / name), name)
 
+    def test_a_credential_path_in_any_case_is_refused(self) -> None:
+        user = reach.resolve(str(reach.home()))
+        for rel in [".AWS/credentials", ".Docker/config.json", ".ſſh/id_ed25519", "library/keychains/login.keychain-db",
+                    ".claude.json", ".CLAUDE.json", "Library/Application Support/Claude/claude_desktop_config.json",
+                    "library/application support/claude/config.json"]:
+            self.assertIsNotNone(reach.denied_reason(user / rel), rel)
+        work = reach.resolve(str(self.tmp))
+        for name in [".NETRC", "ID_RSA", "Id_Ed25519.pub", ".ENV.local", "Server.PEM", "Credentials.JSON", "Main.TFSTATE"]:
+            self.assertIsNotNone(reach.denied_reason(work / name), name)
+        self.assertIsNone(reach.denied_reason(user / "Library/Application Support/Other/config.json"))
+        self.assertIsNone(reach.denied_reason(work / "Credentials.mp4"))
+
     def test_controls_and_format_characters_become_visible_escapes(self) -> None:
         self.assertEqual(clean_text(OSC52), "Hero\\u001B]52;c;aGVsbG8=\\u0007 title")
         self.assertEqual(clean_text("a‮b​c"), "a\\u202Eb\\u200Bc")

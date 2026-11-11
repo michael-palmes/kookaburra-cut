@@ -44,14 +44,32 @@ const AGENT_GIT_DENY: &str = "Bash(git:*)";
 /// Where a hook a folder arrived with goes on its first open: inside `.git`, so packs, the trust hash and the sweep never see it.
 pub(crate) const HOOKS_ASIDE: &str = ".git/hooks.moved-aside";
 /// Credential folders under the home directory, and credential files by name anywhere: `reach.py` refuses the same set, `bridge.rs` never takes these folders as a write root, and the managed deny rules are built from them (a test holds all three together).
-pub(crate) const CREDENTIAL_DIRS: [&str; 9] = [
+pub(crate) const CREDENTIAL_DIRS: [&str; 10] = [
     ".ssh", ".aws", ".config", ".gnupg", "Library/Keychains", ".docker", ".kube", ".azure", ".claude",
+    "Library/Application Support/Claude",
 ];
-const CREDENTIAL_NAMES: [&str; 13] = [
+const CREDENTIAL_NAMES: [&str; 14] = [
     ".netrc", ".bash_history", ".zsh_history", ".zhistory", ".sh_history", ".history",
     ".python_history", ".node_repl_history", ".lesshst", "fish_history",
-    ".git-credentials", ".npmrc", ".pypirc",
+    ".git-credentials", ".npmrc", ".pypirc", ".claude.json",
 ];
+
+/// Whether `path` is `root` or below it, names compared as APFS compares them (case and `ſ` folded), as `reach.py` does.
+pub(crate) fn starts_with_folded(path: &Path, root: &Path) -> bool {
+    let fold = |part: &std::ffi::OsStr| -> String {
+        part.to_string_lossy()
+            .chars()
+            .flat_map(char::to_lowercase)
+            .map(|c| if c == '\u{17F}' { 's' } else { c })
+            .collect()
+    };
+    let mut parts = path.components();
+    root.components().all(|want| {
+        parts
+            .next()
+            .is_some_and(|part| fold(part.as_os_str()) == fold(want.as_os_str()))
+    })
+}
 /// A name, or that name plus any extension.
 const CREDENTIAL_PREFIXES: [&str; 5] = [".env", "id_rsa", "id_ed25519", "id_ecdsa", "id_dsa"];
 const CREDENTIAL_SUFFIXES: [&str; 6] = [".pem", ".p12", ".key", ".jks", ".keystore", ".tfstate"];
