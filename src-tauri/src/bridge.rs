@@ -15,6 +15,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
+use crate::bridge_auth::{self, BridgeAuth, Mac};
 use crate::{media, workspace};
 
 const BRIDGE_DIR: &str = "_bridge";
@@ -344,6 +345,9 @@ pub struct Heartbeat {
     pub health: Option<Value>,
     /// Folders the app's own file dialogs returned this session: the only places outside the workspace kb may write.
     pub picked_dirs: Vec<String>,
+    /// `1` while this instance signs (`_bridge/keys/<pid>.key`); kb then signs its requests and refuses unsigned answers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth: Option<u64>,
 }
 
 // ── Picked folders ─────────────────────────────────────────────────────────
@@ -712,9 +716,12 @@ pub(crate) fn bridge_role(inputs: &RoleInputs) -> BridgeRole {
 struct Instance {
     identity: BridgeIdentity,
     role: BridgeRole,
+    /// It signs: a serving instance whose key is written.
+    auth: bool,
 }
 
 static INSTANCE: OnceLock<Instance> = OnceLock::new();
+static AUTH: OnceLock<BridgeAuth> = OnceLock::new();
 
 fn dev_checkout() -> Option<Checkout> {
     if !cfg!(debug_assertions) {
@@ -746,6 +753,17 @@ pub fn init(app: &AppHandle) {
             bundle_id: &bundle_id,
             worktree_build: checkout.as_ref().is_some_and(|c| c.worktree),
         });
+        let role = if role.serving {
+            match start_signing(app) {
+                Ok(()) => role,
+                Err(e) => BridgeRole {
+                    serving: false,
+                    reason: Some(format!("couldn't write its bridge key ({e})")),
+                },
+            }
+        } else {
+            role
+        };
         log::info!(
             "[bridge] {} ({})",
             if role.serving {
@@ -765,9 +783,22 @@ pub fn init(app: &AppHandle) {
                 started_at_ms: now_ms(),
                 checkout,
             },
+            auth: role.serving,
             role,
         }
     });
+}
+
+/// A serving instance's key: drawn once and written to `keys/<pid>.key`, or the instance does not serve.
+fn start_signing(app: &AppHandle) -> Result<(), String> {
+    let auth = BridgeAuth::generate()?;
+    bridge_auth::write_key(&bridge_root(app)?, std::process::id(), &auth)?;
+    AUTH.set(auth)
+        .map_err(|_| "a key was already drawn".to_owned())
+}
+
+pub(crate) fn auth() -> Option<&'static BridgeAuth> {
+    AUTH.get()
 }
 
 fn instance() -> Option<&'static Instance> {
@@ -1009,6 +1040,7 @@ fn heartbeat_body(
         export_job: crate::bridge_export::job_value(),
         health,
         picked_dirs: Vec::new(),
+        auth: instance.auth.then_some(bridge_auth::AUTH_VERSION),
     }
 }
 
@@ -1226,6 +1258,7 @@ pub fn remove_heartbeat(app: &AppHandle) {
     HEARTBEAT_STOPPED.store(true, Ordering::Relaxed);
     if let Ok(bridge) = bridge_root(app) {
         remove_heartbeat_files(&bridge, std::process::id());
+        bridge_auth::remove_key(&bridge, std::process::id());
     }
 }
 
@@ -1468,13 +1501,33 @@ fn valid_name(name: &str, max: usize) -> bool {
         && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
-/// Every answer an agent reads passes through `clean_text` first: names and messages from project files are escaped and capped.
+/// Every answer an agent reads passes through `clean_text` first: names and messages from project files are escaped and capped. The one writer of answers, so a signing instance signs them all.
 pub(crate) fn write_response_value(root: &Path, id: &str, body: &Value) -> Result<(), String> {
+    write_response_signed(root, id, body, auth())
+}
+
+pub(crate) fn write_response_signed(
+    root: &Path,
+    id: &str,
+    body: &Value,
+    auth: Option<&BridgeAuth>,
+) -> Result<(), String> {
     let dir = root.join("responses");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let mut body = body.clone();
     crate::clean_text::clean_value(&mut body);
-    write_atomic(&dir.join(format!("{id}.json")), &body.to_string())
+    let text = match auth {
+        Some(auth) => auth.sign_answer(&body, &dir)?,
+        None => body.to_string(),
+    };
+    write_atomic(&dir.join(format!("{id}.json")), &text)
+}
+
+/// The one answer to a request from a kit that predates signing: it fails fast instead of waiting out its timeout.
+pub(crate) const KIT_OUTDATED: &str = "this project's Kookaburra Cut tools are older than the app: open the project in Kookaburra Cut once to update its kit, then rerun";
+
+fn dropped(id: &str, reason: &str) {
+    log::warn!("[bridge] dropped request {id:?}: {reason}");
 }
 
 fn file_age_ms(path: &Path) -> u64 {
@@ -1511,10 +1564,16 @@ pub(crate) fn claim_next(
 ) -> Result<Option<BridgeRequest>, String> {
     claim_next_served(
         root,
+        &test_auth(),
         |route| wanted(route.kind.as_deref()),
         |_| true,
         || None,
     )
+}
+
+#[cfg(test)]
+pub(crate) fn test_auth() -> BridgeAuth {
+    BridgeAuth::new(bridge_auth::tests::TEST_KEY)
 }
 
 /// A fresh request this instance could claim, before the claim.
@@ -1522,21 +1581,25 @@ pub(crate) struct PendingClaim {
     pub id: String,
     pub path: PathBuf,
     pub request: BridgeRequest,
+    /// Its signed deadline: `auth` holds the id until then.
+    pub deadline: u64,
 }
 
-/// Claim the oldest fresh request whose route `wanted` accepts and that `serves` accepts once parsed (a declined one stays for another app instance): renamed into `.claimed/` before anything serves it, so two pollers (ticks, windows or app instances) never serve one file and the loser skips it. Stale requests are deleted and unparseable ones answered (with `served_by`). Serving instances only.
+/// Claim the oldest fresh request whose route `wanted` accepts and that `serves` accepts once parsed (a declined one stays for another app instance): renamed into `.claimed/` before anything serves it, so two pollers (ticks, windows or app instances) never serve one file and the loser skips it. Stale requests are deleted; one signed with another key, tampered with, replayed or sent with no `requestedAtMs` is deleted unanswered; one with no `auth` gets `kit-outdated`; a signed unparseable one is answered (with `served_by`). Serving instances only.
 pub(crate) fn claim_next_served(
     root: &Path,
+    auth: &BridgeAuth,
     wanted: impl Fn(&RoutePeek) -> bool,
     serves: impl Fn(&BridgeRequest) -> bool,
     served_by: impl Fn() -> Option<Value>,
 ) -> Result<Option<BridgeRequest>, String> {
-    claim_next_ordered(root, wanted, serves, served_by, |_| {})
+    claim_next_ordered(root, auth, wanted, serves, served_by, |_| {})
 }
 
 /// `claim_next_served` with the candidates (oldest first) reordered or filtered by `order` before the first claim attempt.
 pub(crate) fn claim_next_ordered(
     root: &Path,
+    auth: &BridgeAuth,
     wanted: impl Fn(&RoutePeek) -> bool,
     serves: impl Fn(&BridgeRequest) -> bool,
     served_by: impl Fn() -> Option<Value>,
@@ -1544,6 +1607,10 @@ pub(crate) fn claim_next_ordered(
 ) -> Result<Option<BridgeRequest>, String> {
     let requests = root.join("requests");
     let now = now_ms();
+    let answer = |id: &str, mut body: Value| {
+        stamp_served_by(&mut body, served_by().as_ref());
+        let _ = write_response_signed(root, id, &body, Some(auth));
+    };
     let mut candidates: Vec<PendingClaim> = Vec::new();
     for (id, path, route) in pending_routes(root) {
         if !wanted(&route) {
@@ -1554,14 +1621,21 @@ pub(crate) fn claim_next_ordered(
             continue;
         };
         let age_ms = file_age_ms(&path);
+        let mac = auth.check(&text);
         let request = match parse_request(&text) {
             Ok(request) => request,
             Err(error) => {
-                // Answer instead of dropping, so the client fails fast with the reason.
-                let _ = std::fs::remove_file(&path);
-                let mut body = json!({ "version": 2, "id": id, "ok": false, "error": error });
-                stamp_served_by(&mut body, served_by().as_ref());
-                let _ = write_response_value(root, &id, &body);
+                // Only a request signed with this key is answered; anything else may be another instance's, so it waits out the 120 s prune.
+                if mac == Mac::Good
+                    && !auth.replayed(&id, now)
+                    && std::fs::remove_file(&path).is_ok()
+                {
+                    auth.accept(&id, now + STALE_REQUEST_MS);
+                    answer(
+                        &id,
+                        json!({ "version": 2, "id": id, "ok": false, "error": error }),
+                    );
+                }
                 continue;
             }
         };
@@ -1572,14 +1646,55 @@ pub(crate) fn claim_next_ordered(
         if !serves(&request) {
             continue;
         }
-        candidates.push(PendingClaim { id, path, request });
+        let refused = match (&mac, request.id == id) {
+            (_, false) => Err("its id differs from its file name"),
+            (Mac::Absent, true) => {
+                if std::fs::remove_file(&path).is_ok() {
+                    answer(
+                        &id,
+                        json!({
+                            "version": response_version(&request), "id": id, "ok": false,
+                            "code": "kit-outdated", "error": KIT_OUTDATED,
+                        }),
+                    );
+                }
+                continue;
+            }
+            (Mac::Bad(reason), true) => Err(*reason),
+            (Mac::Good, true) => match auth.deadline(&request, now) {
+                Ok(_) if auth.replayed(&id, now) => Err("replayed"),
+                other => other,
+            },
+        };
+        match refused {
+            Ok(deadline) => candidates.push(PendingClaim {
+                id,
+                path,
+                request,
+                deadline,
+            }),
+            Err(reason) => {
+                if std::fs::remove_file(&path).is_ok() {
+                    dropped(&id, reason);
+                }
+            }
+        }
     }
     order(&mut candidates);
-    for PendingClaim { id, path, request } in candidates {
+    for PendingClaim {
+        id,
+        path,
+        request,
+        deadline,
+    } in candidates
+    {
         let claimed = requests.join(".claimed");
         std::fs::create_dir_all(&claimed).map_err(|e| e.to_string())?;
         match std::fs::rename(&path, claimed.join(format!("{id}.json"))) {
-            Ok(()) => return Ok(Some(request)),
+            Ok(()) => {
+                auth.accept(&id, deadline);
+                return Ok(Some(request));
+            }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
             Err(e) => return Err(e.to_string()),
         }
@@ -1601,6 +1716,7 @@ fn prune_bridge(root: &Path, own_pid: u32) {
     crate::capture_service::maybe_prune_responses(root, own_pid);
     prune_dir(&root.join("requests").join(".claimed"), RESPONSE_TTL_MS);
     prune_instances(&root.join(APPS_DIR), own_pid, now_ms(), pid_alive);
+    bridge_auth::prune_keys(root, own_pid, INSTANCE_PRUNE_MS, pid_alive);
     let now = now_ms();
     for (_, path, _) in pending_requests(root) {
         if !request_file_fresh(&path, now) {
@@ -1618,24 +1734,32 @@ pub(crate) fn claim_render_request(
     pid: u32,
     served_by: impl Fn() -> Option<Value>,
 ) -> Result<Option<BridgeRequest>, String> {
-    claim_render_request_ordered(root, serving, own_root, pid, served_by, |_| {})
+    claim_render_request_ordered(
+        root,
+        serving.then(test_auth).as_ref(),
+        own_root,
+        pid,
+        served_by,
+        |_| {},
+    )
 }
 
 /// `claim_render_request` in `order` (the capture service's fair queue).
 pub(crate) fn claim_render_request_ordered(
     root: &Path,
-    serving: bool,
+    auth: Option<&BridgeAuth>,
     own_root: Option<&Path>,
     pid: u32,
     served_by: impl Fn() -> Option<Value>,
     order: impl FnOnce(&mut Vec<PendingClaim>),
 ) -> Result<Option<BridgeRequest>, String> {
-    if !serving {
+    let Some(auth) = auth else {
         return Ok(None);
-    }
+    };
     prune_bridge(root, pid);
     claim_next_ordered(
         root,
+        auth,
         |route| !route.native(),
         |request| claimable(own_root, request, pid),
         served_by,
@@ -1654,7 +1778,7 @@ pub fn bridge_claim_request(app: AppHandle) -> Result<Option<BridgeRequest>, Str
     let own = own_workspace_root(&app);
     let claimed = claim_render_request_ordered(
         &root,
-        true,
+        auth(),
         own.as_deref(),
         std::process::id(),
         || own_served_by(&app),
@@ -1915,7 +2039,7 @@ pub fn spawn_native_bridge(app: AppHandle) {
         return;
     }
     write_cli_marker(&app);
-    let Ok(root) = bridge_root(&app) else {
+    let (Ok(root), Some(auth)) = (bridge_root(&app), auth()) else {
         return;
     };
     let pid = std::process::id();
@@ -1933,7 +2057,9 @@ pub fn spawn_native_bridge(app: AppHandle) {
                 claimable(ours.as_deref(), request, pid)
             };
             loop {
-                match claim_next_served(&root, RoutePeek::native, serves, || own_served_by(&app)) {
+                match claim_next_served(&root, auth, RoutePeek::native, serves, || {
+                    own_served_by(&app)
+                }) {
                     Ok(Some(request)) => {
                         let app = app.clone();
                         let root = root.clone();
@@ -2460,6 +2586,7 @@ mod tests {
             [
                 "appVersion",
                 "aspect",
+                "auth",
                 "bridge",
                 "build",
                 "bundleId",
@@ -2496,6 +2623,7 @@ mod tests {
         assert_eq!(value["rootSource"], "settings");
         assert_eq!(value["bridge"], json!({ "serving": true, "reason": null }));
         assert_eq!(value["primary"], false);
+        assert_eq!(value["auth"], 1);
         assert_eq!(value["checkout"], Value::Null);
         assert_eq!(value["health"], Value::Null);
         assert_eq!(value["exportJob"], Value::Null);
@@ -2558,6 +2686,10 @@ mod tests {
             json!({ "path": "/Users/x/kookaburra-cut", "worktree": true })
         );
         assert_eq!(welcome["health"], json!({ "version": 1 }));
+        assert!(
+            welcome.get("auth").is_none(),
+            "a passive instance has no key"
+        );
     }
 
     #[test]
@@ -2614,7 +2746,13 @@ mod tests {
         );
     }
 
+    /// A request as kb writes it: signed with the test key.
     fn queue(root: &Path, id: &str, body: &str) -> PathBuf {
+        let signed = bridge_auth::sign_text(&bridge_auth::tests::TEST_KEY, body, None).unwrap();
+        queue_raw(root, id, &signed)
+    }
+
+    fn queue_raw(root: &Path, id: &str, body: &str) -> PathBuf {
         let dir = root.join("requests");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join(format!("{id}.json"));
@@ -2761,6 +2899,7 @@ mod tests {
         let claim = |workspace: &Path| {
             claim_next_served(
                 &bridge,
+                &test_auth(),
                 RoutePeek::native,
                 |r| claimable(Some(workspace), r, 1),
                 || None,
@@ -2807,6 +2946,7 @@ mod tests {
         );
         let none = claim_next_served(
             &root,
+            &test_auth(),
             RoutePeek::native,
             |r| native_claimable(Some(ours.as_path()), r),
             || None,
@@ -2958,6 +3098,7 @@ mod tests {
                 reason: (!serving)
                     .then(|| "workspace root overridden by KOOKABURRA_WORKSPACE_ROOT".into()),
             },
+            auth: serving,
         }
     }
 
@@ -3218,7 +3359,12 @@ mod tests {
             "0001-1-a",
             &json!({ "id": "0001-1-a", "kind": "capture", "requestedAtMs": 1 }).to_string(),
         );
-        let broken = queue(&bridge, "0002-1-b", "{");
+        let broken = queue(
+            &bridge,
+            "0002-1-b",
+            r#"{"id":"0002-1-b","kind":"capture","scene":["x"]}"#,
+        );
+        let garbage = queue_raw(&bridge, "0000-1-z", "{");
         let fresh = queue(
             &bridge,
             "0003-1-c",
@@ -3236,11 +3382,136 @@ mod tests {
             .unwrap();
         assert_eq!(claimed.id, "0003-1-c");
         assert!(!stale.exists() && !broken.exists());
+        assert!(garbage.is_file() && !bridge.join("responses/0000-1-z.json").exists());
         let answer: Value = serde_json::from_str(
             &std::fs::read_to_string(bridge.join("responses/0002-1-b.json")).unwrap(),
         )
         .unwrap();
         assert_eq!(answer["servedBy"], served());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn only_a_request_signed_with_this_instances_key_is_served_once() {
+        let root = scratch("signed-claims");
+        let auth = test_auth();
+        let claim = || {
+            claim_next_served(
+                &root,
+                &auth,
+                |_| true,
+                |r| claimable(None, r, 1),
+                || Some(served()),
+            )
+            .unwrap()
+            .map(|r| r.id)
+        };
+        let addressed = |id: &str, extra: Value| {
+            let mut body = json!({ "version": 2, "id": id, "kind": "capture", "instancePid": 1, "requestedAtMs": now_ms() });
+            for (key, value) in extra.as_object().unwrap() {
+                body[key] = value.clone();
+            }
+            body.to_string()
+        };
+        let signed = queue(&root, "0001-1-a", &addressed("0001-1-a", json!({})));
+        let copy = std::fs::read_to_string(&signed).unwrap();
+        let other_key =
+            bridge_auth::sign_text(&[9u8; 32], &addressed("0002-1-b", json!({})), None).unwrap();
+        let foreign = queue_raw(&root, "0002-1-b", &other_key);
+        let tampered = queue(&root, "0003-1-c", &addressed("0003-1-c", json!({})));
+        let text = std::fs::read_to_string(&tampered)
+            .unwrap()
+            .replace("\"capture\"", "\"check\"");
+        std::fs::write(&tampered, text).unwrap();
+        let undated = queue(
+            &root,
+            "0004-1-d",
+            &addressed("0004-1-d", json!({ "requestedAtMs": 0 })),
+        );
+        let expired = queue(
+            &root,
+            "0005-1-e",
+            &addressed("0005-1-e", json!({ "deadlineAtMs": now_ms() - 1 })),
+        );
+        let renamed = queue(&root, "0006-1-f", &addressed("0007-1-g", json!({})));
+        let theirs = queue(
+            &root,
+            "0008-1-h",
+            &addressed("0008-1-h", json!({ "instancePid": 2 })),
+        );
+        let future = queue(
+            &root,
+            "0009-1-i",
+            &addressed("0009-1-i", json!({ "requestedAtMs": now_ms() + 600_000 })),
+        );
+        assert_eq!(claim().as_deref(), Some("0001-1-a"));
+        assert_eq!(claim(), None);
+        for gone in [&foreign, &tampered, &undated, &expired, &renamed, &future] {
+            assert!(!gone.exists(), "{}", gone.display());
+        }
+        assert!(
+            theirs.is_file(),
+            "another instance's request is left for it"
+        );
+        assert!(
+            !root.join("responses").exists(),
+            "a refused request gets no answer"
+        );
+
+        std::fs::write(root.join("requests/0001-1-a.json"), &copy).unwrap();
+        assert_eq!(claim(), None, "a replay inside the session is refused");
+        assert!(!root.join("requests/0001-1-a.json").exists());
+        assert!(!root.join("responses").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_unsigned_request_gets_one_signed_kit_outdated_answer() {
+        let root = scratch("unsigned");
+        let auth = test_auth();
+        let unsigned = queue_raw(
+            &root,
+            "0001-1-a",
+            &request_body("0001-1-a", Some("capture")),
+        );
+        let v1 = queue_raw(&root, "0002-1-b", &json!({ "id": "0002-1-b" }).to_string());
+        let claimed =
+            claim_next_served(&root, &auth, |_| true, |_| true, || Some(served())).unwrap();
+        assert_eq!(claimed, None);
+        assert!(!unsigned.exists() && !v1.exists());
+        for (id, version) in [("0001-1-a", 2), ("0002-1-b", 1)] {
+            let text = std::fs::read_to_string(root.join(format!("responses/{id}.json"))).unwrap();
+            assert_eq!(auth.check(&text), Mac::Good);
+            let answer: Value = serde_json::from_str(&text).unwrap();
+            assert_eq!(answer["ok"], false);
+            assert_eq!(answer["code"], "kit-outdated");
+            assert_eq!(answer["version"], version);
+            assert!(answer["error"]
+                .as_str()
+                .unwrap()
+                .contains("open the project in Kookaburra Cut once to update its kit"));
+            assert_eq!(answer["servedBy"], served());
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn every_answer_a_signing_instance_writes_is_signed() {
+        let root = scratch("signed-answers");
+        let auth = test_auth();
+        write_response_signed(
+            &root,
+            "0001-1-a",
+            &json!({ "ok": true, "name": "a\u{1b}b" }),
+            Some(&auth),
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(root.join("responses/0001-1-a.json")).unwrap();
+        assert_eq!(auth.check(&text), Mac::Good);
+        assert!(!text.contains('\u{1b}'), "cleaned before signing");
+        write_response_signed(&root, "0002-1-b", &json!({ "ok": true }), None).unwrap();
+        let text = std::fs::read_to_string(root.join("responses/0002-1-b.json")).unwrap();
+        assert_eq!(auth.check(&text), Mac::Absent);
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -3555,7 +3826,7 @@ mod tests {
             ("0002-1-b", Some("lose-context"), Some("render"))
         );
         let native = |root: &Path| {
-            claim_next_served(root, RoutePeek::native, |_| true, || None)
+            claim_next_served(root, &test_auth(), RoutePeek::native, |_| true, || None)
                 .unwrap()
                 .map(|r| r.id)
         };
@@ -3594,7 +3865,7 @@ mod tests {
         let claim = || {
             claim_render_request_ordered(
                 &root,
-                true,
+                Some(&test_auth()),
                 None,
                 1,
                 || None,
