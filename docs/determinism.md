@@ -708,7 +708,27 @@ many times brighter than white keeps a hard edge whatever the sample count.
   motion blur lane's accumulator after the tone map. Pure in t. It fixes
   geometry thinner than MSAA's sample spacing, such as an edge-on band dotting
   along a rim, at about 2.2× the export cost at 4. Frames on a shutter lane keep
-  their own samples, and transition frames jitter only the main camera.
+  their own samples, and transition frames jitter only the main camera. The
+  paused preview settles to the same supersampled frame once the playhead
+  rests (`CompositorDriver`'s settle timer, the paused motion blur's), so what
+  the editor shows at rest is the export's edge quality; playback stays single.
+- **`render.specularAA: true`** swaps the device GSAA above for Tokuyoshi and
+  Kaplanyan's filter in GGX alpha space: `α'² = α² + min(|∇n|²/π, 0.18)` (σ² =
+  1/2π, κ = 0.18; export contract), with three's anisotropic `alphaT`
+  recomputed from the widened roughness (`toolkit/device/specularAA.ts`). The
+  legacy filter widens perceptual roughness (`r'² = r² + k`), so it filters
+  smooth metal least, exactly where it sparkles. On a `finish` the hairline
+  grain also fades per octave before its cells reach two pixels (the legacy fade
+  let the 3.1× octave run at two cells a pixel). Its own program keys (`-saa`).
+- **`render.dither: true`** adds a last effect pass that dithers the encoded
+  display values just before the 8-bit write (`engine/DitherEffect.ts`, export
+  contract): interleaved gradient noise, triangular remap, ±1 level, tapered to
+  zero at 0 and 255 so pure black and white stay exact, one fixed pattern
+  (`docs/decisions.md`, "Output dither"). It routes every frame through the
+  effect chain, so an effect-free project that opts in takes the composer's
+  tone map (and `exactText` no longer holds). The supersample and motion blur lanes average dithered samples and
+  their rounding keeps it. Framed (overlay) scenes skip the composer and stay
+  undithered.
 
 Changing `MSAA_SAMPLES` (engine/format.ts) is a full baseline rebase.
 

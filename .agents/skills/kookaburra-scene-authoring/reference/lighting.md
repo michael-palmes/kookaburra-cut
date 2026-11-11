@@ -201,7 +201,14 @@ is in reference/camera.md.
 Edges: `"antialias": "smaa"` (or `"fxaa"`) smooths after the tone map, where hot
 highlights otherwise stay stepped; `"supersample": 4` (8 or 16) renders each exported
 frame that many times at sub-pixel offsets and averages them, the cleanest edges at that
-many times the export time (the preview is unchanged).
+many times the export time (the paused preview settles to it after a moment's rest).
+
+Dark films: `"dither": true` adds a one-level dither at the final 8-bit write, so near-black
+gradients, haze and bloom stop banding; pure black and white stay exact, and every frame then
+runs through the effect chain (so `exactText` no longer holds). `"specularAA": true` filters device metal's highlights by how
+fast the surface curves on screen and fades a `finish`'s grain before it aliases, so frame
+edges stop sparkling in motion. Both are off by default; set them on any dark or device-led
+film.
 
 Text colour: backdrops, fixed backgrounds and device screens skip tone mapping and land on
 their exact hex, but troika text is tone-mapped by default, so under `aces` a `#F5F7FA` text
