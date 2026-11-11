@@ -329,8 +329,7 @@ def write_request(body: Dict[str, Any], key: Optional[bytes] = None) -> str:
 
 
 def read_answer(path: Path, key: Optional[bytes]) -> Optional[Dict[str, Any]]:
-    """An answer file: None while missing or half written; with a key, verified (mac and each named PNG) or refused with
-    exit 2 `bad-signature`, and returned without its `auth` block."""
+    """An answer file, None while missing; with a key, verified or refused (exit 2 `bad-signature`) and without `auth`."""
     resp = bridgeauth.read_answer(path, key)
     if resp is not None and key is not None:
         resp.pop("auth", None)

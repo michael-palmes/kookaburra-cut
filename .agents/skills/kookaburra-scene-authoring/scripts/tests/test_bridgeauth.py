@@ -128,7 +128,7 @@ class SignedBridge(KbTestCase):
         with self.assertRaises(KbError):
             reach.guard_read_at(self.root, str(keys / "1.key"))
         with self.assertRaises(KbError):
-            reach.guard_write(bridge.bound_project() or _Project(self.root), str(keys / "out.png"))
+            reach.guard_write(_Project(self.root), str(keys / "out.png"))
         for command in ('cat ~/Kookaburra\\ Cut/_bridge/keys/1.key', 'cat "$HOME/Kookaburra Cut/_bridge/"k"eys"/*',
                         "xxd _bridge//./keys/1.key", "cp _bridge/k*/1.key /tmp"):
             self.assertTrue(hookfast.names_bridge_keys(command), command)

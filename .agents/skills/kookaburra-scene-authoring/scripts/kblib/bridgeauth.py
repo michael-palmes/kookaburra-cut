@@ -1,5 +1,4 @@
-"""Bridge signing (docs/agent-kit.md, "Signing"), the mirror of the app's `bridge_auth.rs`: HMAC-SHA256 over a file's
-exact bytes with its mac's 64 digits read as zeros, under the elected instance's `_bridge/keys/<pid>.key`."""
+"""Bridge signing, the mirror of the app's `bridge_auth.rs` (docs/agent-kit.md, "Signing")."""
 
 from __future__ import annotations
 

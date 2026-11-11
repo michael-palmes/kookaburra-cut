@@ -607,8 +607,7 @@ def session_marker(root: str, session: str) -> str:
 
 
 def names_bridge_keys(command: str) -> bool:
-    """The command names the app's bridge keys, or a glob that matches them, quotes, escapes and doubled slashes aside
-    (best effort: a shell can always spell it another way)."""
+    """The command names the bridge keys or a glob matching them, quotes and escapes aside (best effort)."""
     import fnmatch
 
     plain = re.sub(r"/(\./)+", "/", re.sub(r"/+", "/", re.sub(r"[\"'\\]", "", command)))
