@@ -1365,6 +1365,7 @@ fn duplicate_skips(name: &std::ffi::OsStr) -> bool {
 pub async fn delete_project(
     app: AppHandle,
     state: State<'_, SettingsState>,
+    trust: State<'_, TrustState>,
     slug: String,
 ) -> Result<(), String> {
     validate_slug(&slug)?;
@@ -1381,6 +1382,7 @@ pub async fn delete_project(
             .await
             .map_err(|e| e.to_string())?
     };
+    forget_trust_at(&app, &state, &trust, std::slice::from_ref(&dir))?;
     trash_path(&dir).map_err(|e| format!("couldn't move the project to the Trash: {e}"))?;
     log::info!(
         "[workspace] {slug}: moved to the Trash ({})",
@@ -2399,7 +2401,7 @@ fn copy_source_needs_grant(scope: &ProjectScope) -> bool {
     )
 }
 
-/// Forget every grant for a project, user template or user preset, so the person meets the Allow sheet again on the next open: one a pack import just wrote (a publisher's content, whoever that publisher is), or one forgotten in Settings.
+/// Forget one project's grant, so it asks again on its next open: Settings ▸ Allowed projects ▸ Forget.
 pub(crate) fn forget_project_trust(
     app: &AppHandle,
     state: &State<'_, SettingsState>,
@@ -2412,6 +2414,27 @@ pub(crate) fn forget_project_trust(
             settings.trusted_projects.remove(id);
         })
     })
+}
+
+/// Forget every grant held for these folders: a pack is landing in them, so the person meets the Allow sheet again on the next open. Keyed by the folder on disk, not the id, so a slug spelt in another case is forgotten too; website origins go with the grant.
+pub(crate) fn forget_trust_at(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    trust: &TrustState,
+    folders: &[PathBuf],
+) -> Result<(), String> {
+    if folders.is_empty() {
+        return Ok(());
+    }
+    {
+        let mut session = trust
+            .session
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        forget_session_at(&mut session, folders, |id| project_dir(app, state, id).ok());
+    }
+    crate::website::forget_loopback_grants_at(app, |key| lands_in_any(Path::new(key), folders));
+    update_settings(app, state, |settings| forget_stored_at(settings, folders))
 }
 
 /// Settings ▸ Clear all app data: every session allow and unredeemed Allow goes, so no project passes on this launch's word.
@@ -2439,6 +2462,36 @@ fn drop_session_then(
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .remove(id);
     drop_stored()
+}
+
+fn forget_session_at(
+    session: &mut HashSet<String>,
+    folders: &[PathBuf],
+    dir_of: impl Fn(&str) -> Option<PathBuf>,
+) {
+    session.retain(|id| dir_of(id).is_some_and(|dir| !lands_in_any(&dir, folders)));
+}
+
+fn forget_stored_at(settings: &mut AppSettings, folders: &[PathBuf]) {
+    settings
+        .trusted_projects
+        .retain(|_, record| !lands_in_any(Path::new(&record.path), folders));
+    settings
+        .website_origin_grants
+        .retain(|key, _| !lands_in_any(Path::new(key), folders));
+}
+
+fn lands_in_any(path: &Path, folders: &[PathBuf]) -> bool {
+    folders.iter().any(|folder| same_folder(path, folder))
+}
+
+/// The same folder on disk: one inode when both exist, else the same path in any case (the side that forgets more).
+pub(crate) fn same_folder(a: &Path, b: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    if let (Ok(x), Ok(y)) = (std::fs::metadata(a), std::fs::metadata(b)) {
+        return x.dev() == y.dev() && x.ino() == y.ino();
+    }
+    a.to_string_lossy().to_lowercase() == b.to_string_lossy().to_lowercase()
 }
 
 /// One consent the native sheet (or an autorun launch) issued and `trust_project` has not consumed yet.
@@ -4223,6 +4276,50 @@ mod tests {
     }
 
     #[test]
+    fn a_landing_folder_forgets_its_grants_under_any_spelling() {
+        let root = scratch_dir();
+        let mine = root.join("product-tour");
+        let other = root.join("other");
+        std::fs::create_dir_all(&mine).unwrap();
+        std::fs::create_dir_all(&other).unwrap();
+        let record = |dir: &Path| TrustRecord {
+            scenes_fingerprint: "fp".into(),
+            path: dir.to_string_lossy().into_owned(),
+            allowed_at_ms: 0,
+        };
+        let mut settings = AppSettings::default();
+        settings
+            .trusted_projects
+            .insert("product-tour".into(), record(&mine));
+        settings
+            .trusted_projects
+            .insert("other".into(), record(&other));
+        let key = |dir: &Path| dir.canonicalize().unwrap().to_string_lossy().into_owned();
+        settings
+            .website_origin_grants
+            .insert(key(&mine), vec!["https://example.com".into()]);
+        settings
+            .website_origin_grants
+            .insert(key(&other), vec!["https://example.com".into()]);
+        let mut session = HashSet::from(["product-tour".to_owned(), "other".to_owned()]);
+
+        let landing = [root.join("Product-Tour")];
+        forget_session_at(&mut session, &landing, |id| Some(root.join(id)));
+        forget_stored_at(&mut settings, &landing);
+
+        assert_eq!(session, HashSet::from(["other".to_owned()]));
+        assert_eq!(
+            settings.trusted_projects.keys().collect::<Vec<_>>(),
+            vec!["other"]
+        );
+        assert_eq!(
+            settings.website_origin_grants.keys().collect::<Vec<_>>(),
+            vec![&key(&other)]
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn a_pack_landing_asks_even_when_its_stored_grant_survives() {
         let dir = Path::new("/Users/x/Kookaburra Cut/demo");
         let stale = TrustRecord {
@@ -4230,10 +4327,11 @@ mod tests {
             path: dir.to_string_lossy().into_owned(),
             allowed_at_ms: 1,
         };
-        let shared = Mutex::new(HashSet::from(["demo".to_owned(), "other".to_owned()]));
-        let failed = drop_session_then(&shared, "demo", || Err("disk full".to_owned()));
-        assert_eq!(failed, Err("disk full".to_owned()));
-        let mut session = shared.into_inner().unwrap();
+        let mut session = HashSet::from(["demo".to_owned(), "other".to_owned()]);
+        // The session allow goes first; the settings write that follows may fail.
+        forget_session_at(&mut session, &[dir.to_path_buf()], |id| {
+            Some(dir.with_file_name(id))
+        });
         assert_eq!(
             session_trust_decision(Some(&stale), dir, "fp-2", &mut session, "demo"),
             SessionTrust::Ask
