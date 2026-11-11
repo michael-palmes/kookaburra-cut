@@ -1,6 +1,6 @@
 name: Audit
 
-# Advisory and policy scanning of the RESIDENT dependency graph. dependency-review.yml inspects a pull request's diff and Dependabot waits out a seven-day cooldown, so neither notices a RUSTSEC or npm advisory published against a crate or package already in the lock files; this job does, on every pull request and once a week. The crate graph is also held to src-tauri/deny.toml: its licence allow list, no duplicate or wildcard versions, crates.io as the only source.
+# Advisory and policy scanning of the RESIDENT dependency graph. dependency-review.yml inspects a pull request's diff and Dependabot waits out a seven-day cooldown, so neither notices a RUSTSEC or npm advisory published against a crate or package already in the lock files; this job does, on every pull request and once a week. The crate graph is also held to src-tauri/deny.toml: its licence allow list, no wildcard versions (duplicates only warn), crates.io as the only source.
 
 on:
   pull_request:
