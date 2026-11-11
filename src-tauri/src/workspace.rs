@@ -2524,16 +2524,18 @@ impl TrustState {
     }
 }
 
-/// A project the main window leaves keeps no session allow, so content replaced while it was closed asks again.
+/// A project the main window leaves or enters keeps no session allow, so content replaced while it was closed asks again.
 fn leave_open_project(
     open: &mut Option<String>,
     session: &mut HashSet<String>,
     next: Option<&str>,
 ) {
-    if let Some(left) = open.take() {
-        if next != Some(left.as_str()) {
-            session.remove(&left);
-        }
+    if open.as_deref() == next {
+        return;
+    }
+    // Entering a project starts clean too: its allow is earned while it is open, never carried in.
+    for slug in open.iter().map(String::as_str).chain(next) {
+        session.remove(slug);
     }
     *open = next.map(str::to_owned);
 }
@@ -4263,6 +4265,19 @@ mod tests {
             SessionTrust::Pass
         );
         leave_open_project(&mut open, &mut session, Some("other"));
+        assert_eq!(
+            session_trust_decision(
+                Some(&record),
+                &dir,
+                "fp-someone-elses",
+                &mut session,
+                "demo"
+            ),
+            SessionTrust::Ask
+        );
+        // An allow given while another project was open (a scene copied from it) is not carried in.
+        session.insert("demo".into());
+        leave_open_project(&mut open, &mut session, Some("demo"));
         assert_eq!(
             session_trust_decision(
                 Some(&record),
