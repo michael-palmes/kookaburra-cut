@@ -238,13 +238,14 @@ fn stamp_or_empty(time: SystemTime) -> String {
     }
 }
 
-/// Hash decides; the date is consulted only once the bytes already disagree.
+/// Hash decides; the date is consulted only once the bytes already disagree. A date still to come is the author's word alone, so it never makes theirs newer.
 fn compare(pack_hash: &str, pack_modified: &str, local: &ScannedItem) -> ConflictState {
     if !pack_hash.is_empty() && pack_hash == local.content_hash {
         return ConflictState::Identical;
     }
     let ours = stamp_or_empty(local.modified_at);
-    if !is_stamp(pack_modified) || ours.is_empty() {
+    let now = rfc3339(SystemTime::now());
+    if !is_stamp(pack_modified) || ours.is_empty() || pack_modified > now.as_str() {
         return ConflictState::UnknownAge;
     }
     match pack_modified.cmp(ours.as_str()) {
@@ -436,6 +437,9 @@ pub(crate) mod tests {
     use std::sync::atomic::{AtomicU32, Ordering};
 
     pub(crate) const FUTURE: &str = "2099-01-01T00:00:00Z";
+    /// Newer than any `put_local` item, which is dated `LOCAL`, yet already past.
+    pub(crate) const NEWER: &str = "2020-01-01T00:00:00Z";
+    const LOCAL: u64 = 1_262_304_000;
     pub(crate) const PAST: &str = "2000-01-01T00:00:00Z";
 
     pub(crate) fn scratch(label: &str) -> PathBuf {
@@ -540,10 +544,21 @@ pub(crate) mod tests {
 
     pub(crate) fn put_local(root: &Path, kind: ItemKind, slug: &str, body: &str) {
         let target = workspace_target(root, kind, slug).unwrap();
-        match kind.marker_file() {
-            Some(marker) => write(&target.path.join(marker), body),
-            None => write(&target.path, body),
-        }
+        let file = match kind.marker_file() {
+            Some(marker) => target.path.join(marker),
+            None => target.path,
+        };
+        write(&file, body);
+        backdate(&file);
+    }
+
+    fn backdate(file: &Path) {
+        std::fs::File::options()
+            .write(true)
+            .open(file)
+            .unwrap()
+            .set_modified(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(LOCAL))
+            .unwrap();
     }
 
     fn marker_file(kind: ItemKind) -> &'static str {
@@ -701,10 +716,10 @@ pub(crate) mod tests {
             for (stem, state, theirs, ours) in cases {
                 let slug = format!("{stem}{ext}");
                 let stamp = match state {
-                    ConflictState::TheirsNewer => FUTURE,
+                    ConflictState::TheirsNewer => NEWER,
                     ConflictState::YoursNewer => PAST,
                     ConflictState::UnknownAge => "",
-                    _ => FUTURE,
+                    _ => NEWER,
                 };
                 let base = if dir_shaped {
                     stage_dir_item(&staging, kind, &slug, &[(marker_file(kind), theirs)], stamp)
@@ -752,6 +767,27 @@ pub(crate) mod tests {
         }
     }
 
+    #[test]
+    fn a_date_still_to_come_never_makes_replace_the_default() {
+        let root = scratch("future-root");
+        let staging = scratch("future-staging");
+        put_local(&root, ItemKind::Project, "tour", "mine");
+        let base = stage_dir_item(
+            &staging,
+            ItemKind::Project,
+            "tour",
+            &[("project.json", "theirs")],
+            FUTURE,
+        );
+        let staged = staged_pack(staging.clone(), contents_for(ItemKind::Project, vec![base]));
+        let plan =
+            plan_conflicts(&root, &staged, &selection_of(ItemKind::Project, &["tour"])).unwrap();
+        assert_eq!(plan.items[0].state, ConflictState::UnknownAge);
+        assert_ne!(plan.items[0].default_resolution, Resolution::Replace);
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&staging);
+    }
+
     /// The incumbent bytes are the recipient's determinism contract, so a font mismatch never replaces by default.
     #[test]
     fn a_font_byte_mismatch_defaults_to_skip() {
@@ -760,6 +796,7 @@ pub(crate) mod tests {
         let fonts_dir = root.join("fonts");
         std::fs::create_dir_all(&fonts_dir).unwrap();
         std::fs::write(fonts_dir.join("AcmeSans-700.ttf"), "incumbent bytes").unwrap();
+        backdate(&fonts_dir.join("AcmeSans-700.ttf"));
         crate::fonts::save_manifest(
             &fonts_dir,
             &crate::fonts::FontsManifest {
@@ -785,7 +822,7 @@ pub(crate) mod tests {
                     name: "Acme Sans".into(),
                     bytes: 21,
                     // Newer than the incumbent, which would replace for any other kind.
-                    modified_at: FUTURE.into(),
+                    modified_at: NEWER.into(),
                     content_hash: super::super::hash::sha256_bytes(b"quite different bytes"),
                 },
                 family: "Acme Sans".into(),
