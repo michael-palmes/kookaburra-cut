@@ -162,15 +162,17 @@ pub fn refuse_folded_collisions<'a>(
 ) -> Result<(), PackError> {
     let mut seen: HashMap<String, &str> = HashMap::new();
     for path in paths {
+        let mut key = String::new();
         let mut end = 0;
         for component in path.split('/') {
             end += component.len();
             let spelt = &path[..end];
-            match seen.insert(folded(spelt), spelt) {
-                Some(earlier) if earlier != spelt => {
-                    return Err(PackError::PathCollision(path.to_string()))
-                }
-                Some(_) if end == path.len() => {
+            if !key.is_empty() {
+                key.push('/');
+            }
+            key.push_str(&folded(component));
+            match seen.insert(key.clone(), spelt) {
+                Some(earlier) if earlier != spelt || end == path.len() => {
                     return Err(PackError::PathCollision(path.to_string()))
                 }
                 _ => {}
