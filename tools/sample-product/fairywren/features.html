@@ -16,19 +16,28 @@
       .card {
         border-radius: 24px;
         background: var(--surface);
-        box-shadow: var(--shadow), 0 0 0 1px var(--hair) inset;
+        box-shadow:
+          var(--shadow),
+          0 0 0 1px var(--hair) inset;
       }
       .sorted {
         top: 150px;
         height: 200px;
         border-radius: 26px;
         padding: 18px 20px;
-        color: #f4f0ea;
+        color: #f6f2eb;
         background:
-          radial-gradient(80% 90% at 100% 0%, rgba(240, 108, 91, 0.35), transparent 60%),
-          linear-gradient(160deg, #22325e, #0d1428);
-        box-shadow: 0 18px 40px -20px rgba(13, 20, 40, 0.8);
+          radial-gradient(80% 90% at 100% 0%, rgba(240, 108, 91, 0.34), transparent 60%),
+          linear-gradient(160deg, #3a322c, #1d1a17);
+        box-shadow:
+          0 18px 40px -20px rgba(0, 0, 0, 0.7),
+          0 0 0 1px rgba(246, 242, 235, 0.08) inset;
         overflow: hidden;
+      }
+      .dark .sorted {
+        background:
+          radial-gradient(80% 90% at 100% 0%, rgba(238, 120, 103, 0.28), transparent 60%),
+          linear-gradient(160deg, #423a35, #2a2624);
       }
       .sorted .top {
         display: flex;
@@ -36,35 +45,37 @@
         gap: 10px;
       }
       .sorted .spark {
-        width: 34px;
-        height: 34px;
-        border-radius: 11px;
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
         display: grid;
         place-items: center;
         background: var(--coral);
         color: #fff;
-        font-size: 19px;
+        font-size: 20px;
       }
       .sorted .title {
         font-family: "Inter Tight", sans-serif;
-        font-size: 21px;
+        font-size: 24px;
         font-weight: 700;
         letter-spacing: -0.02em;
       }
       .sorted .sub {
-        margin-top: 8px;
-        font-size: 13px;
-        color: #c3c9dc;
+        margin-top: 9px;
+        font-size: 13.5px;
+        letter-spacing: -0.01em;
+        white-space: nowrap;
+        color: #cfc8bd;
       }
       .stats {
         display: flex;
-        gap: 22px;
-        margin-top: 16px;
+        gap: 24px;
+        margin-top: 18px;
       }
       .stats b {
         display: block;
         font-family: "Inter Tight", sans-serif;
-        font-size: 32px;
+        font-size: 40px;
         font-weight: 800;
         letter-spacing: -0.02em;
         line-height: 1;
@@ -72,13 +83,13 @@
       .stats span {
         display: block;
         margin-top: 5px;
-        font-size: 12px;
-        color: #aab2cc;
+        font-size: 13.5px;
+        color: #b5ada2;
       }
       .load {
         position: absolute;
         right: 20px;
-        top: 18px;
+        top: 19px;
         display: flex;
         gap: 5px;
         align-items: flex-end;
@@ -87,7 +98,7 @@
       .load i {
         width: 10px;
         border-radius: 3px;
-        background: rgba(244, 240, 234, 0.85);
+        background: rgba(246, 242, 235, 0.85);
       }
       .load i.free {
         background: var(--coral);
@@ -101,7 +112,7 @@
         height: 14px;
         margin-bottom: 14px;
         border-radius: 7px;
-        background: rgba(244, 240, 234, 0.14);
+        background: rgba(246, 242, 235, 0.14);
       }
       .rows {
         top: 398px;
@@ -115,53 +126,54 @@
       }
       .drow .dl {
         width: 52px;
-        font-size: 12px;
+        font-size: 13px;
         font-weight: 600;
         color: var(--muted);
-        line-height: 1.3;
+        line-height: 1.25;
       }
       .drow .dl b {
         display: block;
-        font-size: 17px;
+        font-family: "Inter Tight", sans-serif;
+        font-size: 20px;
+        font-weight: 700;
         color: var(--ink);
       }
       .drow .lane {
         position: relative;
         flex: 1;
-        height: 40px;
+        height: 44px;
       }
       .seg {
         position: absolute;
-        top: 4px;
-        height: 32px;
-        border-radius: 9px;
+        top: 3px;
+        height: 38px;
+        border-radius: 11px;
         background: var(--tint);
-        box-shadow: inset 3px 0 0 var(--bar);
-        font-size: 11px;
+        box-shadow: inset 4px 0 0 var(--bar);
+        font-size: 13px;
         font-weight: 600;
-        padding: 9px 0 0 9px;
+        padding: 10px 0 0 11px;
         white-space: nowrap;
         overflow: hidden;
       }
       .freechip {
         position: absolute;
         right: 0;
-        top: 16px;
-        height: 30px;
-        padding: 0 12px;
-        border-radius: 15px;
+        top: 4px;
+        height: 36px;
+        padding: 0 14px 0 11px;
+        border-radius: 18px;
         display: flex;
         align-items: center;
         gap: 6px;
-        font-size: 12px;
+        font-size: 14px;
         font-weight: 600;
         color: var(--coral-deep);
-        background: rgba(240, 108, 91, 0.12);
+        background: rgba(240, 108, 91, 0.14);
         box-shadow: inset 0 0 0 1.5px rgba(240, 108, 91, 0.45);
       }
-      .peach {
-        --tint: var(--peach-bg);
-        --bar: var(--peach);
+      .freechip svg.i {
+        font-size: 17px;
       }
       .quick {
         top: 236px;
@@ -169,15 +181,19 @@
         border-radius: 20px;
         display: flex;
         align-items: center;
-        gap: 10px;
-        padding: 0 16px;
-        font-size: 17px;
+        gap: 9px;
+        padding: 0 15px;
+        font-size: 19px;
         font-weight: 600;
+        letter-spacing: -0.01em;
+        white-space: nowrap;
         background: var(--surface);
-        box-shadow: var(--shadow), 0 0 0 1.5px var(--coral) inset;
+        box-shadow:
+          var(--shadow),
+          0 0 0 1.5px var(--coral) inset;
       }
       .quick > svg.i {
-        font-size: 20px;
+        font-size: 21px;
         color: var(--coral);
       }
       .quick .ph {
@@ -190,12 +206,12 @@
         margin: 0 -1px;
       }
       .tok.on {
-        background: rgba(240, 108, 91, 0.16);
+        background: rgba(240, 108, 91, 0.18);
         color: var(--coral-deep);
       }
-      .tok.who.on {
-        background: rgba(93, 141, 232, 0.16);
-        color: #2f62c4;
+      .tok.tk-who.on {
+        background: color-mix(in srgb, var(--sky) 22%, transparent);
+        color: color-mix(in srgb, var(--sky) var(--time-mix), var(--ink));
       }
       .preview {
         top: 304px;
@@ -211,36 +227,38 @@
       }
       .preview b {
         display: block;
-        font-size: 16px;
+        font-size: 19px;
+        letter-spacing: -0.015em;
       }
       .preview .meta {
         display: flex;
         gap: 6px;
-        margin-top: 6px;
+        margin-top: 7px;
       }
       .preview .meta span {
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        height: 24px;
-        padding: 0 8px;
-        border-radius: 12px;
-        font-size: 12px;
+        height: 26px;
+        padding: 0 9px;
+        border-radius: 13px;
+        font-size: 13px;
         font-weight: 600;
+        white-space: nowrap;
         background: var(--surface-2);
         box-shadow: inset 0 0 0 1px var(--hair);
       }
       .preview .meta svg.i {
-        font-size: 13px;
+        font-size: 14px;
         color: var(--muted);
       }
       .btn {
-        height: 40px;
-        padding: 0 16px;
-        border-radius: 20px;
+        height: 44px;
+        padding: 0 18px;
+        border-radius: 22px;
         display: grid;
         place-items: center;
-        font-size: 15px;
+        font-size: 16px;
         font-weight: 600;
         background: var(--coral);
         color: #fff;
@@ -254,72 +272,83 @@
         position: absolute;
         left: 50%;
         bottom: 112px;
-        height: 42px;
-        padding: 0 18px 0 14px;
-        border-radius: 21px;
+        height: 46px;
+        padding: 0 20px 0 15px;
+        border-radius: 23px;
         display: flex;
         align-items: center;
         gap: 8px;
         white-space: nowrap;
-        background: var(--navy);
-        color: #fff;
-        font-size: 14px;
+        background: var(--toast);
+        color: var(--toast-ink);
+        font-size: 16px;
         font-weight: 600;
-        box-shadow: 0 14px 30px -14px rgba(13, 20, 40, 0.6);
+        box-shadow: 0 14px 30px -14px rgba(0, 0, 0, 0.6);
         z-index: 30;
       }
       .toast svg.i {
+        font-size: 18px;
         stroke-width: 2.6;
-        color: #8fd0a6;
+        color: var(--toast-tick);
       }
       .banner {
         top: 236px;
         border-radius: 22px;
-        padding: 16px 16px 14px;
+        padding: 18px 16px 16px;
         overflow: hidden;
       }
       .banner .why {
         display: flex;
         align-items: center;
-        gap: 8px;
-        font-size: 13px;
+        gap: 7px;
+        font-size: 14px;
         font-weight: 600;
         color: var(--coral-deep);
+      }
+      .banner .why svg.i {
+        font-size: 16px;
       }
       .banner h3 {
         margin: 6px 0 10px;
         font-family: "Inter Tight", sans-serif;
-        font-size: 21px;
+        font-size: 24px;
+        line-height: 1.1;
         font-weight: 700;
-        letter-spacing: -0.015em;
+        letter-spacing: -0.02em;
       }
       .move {
         display: flex;
         align-items: center;
         gap: 8px;
-        height: 30px;
-        font-size: 14px;
+        height: 35px;
+        font-size: 16px;
         font-weight: 600;
+      }
+      .move > svg.i {
+        font-size: 17px;
+        color: var(--muted);
       }
       .move .t {
         margin-left: auto;
         display: flex;
         align-items: center;
         gap: 6px;
-        font-size: 13px;
+        font-size: 15px;
+        font-weight: 400;
         color: var(--muted);
       }
       .move .t b {
+        font-weight: 600;
         color: var(--coral-deep);
       }
       .move .t svg {
-        width: 14px;
-        height: 14px;
+        width: 15px;
+        height: 15px;
       }
       .banner .acts {
         display: flex;
         gap: 8px;
-        margin-top: 10px;
+        margin-top: 14px;
       }
       .banner .acts .btn {
         flex: 1;
@@ -327,15 +356,15 @@
       .movedchip {
         display: inline-flex;
         align-items: center;
-        height: 20px;
+        height: 19px;
         padding: 0 7px;
         margin-left: 8px;
         border-radius: 10px;
-        font-size: 11px;
+        font-size: 11.5px;
         font-weight: 600;
-        vertical-align: 2px;
+        vertical-align: 1px;
         color: var(--coral-deep);
-        background: rgba(240, 108, 91, 0.14);
+        background: rgba(240, 108, 91, 0.18);
       }
       .hero {
         top: 150px;
@@ -344,11 +373,16 @@
         padding: 18px 20px;
         color: #fff;
         background:
-          radial-gradient(70% 90% at 90% 10%, rgba(255, 255, 255, 0.35), transparent 60%),
-          linear-gradient(135deg, #f7a072, #f06c5b 60%, #d9534f);
+          radial-gradient(70% 90% at 90% 10%, rgba(255, 255, 255, 0.32), transparent 60%),
+          linear-gradient(135deg, #f3a071, #f06c5b 60%, #d9534f);
+      }
+      .dark .hero {
+        background:
+          radial-gradient(70% 90% at 90% 10%, rgba(255, 214, 170, 0.22), transparent 60%),
+          linear-gradient(135deg, #9c6450, #8a4c43 60%, #6c3b37);
       }
       .hero small {
-        font-size: 13px;
+        font-size: 14px;
         font-weight: 600;
         opacity: 0.9;
       }
@@ -356,7 +390,7 @@
         display: block;
         margin-top: 4px;
         font-family: "Inter Tight", sans-serif;
-        font-size: 26px;
+        font-size: 27px;
         font-weight: 800;
         letter-spacing: -0.02em;
       }
@@ -367,22 +401,24 @@
         display: flex;
         align-items: center;
         gap: 8px;
-        font-size: 13px;
+        font-size: 14px;
         font-weight: 600;
       }
       .hero .who .avatar {
-        box-shadow: 0 0 0 2px #f06c5b;
+        width: 26px;
+        height: 26px;
+        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.55);
       }
       .hero .shareb {
         position: absolute;
         right: 16px;
         top: 16px;
-        width: 44px;
-        height: 44px;
+        width: 46px;
+        height: 46px;
         border-radius: 50%;
         display: grid;
         place-items: center;
-        font-size: 21px;
+        font-size: 22px;
         background: rgba(255, 255, 255, 0.24);
       }
       .items {
@@ -394,15 +430,16 @@
         align-items: center;
         gap: 14px;
         height: 56px;
-        font-size: 16px;
+        font-size: 18px;
         border-top: 1px solid var(--hair);
       }
       .item:first-child {
         border-top: 0;
       }
       .item .check {
-        width: 26px;
-        height: 26px;
+        width: 28px;
+        height: 28px;
+        font-size: 17px;
       }
       .item.done span {
         color: var(--faint);
@@ -410,9 +447,6 @@
       }
       .item .by {
         margin-left: auto;
-        width: 22px;
-        height: 22px;
-        font-size: 10px;
         box-shadow: none;
       }
       .sheet2 {
@@ -422,34 +456,38 @@
         bottom: 8px;
         height: 330px;
         border-radius: 38px;
-        background: var(--surface);
+        background: var(--sheet);
         z-index: 21;
         padding: 12px 22px 0;
-        box-shadow: 0 -10px 40px -20px rgba(13, 20, 40, 0.5);
+        box-shadow:
+          0 -14px 44px -20px rgba(0, 0, 0, 0.55),
+          0 0 0 1px var(--hair) inset;
       }
       .sheet2 h2 {
         margin: 0;
-        font-size: 21px;
+        font-size: 23px;
         font-weight: 800;
         letter-spacing: -0.02em;
       }
       .people {
         display: flex;
         justify-content: space-between;
-        margin: 20px 4px 18px;
+        margin: 18px 4px 16px;
       }
       .person {
         display: grid;
         justify-items: center;
-        gap: 8px;
-        font-size: 13px;
+        gap: 7px;
+        font-size: 15px;
         font-weight: 600;
       }
       .person .avatar {
-        width: 58px;
-        height: 58px;
-        font-size: 21px;
-        box-shadow: 0 0 0 3px rgba(240, 108, 91, 0.9);
+        width: 60px;
+        height: 60px;
+        font-size: 23px;
+        box-shadow:
+          0 0 0 3px var(--sheet),
+          0 0 0 5.5px var(--sage);
       }
       .person.invite .avatar {
         background: var(--surface-2);
@@ -464,21 +502,22 @@
         padding: 0 14px;
         border-radius: 14px;
         background: var(--surface-2);
-        font-size: 14px;
+        font-size: 15px;
         color: var(--muted);
       }
       .sheet2 .linkrow svg.i {
+        font-size: 18px;
         color: var(--coral);
       }
       .sheet2 .big {
-        margin-top: 14px;
-        height: 54px;
-        border-radius: 27px;
+        margin-top: 13px;
+        height: 56px;
+        border-radius: 28px;
         background: var(--coral);
         color: #fff;
         display: grid;
         place-items: center;
-        font-size: 17px;
+        font-size: 18px;
         font-weight: 600;
       }
       .fcard {
@@ -500,8 +539,8 @@
         display: grid;
         place-items: center;
         font-size: 32px;
-        color: var(--sage);
-        background: rgba(111, 174, 132, 0.16);
+        color: var(--sage-ink);
+        background: color-mix(in srgb, var(--sage) 18%, transparent);
       }
       .fcard .txt {
         flex: 1;
@@ -509,19 +548,21 @@
       .fcard b {
         display: block;
         font-family: "Inter Tight", sans-serif;
-        font-size: 27px;
+        font-size: 28px;
         font-weight: 700;
         letter-spacing: -0.02em;
       }
       .fcard .txt span {
-        font-size: 14px;
+        font-size: 13.5px;
+        letter-spacing: -0.01em;
+        white-space: nowrap;
         color: var(--muted);
       }
       .bigtoggle {
         width: 70px;
         height: 42px;
         border-radius: 21px;
-        background: #d9dbe3;
+        background: var(--off);
         position: relative;
         flex: none;
       }
@@ -540,33 +581,32 @@
         align-items: center;
         gap: 14px;
         margin-top: 18px;
-        padding-top: 16px;
+        padding-top: 14px;
         border-top: 1px solid var(--hair);
       }
       .timer .clock {
         font-family: "Inter Tight", sans-serif;
-        font-size: 44px;
+        font-size: 46px;
+        line-height: 1.1;
         font-weight: 300;
         letter-spacing: -0.02em;
       }
       .timer small {
         display: block;
-        font-size: 13px;
+        font-size: 14px;
         color: var(--muted);
       }
       .timer .chip {
         margin-left: auto;
-        height: 30px;
-        font-size: 12px;
-        background: rgba(111, 174, 132, 0.14);
-        color: #3d7d52;
+        height: 34px;
+        border-radius: 17px;
+        font-size: 14px;
+        background: color-mix(in srgb, var(--sage) 16%, transparent);
+        color: var(--sage-ink);
         box-shadow: none;
       }
       .timer .chip svg.i {
-        color: var(--sage);
-      }
-      .dimmed {
-        top: 560px;
+        font-size: 16px;
       }
       .insight {
         top: 150px;
@@ -576,15 +616,15 @@
       .insight small,
       .bars small,
       .mini small {
-        font-size: 13px;
+        font-size: 15px;
         font-weight: 600;
         color: var(--muted);
       }
       .insight b {
         display: block;
-        margin-top: 6px;
+        margin-top: 4px;
         font-family: "Inter Tight", sans-serif;
-        font-size: 54px;
+        font-size: 58px;
         font-weight: 800;
         letter-spacing: -0.03em;
         line-height: 1;
@@ -593,16 +633,16 @@
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        margin-top: 10px;
+        margin-top: 9px;
         font-style: normal;
-        font-size: 13px;
+        font-size: 14.5px;
         font-weight: 600;
-        color: #3d7d52;
+        color: var(--sage-ink);
       }
       .insight .ring {
         position: absolute;
         right: 20px;
-        top: 22px;
+        top: 23px;
         width: 104px;
         height: 104px;
       }
@@ -615,27 +655,27 @@
         display: flex;
         justify-content: space-between;
         align-items: flex-end;
-        height: 140px;
-        margin-top: 14px;
+        height: 150px;
+        margin-top: 10px;
       }
       .chart div {
         display: grid;
         justify-items: center;
-        gap: 8px;
-        font-size: 11px;
+        gap: 7px;
+        font-size: 14px;
         font-weight: 600;
         color: var(--muted);
       }
       .chart i {
-        width: 30px;
-        border-radius: 8px;
-        background: rgba(240, 108, 91, 0.28);
+        width: 32px;
+        border-radius: 9px;
+        background: color-mix(in srgb, var(--sage) 34%, transparent);
       }
       .chart .now i {
-        background: var(--coral);
+        background: var(--sage);
       }
       .chart .now {
-        color: var(--coral-deep);
+        color: var(--sage-ink);
       }
       .minis {
         top: 558px;
@@ -649,62 +689,63 @@
       }
       .mini b {
         display: block;
-        margin-top: 8px;
+        margin-top: 6px;
         font-family: "Inter Tight", sans-serif;
-        font-size: 30px;
+        font-size: 34px;
         font-weight: 800;
         letter-spacing: -0.02em;
       }
       .mini .track {
-        height: 8px;
-        border-radius: 4px;
-        margin-top: 12px;
-        background: rgba(22, 33, 62, 0.08);
+        height: 9px;
+        border-radius: 5px;
+        margin-top: 10px;
+        background: var(--track);
         overflow: hidden;
       }
       .mini .track i {
         display: block;
         height: 100%;
-        border-radius: 4px;
+        border-radius: 5px;
       }
       .month {
         top: 150px;
-        padding: 14px 12px 10px;
+        padding: 14px 10px 8px;
       }
       .mgrid {
         display: grid;
         grid-template-columns: repeat(7, 1fr);
-        row-gap: 6px;
+        row-gap: 4px;
         text-align: center;
       }
       .mgrid .h {
-        font-size: 11px;
+        font-size: 13px;
         font-weight: 600;
         color: var(--muted);
         padding-bottom: 6px;
       }
       .mgrid .d {
         position: relative;
-        height: 52px;
+        height: 60px;
         display: grid;
         justify-items: center;
         align-content: start;
-        gap: 4px;
-        padding-top: 6px;
-        font-size: 15px;
+        gap: 5px;
+        padding-top: 9px;
+        font-family: "Inter Tight", sans-serif;
+        font-size: 19px;
         font-weight: 600;
       }
       .mgrid .d.out {
         color: var(--faint);
       }
       .mgrid .d.today span {
-        width: 30px;
-        height: 30px;
-        margin-top: -5px;
-        border-radius: 50%;
+        width: 36px;
+        height: 36px;
+        margin: -7px 0 -6px;
+        border-radius: 12px;
         display: grid;
         place-items: center;
-        background: var(--coral);
+        background: var(--sage);
         color: #fff;
       }
       .mgrid .dots {
@@ -712,25 +753,25 @@
         gap: 3px;
       }
       .mgrid .dots i {
-        width: 5px;
-        height: 5px;
+        width: 6px;
+        height: 6px;
         border-radius: 50%;
       }
       .mgrid .span {
         position: absolute;
         left: 0;
         right: 0;
-        top: 3px;
-        height: 28px;
-        background: rgba(240, 135, 91, 0.16);
+        top: 4px;
+        height: 34px;
+        background: color-mix(in srgb, var(--peach) 24%, transparent);
       }
       .mgrid .span.a {
         left: 6px;
-        border-radius: 14px 0 0 14px;
+        border-radius: 12px 0 0 12px;
       }
       .mgrid .span.b {
         right: 6px;
-        border-radius: 0 14px 14px 0;
+        border-radius: 0 12px 12px 0;
       }
       .mgrid .d span {
         position: relative;
@@ -742,8 +783,8 @@
       .up {
         display: flex;
         align-items: center;
-        gap: 12px;
-        height: 64px;
+        gap: 13px;
+        height: 68px;
         border-top: 1px solid var(--hair);
       }
       .up:first-child {
@@ -751,15 +792,16 @@
       }
       .up i {
         width: 4px;
-        height: 36px;
+        height: 40px;
         border-radius: 2px;
       }
       .up b {
         display: block;
-        font-size: 15px;
+        font-size: 18px;
+        letter-spacing: -0.015em;
       }
       .up span {
-        font-size: 13px;
+        font-size: 14px;
         color: var(--muted);
       }
     </style>
@@ -770,40 +812,26 @@
       import { fillIcons, icon } from "../shared/icons.js";
       import { caretOn, ease, lerp, mix, params, press, ready, rise, seg, typed } from "../shared/motion.js";
       import { phoneChrome } from "../shared/phone.js";
+      import { DAYS, dock, head, block as part, TICK, week } from "./parts.js";
 
       const P = params();
       const scene = P.scene ?? "sorted";
       const phone = document.getElementById("phone");
-      if (P.mode === "dark") phone.classList.add("dark");
+      const dark = P.mode === "dark";
+      if (dark) phone.classList.add("dark");
       const $ = (id) => document.getElementById(id);
       const ARROW = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8h11M9 4l4 4-4 4"/></svg>`;
-      const DAYS = [
-        ["Mon", 11],
-        ["Tue", 12],
-        ["Wed", 13],
-        ["Thu", 14],
-        ["Fri", 15],
-        ["Sat", 16],
-        ["Sun", 17],
-      ];
-      const head = (eyebrow, title) =>
-        `<div class="glow"></div><header class="head"><div class="eyebrow">${eyebrow}</div><h1 class="display">${title}</h1></header>`;
-      const week = () =>
-        `<div class="week" id="week">${DAYS.map(([d, n], i) => `<div class="day${i === 1 ? " today" : ""}${i > 4 ? " weekend" : ""}"><small>${d}</small><b class="tnum">${n}</b><i style="opacity:${i > 4 ? 0 : 1}"></i></div>`).join("")}</div>`;
-      const dock = (on = "Today") =>
-        `<div class="dock" id="dock"><nav class="tabs">${[
-          ["calendar", "Today"],
-          ["list", "Lists"],
-          ["bars", "Insights"],
-        ]
-          .map(([ic, t]) => `<div class="tab${t === on ? " on" : ""}">${icon(ic)}${t}</div>`)
-          .join("")}</nav><div class="add" id="add">${icon("plus")}Add plan</div></div>`;
-      const block = (cls, time, title, meta, id = "") =>
-        `<div class="block ${cls}"${id ? ` id="${id}"` : ""}><div class="body"><div class="time tnum">${time}</div><div class="title">${title}</div><div class="meta">${meta}</div></div><div class="side"><div class="check"><svg class="i" viewBox="0 0 24 24"><path d="M6 12.5l4 4 8-9"/></svg></div></div></div>`;
+      const block = (cls, time, title, meta, id = "") => part({ cls, time, title, meta, id });
       const pop = (el, t, at, dur = 380) => {
         const k = ease.outBack(seg(t, at, dur));
         el.style.opacity = String(Math.min(1, seg(t, at, dur) * 2));
         el.style.transform = `scale(${0.6 + 0.4 * k})`;
+      };
+      const tick = (el, t, at) => {
+        const on = t >= at;
+        el.classList.toggle("on", on);
+        el.style.setProperty("--draw", String(on ? 22 * (1 - ease.out(seg(t, at + 60, 240))) : 22));
+        el.style.transform = `scale(${on ? 1 + 0.15 * Math.sin(Math.PI * seg(t, at, 260)) : 1})`;
       };
 
       const LANES = [
@@ -816,11 +844,11 @@
 
       function sorted(t) {
         if (!phone.dataset.ready) {
-          phone.innerHTML = `${head("11–17 May", "This week")}
-            <div class="abs sorted" id="card"><div class="skeleton" id="skel"><div class="top"><span class="spark">${icon("sparkle")}</span><span class="title" style="color:#c3c9dc">Sorting your week</span></div><i style="width:70%;margin-top:22px"></i><i style="width:46%"></i><i style="width:58%"></i></div>
+          phone.innerHTML = `${head("11 to 17 May", "This week")}
+            <div class="abs sorted" id="card"><div class="skeleton" id="skel"><div class="top"><span class="spark">${icon("sparkle")}</span><span class="title" style="color:#cfc8bd">Sorting your week</span></div><i style="width:70%;margin-top:22px"></i><i style="width:46%"></i><i style="width:58%"></i></div>
               <div id="done"><div class="top"><span class="spark">${icon("sparkle")}</span><span class="title">This week, sorted</span></div><div class="sub">Fairywren placed every plan around what matters.</div>
               <div class="stats"><div><b class="tnum" id="s1">12</b><span>plans placed</span></div><div><b class="tnum" id="s2">4</b><span>focus blocks</span></div><div><b>Fri</b><span>afternoon free</span></div></div>
-              <div class="load">${[28, 33, 25, 32, 13].map((h, i) => `<i class="${i === 4 ? "free" : ""}" style="height:${h}px"></i>`).join("")}</div></div></div>
+              <div class="load">${[28, 34, 25, 32, 13].map((h, i) => `<i class="${i === 4 ? "free" : ""}" style="height:${h}px"></i>`).join("")}</div></div></div>
             <div class="label" style="top:368px"><span>Schedule</span><span class="count">Mon to Fri</span></div>
             <div class="abs rows">${LANES.map(([d, n, segs], r) => `<div class="drow"><div class="dl">${d}<b class="tnum">${n}</b></div><div class="lane">${segs.map(([c, a, b, txt]) => `<div class="seg ${c}" data-r="${r}" style="left:${a * 100}%;width:${(b - a) * 100}%">${txt}</div>`).join("")}${r === 4 ? `<div class="freechip" id="free">${icon("sun")}Afternoon free</div>` : ""}</div></div>`).join("")}</div>
             ${dock()}${phoneChrome()}`;
@@ -828,7 +856,7 @@
           phone.dataset.ready = "1";
         }
         rise($("card"), t, 250, { dy: 22, dur: 620 });
-        const swap = seg(t, 1100, 260);
+        const swap = ease.inOut(seg(t, 1100, 300));
         $("skel").style.opacity = String(1 - swap);
         $("done").style.opacity = String(swap);
         const n = ease.out(seg(t, 1100, 900));
@@ -846,11 +874,11 @@
       function quickadd(t) {
         const TEXT = "Lunch with Jo Fri 12:30";
         if (!phone.dataset.ready) {
-          phone.innerHTML = `${head("Tuesday 12 May", "Today")}${week()}
+          phone.innerHTML = `${head("Tue 12 May", "Today")}${week()}
             <div class="abs quick" id="quick">${icon("sparkle")}<span id="typed"></span><span class="caret" id="caret"></span><span class="ph" id="ph">Add anything, in your words</span></div>
             <div class="abs card preview" id="preview"><div class="pv"><b>Lunch with Jo</b><div class="meta"><span>${icon("calendar")}Fri 15 May</span><span>${icon("clock")}12:30 to 13:30</span></div></div><div class="btn" id="addb">Add</div></div>
-            <div class="label" style="top:410px"><span>Schedule</span><span class="count">4 plans</span></div>
-            <div class="blocks" style="top:440px">${block("lilac", "10:30", "Design review", "Studio · 45 min")}${block("mint", "13:00", "Focus time", "Write the brief · 90 min")}${block("butter", "15:30", "Ship release", "Team · 30 min")}</div>
+            <div class="label" id="label"><span>Schedule</span><span class="count">4 plans</span></div>
+            <div class="blocks" id="blocks">${block("lilac", "10:30", "Design review", "Studio · 45 min")}${block("mint", "13:00", "Focus time", "Write the brief · 90 min")}${block("butter", "15:30", "Ship release", "Team · 30 min")}</div>
             <div class="toast" id="toast">${icon("check")}Added to Friday</div>${dock()}${phoneChrome()}`;
           fillIcons(phone);
           phone.dataset.ready = "1";
@@ -862,7 +890,7 @@
           if (!part) return "";
           return n >= to ? `<span class="tok ${cls} on">${part}</span>` : part;
         };
-        $("typed").innerHTML = `${text.slice(0, 11)}${token(11, 13, "who")}${text.slice(13, 14)}${token(14, 17, "day")}${text.slice(17, 18)}${token(18, 23, "time")}`;
+        $("typed").innerHTML = `${text.slice(0, 11)}${token(11, 13, "tk-who")}${text.slice(13, 14)}${token(14, 17, "tk-day")}${text.slice(17, 18)}${token(18, 23, "tk-time")}`;
         const sent = t >= 3600;
         $("ph").style.display = n ? "none" : "inline";
         $("caret").style.opacity = !sent && caretOn(t, 2100) ? "1" : "0";
@@ -872,25 +900,26 @@
         const up = ease.outQuint(seg(t, 2250, 520));
         const away = ease.inOut(seg(t, 3600, 420));
         pv.style.opacity = String(Math.min(1, up * 1.4) * (1 - away));
-        pv.style.transform = `translateY(${(1 - up) * -10 + away * 30}px) scale(${1 - 0.06 * away})`;
+        pv.style.transform = `translateY(${(1 - up) * -10 + away * 10}px) scale(${1 - 0.06 * away})`;
+        const room = 94 * (up - ease.inOut(seg(t, 3880, 520)));
+        $("label").style.top = `${316 + room}px`;
+        $("blocks").style.top = `${346 + room}px`;
         $("addb").style.transform = `scale(${press(t, 3450)})`;
         const toast = $("toast");
         const q = ease.outQuint(seg(t, 3750, 480));
         toast.style.opacity = String(q);
         toast.style.transform = `translate(-50%, ${(1 - q) * 16}px)`;
-        const fri = phone.querySelectorAll(".day")[4].querySelector("i");
-        fri.style.background = t >= 3750 ? "var(--coral)" : "";
-        fri.style.transform = `scale(${t >= 3750 ? 1 + 0.8 * Math.sin(Math.PI * seg(t, 3750, 380)) : 1})`;
+        phone.querySelectorAll(".day")[4].querySelector("i").style.transform = `scale(${ease.outBack(seg(t, 3750, 420))})`;
       }
 
       function reschedule(t) {
         if (!phone.dataset.ready) {
-          phone.innerHTML = `${head("Tuesday 12 May", "Today")}${week()}
+          phone.innerHTML = `${head("Tue 12 May", "Today")}${week()}
             <div class="abs card banner" id="banner"><div class="why">${icon("clock")}Design review is running over</div><h3>Moved 2 plans to fit</h3>
               <div class="move">${icon("target")}Focus time<span class="t">13:00 ${ARROW} <b>13:30</b></span></div><div class="move">${icon("users")}Call with Sam<span class="t">16:30 ${ARROW} <b>17:00</b></span></div>
               <div class="acts"><div class="btn" id="keep">Keep</div><div class="btn ghost">Undo</div></div></div>
-            <div class="label" id="label" style="top:236px"><span>Schedule</span><span class="count">3 plans</span></div>
-            <div class="blocks" id="blocks" style="top:266px">${block("lilac", "10:30", "Design review", "Studio · running 30 min over")}${block("mint", "13:00", "Focus time", "Write the brief · 90 min", "b2")}${block("peach", "16:30", "Call with Sam", "Phone · 30 min", "b4")}</div>
+            <div class="label" id="label"><span>Schedule</span><span class="count">3 plans</span></div>
+            <div class="blocks" id="blocks">${block("lilac", "10:30", "Design review", "Studio · running 30 min over")}${block("mint", "13:00", "Focus time", "Write the brief · 90 min", "b2")}${block("peach", "16:30", "Call with Sam", "Phone · 30 min", "b4")}</div>
             ${dock()}${phoneChrome()}`;
           fillIcons(phone);
           phone.dataset.ready = "1";
@@ -902,8 +931,9 @@
         banner.style.height = `${h}px`;
         banner.style.opacity = String(Math.min(1, open * 1.6) * (1 - close));
         banner.style.padding = h < 30 ? "0 16px" : "";
-        $("label").style.top = `${236 + (h ? h + 14 : 0)}px`;
-        $("blocks").style.top = `${266 + (h ? h + 14 : 0)}px`;
+        const push = h + 19 * Math.min(1, h / 60);
+        $("label").style.top = `${226 + push}px`;
+        $("blocks").style.top = `${256 + push}px`;
         $("keep").style.transform = `scale(${press(t, 3350)})`;
         for (const [id, from, to] of [
           ["b2", "13:00", "13:30"],
@@ -914,7 +944,7 @@
           const p = seg(t, at, 300);
           const time = el.querySelector(".time");
           time.innerHTML = p < 0.5 ? from : `${to}<span class="movedchip">Moved</span>`;
-          time.style.opacity = String(Math.abs(1 - 2 * p) * 0.8 + 0.2);
+          time.style.opacity = String(ease.inOut(Math.abs(1 - 2 * p)) * 0.85 + 0.15);
           el.style.boxShadow = p > 0 ? `0 0 0 ${2 * Math.sin(Math.PI * Math.min(1, p))}px var(--coral) inset` : "";
         }
       }
@@ -924,7 +954,7 @@
         if (!phone.dataset.ready) {
           phone.innerHTML = `${head("List · 6 items", "Weekend away")}
             <div class="abs hero" id="hero"><small>Sat 16 to Sun 17 May</small><b>Two nights at the coast</b><div class="who" id="who"><span id="whoText">Just you</span></div><div class="shareb" id="shareb">${icon("share")}</div></div>
-            <div class="abs card items" id="items">${ITEMS.map((s, i) => `<div class="item${i === 0 ? " done" : ""}"><div class="check${i === 0 ? " on" : ""}"><svg class="i" viewBox="0 0 24 24"><path d="M6 12.5l4 4 8-9"/></svg></div><span>${s}</span></div>`).join("")}</div>
+            <div class="abs card items" id="items">${ITEMS.map((s, i) => `<div class="item${i === 0 ? " done" : ""}"><div class="check${i === 0 ? " on" : ""}">${TICK}</div><span>${s}</span></div>`).join("")}</div>
             <div class="scrim" id="scrim"></div>
             <div class="sheet2" id="sheet"><div class="grabber"></div><h2 class="display">Share ‘Weekend away’</h2>
               <div class="people" id="people"><div class="person"><div class="avatar a1">S</div>Sam</div><div class="person"><div class="avatar a3">J</div>Jo</div><div class="person"><div class="avatar a4">P</div>Priya</div><div class="person invite"><div class="avatar">${icon("plus")}</div>Add</div></div>
@@ -938,7 +968,7 @@
         const up = ease.outQuint(seg(t, 1000, 520));
         const down = ease.inOut(seg(t, 2450, 420));
         const vis = up * (1 - down);
-        $("scrim").style.opacity = String(0.32 * vis);
+        $("scrim").style.opacity = String(0.42 * vis);
         $("sheet").style.transform = `translateY(${(1 - vis) * 110}%)`;
         $("go").style.transform = `scale(${press(t, 2300)})`;
         const shared = t >= 2800;
@@ -952,7 +982,7 @@
         if (av) pop(av, t, 2800);
         const toast = $("toast");
         const q = ease.outQuint(seg(t, 2950, 480));
-        toast.style.opacity = String(q * (1 - seg(t, 4700, 400)));
+        toast.style.opacity = String(q * (1 - ease.inOut(seg(t, 4700, 400))));
         toast.style.transform = `translate(-50%, ${(1 - q) * 16}px)`;
         for (const [i, at, who2, cls] of [
           [1, 3700, "S", "a1"],
@@ -961,9 +991,7 @@
           const item = phone.querySelectorAll(".item")[i];
           const on = t >= at;
           item.classList.toggle("done", on);
-          const c = item.querySelector(".check");
-          c.classList.toggle("on", on);
-          c.style.transform = `scale(${on ? 1 + 0.15 * Math.sin(Math.PI * seg(t, at, 260)) : 1})`;
+          tick(item.querySelector(".check"), t, at);
           let by = item.querySelector(".by");
           if (on && !by) {
             item.insertAdjacentHTML("beforeend", `<div class="avatar by ${cls}">${who2}</div>`);
@@ -976,20 +1004,20 @@
 
       function focusflow(t) {
         if (!phone.dataset.ready) {
-          phone.innerHTML = `${head("Tuesday 12 May", "Today")}${week()}
+          phone.innerHTML = `${head("Tue 12 May", "Today")}${week()}
             <div class="abs card fcard" id="fcard"><div class="row1"><div class="badge">${icon("target")}</div><div class="txt"><b>Focus</b><span>Quiet the rest of the day</span></div><div class="bigtoggle" id="toggle"><div class="knob"></div></div></div>
               <div class="timer" id="timer"><div><div class="clock tnum" id="clock">25:00</div><small>Until 14:30 · Write the brief</small></div><div class="chip">${icon("bellOff")}Paused</div></div></div>
-            <div class="abs dimmed" id="dimmed"><div class="label" style="position:relative;left:8px;right:8px;margin-bottom:12px"><span>Schedule</span><span class="count">3 plans</span></div><div style="display:flex;flex-direction:column;gap:10px">${block("lilac", "10:30", "Design review", "Studio · 45 min")}${block("butter", "15:30", "Ship release", "Team · 30 min")}</div></div>
+            <div class="abs dimmed" id="dimmed"><div class="label" style="position:relative;left:0;right:0;margin:0 8px 12px"><span>Schedule</span><span class="count">3 plans</span></div><div style="display:flex;flex-direction:column;gap:10px">${block("lilac", "10:30", "Design review", "Studio · 45 min")}${block("butter", "15:30", "Ship release", "Team · 30 min")}</div></div>
             ${dock()}${phoneChrome()}`;
           fillIcons(phone);
           phone.dataset.ready = "1";
         }
         const k = ease.outBack(seg(t, 1500, 320));
         $("toggle").querySelector(".knob").style.transform = `translateX(${28 * k}px)`;
-        $("toggle").style.background = mix("#d9dbe3", "#6fae84", seg(t, 1500, 220));
+        $("toggle").style.background = mix(dark ? "#4d4843" : "#d9d5cd", dark ? "#84a877" : "#6f9f68", ease.out(seg(t, 1500, 260)));
         const grow = ease.inOut(seg(t, 1850, 650));
         $("fcard").style.height = `${108 + 112 * grow}px`;
-        $("timer").style.opacity = String(seg(t, 2150, 400));
+        $("timer").style.opacity = String(ease.out(seg(t, 2150, 420)));
         $("dimmed").style.opacity = String(1 - 0.6 * ease.inOut(seg(t, 1900, 600)));
         $("dimmed").style.top = `${414 + 112 * grow}px`;
         const secs = 25 * 60 - Math.max(0, Math.floor((t - 2900) / 1000));
@@ -998,10 +1026,10 @@
 
       function insights() {
         const H = [3.2, 2.1, 4.0, 2.8, 1.6, 0.4, 0];
-        phone.innerHTML = `${head("11–17 May", "Insights")}
+        phone.innerHTML = `${head("11 to 17 May", "Insights")}
           <div class="abs card insight"><small>Focus this week</small><b>9.5 h</b><em>${icon("arrowUp")}2 h more than last week</em>
-            <svg class="ring" viewBox="0 0 104 104"><circle cx="52" cy="52" r="44" fill="none" stroke="rgba(22,33,62,0.08)" stroke-width="12"/><circle cx="52" cy="52" r="44" fill="none" stroke="#6fae84" stroke-width="12" stroke-linecap="round" stroke-dasharray="276.5" stroke-dashoffset="69" transform="rotate(-90 52 52)"/><text x="52" y="58" text-anchor="middle" font-family="Inter Tight" font-weight="700" font-size="20" fill="currentColor">76%</text></svg></div>
-          <div class="abs card bars"><small>Focus hours by day</small><div class="chart">${DAYS.map(([d], i) => `<div class="${i === 1 ? "now" : ""}"><i style="height:${Math.max(6, H[i] * 28)}px"></i>${d.slice(0, 1)}</div>`).join("")}</div></div>
+            <svg class="ring" viewBox="0 0 104 104"><circle cx="52" cy="52" r="44" fill="none" stroke="var(--track)" stroke-width="12"/><circle cx="52" cy="52" r="44" fill="none" stroke="var(--sage)" stroke-width="12" stroke-linecap="round" stroke-dasharray="276.5" stroke-dashoffset="69" transform="rotate(-90 52 52)"/><text x="52" y="58" text-anchor="middle" font-family="Inter Tight" font-weight="700" font-size="22" fill="currentColor">76%</text></svg></div>
+          <div class="abs card bars"><small>Focus hours by day</small><div class="chart">${DAYS.map(([d], i) => `<div class="${i === 1 ? "now" : ""}"><i style="height:${Math.max(8, H[i] * 29)}px"></i>${d.slice(0, 1)}</div>`).join("")}</div></div>
           <div class="abs minis"><div class="card mini"><small>Plans done</small><b class="tnum">18 / 22</b><div class="track"><i style="width:82%;background:var(--coral)"></i></div></div><div class="card mini"><small>Meetings</small><b class="tnum">6 h</b><div class="track"><i style="width:38%;background:var(--sky)"></i></div></div></div>
           ${dock("Insights")}${phoneChrome()}`;
         fillIcons(phone);

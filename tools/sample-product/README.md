@@ -6,7 +6,7 @@ same week, the same people, the same release):
 
 | Product | What it is | Look | Surfaces |
 | --- | --- | --- | --- |
-| Fairywren | A calm planner | Navy and coral, Inter Tight titles | Phone (light, dark, focus, an older design, insights, month), five feature flows (`features.html`), tablet and laptop week, web share flow |
+| Fairywren | A calm planner | Warm grey, sage and coral, Inter Tight titles | Phone (light, dark, focus, an older design, insights, month), five feature flows (`features.html`, each with a dark twin), tablet and laptop week, web share flow |
 | Thornbill | A developer CLI and SDK | Midnight, cyan and lime, JetBrains Mono | Terminal (an upgrade and a change list on the beat), docs site, migration diff, benchmarks, dashboard, editor |
 | Songlark | An AI assistant | White canvas and violet | Three prompt and answer pairs and a streamed follow-up on the web, the same on a phone, voice mode |
 
@@ -40,6 +40,12 @@ oxipng and the ffmpeg sidecar (`pnpm setup:ffmpeg`; it falls back to `ffmpeg` on
   Grotesk). They are Latin subsets, so symbols such as ticks and arrows are inline SVG.
 
 ## Rules for new screens
+
+- Draw phone screens for the camera, not for a thumb: Fairywren's titles are 20 px on a
+  402 px wide screen, nothing that matters sits under 13 px, and a screen holds four plans.
+  `fairywren/parts.js` has the shared header, week strip, plan card and dock.
+- Motion is eased and settles; no linear slides. Add `&mode=dark` for a dark twin and name
+  it `<name>-dark-<device>`.
 
 - Fictional names, people and data only. No real products, marks, domains or package
   installs (`npx` or `brew` lines invite someone to squat the name).

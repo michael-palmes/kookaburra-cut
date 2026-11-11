@@ -124,6 +124,71 @@ export const JOBS = [
     seconds: 6,
   },
 
+  {
+    out: "fairywren-focus-dark-phone.jpg",
+    page: "fairywren/phone.html?scene=focus&mode=dark",
+    device: "phone",
+    at: 5,
+  },
+  {
+    out: "fairywren-quickadd-dark-phone.jpg",
+    page: "fairywren/features.html?scene=quickadd&mode=dark",
+    device: "phone",
+    at: 3,
+  },
+  {
+    out: "fairywren-reschedule-dark-phone.jpg",
+    page: "fairywren/features.html?scene=reschedule&mode=dark",
+    device: "phone",
+    at: 2.6,
+  },
+  {
+    out: "fairywren-share-dark-phone.jpg",
+    page: "fairywren/features.html?scene=share&mode=dark",
+    device: "phone",
+    at: 5.4,
+  },
+  {
+    out: "fairywren-insights-dark-phone.jpg",
+    page: "fairywren/features.html?scene=insights&mode=dark",
+    device: "phone",
+  },
+  {
+    out: "fairywren-month-dark-phone.jpg",
+    page: "fairywren/features.html?scene=month&mode=dark",
+    device: "phone",
+  },
+  {
+    out: "fairywren-plan-dark-phone.mp4",
+    page: "fairywren/phone.html?scene=plan&mode=dark",
+    device: "phone",
+    seconds: 5,
+  },
+  {
+    out: "fairywren-sorted-dark-phone.mp4",
+    page: "fairywren/features.html?scene=sorted&mode=dark",
+    device: "phone",
+    seconds: 6,
+  },
+  {
+    out: "fairywren-quickadd-dark-phone.mp4",
+    page: "fairywren/features.html?scene=quickadd&mode=dark",
+    device: "phone",
+    seconds: 5,
+  },
+  {
+    out: "fairywren-reschedule-dark-phone.mp4",
+    page: "fairywren/features.html?scene=reschedule&mode=dark",
+    device: "phone",
+    seconds: 5,
+  },
+  {
+    out: "fairywren-share-dark-phone.mp4",
+    page: "fairywren/features.html?scene=share&mode=dark",
+    device: "phone",
+    seconds: 5.5,
+  },
+
   { out: "thornbill-icon.png", page: "thornbill/icon.html", device: "icon" },
   {
     out: "thornbill-upgrade-terminal.jpg",

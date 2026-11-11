@@ -1,44 +1,85 @@
 :root {
-  --navy: #16213e;
-  --navy-deep: #0d1428;
   --coral: #f06c5b;
-  --coral-deep: #e2594a;
-  --sage: #6fae84;
-  --linen: #f7f4ef;
-  --sky: #4f8ef7;
-  --sky-bg: #e4eeff;
-  --lilac: #9a7cf4;
-  --lilac-bg: #eee8ff;
-  --mint: #3fb27a;
-  --mint-bg: #def4e7;
-  --butter: #f2b23a;
-  --butter-bg: #fff1d1;
-  --peach: #f0875b;
-  --peach-bg: #ffe6dc;
+  --coral-deep: #d9513f;
+  --sage: #6f9f68;
+  --sage-deep: #4c7a48;
+  --linen: #f6f3ee;
+  --night: #1b1917;
+  --sky: #5b8fe6;
+  --sky-bg: #dbe7fb;
+  --lilac: #a077d8;
+  --lilac-bg: #eadffa;
+  --mint: #3fa98a;
+  --mint-bg: #d8efe5;
+  --butter: #e0a030;
+  --butter-bg: #fbeaca;
+  --peach: #e8805a;
+  --peach-bg: #fbddd0;
   --bg: var(--linen);
-  --surface: #fff;
-  --surface-2: #fbf9f6;
-  --ink: var(--navy);
-  --muted: #6c7491;
-  --faint: #a3a9bd;
-  --hair: rgba(22, 33, 62, 0.08);
-  --shadow: 0 1px 2px rgba(22, 33, 62, 0.05), 0 8px 24px -12px rgba(22, 33, 62, 0.18);
+  --surface: #fffdfa;
+  --surface-2: #f1ede6;
+  --ink: var(--night);
+  --muted: #777067;
+  --faint: #aaa399;
+  --hair: rgba(27, 25, 23, 0.09);
+  --shadow: 0 1px 2px rgba(27, 25, 23, 0.05), 0 10px 26px -14px rgba(27, 25, 23, 0.22);
+  --navy: var(--night);
+  --sage-ink: var(--sage-deep);
+  --sheet: var(--surface);
+  --track: rgba(27, 25, 23, 0.09);
+  --off: #d9d5cd;
+  --time-mix: 58%;
+  --toast: var(--night);
+  --toast-ink: #fff;
+  --toast-tick: #9cc389;
 }
 
 .dark {
-  --bg: var(--navy-deep);
-  --surface: #172140;
-  --surface-2: #131c37;
-  --ink: #f4f0ea;
-  --muted: #9aa3bf;
-  --faint: #66708f;
-  --hair: rgba(244, 240, 234, 0.09);
-  --shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 10px 30px -14px rgba(0, 0, 0, 0.6);
-  --sky-bg: #1d2f5c;
-  --lilac-bg: #2a2558;
-  --mint-bg: #173a3a;
-  --butter-bg: #3a3226;
-  --peach-bg: #3b2a31;
+  --bg: #1f1c1b;
+  --surface: #2b2826;
+  --surface-2: #252221;
+  --ink: #f6f2eb;
+  --muted: #aaa298;
+  --faint: #736c64;
+  --hair: rgba(246, 242, 235, 0.1);
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 12px 30px -16px rgba(0, 0, 0, 0.6);
+  --coral: #ee7867;
+  --sage: #84a877;
+  --sky: #a3b3d4;
+  --sky-bg: #303545;
+  --lilac: #cfa5c2;
+  --lilac-bg: #46303d;
+  --mint: #a6c4a0;
+  --mint-bg: #343f32;
+  --butter: #e0b388;
+  --butter-bg: #4c382d;
+  --peach: #e6a392;
+  --peach-bg: #56342f;
+  --coral-deep: #ff9d8c;
+  --sage-ink: #a3c594;
+  --sheet: #292624;
+  --track: rgba(246, 242, 235, 0.12);
+  --off: #4d4843;
+  --time-mix: 82%;
+  --toast: #f6f2eb;
+  --toast-ink: #1b1917;
+  --toast-tick: var(--sage-deep);
+}
+
+.dark .a1 {
+  background: #cc8672;
+}
+
+.dark .a2 {
+  background: #7190cc;
+}
+
+.dark .a3 {
+  background: #65a58c;
+}
+
+.dark .a4 {
+  background: #a18ccc;
 }
 
 body {
@@ -118,8 +159,8 @@ body {
 }
 
 .check.on {
-  border-color: var(--coral);
-  background: var(--coral);
+  border-color: var(--sage);
+  background: var(--sage);
 }
 
 .check.on svg.i {
@@ -130,7 +171,7 @@ body {
   width: 51px;
   height: 31px;
   border-radius: 16px;
-  background: #d9dbe3;
+  background: var(--off);
   position: relative;
   flex: none;
 }
