@@ -28,7 +28,7 @@ impl BackgroundLimiter {
 /// Drop a spawned sidecar's scheduling priority so foreground work wins under contention.
 #[cfg(target_os = "macos")]
 pub(crate) fn lower_priority(pid: u32) {
-    // SAFETY: setpriority takes plain integers and only fails, ignored here, for a pid that has exited.
+    // SAFETY: setpriority takes plain integers and touches no memory; a failure is ignored.
     unsafe {
         libc::setpriority(libc::PRIO_PROCESS, pid, 10);
     }

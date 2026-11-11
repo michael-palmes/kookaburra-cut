@@ -435,9 +435,15 @@ impl ExportState {
 
 #[allow(unsafe_code)]
 fn kill_pid(pid: u32) {
-    // SAFETY: kill takes plain integers, and pid is this export's own ffmpeg child.
+    let Ok(pid) = libc::pid_t::try_from(pid) else {
+        return;
+    };
+    if pid <= 0 {
+        return;
+    }
+    // SAFETY: kill takes plain integers and touches no memory; a positive pid signals one process, never a group.
     unsafe {
-        libc::kill(pid as libc::pid_t, libc::SIGKILL);
+        libc::kill(pid, libc::SIGKILL);
     }
 }
 
