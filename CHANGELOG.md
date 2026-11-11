@@ -27,6 +27,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   which projects and websites you allowed, packs imported, updates, and what
   your organisation's profile refused. It holds names and paths, never what is
   in your files, keeps three files of 1 MiB at most and never leaves your Mac.
+- Each release now ships a software bill of materials
+  (`KookaburraCut-<version>.cdx.json`): every npm package and Rust crate built
+  into the app, the sidecar's pinned sources and the beat model, attested on
+  the DMG, and the app binary carries its own Rust dependency list for
+  `cargo audit bin`. Dependency licences and sources are now checked by policy
+  in CI, and the release page carries this changelog's section for the version.
 
 ## [0.22.4] - 2026-11-10
 
@@ -62,12 +68,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and `proc-macro-error` (RUSTSEC-2024-0370) sit in the Linux GTK stack the Mac
   app never builds, and `src-tauri/osv-scanner.toml` records them as ignored
   with the reason.
-- Each release now ships a software bill of materials
-  (`KookaburraCut-<version>.cdx.json`): every npm package and Rust crate built
-  into the app, the sidecar's pinned sources and the beat model, attested on
-  the DMG, and the app binary carries its own Rust dependency list for
-  `cargo audit bin`. Dependency licences and sources are now checked by policy
-  in CI, and the release page carries this changelog's section for the version.
 
 ## [0.22.2] - 2026-11-05
 
