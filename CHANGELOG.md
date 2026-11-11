@@ -33,6 +33,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the DMG, and the app binary carries its own Rust dependency list for
   `cargo audit bin`. Dependency licences and sources are now checked by policy
   in CI, and the release page carries this changelog's section for the version.
+- `unsafe` Rust is denied except where a file or function allows it, and every
+  unsafe block says why it is sound.
+- CodeQL now scans the Python kit and scripts too, and `pnpm install` refuses a
+  dependency that would run an install script until someone reviews it.
+- `SECURITY.md` records why the app isn't App Sandboxed, and `docs/decisions.md`
+  what would change that.
 
 ## [0.22.4] - 2026-11-10
 
@@ -68,12 +74,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and `proc-macro-error` (RUSTSEC-2024-0370) sit in the Linux GTK stack the Mac
   app never builds, and `src-tauri/osv-scanner.toml` records them as ignored
   with the reason.
-- `unsafe` Rust is denied except where a file or function allows it, and every
-  unsafe block says why it is sound.
-- CodeQL now scans the Python kit and scripts too, and `pnpm install` refuses a
-  dependency that would run an install script until someone reviews it.
-- `SECURITY.md` records why the app isn't App Sandboxed, and `docs/decisions.md`
-  what would change that.
 
 ## [0.22.2] - 2026-11-05
 
