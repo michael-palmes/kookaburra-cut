@@ -904,10 +904,19 @@ fn settings_removals(dir: &Path) -> Vec<String> {
 
 /// Files that must not be in the folder when a session starts, by name: the gate behind `sweep_agent_files`, for anything that landed after the stamp or that it could not move. Read-only.
 pub(crate) fn foreign_agent_files(dir: &Path) -> Vec<String> {
-    let mut out: Vec<String> = foreign_entries(dir, false)
-        .iter()
-        .map(|entry| rel_label(foreign_path(entry)))
-        .collect();
+    let mut out: Vec<String> = Vec::new();
+    if std::fs::symlink_metadata(dir.join(SHIM_NAME)).is_ok() && !shim_is_ours(dir) {
+        out.push(SHIM_NAME.to_owned());
+    }
+    let claude = dir.join(CLAUDE_DIR);
+    if std::fs::symlink_metadata(&claude).is_ok() && !is_real_dir(&claude) {
+        out.push(CLAUDE_DIR.to_owned());
+    }
+    out.extend(
+        foreign_entries(dir, false)
+            .iter()
+            .map(|entry| rel_label(foreign_path(entry))),
+    );
     out.extend(settings_removals(dir).into_iter().map(moved_line));
     out
 }
@@ -1134,11 +1143,29 @@ pub(crate) fn is_moved_aside(name: &str) -> bool {
     })
 }
 
-/// Rename `name` in `dir` to the first free `<name>.moved-aside` and log it; a link moves as a link.
+/// Whether the root `kb` is exactly the shim the stamp writes: a plain file, its text and its mode.
+fn shim_is_ours(dir: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    let path = dir.join(SHIM_NAME);
+    std::fs::symlink_metadata(&path).is_ok_and(|meta| {
+        meta.is_file()
+            && meta.permissions().mode() & 0o777 == SHIM_MODE
+            && std::fs::read(&path).is_ok_and(|bytes| bytes == SHIM_TEMPLATE.as_bytes())
+    })
+}
+
+/// Rename `name` in `dir` to the first free `<name>.moved-aside`, or a timestamped one once those run out, and log it; a link moves as a link.
 fn move_aside(dir: &Path, name: &str) -> Result<(), String> {
-    for n in 1..1000 {
+    let stamped = format!(
+        "{name}{ASIDE_SUFFIX}-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_nanos())
+    );
+    for n in 1..=1000 {
         let aside = match n {
             1 => format!("{name}{ASIDE_SUFFIX}"),
+            1000 => stamped.clone(),
             n => format!("{name}{ASIDE_SUFFIX}-{n}"),
         };
         if std::fs::symlink_metadata(dir.join(&aside)).is_ok() {
@@ -2446,6 +2473,53 @@ mod tests {
         for gone in [&dir, &folder, &binary] {
             let _ = std::fs::remove_dir_all(gone);
         }
+    }
+
+    #[test]
+    fn a_planted_kb_never_outlasts_a_folder_that_took_every_aside_name() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = scratch("shim-exhausted");
+        let planted = "#!/bin/sh\necho planted\n";
+        write(&dir.join(SHIM_NAME), planted);
+        std::fs::set_permissions(dir.join(SHIM_NAME), std::fs::Permissions::from_mode(0o755))
+            .unwrap();
+        write(&dir.join("kb.moved-aside"), "");
+        for n in 2..1000 {
+            write(&dir.join(format!("kb.moved-aside-{n}")), "");
+        }
+        assert_eq!(foreign_agent_files(&dir), vec![SHIM_NAME]);
+        stamp_project(&[], &dir, &opts("0.19.0", false, 1)).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join(SHIM_NAME)).unwrap(), SHIM_TEMPLATE);
+        let kept = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .filter(|entry| std::fs::read_to_string(entry.path()).is_ok_and(|t| t == planted))
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(kept.len(), 1, "{kept:?}");
+        assert!(is_moved_aside(&kept[0]), "{kept:?}");
+        assert!(foreign_agent_files(&dir).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_gate_names_any_kb_or_claude_folder_that_is_not_the_apps() {
+        use crate::real_dir::hostile;
+        let dir = scratch("shim-gate");
+        write(&dir.join(SHIM_NAME), "#!/bin/sh\necho planted\n");
+        assert_eq!(foreign_agent_files(&dir), vec![SHIM_NAME]);
+        stamp_shim(&dir, &opts("0.19.0", false, 1)).unwrap();
+        assert!(foreign_agent_files(&dir).is_empty());
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(dir.join(SHIM_NAME), std::fs::Permissions::from_mode(0o777))
+            .unwrap();
+        assert_eq!(foreign_agent_files(&dir), vec![SHIM_NAME]);
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let (project, victim) = hostile::folder("claude-gate");
+        hostile::plant(&project, CLAUDE_DIR, &victim);
+        assert!(foreign_agent_files(&project).contains(&CLAUDE_DIR.to_owned()));
+        hostile::clean_up(&project);
     }
 
     #[test]
