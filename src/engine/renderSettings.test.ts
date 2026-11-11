@@ -74,6 +74,20 @@ describe("parseRenderSettings", () => {
       expect("antialias" in parsed).toBe(false);
     }
   });
+
+  it("carries dither and specularAA only when true", () => {
+    for (const key of ["dither", "specularAA"] as const) {
+      expect(parseRenderSettings({ [key]: true }, "t")).toEqual({
+        ...DEFAULT_RENDER_SETTINGS,
+        [key]: true,
+      });
+      for (const value of [false, "static", 1, null]) {
+        const parsed = parseRenderSettings({ [key]: value }, "t");
+        expect(parsed).toEqual(DEFAULT_RENDER_SETTINGS);
+        expect(key in parsed).toBe(false);
+      }
+    }
+  });
 });
 
 describe("mode mapping (the two render paths MUST agree)", () => {

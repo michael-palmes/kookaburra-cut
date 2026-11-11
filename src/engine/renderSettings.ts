@@ -23,6 +23,10 @@ export interface RenderSettings {
   antialias?: AntialiasId;
   /** Export only: each frame averages this many renders, each offset by a fraction of a pixel, after the tone map. Fixes what MSAA can't (slivers thinner than its samples, hot edges) at that many times the render cost. */
   supersample?: (typeof SUPERSAMPLES)[number];
+  /** Triangular dither at the final 8-bit write, so dark gradients don't band. Routes every frame through the effect chain. Absent keeps today's chain and bytes. */
+  dither?: true;
+  /** Device metal filters its roughness by the screen-space spread of the normal in GGX alpha space, and a finish's grain fades per octave, so highlights stop sparkling. Absent keeps today's programs and bytes. */
+  specularAA?: true;
 }
 
 export type AntialiasId = "fxaa" | "smaa";
@@ -84,6 +88,14 @@ export function parseRenderSettings(raw: unknown, source: string): RenderSetting
   if (supersample) settings.supersample = supersample;
   else if (block.supersample !== undefined) {
     parseWarn(`[render] ${source}: supersample must be 4, 8 or 16; left off`);
+  }
+  if (block.dither === true) settings.dither = true;
+  else if (block.dither !== undefined && block.dither !== false) {
+    parseWarn(`[render] ${source}: dither must be true or false; left off`);
+  }
+  if (block.specularAA === true) settings.specularAA = true;
+  else if (block.specularAA !== undefined && block.specularAA !== false) {
+    parseWarn(`[render] ${source}: specularAA must be true or false; left off`);
   }
   return settings;
 }

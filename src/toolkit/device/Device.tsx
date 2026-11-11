@@ -33,6 +33,7 @@ import { type ClipTextureBinding, useClipTexture } from "../../engine/clipTextur
 import { deviceAcknowledgementMatches, useDeviceEditStore } from "../../engine/deviceEditStore";
 import { useSceneConsumesDevices } from "../../engine/deviceRegistry";
 import { ease } from "../../engine/ease";
+import { useEffectsStore } from "../../engine/effectsStore";
 import { isExporting } from "../../engine/exportState";
 import {
   type DeviceFoldTransitionSpec,
@@ -97,13 +98,13 @@ import {
   setFoldScreenState,
 } from "./foldScreenShader";
 import { type DevicePose, deviceGizmoMovedY } from "./gizmoCommit";
-import { GSAA_FRAGMENT } from "./gsaa";
 import { resolveDeviceLayout } from "./layout";
 import { useLayoutFormat } from "./layoutFormat";
 import { HIDDEN_NODES } from "./models";
 import { useScreenImageTexture } from "./screenTexture";
 import { type DeviceMediaRotation, screenTurns } from "./screenTurns";
 import { type DeviceShadowMode, devicePoseFloorShift, type ShadowPose } from "./shadowProjector";
+import { gsaaChunk } from "./specularAA";
 import { deviceFittedHeight, resolveDeviceWorldAnchor } from "./worldAnchor";
 
 /** Media shown on the device screen. Videos ride the deterministic clip-frame pipeline. */
@@ -306,16 +307,18 @@ const TARGET_WORLD_HEIGHT = 2.6;
 /** Ground plane sits just under the auto-fit device's bottom edge. */
 const GROUND_EPSILON = 0.02;
 
-function applyDeviceGsaa(material: Material): void {
+function applyDeviceGsaa(material: Material, specularAA: boolean): void {
   if (!(material as MeshStandardMaterial).isMeshStandardMaterial) return;
+  const gsaa = gsaaChunk(specularAA);
   material.onBeforeCompile = (shader) => {
     shader.fragmentShader = shader.fragmentShader.replace(
       "#include <lights_physical_fragment>",
-      GSAA_FRAGMENT,
+      gsaa.fragment,
     );
   };
   // One stable cache key: all GSAA'd device materials share program variants normally.
-  material.customProgramCacheKey = () => "kookaburra-device-gsaa-v1";
+  const key = `kookaburra-device-gsaa-v1${gsaa.key}`;
+  material.customProgramCacheKey = () => key;
 }
 
 function materialName(material: Material | Material[]): string | undefined {
@@ -633,6 +636,7 @@ export function Device(props: DeviceProps) {
   const finishKey = finish === undefined ? "" : JSON.stringify(finish);
   // biome-ignore lint/correctness/useExhaustiveDependencies: the serialised finish is the identity
   const finishSpec = useMemo(() => resolveDeviceFinish(finish), [finishKey]);
+  const specularAA = useEffectsStore((s) => s.renderSettings.specularAA === true);
   // Memoised because custom tints mint a fresh spec per call, and colourSpec keys the clone below.
   const colourSpec = useMemo(() => deviceColour(activeSpec, colour), [activeSpec, colour]);
 
@@ -706,16 +710,23 @@ export function Device(props: DeviceProps) {
           if (override?.roughness !== undefined) std.roughness = override.roughness;
           if (override?.metalness !== undefined) std.metalness = override.metalness;
           const finished = finishSpec
-            ? applyDeviceFinish(preparedMaterial, name, activeSpec.id, finishSpec, clone)
+            ? applyDeviceFinish(
+                preparedMaterial,
+                name,
+                activeSpec.id,
+                finishSpec,
+                clone,
+                specularAA,
+              )
             : null;
           if (finished) preparedMaterial = finished;
-          else applyDeviceGsaa(preparedMaterial);
+          else applyDeviceGsaa(preparedMaterial, specularAA);
           prepared.set(mesh.material, preparedMaterial);
         }
         mesh.material = preparedMaterial;
       });
       for (const obj of hide) obj.removeFromParent();
-      if (finishSpec) addScreenCoats(screens, finishSpec);
+      if (finishSpec) addScreenCoats(screens, finishSpec, specularAA);
 
       clone.updateMatrixWorld(true);
       const box = new Box3().setFromObject(clone);
@@ -749,7 +760,16 @@ export function Device(props: DeviceProps) {
           cover: coverMaterial,
         }),
       };
-    }, [scene, animations, activeSpec, colourSpec, screenMaterial, coverMaterial, finishSpec]);
+    }, [
+      scene,
+      animations,
+      activeSpec,
+      colourSpec,
+      screenMaterial,
+      coverMaterial,
+      finishSpec,
+      specularAA,
+    ]);
   const fittedHeight = deviceFittedHeight(activeSpec.id);
 
   // The opt-in keyframe track: a delta on the resolved placement, sampled before the motion presets so both layer.
