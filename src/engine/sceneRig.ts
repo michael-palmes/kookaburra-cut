@@ -355,7 +355,7 @@ export function normalizeSceneRig(
       );
     }
     if (authored && dofMode === null) dofMode = authored.mode ?? "depth";
-    dofCarried = carryDof(dofCarried, authored);
+    dofCarried = carryDof(dofCarried, authored, dofMode);
     if (dofCarried && dofCarried.blur > 0) dofActive = true;
     dofByKey.set(key.id, dofCarried);
   }

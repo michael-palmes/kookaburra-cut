@@ -618,6 +618,11 @@ const DOF_MODES: Record<DofMode, { label: string; summary: string; fields: strin
     summary: "Two focus distances across a divider.",
     fields: ["blur", "range", "focus", "focusB", "offset", "angleDeg", "squeeze"],
   },
+  lens: {
+    label: "Lens",
+    summary: "A real lens: blur from the f-stop and true depth.",
+    fields: ["fStop", "focus", "focalMm", "sensorMm", "blur", "squeeze"],
+  },
 };
 
 const TRANSITION_EASES: Record<TransitionEase, string> = {

@@ -75,7 +75,10 @@
   "deviceShadows": [{ "id": "soft" }, { "id": "long" }, { "id": "none" }],
   "deviceMotion": [{ "id": "none" }, { "id": "turntable" }, { "id": "float" }],
   "deviceLayouts": [{ "id": "row" }, { "id": "toe-in" }],
-  "camera": { "presets": [{ "id": "push-in", "label": "Push in" }], "dof": [{ "id": "soft" }] },
+  "camera": {
+    "presets": [{ "id": "push-in", "label": "Push in" }],
+    "dof": [{ "id": "depth" }, { "id": "soft" }, { "id": "lens" }]
+  },
   "compare": [{ "id": "wipe", "label": "Wipe" }],
   "charts": { "types": [{ "id": "column" }, { "id": "bar" }, { "id": "line" }] },
   "chipIcons": [{ "id": "check" }],

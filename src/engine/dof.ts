@@ -1,8 +1,18 @@
 /** Depth of field: the pure maths and types shared by both camera samplers. A `dof` block rides a camera key's pose (rig and orbit alike); fields carry FORWARD along the track from the last key that authored them, so a rack focus restates only `focus`. Normalise time produces per-key EFFECTIVE values (clamped, carried); sample time mixes the segment's two effective ends and resolves autofocus against the frame's live aim distance. Pure (no three.js, no clock reads) like every sampler here. See docs/determinism.md. */
 import { lerp } from "./keyframes";
+import {
+  LENS_FOCAL_MAX,
+  LENS_FOCAL_MIN,
+  LENS_FSTOP_DEFAULT,
+  LENS_FSTOP_MAX,
+  LENS_FSTOP_MIN,
+  LENS_SENSOR_DEFAULT,
+  LENS_SENSOR_MAX,
+  LENS_SENSOR_MIN,
+} from "./lensDof";
 
-/** The blur families a scene can pick (track-level, first authored key wins). Depth and split read scene depth through the CoC; the rest are screen-space. */
-export type DofMode = "depth" | "tilt" | "soft" | "radial" | "directional" | "split";
+/** The blur families a scene can pick (track-level, first authored key wins). Depth, split and lens read scene depth through the CoC; the rest are screen-space. */
+export type DofMode = "depth" | "tilt" | "soft" | "radial" | "directional" | "split" | "lens";
 
 /** Sidecar `dof` value on a camera key's pose. Every field optional: an absent field inherits the last authored value along the track; a key with no `dof` at all changes nothing. */
 export interface SceneDocDof {
@@ -29,6 +39,12 @@ export interface SceneDocDof {
   squeeze?: number;
   /** Split mode: the second focus distance in world units (always manual). */
   focusB?: number;
+  /** Lens mode: aperture as an f-number. */
+  fStop?: number;
+  /** Lens mode: focal length in mm; absent derives it from `sensorMm` and the fov. */
+  focalMm?: number;
+  /** Lens mode: sensor extent along the fov axis in mm (24 is full frame). */
+  sensorMm?: number;
 }
 
 /** A key's effective dof after clamping and carry-forward (a normalise-time product, stored on the normalized pose). */
@@ -45,6 +61,10 @@ export interface EffectiveDof {
   centerY: number;
   squeeze: number;
   focusB: number;
+  fStop: number;
+  /** Null derives the focal length from the sensor and fov. */
+  focalMm: number | null;
+  sensorMm: number;
 }
 
 /** Track-level summary decided once at normalise time. */
@@ -68,6 +88,9 @@ export interface ResolvedDof {
   centerY: number;
   squeeze: number;
   focusB: number;
+  fStop: number;
+  focalMm: number | null;
+  sensorMm: number;
 }
 
 /** Which blur families a set of camera tracks activates; the composer's chain-shape key, so it must stay project-stable (docs/determinism.md). */
@@ -78,6 +101,7 @@ export interface DofUnion {
   radial: boolean;
   directional: boolean;
   split: boolean;
+  lens: boolean;
 }
 
 /** Authoring clamps, applied at normalise time only so the sampler stays a pure mix (fov's rule). EXPORT CONTRACT. */
@@ -101,9 +125,23 @@ export const DOF_DEFAULTS: EffectiveDof = {
   centerY: 0,
   squeeze: 1,
   focusB: 2,
+  fStop: LENS_FSTOP_DEFAULT,
+  focalMm: null,
+  sensorMm: LENS_SENSOR_DEFAULT,
 };
 
-const DOF_MODES: readonly DofMode[] = ["depth", "tilt", "soft", "radial", "directional", "split"];
+/** Lens mode opens at full aperture: its strength is the f-stop, so `blur` starts at 1 and only eases it in or out. */
+export const LENS_DOF_DEFAULTS: EffectiveDof = { ...DOF_DEFAULTS, blur: 1 };
+
+const DOF_MODES: readonly DofMode[] = [
+  "depth",
+  "tilt",
+  "soft",
+  "radial",
+  "directional",
+  "split",
+  "lens",
+];
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 
@@ -164,16 +202,23 @@ export function normalizeDocDof(
   if (squeeze !== undefined) out.squeeze = squeeze;
   const focusB = num(dof.focusB, "focusB", DOF_FOCUS_MIN, DOF_FOCUS_MAX);
   if (focusB !== undefined) out.focusB = focusB;
+  const fStop = num(dof.fStop, "fStop", LENS_FSTOP_MIN, LENS_FSTOP_MAX);
+  if (fStop !== undefined) out.fStop = fStop;
+  const focalMm = num(dof.focalMm, "focalMm", LENS_FOCAL_MIN, LENS_FOCAL_MAX);
+  if (focalMm !== undefined) out.focalMm = focalMm;
+  const sensorMm = num(dof.sensorMm, "sensorMm", LENS_SENSOR_MIN, LENS_SENSOR_MAX);
+  if (sensorMm !== undefined) out.sensorMm = sensorMm;
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
-/** One carry-forward step: the effective dof at a key given the previous key's and what this key authored. No authored block returns `previous` unchanged (reference equality is the "nothing keyed yet" signal). */
+/** One carry-forward step: the effective dof at a key given the previous key's and what this key authored. No authored block returns `previous` unchanged (reference equality is the "nothing keyed yet" signal). `mode` is the track's, which picks the defaults the first authored key starts from. */
 export function carryDof(
   previous: EffectiveDof | null,
   authored: SceneDocDof | undefined,
+  mode?: DofMode | null,
 ): EffectiveDof | null {
   if (!authored) return previous;
-  const base = previous ?? DOF_DEFAULTS;
+  const base = previous ?? (mode === "lens" ? LENS_DOF_DEFAULTS : DOF_DEFAULTS);
   return {
     blur: authored.blur ?? base.blur,
     range: authored.range ?? base.range,
@@ -186,6 +231,9 @@ export function carryDof(
     centerY: authored.centerY ?? base.centerY,
     squeeze: authored.squeeze ?? base.squeeze,
     focusB: authored.focusB ?? base.focusB,
+    fStop: authored.fStop ?? base.fStop,
+    focalMm: authored.focalMm ?? base.focalMm,
+    sensorMm: authored.sensorMm ?? base.sensorMm,
   };
 }
 
@@ -226,6 +274,13 @@ export function mixDof(
     squeeze: lerp(ra.squeeze, rb.squeeze, t),
     // The second focus plane racks the same way the first does (log-space, the mixAimDistance rule).
     focusB: mixFocusDistance(ra.focusB, rb.focusB, t),
+    // Stops, focal lengths and sensors are ratios, so they mix in log space too (an f/2 to f/8 pull passes f/4 at the midpoint).
+    fStop: mixFocusDistance(ra.fStop, rb.fStop, t),
+    focalMm:
+      ra.focalMm !== null && rb.focalMm !== null
+        ? mixFocusDistance(ra.focalMm, rb.focalMm, t)
+        : (ra.focalMm ?? rb.focalMm),
+    sensorMm: mixFocusDistance(ra.sensorMm, rb.sensorMm, t),
   };
 }
 
