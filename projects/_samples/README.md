@@ -20,16 +20,20 @@ against IP Australia, USPTO and the App Store (see that README).
   most 1.5 MB each. Each still at a recording's settled moment matches its frame.
 - Icons are 1024 PNG with transparent corners.
 - Keep the family under 18 MB.
+- Fairywren's phone screens are drawn for the camera: type about a fifth larger than a
+  real app and fewer rows, on warm grey, so they read on a phone inside a film frame.
+  Each one Unveil shows has a dark twin, `fairywren-<name>-dark-phone`, with the same
+  layout and timings as the light file.
 
 | File | Purpose |
 | --- | --- |
 | `fairywren-icon.png` | Fairywren app icon |
 | `fairywren-today-phone.jpg` / `fairywren-today-dark-phone.jpg` | Today, light and dark |
-| `fairywren-focus-phone.jpg` | Focus mode, navy |
+| `fairywren-focus-phone.jpg` / `fairywren-focus-dark-phone.jpg` | Focus mode, warm dark (the two match; the dark name is for dark films) |
 | `fairywren-then-phone.jpg` | The same day in an older design, for before and after |
 | `fairywren-week-tablet.jpg` / `fairywren-week-laptop.jpg` | The same week on a tablet and a laptop |
 | `fairywren-share-window.jpg` | Web app timeline in a browser window |
-| `fairywren-plan-phone.mp4` | Plans land, one is ticked off, a new plan is typed |
+| `fairywren-plan-phone.mp4` / `fairywren-plan-dark-phone.mp4` | Plans land, one is ticked off, a new plan is typed |
 | `fairywren-focus-phone.mp4` | Focus switches on and the day calms to navy |
 | `fairywren-share-window.mp4` | A cursor shares the plan and copies the link |
 | `thornbill-icon.png` | Thornbill app icon |
@@ -44,12 +48,12 @@ against IP Australia, USPTO and the App Store (see that README).
 | `songlark-ask-window.mp4` | Ask, think, answer on the web |
 | `songlark-ask-phone.jpg` / `songlark-answer-phone.jpg` / `.mp4` | The same on a phone |
 | `songlark-voice-phone.jpg` | Voice mode |
-| `fairywren-sorted-phone.mp4` / `.jpg`, `fairywren-sorted-dark-phone.jpg` | "Plans itself": the week sorts itself under a "This week, sorted" card |
-| `fairywren-quickadd-phone.mp4` / `.jpg` | "Faster": a plan typed in plain words is parsed and added |
-| `fairywren-reschedule-phone.mp4` / `.jpg` | "Smarter": a meeting runs over and two plans move to fit |
-| `fairywren-share-phone.mp4` / `.jpg` | "Together": a list shared with three people, who tick items off |
+| `fairywren-sorted-phone.mp4` / `.jpg`, `fairywren-sorted-dark-phone.mp4` / `.jpg` | "Plans itself": the week sorts itself under a "This week, sorted" card |
+| `fairywren-quickadd-phone.mp4` / `.jpg`, `fairywren-quickadd-dark-phone.mp4` / `.jpg` | "Faster": a plan typed in plain words is parsed and added |
+| `fairywren-reschedule-phone.mp4` / `.jpg`, `fairywren-reschedule-dark-phone.mp4` / `.jpg` | "Smarter": a meeting runs over and two plans move to fit |
+| `fairywren-share-phone.mp4` / `.jpg`, `fairywren-share-dark-phone.mp4` / `.jpg` | "Together": a list shared with three people, who tick items off |
 | `fairywren-focusflow-phone.mp4` | Spotlight's flow: one large Focus toggle, no baked tap |
-| `fairywren-insights-phone.jpg` / `fairywren-month-phone.jpg` | Two more screens for a line-up |
+| `fairywren-insights-phone.jpg` / `fairywren-month-phone.jpg`, `fairywren-insights-dark-phone.jpg` / `fairywren-month-dark-phone.jpg` | Two more screens for a line-up |
 | `songlark-offsite-ask-window.jpg` / `songlark-offsite-answer-window.jpg` | Prompt pair two: a team offsite |
 | `songlark-notes-ask-window.jpg` / `songlark-notes-answer-window.jpg` | Prompt pair three: launch notes |
 | `songlark-followup-window.mp4` / `.jpg` | A follow-up typed into the thread, the answer streaming in word by word |
@@ -60,12 +64,18 @@ against IP Australia, USPTO and the App Store (see that README).
 ### Timings and regions for the launch templates
 
 Regions are screen UV `[u0, v0, u1, v1]` (`ScreenRegion rect`), times are seconds into the clip.
+A dark twin shares its light file's regions and times.
 
 - Line-up of five different phones: `fairywren-today-phone.jpg`, `fairywren-focus-phone.jpg`,
-  `fairywren-insights-phone.jpg`, `fairywren-month-phone.jpg`, `fairywren-share-phone.jpg`.
+  `fairywren-insights-phone.jpg`, `fairywren-month-phone.jpg`, `fairywren-share-phone.jpg`
+  (or their dark twins).
+- Plan: the first plan's tick is at `(0.886, 0.340)` and lands at 1.75 s; the round plus button is
+  at `(0.883, 0.930)`, pressed at 3.25 s. The New plan sheet is `[0.02, 0.588, 0.98, 0.991]`, up
+  from 3.95 s. The Today still is the frame at 3.1 s.
 - "This week, sorted" card: `[0.04, 0.172, 0.96, 0.40]`, still from 2.0 s.
 - Quick add field and parsed plan: `[0.04, 0.27, 0.96, 0.444]`, still from 2.8 to 3.4 s apart from the
-  blinking caret (Add at 3.45 s).
+  blinking caret (Add at 3.45 s). The schedule below slides down to make room from 2.25 s and back
+  up from 3.9 s.
 - Reschedule card: `[0.04, 0.27, 0.96, 0.531]`, still from 1.3 to 3.3 s (Keep at 3.35 s).
 - Share sheet: `[0.02, 0.613, 0.98, 0.991]`, still from 1.6 to 2.3 s (Share at 2.3 s).
 - Focus flow: the toggle centre is `(0.818, 0.389)` and flips at 1.5 s; the Focus card is

@@ -13,15 +13,20 @@
         inset: 0;
         z-index: 10;
         opacity: 0;
-        color: #f4f0ea;
+        color: #f6f2eb;
       }
       .fv-head {
         position: absolute;
         left: 24px;
-        top: 66px;
+        top: 58px;
       }
-      .fv-head .eyebrow {
-        color: #8fd0a6;
+      .fv-head small {
+        display: block;
+        height: 28px;
+        padding-top: 4px;
+        font-size: 15px;
+        font-weight: 600;
+        color: #9cc389;
       }
       .fv-ring {
         position: absolute;
@@ -39,7 +44,7 @@
         position: absolute;
         inset: -40px;
         border-radius: 50%;
-        background: radial-gradient(closest-side, rgba(240, 108, 91, 0.22), transparent);
+        background: radial-gradient(closest-side, rgba(240, 128, 91, 0.2), transparent);
       }
       .fv-ring .readout {
         position: absolute;
@@ -50,16 +55,16 @@
       }
       .fv-ring .clock {
         font-family: "Inter Tight", "Inter", sans-serif;
-        font-size: 68px;
+        font-size: 76px;
         font-weight: 300;
         letter-spacing: -0.02em;
         line-height: 1;
       }
       .fv-ring .task {
         margin-top: 10px;
-        font-size: 16px;
+        font-size: 18px;
         font-weight: 600;
-        color: #c9cede;
+        color: #cfc8bd;
       }
       .fv-chips {
         position: absolute;
@@ -71,29 +76,31 @@
         gap: 8px;
       }
       .fv-chips .chip {
-        background: rgba(255, 255, 255, 0.08);
-        color: #e9e6f0;
-        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
-        height: 34px;
-        padding: 0 14px;
+        background: rgba(246, 242, 235, 0.08);
+        color: #ece6dc;
+        box-shadow: 0 0 0 1px rgba(246, 242, 235, 0.1) inset;
+        height: 40px;
+        border-radius: 20px;
+        padding: 0 16px;
+        font-size: 15px;
       }
       .fv-chips .chip svg.i {
-        font-size: 16px;
-        color: #8fd0a6;
+        font-size: 18px;
+        color: #9cc389;
       }
       .fv-end {
         position: absolute;
         left: 24px;
         right: 24px;
         bottom: 46px;
-        height: 56px;
-        border-radius: 28px;
+        height: 58px;
+        border-radius: 29px;
         display: grid;
         place-items: center;
-        font-size: 17px;
+        font-size: 18px;
         font-weight: 600;
-        color: #f4f0ea;
-        box-shadow: 0 0 0 1.5px rgba(244, 240, 234, 0.28) inset;
+        color: #f6f2eb;
+        box-shadow: 0 0 0 1.5px rgba(246, 242, 235, 0.28) inset;
       }
       .old {
         position: absolute;
@@ -244,6 +251,7 @@
       import { fillIcons, icon } from "../shared/icons.js";
       import { caretOn, ease, mix, params, press, ready, ripple, rise, seg, tween, typed } from "../shared/motion.js";
       import { phoneChrome } from "../shared/phone.js";
+      import { block, dock, head, week } from "./parts.js";
 
       const P = params();
       const scene = P.scene ?? "plan";
@@ -256,38 +264,22 @@
         { cls: "mint", time: "13:00", title: "Focus time", meta: "Write the brief · 90 min" },
         { cls: "butter", time: "15:30", title: "Ship release", meta: "Team · 30 min" },
       ];
-      const DAYS = [
-        ["Mon", 11],
-        ["Tue", 12],
-        ["Wed", 13],
-        ["Thu", 14],
-        ["Fri", 15],
-        ["Sat", 16],
-        ["Sun", 17],
-      ];
-      const RING = 2 * Math.PI * 23;
+      const RING = 2 * Math.PI * 22;
 
       function today() {
-        const blocks = BLOCKS.map(
-          (b) => `<div class="block ${b.cls}"><div class="body"><div class="time tnum">${b.time}</div><div class="title">${b.title}</div><div class="meta">${b.meta}</div></div><div class="side">${
-            b.people ? `<div class="avatars">${b.people.map((p, i) => `<div class="avatar a${i + 1}">${p}</div>`).join("")}</div>` : ""
-          }<div class="check"><svg class="i" viewBox="0 0 24 24"><path d="M6 12.5l4 4 8-9"/></svg></div></div></div>`,
-        );
-        return `<div class="glow"></div>
-          <header class="head"><div class="eyebrow">Tuesday 12 May</div><h1 class="display">Today</h1>
-            <div class="progress"><svg viewBox="0 0 54 54"><circle cx="27" cy="27" r="23" fill="none" stroke="var(--hair)" stroke-width="5"/><circle id="arc" cx="27" cy="27" r="23" fill="none" stroke="var(--coral)" stroke-width="5" stroke-linecap="round" stroke-dasharray="${RING}" stroke-dashoffset="${RING}"/></svg><span class="tnum" id="ringText">0/4</span></div></header>
-          <div class="week">${DAYS.map(([d, n], i) => `<div class="day${i === 1 ? " today" : ""}${i > 4 ? " weekend" : ""}"><small>${d}</small><b class="tnum">${n}</b><i style="opacity:${i > 4 ? 0 : 1}"></i></div>`).join("")}</div>
+        const progress = `<div class="progress"><svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="22" fill="none" stroke="var(--track)" stroke-width="5"/><circle id="arc" cx="26" cy="26" r="22" fill="none" stroke="var(--sage)" stroke-width="5" stroke-linecap="round" stroke-dasharray="${RING}" stroke-dashoffset="${RING}"/></svg><span class="tnum" id="ringText">0/4</span></div>`;
+        return `${head("Tue 12 May", "Today", progress)}${week()}
           <section class="focus-card" id="focusCard"><div class="badge">${icon("target")}</div><div class="txt"><b>Focus</b><span>Quiet the rest of the day</span></div><div class="toggle" id="toggle"><div class="knob"></div></div></section>
           <div class="label" id="label"><span>Schedule</span><span class="count">4 plans</span></div>
-          <div class="blocks" id="blocks">${blocks.join("")}</div>
-          <div class="dock" id="dock"><nav class="tabs"><div class="tab on">${icon("calendar")}Today</div><div class="tab">${icon("list")}Lists</div><div class="tab">${icon("bars")}Insights</div></nav><div class="add" id="add">${icon("plus")}Add plan</div></div>
+          <div class="blocks" id="blocks">${BLOCKS.map(block).join("")}</div>
+          ${dock()}
           <div class="scrim" id="scrim"></div>
           <div class="sheet" id="sheet"><div class="grabber"></div><h2 class="display">New plan</h2>
             <div class="field" id="field"><span id="typed"></span><span class="caret" id="caret"></span><span class="ph" id="ph">What's the plan?</span></div>
             <div class="chips"><div class="chip">${icon("calendar")}Today</div><div class="chip pick" id="when">${icon("clock")}16:30</div><div class="chip">${icon("bell")}10 min before</div></div>
             <div class="save">Add to today</div></div>
-          <div class="focus-view" id="focusView"><div class="fv-head"><div class="eyebrow">Until 14:30</div><h1 class="display">Focus</h1></div>
-            <div class="fv-ring"><div class="halo" id="halo"></div><svg viewBox="0 0 300 300"><circle cx="150" cy="150" r="136" fill="none" stroke="rgba(244,240,234,0.1)" stroke-width="10"/><circle id="fvArc" cx="150" cy="150" r="136" fill="none" stroke="var(--coral)" stroke-width="10" stroke-linecap="round" stroke-dasharray="${2 * Math.PI * 136}" stroke-dashoffset="${2 * Math.PI * 136}"/></svg>
+          <div class="focus-view" id="focusView"><div class="fv-head"><small>Until 14:30</small><h1 class="display">Focus</h1></div>
+            <div class="fv-ring"><div class="halo" id="halo"></div><svg viewBox="0 0 300 300"><circle cx="150" cy="150" r="136" fill="none" stroke="rgba(246,242,235,0.1)" stroke-width="10"/><circle id="fvArc" cx="150" cy="150" r="136" fill="none" stroke="var(--coral)" stroke-width="10" stroke-linecap="round" stroke-dasharray="${2 * Math.PI * 136}" stroke-dashoffset="${2 * Math.PI * 136}"/></svg>
               <div class="readout"><div class="clock tnum" id="clock">25:00</div><div class="task">Write the brief</div></div></div>
             <div class="fv-chips"><div class="chip" id="paused">${icon("bellOff")}Notifications paused</div></div>
             <div class="fv-end" id="fvEnd">End focus</div></div>
@@ -312,7 +304,7 @@
       const blocks = [...phone.querySelectorAll(".block")];
 
       function layout(focus) {
-        const top = focus ? 336 : 252;
+        const top = focus ? 314 : 226;
         $("focusCard").style.display = focus ? "flex" : "none";
         $("label").style.top = `${top}px`;
         $("blocks").style.top = `${top + 30}px`;
@@ -326,7 +318,7 @@
         c.style.setProperty("--draw", String(22 * (1 - ease.out(p))));
         c.style.transform = `scale(${t >= at ? 1 + 0.12 * Math.sin(Math.PI * seg(t, at, 260)) : 1})`;
         el.querySelector(".title").style.setProperty("--strike", String(ease.inOut(seg(t, at + 120, 300))));
-        el.querySelector(".body").style.opacity = String(1 - 0.45 * seg(t, at + 120, 300));
+        el.querySelector(".body").style.opacity = String(1 - 0.45 * ease.inOut(seg(t, at + 120, 300)));
       }
 
       function ring(done) {
@@ -352,10 +344,10 @@
           const r = add.getBoundingClientRect();
           tap.style.left = `${r.left + r.width / 2}px`;
           tap.style.top = `${r.top + r.height / 2}px`;
-          ripple(tap, t, 3250, { size: 120, colour: "rgba(255,255,255,0.45)" });
+          ripple(tap, t, 3250, { size: 96, colour: "rgba(255,255,255,0.45)" });
         }
         const sheet = ease.outQuint(seg(t, 3380, 560));
-        $("scrim").style.opacity = String(0.32 * ease.out(seg(t, 3350, 360)));
+        $("scrim").style.opacity = String(0.42 * ease.out(seg(t, 3350, 360)));
         $("sheet").style.transform = `translateY(${(1 - sheet) * 110}%)`;
         const text = typed("Call with Sam", t, 3980, 17);
         $("typed").textContent = text;
@@ -364,8 +356,8 @@
         $("when").style.transform = `scale(${t >= 4700 ? 1 + 0.08 * Math.sin(Math.PI * seg(t, 4700, 300)) : 1})`;
       }
 
-      const LIGHT = { bg: "#f7f4ef", surface: "#ffffff", ink: "#16213e", muted: "#6c7491" };
-      const DARK = { bg: "#0d1428", surface: "#172140", ink: "#f4f0ea", muted: "#9aa3bf" };
+      const DARK = { bg: "#141211", surface: "#24211f", ink: "#f6f2eb", muted: "#a8a096" };
+      const FROM = P.mode === "dark" ? DARK : { bg: "#f6f3ee", surface: "#fffdfa", ink: "#1b1917", muted: "#777067" };
 
       function renderFocus(t) {
         layout(true);
@@ -376,11 +368,11 @@
         ripple(tap, t, 700, { size: 70, colour: "rgba(111,174,132,0.45)" });
         const k = ease.outBack(seg(t, 760, 280));
         $("toggle").querySelector(".knob").style.transform = `translateX(${20 * k}px)`;
-        $("toggle").style.background = mix("#d9dbe3", "#6fae84", seg(t, 760, 200));
+        $("toggle").style.background = mix(P.mode === "dark" ? "#4a453f" : "#d9d5cd", "#6f9f68", ease.out(seg(t, 760, 240)));
 
         const m = ease.inOut(seg(t, 1150, 1000));
-        for (const key of Object.keys(LIGHT)) phone.style.setProperty(`--${key}`, mix(LIGHT[key], DARK[key], m));
-        phone.style.setProperty("--status", mix("#16213e", "#f4f0ea", m));
+        for (const key of Object.keys(DARK)) phone.style.setProperty(`--${key}`, mix(FROM[key], DARK[key], m));
+        phone.style.setProperty("--status", mix(FROM.ink, DARK.ink, m));
         const away = ease.inOut(seg(t, 1200, 700));
         for (const el of [phone.querySelector(".head"), phone.querySelector(".week"), $("focusCard"), $("label"), $("dock"), ...blocks]) {
           el.style.opacity = String(1 - away);
