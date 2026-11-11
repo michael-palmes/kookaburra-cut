@@ -49,7 +49,12 @@ export function mirrorStores(
       if (!store) return;
       applying.add(name);
       try {
-        store.setState(patch);
+        try {
+          store.setState(patch);
+        } catch {
+          // React's nested-update limit can trip on a patch during a fast scrub; it resets as it throws, so one retry reaches the listeners it skipped.
+          store.setState(patch);
+        }
       } finally {
         applying.delete(name);
       }

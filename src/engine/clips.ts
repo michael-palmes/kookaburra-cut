@@ -1,9 +1,17 @@
 import { useContext, useEffect, useState, useSyncExternalStore } from "react";
 import { LinearFilter, type Object3D, type Scene, SRGBColorSpace, Texture } from "three";
 import { useEditorStore } from "../store/editorStore";
-import { allChunks, chunkCount, chunkOf, chunksForFrames, windowChunks } from "./clipChunks";
+import {
+  allChunks,
+  CHUNK_FRAMES,
+  chunkCount,
+  chunkOf,
+  chunksForFrames,
+  windowChunks,
+} from "./clipChunks";
 import { isExporting, subscribeExporting } from "./exportState";
 import { noteClipReferenced } from "./perfProbe";
+import { clipReadAheadActive, previewPlaybackActive } from "./previewMedia";
 import { assertProjectRelative } from "./project";
 import { ProjectIdContext } from "./sceneContext";
 import {
@@ -722,6 +730,7 @@ export class ClipFrames {
   private readonly ensuring = new Map<number, Promise<void>>();
   private readonly failures = new Map<number, { count: number; error: ClipChunkError }>();
   private readonly previewing = new Set<number>();
+  private readAheadRefused = false;
 
   constructor(
     private readonly info: ClipInfo,
@@ -752,6 +761,29 @@ export class ClipFrames {
       .then(() => this.previewReady.add(chunk))
       .catch((e) => console.warn("[clips] preview generation failed:", e))
       .finally(() => this.previewing.delete(chunk));
+  }
+
+  /** While the clock runs, the rest of the clip extracts ahead as one pass: each chunk decodes from the clip's first frame, so on a long clip a lone chunk lands after the playhead has left it. Disk only, never a texture decode. */
+  private readAhead(i: number): void {
+    if (!this.source || this.readAheadRefused || isExporting() || !clipReadAheadActive()) return;
+    const ahead: number[] = [];
+    for (let c = chunkOf(i), total = chunkCount(this.info.frameCount); c < total; c++) {
+      if (this.ready.has(c) || this.ensuring.has(c)) continue;
+      if ((this.failures.get(c)?.count ?? 0) >= MAX_CHUNK_ATTEMPTS) continue;
+      ahead.push(c);
+    }
+    if (ahead.length === 0) return;
+    this.ensureChunks(ahead).then(
+      () => {
+        if (!previewPlaybackActive()) return;
+        for (const c of ahead) this.requestPreviews(c * CHUNK_FRAMES);
+      },
+      () => {
+        // A refused run (no room for the rest of a long clip) never counts against a chunk alone; this clip goes back to chunk by chunk.
+        for (const c of ahead) this.failures.delete(c);
+        this.readAheadRefused = true;
+      },
+    );
   }
 
   /** Requests every missing chunk among `chunks` (one native call for the ones nobody has asked for yet); resolves once all are on disk. A chunk that failed twice fails at once from then on, so a broken file never respawns ffmpeg every tick. */
@@ -850,6 +882,7 @@ export class ClipFrames {
 
   /** Resolve the texture for frame `i` in `tier`, extracting its chunk and decoding + caching it if not already resident. */
   get(i: number, tier: ClipTier = "full"): Promise<Texture> {
+    this.readAhead(i);
     const key = this.key(i, tier);
     const hit = this.cache.get(key);
     if (hit) {

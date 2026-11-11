@@ -10,8 +10,8 @@ import { setPreviewAudioProject, syncPreviewAudioPlaying } from "../engine/previ
 import { setPreviewClipStride, setPreviewPlaybackActive } from "../engine/previewMedia";
 import { type LoadedProject, loadProject } from "../engine/project";
 import { revealApp } from "../engine/reveal";
-import { stageOrNull } from "../engine/stageHandle";
 import { StageView } from "../stage/StageView";
+import type { StageClient } from "../stage/stageClient";
 import { useEditorStore } from "../store/editorStore";
 import { PresentWebsiteOverlay } from "./PresentWebsiteOverlay";
 import { startPresentAmbience, stopPresentAmbience } from "./presentAmbience";
@@ -61,6 +61,7 @@ export function PresentApp() {
   const committed = usePresentStore((s) => s.scenesCommitted);
   const websiteFocused = usePresentStore((s) => s.websiteFocused);
   const [stageReady, setStageReady] = useState(false);
+  const [stage, setStage] = useState<StageClient | null>(null);
   const mode = target?.mode ?? "slideshow";
 
   useEffect(() => {
@@ -90,10 +91,8 @@ export function PresentApp() {
     if (target.quality === "smooth") {
       setPreviewPlaybackActive(true);
       setPreviewClipStride(2);
-      stageOrNull()?.previewFlags({ playbackActive: true, clipStride: 2 });
     }
     setPresentSlideshowActive(target.mode === "slideshow");
-    stageOrNull()?.previewFlags({ slideshowActive: target.mode === "slideshow" });
     usePresentStore.getState().setMode(target.mode);
     const spec = FORMATS[target.aspect as AspectName] ?? FORMATS["16:9"];
     useEditorStore.getState().setFormat(spec);
@@ -125,7 +124,6 @@ export function PresentApp() {
         }
         clock.setCurrentMs(0);
         setProject(loaded);
-        void stageOrNull()?.applyProject(loaded);
         // The loading overlay covers the settle; the window itself can fade in straight away.
         revealApp();
       })
@@ -143,6 +141,14 @@ export function PresentApp() {
       stopPresentAmbience();
     };
   }, [target]);
+
+  // The worker hears the flags and the project once both the stage and the project exist, in either order.
+  useEffect(() => {
+    if (!stage || !project || !target) return;
+    if (target.quality === "smooth") stage.previewFlags({ playbackActive: true, clipStride: 2 });
+    stage.previewFlags({ slideshowActive: target.mode === "slideshow" });
+    void stage.applyProject(project);
+  }, [stage, project, target]);
 
   // The loading overlay lifts on the stable first frame: slideshow once the first scene settles at its hold, video shortly after the scene tree commits.
   useEffect(() => {
@@ -286,7 +292,8 @@ export function PresentApp() {
           Present from a project window
         </div>
       )}
-      {project && (
+      {/* The stage mounts with the target, before the project loads: its client is what compiles the scenes into the worker. */}
+      {target && !error && (
         <div
           style={{
             aspectRatio: `${spec.width} / ${spec.height}`,
@@ -294,8 +301,12 @@ export function PresentApp() {
             position: "relative",
           }}
         >
-          <StageView stageRole="present" dpr={target?.quality === "smooth" ? 1.5 : [1, 2]} />
-          {mode === "slideshow" && stageReady && (
+          <StageView
+            stageRole="present"
+            dpr={target.quality === "smooth" ? 1.5 : [1, 2]}
+            onClient={setStage}
+          />
+          {project && mode === "slideshow" && stageReady && (
             <PresentWebsiteOverlay project={project} aspect={aspect} />
           )}
         </div>

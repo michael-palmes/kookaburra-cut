@@ -25,6 +25,17 @@ export function previewPlaybackActive(): boolean {
   return playbackActive;
 }
 
+/** Present's clock never stops for a scrub, so its clips always read ahead; set once by the present worker at boot. */
+let presentClock = false;
+export function setPresentClock(on: boolean): void {
+  presentClock = on;
+}
+
+/** Whether clips extract ahead of the playhead: while preview playback runs, and always in Present. */
+export function clipReadAheadActive(): boolean {
+  return playbackActive || presentClock;
+}
+
 /** useSyncExternalStore shape, so paused consumers rebind their exact full frame immediately. */
 export function subscribePreviewPlayback(listener: () => void): () => void {
   playbackListeners.add(listener);
