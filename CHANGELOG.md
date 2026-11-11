@@ -66,6 +66,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   worktree folder git never made, or inside a folder moved aside earlier are
   now moved out before Claude starts. `./kb` refuses credential paths in any
   case, and Claude's own settings and the Claude app's folder too.
+- A project replaced while closed asks for Allow again, even in the same launch.
+- A pack's trust screen lists every scene file it carries, whatever its folder
+  is called, and a pack with two names a Mac would store as one is refused.
+- Importing a pack over a project clears its Allow and website approvals before
+  anything moves, whatever case the pack spells it in, so an open project never
+  runs the pack's code unasked. Deleting a project clears its website approvals
+  too.
+- The import screens say backups are kept for a day, and a pack dated in the
+  future no longer makes Replace the default.
+- Scene code can no longer switch the editor's project, change the app's
+  settings or hold Present's focus, and a gizmo commits only to the selected
+  item.
+- A link inside a project can no longer reach another folder the app can read.
 
 ## [0.22.4] - 2026-11-10
 

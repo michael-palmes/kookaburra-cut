@@ -25,9 +25,10 @@ contract and the threat model for the native child WKWebView boundary.
 | Uncaptured export | Warn and render the themed empty browser frame | Missing capture is visible but does not block a legitimate export |
 
 The application minimum is macOS 26. Website views share one named persistent
-WebKit data store. Origin grants remain keyed to the canonical project path, so
-a copy never inherits approval, but a project deleted, renamed or replaced by a pack
-leaves its grants to whatever next lands at that path.
+WebKit data store. Origin grants remain keyed to the canonical project path and
+go wherever the project's Allow goes (deleting it, or a pack landing in its
+folder), so copying or importing a project never inherits approval; a folder
+renamed or replaced in Finder leaves them to whatever next lands at that path.
 
 ## The block
 

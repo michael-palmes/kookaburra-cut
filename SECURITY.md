@@ -86,10 +86,13 @@ It is built for these risks:
 - **An agent that reaches too far.** The app starts no Claude Code, and no
   shell but the updater's administrator install ("On the Mac"): a session
   begins in the Claude app or the person's own terminal. kb
-  writes only inside the project (any folder with a `project.json`, through `-C`), the workspace or a folder a person picked in the app this
-  session, and refuses the credential folders it names, in any case; the whole workspace is routine to it, and only
-  bridge captures, frame ranges, checks, preset inserts and `openEdit` for another project ask in the app; commands that look like sending work off the Mac ask a person
-  first. None of this is a sandbox (see "Not yet").
+  writes only inside the project (any folder with a `project.json`, through
+  `-C`), the workspace or a folder a person picked in the app this session, and
+  refuses the credential folders it names, in any case; the whole workspace is
+  routine to it, so it can reach another project without asking (see "Not
+  yet"), and only bridge captures, frame ranges, checks, preset inserts and
+  `openEdit` for another project ask in the app; commands that look like sending
+  work off the Mac ask a person first. None of this is a sandbox (see "Not yet").
 - **Confidential work on disk.** Projects, caches and exports stay in the
   user's home folder; nothing is uploaded or synchronised by the app. The
   app's own folders are owner-only (0700/0600), re-sealed at every launch and
@@ -124,7 +127,8 @@ a release build's worker refuses to start unless the policy is live
 (`provePolicy`), and before any scene loads `src/stage/realmGuard.ts` limits
 `fetch`, `WebSocket`, `XMLHttpRequest`, `EventSource` and `importScripts` to the
 `asset:` paths its window handed over, `blob:`, `data:` and the app's own files,
-and refuses every nested worker. A dev build's worker (`pnpm tauri dev` and
+and refuses every nested worker. The policy is the bound: code in the worker can
+undo the guard (see "Not yet"). A dev build's worker (`pnpm tauri dev` and
 terminal autoruns) starts without the policy, and its Vite server serves the
 checkout only (`vite.config.ts`, `server.fs.allow`), never the home folder.
 
@@ -201,10 +205,12 @@ backup. Everything else is backed up like any document: projects with their own
   (`release_project`) or when the window closes; only the main window also reads
   `templates/`, `presets/`, `brands/`, `screenshots/` and the snapshots and scene
   thumbs under `.kookaburra/`; a child webview (a live website) is served
-  nothing. The stage worker holds a narrower list still, checked only in its own JavaScript
-  (`realmGuard.ts`); Rust enforces the window's list. Paths are
-  canonicalised before the check, so a link inside a project that leads out of
-  it is served only when it lands under another root that window may read, and no hidden folder below a root is served (`.emoji-cache`
+  nothing. The stage worker's own guard (`realmGuard.ts`) narrows that list for
+  code that leaves it alone, but code inside the worker can undo it, so the
+  window's list is the bound (see "Not yet"). Paths are canonicalised before the
+  check and must stay below the root the request names, so a link inside a
+  project that leads out of it is refused, even into another folder the window
+  may read, and no hidden folder below a root is served (`.emoji-cache`
   reads through a command). Native reads of a project asset go through
   `media::resolve_asset_in`, which refuses the same links by name, and
   `copy_dir_recursive` refuses to copy a link at all.
@@ -337,8 +343,8 @@ backup. Everything else is backed up like any document: projects with their own
 Deletions go to the Trash through `workspace::trash_path` (NSFileManager):
 projects, scene files, media and their originals, themes, gradients, export
 presets, screenshots, user templates and scene presets. Import backups after
-24 h and cache clears delete in place. A project delete removes its
-trust grant and its clip and media cache entries (the media is hashed before
+24 h (both import screens say so) and cache clears delete in place. A project
+delete removes its trust grant, its website origin grants and its clip and media cache entries (the media is hashed before
 the folder moves, from the library's stamps where it has them), and nothing
 from the snapshots or thumbs.
 
@@ -537,8 +543,9 @@ stay unsigned: they only move a progress bar.
   grant is path and hash bound (`trustedProjects` in `settings.json`): the app's
   own writers re-stamp inside `restamping_trust`, an edit landing while the
   project is open and allowed this session re-stamps from the hash Rust
-  computes, as does any change to a project allowed this launch (released or not), so
-  content changed while the project was closed re-asks only at the next launch. Present
+  computes, and content changed while the project was closed re-asks: a session
+  allow is earned while the project is open in the main window and ends when it
+  leaves (`TrustState::main_window_shows`). Present
   and `KOOKABURRA_TRUST=stored-only` loads never re-stamp; an autorun
   (`KOOKABURRA_ACTION` set) mints its nonce without a sheet, and in a release
   build that grant lasts for the launch and never reaches `trustedProjects`. All three commands
@@ -556,8 +563,10 @@ stay unsigned: they only move a progress bar.
   `NSAlert` sheet names the origin and the project; the default button, Return,
   is Don't allow. Only a request `website_open` or a blocked navigation raised
   this session can reach it, and any answer spends that request. A grant is once
-  per origin per project folder path, kept through a delete, rename or pack replace at that
-  path; an origin already granted asks nothing. The Allow
+  per origin per project folder path; an origin already granted asks nothing. A
+  project's origin grants go wherever its Allow goes: deleting it, or a pack
+  landing in its folder; a folder renamed or replaced in Finder leaves them at
+  that path. The Allow
   gate, moving the workspace, bridge confirmations and these grants are all
   answered natively, so a compromised webview can show the question but never
   press the button.
@@ -577,16 +586,21 @@ stay unsigned: they only move a progress bar.
   `delete_project`, `website_grant_origin` or `init_default_workspace`, and on
   any window but settings reaching `init_workspace`, `move_workspace`,
   `forget_allowed_project`, `clear_app_data` or `reveal_app_logs`.
-  `website::guard_invoke` is the second layer: any label outside the seven app
-  windows gets none of the app's own commands (it wraps `generate_handler!`); plugin
-  commands rely on Tauri refusing remote origins.
+  A live website's child webview carries Tauri's IPC runtime like any webview:
+  Tauri refuses its commands because no capability names its remote origin, and
+  `website::guard_invoke` refuses every app command from a label outside the
+  seven app windows.
 - **Worker isolation** (`src/stage/`): every scene tree runs in a Web Worker on
   an OffscreenCanvas with no `window`, `document` or `__TAURI_INTERNALS__`, so
   scene code can't reach IPC even from the main window, and the network is shut
   ("What leaves the Mac"); its native port refuses any project the window did not
-  hand it (`stageClient.ts`). Over `asset://` the guard, in the worker's JavaScript, admits its project, pinned
-  fonts and the objects it read, and it refuses nested workers, which would start
-  without it.
+  hand it (`stageClient.ts`). It writes back only the store fields a canvas click,
+  a gizmo or Present's driver sets, a gizmo commit only for the selected item,
+  never the open project, the chrome or Present's focus
+  (`mirroredStores.ts`, `acceptFromWorker`). Over `asset://` the guard, in the
+  worker's JavaScript, admits its project, pinned fonts and the objects it read,
+  and it refuses nested workers, which would start without it; the window's own
+  reach is the bound.
 - **Stills on the way in** (`src-tauri/src/imagefile.rs`, `kblib/imagefile.py`,
   `kblib/svgsafe.py`): an imported still is untrusted. Its header is read with no
   decoder and capped first (256 MB, 16384 px a side, 100 MP), and its first bytes,
@@ -628,14 +642,16 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
   key id from the public key and refuses a declared `keyId` that differs
   (`KeyIdMismatch`); requires each project, template and preset's `root` to be
   the folder apply lands for its kind and slug, once (`ItemRootMismatch`); and
-  builds that item's staged scene set (`scenes/**/*.tsx` in the signed file
-  list) and refuses the pack when its `sceneFiles` is not exactly that set
-  (`SceneFilesMismatch`), so the scene counts, the code viewer and the review
-  list what would land under `scenes/`, matched by exact case. A project slug
-  naming one of the workspace's own folders (`themes`, `templates`, `_bridge`
-  and the rest) is refused in any case, as the volume matches it, and so is a
-  slug whose folder is already there but isn't that kind of item
-  (`workspace::is_reserved_slug`, `Target::occupied_by_other`).
+  builds that item's staged scene set (every `*.tsx` in it in the signed file
+  list, whatever folder holds it) and refuses the pack when its `sceneFiles` is
+  not exactly that set (`SceneFilesMismatch`), so the scene counts, the code
+  viewer and the review list what would land. Two file names or item folders a
+  Mac would store as one (case, or another Unicode form) are refused before
+  anything stages (`paths::refuse_folded_collisions`, `PathCollision`). A
+  project slug naming one of the workspace's own folders (`themes`,
+  `templates`, `_bridge` and the rest) is refused in any case, as the volume
+  matches it, and so is a slug whose folder is already there but isn't that
+  kind of item (`workspace::is_reserved_slug`, `Target::occupied_by_other`).
 - **TOFU and its limits.** The key id is `hex(sha256(pubkey)[0..8])`; the store
   (`known_publishers` in `settings.json`) is keyed by the id recomputed from
   the public key, never the declared one (a store an older build keyed by the
@@ -655,10 +671,12 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
   origin a pack carries under a lower-case `scenes/` folder (a `Scenes/` one is not shown but
   still loads on APFS), read from its scene sidecars and hash-checked (`read_pack_scene_docs`,
   `src/packs/packReview.ts`), so nothing is reviewed after the files land. A
-  project, template or preset a pack adds or replaces loses that slug's F-001
-  grant and its place in this session's allow set
-  (`workspace::forget_project_trust`), so the next open asks again; the allow
-  goes first, so a failed settings write still asks.
+  project, template or preset a pack adds or replaces loses every F-001 grant,
+  session allow and website origin grant held for its folder, whatever the slug's
+  case, before the first file moves and again once all have landed
+  (`workspace::forget_trust_at`), so the next open asks again; the allow goes
+  first, so a failed settings write still asks, and a failure before the move
+  refuses the import.
 - **What is stripped on import.** Any entry with a `.claude` segment is dropped at
   staging, and so is a hidden file inside an item (`.mcp.json`), each listed on the summary
   (`pack/paths.rs`, `is_dropped_entry`). Every `CLAUDE.md`, `CLAUDE.local.md` and
@@ -674,7 +692,9 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
   may hold anything. Import writes files and never
   compiles: the first open hits the Allow gate.
 - **Caps and paths** (`pack/limits.rs`, `pack/paths.rs`): 50,000 entries, 8 GiB
-  total, 4 GiB per entry, a 200:1 ratio per entry (over the sizes its zip header declares), path depth 16, path length
+  total, 4 GiB per entry, each entry read no further than its signed size (the
+  200:1 ratio over the zip header is a first screen, not a bound: the
+  compressed size it divides by is the archive's own claim), path depth 16, path length
   512 bytes, manifest 8 MiB; a structural path validator refuses control, bidi
   and zero-width characters, absolute paths, `..`, dotted folders and files,
   drive letters and extensions outside each kind's allow-list; symlinks and any
@@ -926,6 +946,21 @@ Deliberately deferred, recorded so nobody mistakes them for done:
   grant buys only a sandboxed render; native consent closes the webview path.
 - A token on the autorun launch variables: `KOOKABURRA_ACTION` and its set are
   honoured in release builds, which is the same-user case above.
+- Confirmation before kb reaches another project: kb can read and write another
+  project in the workspace (`-C`, an `@file` path, `--out`) without asking. The
+  bridge asks per project; kb's own commands need a rule for what counts as
+  another project first.
+- A stage guard the worker can't undo: `realmGuard.ts` runs inside the realm it
+  guards, so scene code can tamper with the builtins it relies on. Moving the
+  check into Rust needs a per-realm token. Until then the bound is the window's
+  `asset://` reach.
+- One stage worker per project: a worker lives per window role, so the editor
+  switching projects, and the render window's captures, reuse one realm. Its
+  store writes are limited, but code from one project can still see the next.
+- Agent configuration committed in a project's git history: the sweep clears
+  the working tree, but a Claude worktree or a checkout of `HEAD` brings back
+  what was committed. Fixing it needs a design call (check `HEAD`'s tree,
+  commit the sweep, or hand over without worktree isolation).
 - A sandbox for the agent. Its allow and deny rules, hooks and reach checks bound
   its own tools and ask a person; a script a misled agent runs can still read a
   file.
