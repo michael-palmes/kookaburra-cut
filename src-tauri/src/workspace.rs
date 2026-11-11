@@ -2448,11 +2448,41 @@ struct PendingTrust {
     issued: Instant,
 }
 
-/// Trust state that lives only as long as this app process: the consent nonces `request_project_trust` issued and `trust_project` has not consumed (nothing else writes there, so a call without one of them has nothing to redeem), and the slugs this session has allowed, whose live edits re-stamp without asking.
+/// Trust state that lives only as long as this app process: the consent nonces `request_project_trust` issued and `trust_project` has not consumed (nothing else writes there, so a call without one of them has nothing to redeem), the slugs this session has allowed while they stay open, whose live edits re-stamp without asking, and the project the main window has open.
 #[derive(Default)]
 pub struct TrustState {
     nonces: Mutex<HashMap<String, PendingTrust>>,
     session: Mutex<HashSet<String>>,
+    open: Mutex<Option<String>>,
+}
+
+impl TrustState {
+    /// The main window now shows `id`, or the welcome screen for None.
+    pub(crate) fn main_window_shows(&self, id: Option<&str>) {
+        let mut open = self
+            .open
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut session = self
+            .session
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        leave_open_project(&mut open, &mut session, id);
+    }
+}
+
+/// A project the main window leaves keeps no session allow, so content replaced while it was closed asks again.
+fn leave_open_project(
+    open: &mut Option<String>,
+    session: &mut HashSet<String>,
+    next: Option<&str>,
+) {
+    if let Some(left) = open.take() {
+        if next != Some(left.as_str()) {
+            session.remove(&left);
+        }
+    }
+    *open = next.map(str::to_owned);
 }
 
 /// What the main window's gate check decides for a project.
@@ -2758,11 +2788,15 @@ pub fn read_project_manifest(
     window: tauri::Window,
     app: AppHandle,
     state: State<'_, SettingsState>,
+    trust: State<'_, TrustState>,
     slug: String,
 ) -> Result<String, String> {
     let (scope, item) = parse_project_id(&slug)?;
     let dir = project_dir(&app, &state, &slug)?;
     let text = project_manifest_for_loading(&dir, scope)?;
+    if window.label() == "main" {
+        trust.main_window_shows(Some(&slug));
+    }
     let readable = match scope {
         ProjectScope::BundledTemplate => bundled_assets_in_dev(&templates_root(&app), item)?,
         ProjectScope::BundledPreset => bundled_assets_in_dev(&presets_root(&app), item)?,
@@ -2785,8 +2819,11 @@ fn bundled_assets_in_dev(root: &Path, item: &str) -> Result<Option<PathBuf>, Str
 
 /// The calling window reads no project any more: the main window back on the welcome screen.
 #[tauri::command]
-pub fn release_project(window: tauri::Window, app: AppHandle) {
+pub fn release_project(window: tauri::Window, app: AppHandle, trust: State<'_, TrustState>) {
     crate::asset_reach::close_project(&app, window.label());
+    if window.label() == "main" {
+        trust.main_window_shows(None);
+    }
 }
 
 fn bundled_project_assets_path(root: &Path, slug: &str) -> Result<PathBuf, String> {
@@ -4135,6 +4172,54 @@ mod tests {
         assert!(!grant_lasts_only_this_session(true, true));
         assert!(!grant_lasts_only_this_session(false, false));
         assert!(!grant_lasts_only_this_session(true, false));
+    }
+
+    #[test]
+    fn a_folder_replaced_while_closed_asks_again_in_the_same_launch() {
+        let dir = PathBuf::from("/ws/demo");
+        let record = TrustRecord {
+            scenes_fingerprint: "fp-allowed".into(),
+            path: dir.to_string_lossy().into_owned(),
+            allowed_at_ms: 0,
+        };
+        let (mut open, mut session) = (None, HashSet::new());
+        leave_open_project(&mut open, &mut session, Some("demo"));
+        assert_eq!(
+            session_trust_decision(Some(&record), &dir, "fp-allowed", &mut session, "demo"),
+            SessionTrust::Pass
+        );
+        leave_open_project(&mut open, &mut session, Some("demo"));
+        assert_eq!(
+            session_trust_decision(Some(&record), &dir, "fp-edited", &mut session, "demo"),
+            SessionTrust::Restamp
+        );
+        leave_open_project(&mut open, &mut session, None);
+        assert_eq!(
+            session_trust_decision(
+                Some(&record),
+                &dir,
+                "fp-someone-elses",
+                &mut session,
+                "demo"
+            ),
+            SessionTrust::Ask
+        );
+        leave_open_project(&mut open, &mut session, Some("demo"));
+        assert_eq!(
+            session_trust_decision(Some(&record), &dir, "fp-allowed", &mut session, "demo"),
+            SessionTrust::Pass
+        );
+        leave_open_project(&mut open, &mut session, Some("other"));
+        assert_eq!(
+            session_trust_decision(
+                Some(&record),
+                &dir,
+                "fp-someone-elses",
+                &mut session,
+                "demo"
+            ),
+            SessionTrust::Ask
+        );
     }
 
     #[test]
