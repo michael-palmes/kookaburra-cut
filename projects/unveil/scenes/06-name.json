@@ -22,8 +22,8 @@
       },
       "placement": {
         "position": [-2.05, 0.079, -0.318],
-        "rotationDeg": [-8, 42, 3],
-        "scale": 1.42,
+        "rotationDeg": [0, 42, 0],
+        "scale": 1.39,
         "ground": true
       },
       "motion": {
@@ -117,7 +117,7 @@
           "position": [0, -0.985, 11.488],
           "aim": {
             "mode": "point",
-            "at": [0, 0, 0]
+            "at": [0, -0.1, 0]
           },
           "fov": 21
         }
@@ -130,7 +130,7 @@
           "position": [0.07, -0.97, 11.3],
           "aim": {
             "mode": "point",
-            "at": [0, 0, 0]
+            "at": [0, -0.1, 0]
           },
           "fov": 21
         }
@@ -142,7 +142,7 @@
           "position": [0.09, -0.965, 11.25],
           "aim": {
             "mode": "point",
-            "at": [0, 0, 0]
+            "at": [0, -0.1, 0]
           },
           "fov": 21
         }
@@ -154,7 +154,7 @@
           "position": [0.15, -0.95, 11.1],
           "aim": {
             "mode": "point",
-            "at": [0, 0, 0]
+            "at": [0, -0.1, 0]
           },
           "fov": 21
         }
@@ -284,14 +284,30 @@
             "max": [8, 9, -0.8]
           },
           "haze": {
-            "density": 0.014,
+            "density": 0.028,
             "anisotropy": 0.65,
             "strength": 1,
             "heightFalloff": 0,
             "groundFade": 1.5
           },
           "extinction": true,
-          "shadowMapSize": 2048
+          "shadowMapSize": 2048,
+          "smoke": {
+            "scale": 0.4,
+            "warp": 1.6,
+            "contrast": [0.4, 0.6],
+            "floor": 0.15,
+            "drift": [0.12, 0.08, 0],
+            "evolve": 0.08
+          },
+          "dust": {
+            "count": 380,
+            "min": [-6.5, 0.3, -7],
+            "max": [-1.9, 3.6, -0.9],
+            "radius": [0.002, 0.005],
+            "gain": 0.45,
+            "drift": [0.05, 0.06, 0]
+          }
         }
       },
       {

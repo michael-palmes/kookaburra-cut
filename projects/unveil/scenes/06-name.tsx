@@ -23,7 +23,7 @@ export default defineScene({
           textKey="title"
           hitAt={0}
           fontSize={0.56}
-          position={[1.4, 0, 1.2]}
+          position={[1.4, -0.1, 1.2]}
         />
       </SceneStage>
     );
