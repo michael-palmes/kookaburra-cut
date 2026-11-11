@@ -91,7 +91,7 @@ fn refuse_foreign(dir: &Path) -> Result<(), String> {
     }
     if let Some(link) = link_inside(&git_dir) {
         return Err(format!(
-            "{} is a link, which git would write or prune through",
+            "{} is a link or can't be read, and git would write or prune through it",
             shown(&Path::new(".git").join(link))
         ));
     }
@@ -123,14 +123,16 @@ fn refuse_foreign(dir: &Path) -> Result<(), String> {
     }
 }
 
-/// The first link anywhere below `git_dir`, as a path from it; links are never followed. Hooks never run under the guards and `live_hooks` judges them, so their folders aren't walked.
+/// The first link or unreadable folder anywhere below `git_dir`, as a path from it; links are never followed. Hooks never run under the guards and `live_hooks` judges them, so their folders aren't walked.
 fn link_inside(git_dir: &Path) -> Option<PathBuf> {
     let parked = Path::new(crate::kit::HOOKS_ASIDE).strip_prefix(".git").ok();
     let unwalked = |rel: &Path| rel == Path::new("hooks") || Some(rel) == parked;
     let mut stack = vec![PathBuf::new()];
     while let Some(rel) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(git_dir.join(&rel)) else {
-            continue;
+        let entries = match std::fs::read_dir(git_dir.join(&rel)) {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(_) => return Some(rel),
         };
         for entry in entries.flatten() {
             let child = rel.join(entry.file_name());
@@ -1029,6 +1031,14 @@ mod tests {
             assert!(agent_git_verdict(&dir).is_err(), "{rel}");
             let _ = std::fs::remove_dir_all(&dir);
         }
+
+        use std::os::unix::fs::PermissionsExt;
+        let dir = legacy_repo("unreadable");
+        let shut = dir.join(".git/objects/info");
+        std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o300)).unwrap();
+        assert!(refuse_foreign(&dir).unwrap_err().contains("can't be read"));
+        std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
 
         let dir = legacy_repo("exclude-link");
         let victim = victim(&dir);

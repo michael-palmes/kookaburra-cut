@@ -118,8 +118,10 @@ def link_inside(git_dir: str) -> Optional[str]:
         rel = stack.pop()
         try:
             entries = list(os.scandir(os.path.join(git_dir, rel)))
-        except OSError:
+        except FileNotFoundError:
             continue
+        except OSError:
+            return rel or "."
         for entry in entries:
             child = f"{rel}/{entry.name}" if rel else entry.name
             if entry.is_symlink():
@@ -141,7 +143,7 @@ def refusal(root: Path) -> Optional[str]:
             return ".git/commondir takes its settings from another repository"
         link = link_inside(git_dir)
         if link:
-            return f".git/{re.sub(r'[^A-Za-z0-9._/-]', '?', link)[:80]} is a link, which git would write or prune through"
+            return f".git/{re.sub(r'[^A-Za-z0-9._/-]', '?', link)[:80]} is a link or can't be read, and git would write or prune through it"
         info = os.lstat(config)
     except FileNotFoundError:
         return None
