@@ -352,6 +352,14 @@ fn credential_deny_rules() -> Vec<String> {
     rules
 }
 
+/// The bridge keys stay unread and the queue is kb's alone to write, so the agent's own tools can't sign or forge a request or an answer.
+pub(crate) const BRIDGE_DENY_RULES: [&str; 4] = [
+    "Read(~/Kookaburra Cut/_bridge/keys/**)",
+    "Read(//**/Kookaburra Cut/_bridge/keys/**)",
+    "Edit(~/Kookaburra Cut/_bridge/**)",
+    "Edit(//**/Kookaburra Cut/_bridge/**)",
+];
+
 /// The managed keys, exactly as docs/agent-kit.md lists them.
 pub(crate) fn managed_settings() -> Value {
     const KB_PY: &str =
@@ -387,6 +395,9 @@ pub(crate) fn managed_settings() -> Value {
             ],
             "ask": ["WebFetch", "WebSearch"],
             "deny": credential_deny_rules()
+                .into_iter()
+                .chain(BRIDGE_DENY_RULES.map(str::to_owned))
+                .collect::<Vec<_>>()
         },
         "hooks": {
             "SessionStart": [{ "matcher": "startup|resume|clear|compact", "hooks": [speaking_hook("session-start", 20)] }],
@@ -2917,10 +2928,15 @@ mod tests {
         ] {
             assert!(deny.contains(&json!(rule)), "{rule}");
         }
+        for rule in BRIDGE_DENY_RULES {
+            assert!(deny.contains(&json!(rule)), "{rule}");
+        }
         for rule in deny.iter().map(|rule| rule.as_str().unwrap()) {
             assert!(!rule.starts_with("Read(~/**"), "{rule} misses a mounted share");
             assert!(!rule.starts_with("Read(~/.claude/**"), "{rule} blocks Claude Code's own files");
-            assert!(!rule.contains("Kookaburra Cut"), "{rule} blocks the workspace");
+            if rule.contains("Kookaburra Cut") {
+                assert!(rule.contains("Kookaburra Cut/_bridge/"), "{rule} blocks the workspace");
+            }
         }
         let _ = std::fs::remove_dir_all(&dir);
     }
