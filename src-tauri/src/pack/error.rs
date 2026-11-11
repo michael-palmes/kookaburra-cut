@@ -16,7 +16,7 @@ pub enum PackError {
     SignatureInvalid,
     /// The declared `keyId` is not the hash of the public key beside it.
     KeyIdMismatch(String),
-    /// A project's `sceneFiles` is not the set of `scenes/**/*.tsx` the pack would stage for it.
+    /// A project's `sceneFiles` is not the set of `*.tsx` the pack would stage for it.
     SceneFilesMismatch(String),
     /// A project-shaped item's `root` is not `payload/<kind>/<slug>`, or two items claim one root.
     ItemRootMismatch(String),
@@ -29,6 +29,8 @@ pub enum PackError {
     PathTooLong(String),
     PathNotUtf8(String),
     PathSuspicious(String),
+    /// Two names that a Mac would store as one file or folder (case or Unicode form).
+    PathCollision(String),
     NotARegularFile(String),
     SymlinkRejected(String),
     ExtensionNotAllowed(String),
@@ -112,6 +114,9 @@ impl PackError {
             Self::PathSuspicious(p) => {
                 format!("This pack has a file name designed to be misread: {p}")
             }
+            Self::PathCollision(p) => {
+                format!("This pack has two files that would land as one on a Mac: {p}")
+            }
             Self::NotARegularFile(p) => format!("This pack contains something that is not a file: {p}"),
             Self::SymlinkRejected(p) => format!("This pack contains a shortcut, which is not allowed: {p}"),
             Self::ExtensionNotAllowed(p) => {
@@ -190,6 +195,7 @@ impl PackError {
             Self::PathTooLong(_) => "pathTooLong",
             Self::PathNotUtf8(_) => "pathNotUtf8",
             Self::PathSuspicious(_) => "pathSuspicious",
+            Self::PathCollision(_) => "pathCollision",
             Self::NotARegularFile(_) => "notARegularFile",
             Self::SymlinkRejected(_) => "symlinkRejected",
             Self::ExtensionNotAllowed(_) => "extensionNotAllowed",
@@ -222,6 +228,7 @@ impl PackError {
             | Self::PathTooLong(p)
             | Self::PathNotUtf8(p)
             | Self::PathSuspicious(p)
+            | Self::PathCollision(p)
             | Self::NotARegularFile(p)
             | Self::SymlinkRejected(p)
             | Self::ExtensionNotAllowed(p)

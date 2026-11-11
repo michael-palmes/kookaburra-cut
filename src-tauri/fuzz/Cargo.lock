@@ -2162,6 +2162,7 @@ dependencies = [
  "ed25519-dalek",
  "getrandom 0.4.3",
  "http-range",
+ "icu_normalizer",
  "libc",
  "log",
  "objc2",
