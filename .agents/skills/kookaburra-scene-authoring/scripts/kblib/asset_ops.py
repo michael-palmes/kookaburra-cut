@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import tempfile
 import time
@@ -24,7 +25,7 @@ from .asset_refs import AssetRefs, asset_files, glob_matches
 from .project import Project
 from .scenes import free_sibling_name, rewrite_json_asset_refs
 from .media_input import input_args
-from .util import EXIT_ENV, EXIT_PROBLEMS, EXIT_TRANSIENT, KbError
+from .util import EXIT_ENV, EXIT_PROBLEMS, EXIT_TRANSIENT, KbError, safe_rel
 
 Warn = Callable[[str], None]
 SAMPLE_EXTS = ("png", "jpg", "jpeg", "webp", "mp4", "mov", "m4a")
@@ -601,11 +602,42 @@ def _archive_folder(project: Project, folder: str) -> str:
         return str(path)
 
 
+def _check_restorable(project: Project, ident: str, source: Any, to: Any) -> None:
+    """The index arrives with a shared folder, so a line is taken only for a file in assets/ and its copy in that batch's folder."""
+    root = Path(os.path.realpath(str(project.root)))
+
+    def refuse(why: str) -> KbError:
+        return KbError(f"batch {str(ident)[:40]} of the archive index {why}, so kb restores none of it", EXIT_PROBLEMS, kind="invalid",
+                       hint="the index may have come with a shared folder; restore those files by hand")
+
+    def literal(rel: str) -> bool:
+        return os.path.realpath(str(root / rel)) == str(root / rel)
+
+    if not (isinstance(source, str) and isinstance(to, str) and safe_rel(source) and source.startswith("assets/") and literal(source)):
+        raise refuse("names a file outside assets/")
+    tail = f"/{ident}/{source}"
+    if not re.fullmatch(r"[0-9A-Za-z_-]+", str(ident)) or not to.endswith(tail):
+        raise refuse("names an archive copy outside its batch folder")
+    folder = to[: -len(tail)]
+    if folder == archive.ARCHIVE_DIR:
+        if not literal(to):
+            raise refuse("names an archive copy that is a link")
+        return
+    if ".." in folder.split("/") or not (os.path.isabs(folder) or safe_rel(folder)) or folder.startswith("assets"):
+        raise refuse("names an archive folder kb didn't make")
+    held = Path(to) if os.path.isabs(to) else root / to
+    if held.is_symlink() or reach.denied_reason(reach.resolve(str(held))):
+        raise refuse("names an archive copy kb won't read")
+    reach.guard_write(project, str(held), "the archive folder")
+
+
 def restore(project: Project, ident: Optional[str], opts: Any) -> Dict[str, Any]:
     """Put a batch back: each file to its old path; a different file there now is archived first (a "displaced" batch,
     itself restorable), so a restore never loses bytes."""
     dry_run, wait, caller = _opts(opts)
     batch = archive.pick(project.root, ident)
+    for item in batch["items"]:
+        _check_restorable(project, batch["id"], item.get("from"), item.get("to"))
     new = archive.new_id(project.root)
 
     def fn(tx: lockmod.Txn) -> Dict[str, Any]:

@@ -261,6 +261,39 @@ class HostileFolder(KbTestCase):
         self.assertFalse(marker.exists(), "a planted hook ran under kb's git")
         self.untouched()
 
+    def test_a_restore_never_reaches_outside_the_project(self) -> None:
+        archive = self.project / ".kb" / "archive"
+        held = archive / "20260101-000000-000" / "assets" / "restored.png"
+        held.parent.mkdir(parents=True)
+        held.write_bytes(png_bytes())
+        (archive / "20260101-000000-001" / "assets").mkdir(parents=True)
+        (archive / "20260101-000000-001" / "assets" / "linked.png").symlink_to(self.victim / "thesis.txt")
+        (self.project / "assets" / "sub").parent.mkdir(exist_ok=True)
+        (self.project / "assets" / "sub").symlink_to(self.victim / "keep-0")
+        held_rel = held.relative_to(self.project).as_posix()
+        hostile = [
+            ("../victim/planted.txt", held_rel),
+            ("../victim/thesis.txt", held_rel),
+            (str(self.victim / "absolute.txt"), held_rel),
+            ("assets/sub/doc.txt", held_rel),
+            ("assets/restored.png", "../victim/thesis.txt"),
+            ("assets/restored.png", str(self.victim / "keep-1" / "doc.txt")),
+            ("assets/restored.png", ".kb/archive/20260101-000000-001/assets/linked.png"),
+        ]
+        for n, (source, to) in enumerate(hostile):
+            with self.subTest(source=source, to=to):
+                ident = f"20260102-000000-{n:03d}"
+                line = {"atMs": 1, "id": ident, "op": "unused", "from": source, "to": to, "sha256": "0" * 64, "by": None}
+                (archive / "index.jsonl").write_text(json.dumps(line) + "\n")
+                proc = self.kb(["assets", "restore", ident, "--json"], cwd=self.project)
+                self.assertNotEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+                self.assertNotIn("Traceback", proc.stderr)
+                self.assertFalse((self.project / "assets" / "restored.png").exists())
+                self.assertTrue(held.is_file())
+                self.assertFalse((self.victim / "planted.txt").exists())
+                self.assertFalse((self.victim / "absolute.txt").exists())
+                self.untouched()
+
     def test_real_folders_still_work(self) -> None:
         self.assertExit(self.kb(["note", "hello"], cwd=self.project), 0)
         self.assertExit(self.kb(["lease", "01-intro", "--agent", "alpha"], cwd=self.project), 0)
