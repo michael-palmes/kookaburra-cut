@@ -13,6 +13,7 @@ import {
 import { NO_SHUTTER, type ShutterSample, useClockStore } from "./clock";
 import { useCompareEditStore } from "./compareEditStore";
 import { renderComposited } from "./compositor";
+import { useEffectsStore } from "./effectsStore";
 import {
   collectEnvironmentSources,
   collectMirrorRequestsWithCompare,
@@ -66,6 +67,7 @@ import {
   type ShutterPlan,
 } from "./shutterPlan";
 import { useSceneStageFloors } from "./stageRegistry";
+import { supersampleOffset } from "./supersample";
 
 const SETTLE_MS = 150;
 const bufferSize = new Vector2();
@@ -426,9 +428,31 @@ export function CompositorDriver({
       }
       renderWith(sample);
     };
+    // A rested playhead settles to the export's supersampled frame, through the same jitter table and lane.
+    const renderSettled = () => {
+      const count = useEffectsStore.getState().renderSettings.supersample ?? 1;
+      const cam = s.camera as PerspectiveCamera;
+      if (count <= 1 || !cam.isPerspectiveCamera) {
+        renderWith(plan);
+        return;
+      }
+      try {
+        accumulateFrame(s.gl, bufferSize.x, bufferSize.y, count, (k) => {
+          const [dx, dy] = supersampleOffset(k, count);
+          cam.setViewOffset(bufferSize.x, bufferSize.y, dx, dy, bufferSize.x, bufferSize.y);
+          renderWith(plan);
+        });
+      } finally {
+        cam.clearViewOffset();
+      }
+    };
     const blur = previewBlur(currentMs, editing, tracks);
     if (blur === "plain") {
       renderWith(plan);
+      return;
+    }
+    if (blur === "settled") {
+      renderSettled();
       return;
     }
     if (blur === "progress") {
@@ -455,7 +479,8 @@ export function CompositorDriver({
       return;
     }
     if (!cameras) {
-      renderWith(plan);
+      if (blur.samples === undefined) renderSettled();
+      else renderWith(plan);
       return;
     }
     accumulateFrame(s.gl, bufferSize.x, bufferSize.y, cameras.plans.length, (k) =>
@@ -468,7 +493,7 @@ export function CompositorDriver({
     currentMs: number,
     editing: boolean,
     tracks: readonly (SceneCameraTracks | null)[],
-  ): "plain" | "progress" | { plan: ShutterPlan; samples: number | undefined } {
+  ): "plain" | "progress" | "settled" | { plan: ShutterPlan; samples: number | undefined } {
     const playing = previewPlaybackActive();
     const eligible = !!shutterPlan && !previewMotionBlurOff() && !isCapturingPreview();
     const p = progress.current;
@@ -486,7 +511,11 @@ export function CompositorDriver({
     ) {
       abortProgress();
     }
-    if (!shutterPlan || !eligible) return "plain";
+    if (!shutterPlan || !eligible) {
+      const supersampled = (useEffectsStore.getState().renderSettings.supersample ?? 1) > 1;
+      if (!supersampled || playing || isCapturingPreview()) return "plain";
+      return settleFired(editing) ? "settled" : "plain";
+    }
     if (playing) {
       const samples = previewMotionBlurPlaybackSamples();
       return samples > 0 ? { plan: shutterPlan, samples } : "plain";
@@ -495,10 +524,15 @@ export function CompositorDriver({
     if (run && !run.shown) return "progress";
     // A finished pass is already on screen, so any later frame means something else changed.
     if (run) abortProgress();
+    return settleFired(editing) ? { plan: shutterPlan, samples: undefined } : "plain";
+  }
+
+  /** True on the one frame the rest timer fires; any other frame re-arms it. */
+  function settleFired(editing: boolean): boolean {
     const st = settle.current;
     if (st.fired && !editing) {
       st.fired = false;
-      return { plan: shutterPlan, samples: undefined };
+      return true;
     }
     st.fired = false;
     clearTimeout(st.timer);
@@ -508,7 +542,7 @@ export function CompositorDriver({
         invalidate();
       }, SETTLE_MS) as unknown as number;
     }
-    return "plain";
+    return false;
   }
 
   /** Paused object blur builds up one committed sample per preview frame (each needs a canvas commit), showing the running mean, edges first so a still frame stops at two. */
