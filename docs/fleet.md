@@ -1,6 +1,6 @@
 # Kookaburra Cut on managed Macs
 
-Describes version 0.22.2. For the IT and security team deploying Kookaburra Cut
+Describes version 0.22.4. For the IT and security team deploying Kookaburra Cut
 to a fleet. The keys themselves, their types and a sample profile are in
 [mdm.md](./mdm.md); the decision-maker's summary is
 [security-overview.md](./security-overview.md); the engineering record with the
@@ -87,6 +87,9 @@ payload (the sample profile is in [mdm.md](./mdm.md)). The app honours a key
 only while macOS reports it forced, so a user's `defaults write` does nothing;
 a wrong type fails closed to the most restrictive setting; the policy is read
 once per launch (`src-tauri/src/managed.rs`).
+`DisableAgentKit`, `DisablePackExport`, `ExportsInProject` and `UpdateEndpoint`
+are honoured from 0.22.3; an older build ignores them, so deploy 0.22.3 or
+later before relying on them.
 
 | Key | Recommend | Why |
 | --- | --- | --- |
@@ -183,9 +186,9 @@ Pressing Allow on a project means
 
 What is left: a WebKit or GPU driver bug reached through scene code, and the
 media parsers (ffmpeg, AVFoundation, `sips`, the font, glTF and PNG readers),
-which are bounded and tested on hostile files; fuzzing of the Rust parsers is
-in flight on the `test/fuzz-harness` branch at the time of writing
-([SECURITY.md, "Not yet"](../SECURITY.md#not-yet)). Allow no longer runs code
+which are bounded and tested on hostile files; a weekly cargo-fuzz run covers
+the pack, edit document, font, mp4 and PNG parsers (`.github/workflows/fuzz.yml`,
+[SECURITY.md, "Not yet"](../SECURITY.md#not-yet)). Allow no longer runs code
 with the person's account, which it did on 0.21.1.
 
 Packs are signed, hash-checked as they unpack, stripped of agent files, never

@@ -1,6 +1,6 @@
 # Security overview
 
-Describes version 0.22.2. For the team deciding whether Kookaburra Cut can run
+Describes version 0.22.4. For the team deciding whether Kookaburra Cut can run
 on managed Macs: the security lead, CTO or engineering manager. Every line
 links to the file, command or release asset behind it, and anything not done
 yet sits under [Not yet](#not-yet). Read it at the tag of the version you
@@ -267,6 +267,10 @@ keys, each with a row, a guard and a test in [mdm.md](./mdm.md):
 - `ExportsInProject`: renders land beside their project, never in `~/Downloads`.
 - `WorkspaceRoot`: where projects are kept, fixed.
 
+`DisableAgentKit`, `DisablePackExport`, `ExportsInProject` and `UpdateEndpoint`
+are honoured from 0.22.3; an older build ignores them, so deploy 0.22.3 or
+later before relying on them.
+
 The settings the app writes into a project for Claude Code cover only projects
 the app has opened; Claude Code's own managed settings sit on top of them.
 Recommendations per key, the Claude Code settings, what to expect in EDR and
@@ -307,7 +311,7 @@ place to check.
 | Signed releases | Yes. Developer ID signed with the hardened runtime and notarised by Apple; a GitHub build provenance attestation per release, with its bundle published as a release asset (`KookaburraCut-<version>.intoto.jsonl`) so it can be checked offline, and the updater archive's ed25519 signature (`.tar.gz.sig`) published beside it ([Verify it yourself](#verify-it-yourself)). |
 | Software bill of materials | Yes: a CycloneDX JSON per release (`KookaburraCut-<version>.cdx.json`) covering the Rust and npm dependencies, the ffmpeg, x264 and x265 sources and the beat model, attested; the binary also carries its Rust dependency list (`cargo auditable`) ([Verify it yourself](#verify-it-yourself)). |
 | Penetration test | None. The maintainer's own audit in November 2026 drove the changes from 0.22.0 on; no third-party test has been done. |
-| Fuzzing | In flight at the time of writing: a cargo-fuzz crate with targets over the pack reader, its manifest and signature, PNG decoding, font faces and the edit documents, run weekly, is on the `test/fuzz-harness` branch. Until it merges, the parsers are bounded and tested on hostile fixtures, not fuzzed ([Not yet](#not-yet)). |
+| Fuzzing | Yes, for the riskiest parsers: a weekly cargo-fuzz run (`.github/workflows/fuzz.yml`) over pack archive paths, manifests and signatures, the edit documents, font faces, the mp4 `moov` reader and PNG decoding, and every pull request runs each target over its seeds. The other parsers are bounded and tested on hostile fixtures ([Not yet](#not-yet)). |
 | Certifications | None: no SOC 2, ISO 27001 or similar. |
 | Sandboxing | Scene code runs in a Web Worker with no DOM, no IPC and no network; a live website runs in a child webview with no app capability; the app itself has the hardened runtime, no entitlements and no App Sandbox; the agent is bounded by rules and asks, not a sandbox ([SECURITY.md, "Scene code and the trust boundary"](../SECURITY.md#scene-code-and-the-trust-boundary)). |
 | Supported versions | Only the latest release receives security fixes ([SECURITY.md, "Supported versions"](../SECURITY.md#supported-versions)). |
@@ -322,9 +326,14 @@ Deferred on purpose, listed so nobody mistakes them for done. This is
 [SECURITY.md's list](../SECURITY.md#not-yet) for the version above, word for
 word:
 
-- Fuzzing of the Rust parsers (the pack reader, `allsorts` font parsing, PNG
-  and glTF inputs, the edit documents); they are bounded and tested on hostile
-  fixtures, not fuzzed.
+- Fuzzing beyond the weekly cargo-fuzz run (`.github/workflows/fuzz.yml`:
+  pack archive paths, manifests and signatures, the edit documents, SFNT
+  faces, the mp4 `moov` reader, PNG decode): `allsorts` shaping, glTF inputs,
+  the image facts readers and the `.kbpack` archive reader as a whole are
+  bounded and tested on hostile fixtures, not fuzzed.
+- An App Sandbox for the app itself: kb's headless CLI is the same binary, the
+  updater swaps the bundle in place, and each workspace or linked `assets/`
+  root would need a dialog (`docs/decisions.md`, "No App Sandbox").
 - A Homebrew cask, so MDM fleets can install and pin versions without the DMG.
 - A per-project website data store: approved projects share one login profile
   today (`docs/scene-website.md`, "Accepted residual risk").
@@ -340,13 +349,6 @@ word:
   its own tools and ask a person; a script a misled agent runs can still read a
   file.
 - The still checks on app icons: `import_app_icon` takes only the extension list.
-- A second reviewer on the `release` environment, a required review on `main` and
-  a pinned runner image and Xcode (`build-info.txt` records both).
-- Requiring the app's `Signed head` check. Until the `main` ruleset requires it,
-  pinned to the app, in place of `Head commit signed`, a job a pull request adds
-  can report under that name, GitHub doesn't say which result counts, and a
-  stolen commit key may get past the tag-key rule.
-- An App Sandbox for the app itself: the same binary is the headless CLI, the
-  updater swaps the bundle in place, and the workspace and linked assets on
-  other volumes would each need a security-scoped bookmark and a dialog. It
-  would bound the app's own reach, which is not an actor in the threat model.
+- A second reviewer on the `release` environment, a review on `main` the admin
+  cannot bypass, and a pinned runner image and Xcode (`build-info.txt` records
+  both).
