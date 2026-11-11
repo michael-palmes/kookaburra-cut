@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
 # Checks a Kookaburra Cut release on any Mac, from 0.23.0 on, with gh, codesign, shasum, spctl and
-# jq: the release's files against SHA256SUMS; the DMG and build-info.txt against this repository's
+# jq: the release's files against SHA256SUMS; the DMG, build-info.txt and the SBOM against this repository's
 # build provenance from the release workflow on the tag; the DMG against its SBOM attestation; the
 # SBOM against the commit build-info.txt records, and that commit against the tag; every signature
 # in the app and its sidecars (Developer ID, the Team ID below, hardened runtime, secure timestamp,
-# no entitlements); notarisation and Gatekeeper; the version. It downloads nothing: fetch the
-# release's files first.
+# no entitlements); notarisation and Gatekeeper; the version. It downloads no release file (gh asks
+# GitHub for the tag and, without a bundle, the attestations): fetch the release's files first.
 #
 #   gh release download v<version> --repo michael-palmes/kookaburra-cut --dir <dir>
 #   verify-install.sh --version <version> --dir <dir> [--app <path>] [--bundle <file>] [--previous <version>]
@@ -88,9 +88,10 @@ attest() {
 }
 bundle_args=()
 [[ -z "$BUNDLE" ]] || bundle_args=(--bundle "$BUNDLE")
-log "Build provenance: the DMG and build-info.txt${BUNDLE:+ (offline, from $BUNDLE)}"
+log "Build provenance: the DMG, build-info.txt and the SBOM${BUNDLE:+ (offline, from $BUNDLE)}"
 attest "$DMG" ${bundle_args[@]+"${bundle_args[@]}"}
 attest "$INFO" ${bundle_args[@]+"${bundle_args[@]}"}
+attest "$SBOM" ${bundle_args[@]+"${bundle_args[@]}"}
 log "SBOM attestation on the DMG"
 attest "$DMG" --predicate-type https://cyclonedx.org/bom
 
@@ -134,8 +135,11 @@ verify_code() {
 log "Signatures: $APP"
 verify_code "$APP"
 for sidecar in ffmpeg ffprobe; do verify_code "$APP/Contents/MacOS/$sidecar"; done
-ent=$(codesign -d --entitlements - --xml "$APP" 2>/dev/null | plutil -convert json -o - - 2>/dev/null || true)
-[[ -z "$ent" || "$ent" == "{}" ]] || die "$APP carries entitlements, expected none: $ent"
+ent=$(codesign -d --entitlements - --xml "$APP" 2>/dev/null) || die "codesign could not read $APP's entitlements"
+if [[ -n "$ent" ]]; then
+  ent=$(plutil -convert json -o - - <<<"$ent") || die "could not read $APP's entitlements"
+  [[ "$ent" == "{}" ]] || die "$APP carries entitlements, expected none: $ent"
+fi
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")" == "$VERSION" ]] \
   || die "$APP is not version $VERSION"
 log "Notarisation and Gatekeeper: $APP"
