@@ -87,6 +87,8 @@ const MAX_NOTE_BYTES: u64 = 256 * 1024;
 const MOVED_LINE_CAP: usize = 160;
 /// `.claude/` folders the app never ships, removed whole.
 const FOREIGN_DIRS: [&str; 2] = ["commands", "agents"];
+/// Enough for agent files nested in folders that were themselves moved aside; whatever is left, the gate refuses.
+const SWEEP_PASSES: usize = 8;
 /// What the two hooks that speak say while the kit is gone, since `kb.py` cannot say it itself.
 const KIT_MISSING_NOTE: &str = "The Kookaburra Cut kit is missing from this project. Ask the person to reopen the project in Kookaburra Cut, which restores it. Do not rebuild ./kb or the kit by hand: the app leaves a hand-made kb alone, so the project would stop healing.";
 /// kb's own state folder; it ignores itself, whichever side makes it first.
@@ -741,24 +743,95 @@ fn foreign_in_claude_dir(claude: &Path, out: &mut Vec<Foreign>) {
             out.push(Foreign::Aside(rel.join("skills").join(entry.file_name())));
         }
     }
+    let worktrees = claude.join("worktrees");
+    let listed = is_real_dir(&worktrees).then(|| std::fs::read_dir(&worktrees));
+    for entry in listed.into_iter().flatten().flatten().flatten() {
+        if !is_registered_worktree(&entry.path()) {
+            out.push(Foreign::Aside(
+                rel.join("worktrees").join(entry.file_name()),
+            ));
+        }
+    }
 }
 
-/// Everything in the folder outside the allow-list. A non-default root `CLAUDE.md` only counts on the first open: after that it is the person's. Links are never followed and `.git` is never entered.
+/// Whether `tree` is a checkout this folder's own repository made: its `.git` file names a record in `.git/worktrees` that names it back.
+fn is_registered_worktree(tree: &Path) -> bool {
+    let resolve = |base: &Path, path: &str| std::fs::canonicalize(base.join(path.trim())).ok();
+    let Some(dir) = tree.ancestors().nth(3) else {
+        return false;
+    };
+    let Ok(records) = std::fs::canonicalize(dir.join(".git/worktrees")) else {
+        return false;
+    };
+    let Some(record) = is_real_dir(tree)
+        .then(|| plain_text(&tree.join(".git")))
+        .flatten()
+        .and_then(|text| resolve(tree, text.strip_prefix("gitdir:")?))
+    else {
+        return false;
+    };
+    record.parent() == Some(records.as_path())
+        && plain_text(&record.join("gitdir"))
+            .and_then(|text| resolve(&record, &text))
+            .is_some_and(|back| std::fs::canonicalize(tree.join(".git")).ok() == Some(back))
+}
+
+/// The entry in `dir` that the filesystem opens as `reserved`, by its name on disk. APFS folds case and Unicode (`AGENTſ.md` opens as `AGENTS.md`), so it is asked rather than folding names in code.
+pub(crate) fn entry_opened_as(
+    dir: &Path,
+    reserved: &str,
+) -> std::io::Result<Option<(std::ffi::OsString, std::fs::Metadata)>> {
+    use std::os::unix::fs::MetadataExt;
+    let meta = match std::fs::symlink_metadata(dir.join(reserved)) {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    let mut on_disk = std::ffi::OsString::from(reserved);
+    for entry in std::fs::read_dir(dir)?.flatten() {
+        let name = entry.file_name();
+        let text = name.to_string_lossy();
+        let same_ascii = text.eq_ignore_ascii_case(reserved);
+        if (same_ascii || !text.is_ascii())
+            && entry
+                .metadata()
+                .is_ok_and(|m| m.dev() == meta.dev() && m.ino() == meta.ino())
+        {
+            on_disk = name;
+            if same_ascii {
+                break;
+            }
+        }
+    }
+    Ok(Some((on_disk, meta)))
+}
+
+/// Everything in the folder outside the allow-list, moved-aside folders included. A non-default root `CLAUDE.md` only counts on the first open: after that it is the person's. Links are never followed and `.git` is never entered.
 fn foreign_entries(dir: &Path, first_open: bool) -> Vec<Foreign> {
     let mut out = Vec::new();
     let mut stack = vec![PathBuf::new()];
     while let Some(rel) = stack.pop() {
         let at_root = rel.as_os_str().is_empty();
-        for entry in std::fs::read_dir(dir.join(&rel)).into_iter().flatten().flatten() {
+        let here = dir.join(&rel);
+        let reserved: Vec<_> = std::iter::once(CLAUDE_DIR)
+            .chain(NOTE_FILES)
+            .filter_map(|name| Some((entry_opened_as(&here, name).ok()??.0, name)))
+            .collect();
+        for entry in std::fs::read_dir(&here).into_iter().flatten().flatten() {
             let name = entry.file_name().to_string_lossy().into_owned();
             let lower = name.to_ascii_lowercase();
+            let opened_as = reserved
+                .iter()
+                .find(|(on_disk, _)| *on_disk == entry.file_name())
+                .map(|(_, as_name)| *as_name)
+                .or_else(|| std::iter::once(CLAUDE_DIR).chain(NOTE_FILES).find(|r| *r == lower));
             let child = rel.join(entry.file_name());
-            if name == ".git" || (at_root && (name == CLAUDE_DIR || is_moved_aside(&name))) {
+            if name == ".git" || (at_root && name == CLAUDE_DIR) {
                 continue;
             }
-            if lower == CLAUDE_DIR {
+            if opened_as == Some(CLAUDE_DIR) {
                 out.push(Foreign::Aside(child));
-            } else if NOTE_FILES.contains(&lower.as_str()) {
+            } else if opened_as.is_some() {
                 if !(at_root && name == ROOT_CLAUDE_MD) {
                     out.push(Foreign::Note(child));
                 }
@@ -963,51 +1036,64 @@ pub(crate) fn sweep_agent_files(dir: &Path, first_open: bool) -> AgentSweep {
                 .map(|what| format!(".claude/{what}: removed")),
         );
     }
-    let mut sections = String::new();
-    let mut noted = Vec::new();
-    let mut set_aside = Vec::new();
-    for entry in foreign_entries(dir, first_open) {
-        match entry {
-            Foreign::Aside(rel) => set_aside.push(rel),
-            Foreign::Note(rel) => {
-                let text = plain_text(&dir.join(&rel));
-                let is_mcp = rel.file_name().is_some_and(|n| n.eq_ignore_ascii_case(MCP_FILE));
-                match (text, is_mcp) {
-                    (Some(text), false) => {
-                        if !text.trim().is_empty() {
-                            sections.push_str(&notes_section(&rel, &text));
+    // A folder moved aside can hold agent files of its own, so each pass sweeps what the last one moved.
+    for _ in 0..SWEEP_PASSES {
+        let found = foreign_entries(dir, first_open);
+        if found.is_empty() || !errors.is_empty() {
+            break;
+        }
+        let mut sections = String::new();
+        let mut noted = Vec::new();
+        let mut set_aside = Vec::new();
+        for entry in found {
+            match entry {
+                Foreign::Aside(rel) => set_aside.push(rel),
+                Foreign::Note(rel) => {
+                    let text = plain_text(&dir.join(&rel));
+                    let is_mcp = rel
+                        .parent()
+                        .and_then(|parent| {
+                            entry_opened_as(&dir.join(parent), MCP_FILE).ok().flatten()
+                        })
+                        .is_some_and(|(on_disk, _)| rel.file_name() == Some(on_disk.as_os_str()));
+                    match (text, is_mcp) {
+                        (Some(text), false) => {
+                            if !text.trim().is_empty() {
+                                sections.push_str(&notes_section(&rel, &text));
+                            }
+                            noted.push(rel);
                         }
-                        noted.push(rel);
-                    }
-                    (Some(text), true) => {
-                        if let Ok(mut value) = serde_json::from_str::<Value>(&text) {
-                            redact_mcp(&mut value);
-                            let pretty = serde_json::to_string_pretty(&value).unwrap_or_default();
-                            sections.push_str(&notes_section(&rel, &pretty));
+                        (Some(text), true) => {
+                            if let Ok(mut value) = serde_json::from_str::<Value>(&text) {
+                                redact_mcp(&mut value);
+                                let pretty =
+                                    serde_json::to_string_pretty(&value).unwrap_or_default();
+                                sections.push_str(&notes_section(&rel, &pretty));
+                            }
+                            set_aside.push(rel);
                         }
-                        set_aside.push(rel);
+                        (None, _) => set_aside.push(rel),
                     }
-                    (None, _) => set_aside.push(rel),
                 }
             }
         }
-    }
-    if !sections.is_empty() {
-        if let Err(e) = append_notes(dir, &sections) {
-            errors.push(e);
-            noted.clear();
+        if !sections.is_empty() {
+            if let Err(e) = append_notes(dir, &sections) {
+                errors.push(e);
+                noted.clear();
+            }
         }
-    }
-    for rel in noted {
-        match std::fs::remove_file(dir.join(&rel)) {
-            Ok(()) => moved.push(format!("{} → {NOTES_FILE}", rel_label(&rel))),
-            Err(e) => errors.push(format!("moving {}: {e}", rel_label(&rel))),
+        for rel in noted {
+            match std::fs::remove_file(dir.join(&rel)) {
+                Ok(()) => moved.push(format!("{} → {NOTES_FILE}", rel_label(&rel))),
+                Err(e) => errors.push(format!("moving {}: {e}", rel_label(&rel))),
+            }
         }
-    }
-    for rel in set_aside {
-        match move_rel_aside(dir, &rel) {
-            Ok(aside) => moved.push(format!("{} → {aside}", rel_label(&rel))),
-            Err(e) => errors.push(e),
+        for rel in set_aside {
+            match move_rel_aside(dir, &rel) {
+                Ok(aside) => moved.push(format!("{} → {aside}", rel_label(&rel))),
+                Err(e) => errors.push(e),
+            }
         }
     }
     // After the first open a hook is the person's; one that won't move only keeps the agent's git off.
@@ -2836,6 +2922,91 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// APFS opens these by the agent files' own names.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_name_the_filesystem_folds_onto_an_agent_file_is_swept() {
+        let dir = scratch("folded");
+        let mcp = ".mcp.j\u{17F}on";
+        write(
+            &dir.join(mcp),
+            r#"{"mcpServers":{"x":{"command":"run","env":{"API_KEY":"planted-secret"}}}}"#,
+        );
+        write(&dir.join("AGENT\u{17F}.md"), "folded rule\n");
+        write(&dir.join("scenes/AGENT\u{17F}.md"), "deep folded rule\n");
+        write(&dir.join(".claude.j\u{17F}on"), "{}\n");
+        write(&dir.join("\u{212A}b"), "#!/bin/sh\necho planted\n");
+        assert!(dir.join(".mcp.json").exists(), "the filesystem doesn't fold");
+        let found = foreign_agent_files(&dir);
+        for rel in [SHIM_NAME, mcp, "AGENT\u{17F}.md", "scenes/AGENT\u{17F}.md", ".claude.j\u{17F}on"] {
+            assert!(found.iter().any(|f| f == rel), "{rel} in {found:?}");
+        }
+        assert!(sweep_agent_files(&dir, false).error.is_none());
+        stamp_shim(&dir, &opts("0.19.0", false, 1)).unwrap();
+        for name in [".mcp.json", "AGENTS.md", "scenes/AGENTS.md", ".claude.json"] {
+            assert!(!dir.join(name).exists(), "{name}");
+        }
+        let notes = notes(&dir);
+        assert!(notes.contains("deep folded rule") && notes.contains("\"run\""), "{notes}");
+        assert!(!notes.contains("planted-secret"), "{notes}");
+        assert!(foreign_agent_files(&dir).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn stray_worktrees_and_agent_files_in_moved_aside_folders_are_swept() {
+        let project = git_project("worktrees");
+        let live = project.join(".claude/worktrees/live");
+        let added = std::process::Command::new("git")
+            .args(["-c", "core.hooksPath=/dev/null", "worktree", "add", "-q", "--detach"])
+            .arg(&live)
+            .current_dir(&project)
+            .status()
+            .unwrap();
+        assert!(added.success());
+        write(&live.join("scenes/CLAUDE.md"), "the person's own checkout\n");
+        write(&project.join(".claude/worktrees/stray/CLAUDE.md"), "stray rule\n");
+        write(&project.join(".claude/worktrees/stray/.claude/settings.json"), "{}");
+        write(
+            &project.join(".claude/worktrees/forged/.git"),
+            &format!("gitdir: {}\n", project.join(".git/worktrees/live").display()),
+        );
+        write(&project.join(".claude/worktrees/forged/CLAUDE.md"), "forged rule\n");
+        write(&project.join(".claude.moved-aside-rules/CLAUDE.md"), "aside rule\n");
+        write(&project.join("kb.moved-aside/.claude/skills/x/SKILL.md"), "aside skill\n");
+        write(&project.join(".claude.moved-aside/a/.claude/b/.claude/CLAUDE.md"), "nested rule\n");
+        let found = foreign_agent_files(&project);
+        for rel in [
+            ".claude/worktrees/stray",
+            ".claude/worktrees/forged",
+            ".claude.moved-aside-rules/CLAUDE.md",
+            "kb.moved-aside/.claude",
+            ".claude.moved-aside/a/.claude",
+        ] {
+            assert!(found.iter().any(|f| f == rel), "{rel} in {found:?}");
+        }
+        assert!(!found.iter().any(|f| f.contains("live")), "{found:?}");
+        assert!(sweep_agent_files(&project, false).error.is_none());
+        assert!(foreign_agent_files(&project).is_empty(), "{:?}", foreign_agent_files(&project));
+        assert!(live.join("scenes/CLAUDE.md").is_file());
+        let notes = notes(&project);
+        for rule in ["stray rule", "forged rule", "aside rule", "nested rule"] {
+            assert!(notes.contains(rule), "{rule}: {notes}");
+        }
+        let _ = std::fs::remove_dir_all(project.parent().unwrap());
+    }
+
+    #[test]
+    fn a_linked_worktrees_folder_moves_whole_and_its_target_stays() {
+        use crate::real_dir::hostile;
+        let (project, victim) = hostile::folder("worktrees-link");
+        write(&victim.join("mine/CLAUDE.md"), "mine");
+        hostile::plant(&project, ".claude/worktrees", &victim);
+        assert_eq!(swept(&project, false), vec![".claude/worktrees → .claude.moved-aside-worktrees"]);
+        assert_eq!(std::fs::read_to_string(victim.join("mine/CLAUDE.md")).unwrap(), "mine");
+        hostile::clean_up(&project);
+    }
+
     #[test]
     fn the_claude_folder_keeps_only_the_allow_list() {
         let dir = scratch("claude-dir");
@@ -2854,7 +3025,7 @@ mod tests {
         }
         assert!(!dir.join("scenes/.claude").exists());
         assert!(dir.join(".claude.moved-aside-scenes-.claude/settings.json").is_file());
-        assert!(claude.join("worktrees/a/file").is_file());
+        assert!(dir.join(".claude.moved-aside-worktrees-a/file").is_file(), "git never made it");
         assert!(foreign_agent_files(&dir).is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
