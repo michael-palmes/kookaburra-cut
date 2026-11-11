@@ -57,6 +57,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   case, or replace a folder that isn't a project.
 - In dev builds and terminal runs, scene code can no longer read files in your
   home folder through the dev server.
+- Claude's requests to the app and the app's answers are now signed with a key
+  only Kookaburra Cut and its `./kb` read, so a misled agent's file tools can no
+  longer forge a capture, a check result or an export request, or replay an old
+  one. A project whose tools predate this gets a one-line answer: open it in
+  Kookaburra Cut once to update them.
 
 ## [0.22.4] - 2026-11-10
 

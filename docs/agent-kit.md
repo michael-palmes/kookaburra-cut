@@ -175,7 +175,9 @@ Managed settings:
       "Read(//Applications/Kookaburra Cut.app/Contents/Resources/**)"
     ],
     "ask": ["WebFetch", "WebSearch"],
-    "deny": ["Read(~/.ssh/**)", "Read(**/.env)", "Read(//**/.env)", "..."]
+    "deny": ["Read(~/.ssh/**)", "Read(**/.env)", "Read(//**/.env)", "...",
+      "Read(~/Kookaburra Cut/_bridge/keys/**)", "Read(//**/Kookaburra Cut/_bridge/keys/**)",
+      "Edit(~/Kookaburra Cut/_bridge/**)", "Edit(//**/Kookaburra Cut/_bridge/**)"]
   },
   "hooks": {
     "SessionStart": [{ "matcher": "startup|resume|clear|compact", "hooks": [
@@ -1365,9 +1367,13 @@ throttled while the app is hidden), removed on exit; autorun instances never wri
   },
   "exportJob": null,
   "health": null,
-  "pickedDirs": ["/Users/x/Desktop/review"]
+  "pickedDirs": ["/Users/x/Desktop/review"],
+  "auth": 1
 }
 ```
+
+`auth` is `1` while the instance signs ("Signing"); a passive instance and an app before
+0.23.0 leave it out.
 
 `pickedDirs` lists the folders the app's own dialogs returned this session ("kb reach").
 Two more fields locate the presets: `presetsDir` (holds `<slug>/`) and
@@ -1413,9 +1419,10 @@ lands in `responses/<id>.json`. A request without `kind` is a v1 capture.
   "preset": "title", "position": 4, "name": "Highlights" }
 ```
 
-`requestedAtMs` is optional (the file's age stands in), `scene` is an index or a file
-stem, and an unparseable request gets an immediate error response from a serving
-instance. A request without `kind` and with `version` below 2 is answered as
+`requestedAtMs` is optional for an unsigned request (the file's age stands in) and
+required for a signed one, `scene` is an index or a file stem, and an unparseable request
+signed with the instance's key gets an immediate error response (any other waits out the
+120 s prune). A request without `kind` and with `version` below 2 is answered as
 `version: 1`, so old kits keep working. The address fields are optional (old kits send
 none); kb adds `workspaceRoot` to every request, `projectPath` when the request is about
 its own project, `instancePid` unless the elected app is an older one, and `client` (the
@@ -1512,6 +1519,48 @@ waits until it times out.
   served here, from the reported censuses and an event to the main window;
   `lose-context` on the render window (the default) and the dev-only `spawn-contexts`
   (`n`, at most 32) go to the render window. Details in "The capture service".
+
+### Signing
+
+Since 0.23.0 (`src-tauri/src/bridge_auth.rs`, `kblib/bridgeauth.py`). A serving instance
+draws 32 random bytes at bridge init and writes them as hex to `_bridge/keys/<pid>.key`
+(folder 0700, file 0600, created new, a link at that name removed first); it is removed on
+exit and pruned with dead heartbeats. An instance that can't write its key does not serve
+(`bridge.reason` says why); a passive one writes none. Its heartbeat says `"auth": 1`.
+
+- **Requests.** When the elected instance signs (its heartbeat says `auth: 1` or its key file
+  exists), kb reads `keys/<pid>.key` (a 0600 regular file this user owns, never through a link)
+  and appends `"auth":{"v":1,"mac":"<64 hex>"}`. The mac is HMAC-SHA256 over the file's EXACT
+  bytes with its own 64 digits read as zeros, so it covers every field with no canonical JSON.
+- **Claims.** `claim_next_ordered`, the one claim path for the render window and the native
+  loop, checks a request addressed to this instance after its freshness. A wrong mac (tampered,
+  forged or signed with another instance's key), an id that differs from the file name, no
+  `requestedAtMs`, one sent more than a minute ahead, or an id this key already accepted is
+  deleted and logged (`[bridge] dropped request "<id>": <reason>`, never the bytes) with no
+  answer. An accepted id is held until its signed deadline (`deadlineAtMs`, else
+  `requestedAtMs` + 120 s, capped at an hour), after which the request is stale anyway; a
+  request from an earlier session fails the key. No counter.
+- **`kit-outdated`.** A request with no `auth` at all (a kit stamped before 0.23.0, or v1
+  `capture.py`) gets one fixed answer, `{ ok: false, code: "kit-outdated", error: "... open the
+  project in Kookaburra Cut once to update its kit, then rerun" }`, so it fails fast instead of
+  waiting out its timeout. Opening the project restamps the kit.
+- **Answers.** `write_response_value`, the single writer, signs every JSON answer the same way
+  and adds `auth.files: { "<name>.png": "<sha256>" }` for each PNG directly inside
+  `responses/` that the answer names. kb verifies the mac and every named frame before it
+  reports a path (and again on the copy it makes into `.kb/captures/`); an unsigned or wrong
+  answer or frame exits 2 (`bad-signature`) whenever the instance signs. kb drops `auth` from
+  the answer it reports. Progress files (`<id>.progress.json`) stay unsigned: they only move a
+  progress bar.
+- **Agent tools.** The stamp denies `Read` of `_bridge/keys/**` and `Edit` of `_bridge/**`
+  (`kit.rs`, `BRIDGE_DENY_RULES`); `reach.py` refuses a path in `_bridge/keys` and the bash-pre
+  hook a command naming it (`hookfast.names_bridge_keys`, best effort). kb, run through Bash, is
+  unaffected.
+- **Version skew.** A new kb and an older app (no `auth`, no key file): kb sends unsigned, as
+  before. An older kb and a new app: `kit-outdated`. Headless runs (`<exe> edit|media|song|check|trust`,
+  `kb export --headless`) are process runs, not the queue, and are unchanged; `kb video`'s
+  `openEdit` and `mediaChanged` go through the queue and sign. Live edits never touch the queue.
+
+What it closes and what it does not: SECURITY.md ("What reaches your agent", "Not yet").
 
 ### Export health
 

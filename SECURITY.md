@@ -214,7 +214,9 @@ backup. Everything else is backed up like any document: projects with their own
   progress for up to an hour and 2 GiB in all; `requests/.claimed/` the claimed
   requests; `apps/<pid>.json` and `app.json` heartbeats carry the executable
   path, workspace root, open project, playhead and the folders picked this
-  session; `cli.json` the headless CLI's location. kb also writes there:
+  session; `cli.json` the headless CLI's location; `keys/<pid>.key` each
+  serving instance's bridge key (folder 0700, file 0600, removed on exit and
+  pruned with dead heartbeats). kb also writes there:
   `exports/<slug>/` (one record per finished `kb export`, the newest 50 kept),
   `film/<slug>/` (frames and sheets of its film runs, the newest 12 kept),
   `video/<slug>/` (`kb video` scratch, pruned to three drafts per edit, 24 h and
@@ -222,7 +224,7 @@ backup. Everything else is backed up like any document: projects with their own
   `docs/agent-kit.md`. The app never creates it
   under `DisableAgentKit` (`bridge_root` refuses first), though kb in a kit
   stamped earlier can still write requests nobody answers. Control: `bridge.rs`
-  (`bridge_root`, the caps at its head, `prune`).
+  (`bridge_root`, the caps at its head, `prune`), `bridge_auth.rs`.
 - **`~/Kookaburra Cut/_autorun/`**: terminal-triggered runs (`runs/<id>/` with
   `last-run.json`, `dev.log`, screenshots and preview batches), the gate cache
   and the FIFO queue. Control: `scripts/kookaburra-run.sh`, `scripts/ready.mjs`,
@@ -407,7 +409,8 @@ stamped before the profile stays in its folder, and its kb still runs.
   the person's: the app sets none.
 - **What the kit auto-allows** (`kit.rs`, `managed_allow_rules`): `Bash(./kb *)`,
   the two `kb.py` spellings, the template's `git status/diff/log/add/commit`,
-  and `Read` of `~/Kookaburra Cut/_bridge/**`, `themes/**`, `brands/**` and
+  and `Read` of `~/Kookaburra Cut/_bridge/**` (bar `_bridge/keys/**`, denied
+  with `Edit` of `_bridge/**` by `BRIDGE_DENY_RULES`), `themes/**`, `brands/**` and
   the app bundle's `Resources/**`. The git rules stay only in a folder whose
   `.git` the app would run git in itself (`history::agent_git_verdict`), since
   plain git runs the folder's hooks and the programs its config names: a live
@@ -502,8 +505,21 @@ The agent's reach is also bounded by the bridge: request ids are
 `[A-Za-z0-9-]` up to 64 characters, requests expire after 120 s, a deadline
 is at most an hour, captures are rationed per client (`capture_service.rs`),
 and every answer carries `servedBy` so a client discards one from another
-workspace root. The queue has no authentication: any same-user process can
-drop a request, which is the out-of-scope case above.
+workspace root. Requests and answers are signed (`bridge_auth.rs`,
+`kblib/bridgeauth.py`): a serving instance draws 32 random bytes at start into
+`_bridge/keys/<pid>.key`, advertises `"auth": 1` in its heartbeat, and refuses
+to serve when it can't write the key. kb signs each request with HMAC-SHA256
+over the file's exact bytes; the one claim path (`claim_next_ordered`) deletes a
+request with a wrong or missing mac, one signed with another key, one with no
+`requestedAtMs`, one sent from the future and a replay of an id it accepted
+this session, logging the id and reason only, with no answer. A request with no
+`auth` at all gets one fixed `kit-outdated` answer. Every answer is signed the
+same way with each PNG it names hashed, and kb refuses an unsigned or wrong
+answer or frame (exit 2, `bad-signature`) whenever the instance signs (its
+heartbeat says so or its key file exists). The stamp denies the agent's tools
+`Read` of `_bridge/keys/**` and `Edit` of `_bridge/**`, and `reach.py` and the
+bash-pre hook refuse a path or command naming `_bridge/keys`. Progress files
+stay unsigned: they only move a progress bar.
 
 ## Scene code and the trust boundary
 
@@ -893,8 +909,14 @@ Deliberately deferred, recorded so nobody mistakes them for done:
 - A Homebrew cask, so MDM fleets can install and pin versions without the DMG.
 - A per-project website data store: approved projects share one login profile
   today (`docs/scene-website.md`, "Accepted residual risk").
-- Bridge request signing: the queue is 0700 and same-user processes are out of
-  scope, so it has no authentication beyond the user account.
+- Bridge signing against same-user processes. Since 0.23.0 every request and
+  answer is signed under the serving instance's key ("What reaches your
+  agent"), which closes a writer that can drop files in
+  `_bridge` but not read the key: the agent's own file tools, which are denied
+  it. It does not close any process running as the user, or a shell command the
+  person approves, reading the key and forging both directions; the bash-pre
+  check on `_bridge/keys` is best effort. The heartbeat stays unsigned, so a
+  forged heartbeat with a planted key is the same case.
 - Sealing the trust state: `trustedProjects`, `websiteOriginGrants` and
   `knownPublishers` are plain JSON under the 0600 file mode. An HMAC under a
   Keychain secret can't serve headless exports, and after the stage worker a forged
