@@ -921,15 +921,16 @@ export default function App() {
       const manifestBefore = await readProjectManifestSnapshot(slug);
       const manifest = JSON.parse(manifestBefore);
       // ACES at 1.0 with no motion blur is the byte-identical default: stored as ABSENCE so untouched projects never carry the block.
-      const { motionBlur, exactText, ...display } = settings;
+      const { motionBlur, exactText, textBlur, ...display } = settings;
       const blur = isDefaultMotionBlur(motionBlur) ? undefined : motionBlur;
       const isDefault = display.toneMapping === "aces" && display.exposure === 1;
-      if (isDefault && !blur && !exactText) delete manifest.render;
+      if (isDefault && !blur && !exactText && !textBlur) delete manifest.render;
       else {
         manifest.render = {
           ...display,
           ...(blur ? { motionBlur: blur } : {}),
           ...(exactText ? { exactText } : {}),
+          ...(textBlur ? { textBlur } : {}),
         };
       }
       await writeProjectManifestSnapshot(

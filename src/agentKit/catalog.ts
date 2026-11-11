@@ -363,7 +363,7 @@ export const PROJECT_MANIFEST_KEYS: Record<
   },
   render: {
     summary:
-      "Display transform { toneMapping, exposure }, exactText (true keeps SDF text off tone mapping) and motionBlur { enabled, shutterDeg, samples, camera, objects }; absent is aces at 1, tone-mapped text, no blur.",
+      "Display transform { toneMapping, exposure }, exactText (true keeps SDF text off tone mapping), textBlur (optical turns preset text soften into a true gaussian defocus) and motionBlur { enabled, shutterDeg, samples, camera, objects }; absent is aces at 1, tone-mapped text, edge-softened text, no blur.",
     type: "object",
   },
   lighting: { summary: "Project lighting layer between theme and scene.", type: "object" },
