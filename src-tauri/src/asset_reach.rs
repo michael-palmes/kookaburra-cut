@@ -62,11 +62,8 @@ fn app_window_only(label: &str, shown: &Path) -> Result<(), String> {
 
 /// The root a request names: the first of `roots` its path enters, read as written where it can be, else folder by folder from the top. A link further in never changes it.
 fn named_root(shown: &Path, roots: &[PathBuf]) -> Option<PathBuf> {
-    if let Some(root) = roots
-        .iter()
-        .filter(|root| shown.starts_with(root))
-        .min_by_key(|root| root.components().count())
-    {
+    let refs: Vec<&PathBuf> = roots.iter().collect();
+    if let Some(root) = written_root(shown, &refs) {
         return Some(root.clone());
     }
     let mut ancestors: Vec<&Path> = shown.ancestors().skip(1).collect();
@@ -77,16 +74,26 @@ fn named_root(shown: &Path, roots: &[PathBuf]) -> Option<PathBuf> {
     })
 }
 
+/// The root a request's path names as written, the shallowest when roots nest.
+fn written_root<'a>(shown: &Path, roots: &[&'a PathBuf]) -> Option<&'a PathBuf> {
+    roots
+        .iter()
+        .copied()
+        .filter(|root| shown.starts_with(root))
+        .min_by_key(|root| root.components().count())
+}
+
 impl Reach {
     /// The real file behind `path` when `label`'s window may read it (`check` over the canonical path).
     #[cfg(test)]
     fn resolve(&self, label: &str, path: &Path) -> Result<PathBuf, String> {
-        let named = named_root(path, &self.roots(label));
+        let roots: Vec<PathBuf> = self.roots(label).into_iter().cloned().collect();
+        let named = named_root(path, &roots);
         self.check(label, &canonical(path)?, path, named.as_deref())
     }
 
     /// The folders `label`'s window may read below.
-    fn roots(&self, label: &str) -> Vec<PathBuf> {
+    fn roots(&self, label: &str) -> Vec<&PathBuf> {
         let main_only: &[PathBuf] = if label == "main" {
             &self.main_only
         } else {
@@ -97,7 +104,6 @@ impl Reach {
             .chain(&self.library)
             .chain(main_only)
             .chain(self.projects.get(label))
-            .cloned()
             .collect()
     }
 
@@ -117,7 +123,7 @@ impl Reach {
         }
         let project = self.projects.get(label);
         let roots = self.roots(label);
-        if let Some(root) = roots.iter().find(|root| Some(root.as_path()) == named) {
+        if let Some(root) = roots.into_iter().find(|root| Some(root.as_path()) == named) {
             let Ok(below) = real.strip_prefix(root) else {
                 return Err(format!(
                     "a link leads outside the folder it sits in: {}",
@@ -231,13 +237,18 @@ pub(crate) fn handler(
         let allow = |path: &Path| {
             app_window_only(&label, path)?;
             let real = canonical(path)?;
-            let roots = app.state::<AssetReach>().0.lock().unwrap().roots(&label);
+            let reach = app.state::<AssetReach>();
+            let roots = {
+                let held = reach.0.lock().unwrap();
+                let roots = held.roots(&label);
+                if let Some(root) = written_root(path, &roots) {
+                    return held.check(&label, &real, path, Some(root));
+                }
+                roots.into_iter().cloned().collect::<Vec<_>>()
+            };
             let named = named_root(path, &roots);
-            app.state::<AssetReach>()
-                .0
-                .lock()
-                .unwrap()
-                .check(&label, &real, path, named.as_deref())
+            let held = reach.0.lock().unwrap();
+            held.check(&label, &real, path, named.as_deref())
         };
         match get_response(&allow, request, &origin, &label).await {
             Ok(response) => responder.respond(response),
