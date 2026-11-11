@@ -111,6 +111,24 @@ def _config_refusal(config: str) -> Optional[str]:
     return None
 
 
+def link_inside(git_dir: str) -> Optional[str]:
+    """The first link anywhere below git_dir, as a path from it; links are never followed. Hooks never run under GUARDS, so their folders aren't walked."""
+    stack = [""]
+    while stack:
+        rel = stack.pop()
+        try:
+            entries = list(os.scandir(os.path.join(git_dir, rel)))
+        except OSError:
+            continue
+        for entry in entries:
+            child = f"{rel}/{entry.name}" if rel else entry.name
+            if entry.is_symlink():
+                return child
+            if entry.is_dir(follow_symlinks=False) and child not in ("hooks", "hooks.moved-aside"):
+                stack.append(child)
+    return None
+
+
 def refusal(root: Path) -> Optional[str]:
     """Why git must not run in root: a .git that reaches elsewhere for its settings, or a .git/config key nothing here wrote."""
     global _config_seen
@@ -121,6 +139,9 @@ def refusal(root: Path) -> Optional[str]:
             return ".git is a link or a file"
         if os.path.lexists(os.path.join(git_dir, "commondir")):
             return ".git/commondir takes its settings from another repository"
+        link = link_inside(git_dir)
+        if link:
+            return f".git/{re.sub(r'[^A-Za-z0-9._/-]', '?', link)[:80]} is a link, which git would write or prune through"
         info = os.lstat(config)
     except FileNotFoundError:
         return None

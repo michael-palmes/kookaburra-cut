@@ -89,6 +89,12 @@ fn refuse_foreign(dir: &Path) -> Result<(), String> {
     if std::fs::symlink_metadata(git_dir.join("commondir")).is_ok() {
         return Err(".git/commondir takes its settings from another repository".into());
     }
+    if let Some(link) = link_inside(&git_dir) {
+        return Err(format!(
+            "{} is a link, which git would write or prune through",
+            shown(&Path::new(".git").join(link))
+        ));
+    }
     let config = git_dir.join("config");
     match std::fs::symlink_metadata(&config) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -115,6 +121,27 @@ fn refuse_foreign(dir: &Path) -> Result<(), String> {
         )),
         None => Ok(()),
     }
+}
+
+/// The first link anywhere below `git_dir`, as a path from it; links are never followed. Hooks never run under the guards and `live_hooks` judges them, so their folders aren't walked.
+fn link_inside(git_dir: &Path) -> Option<PathBuf> {
+    let parked = Path::new(crate::kit::HOOKS_ASIDE).strip_prefix(".git").ok();
+    let unwalked = |rel: &Path| rel == Path::new("hooks") || Some(rel) == parked;
+    let mut stack = vec![PathBuf::new()];
+    while let Some(rel) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(git_dir.join(&rel)) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let child = rel.join(entry.file_name());
+            match entry.file_type() {
+                Ok(kind) if kind.is_symlink() => return Some(child),
+                Ok(kind) if kind.is_dir() && !unwalked(&child) => stack.push(child),
+                _ => {}
+            }
+        }
+    }
+    None
 }
 
 /// What `.git/hooks` holds beyond git's own `.sample` files, of any kind, as paths from `dir`; a `.git/hooks` that isn't a real folder counts as one.
@@ -259,11 +286,20 @@ fn git_env(
 /// `.git/info/exclude` carries the excluded folders (the kit's `kb` appends its own lines to the same file).
 pub(crate) fn ensure_excludes(dir: &Path) -> std::io::Result<()> {
     let git_dir = dir.join(".git");
-    if !git_dir.is_dir() {
+    if !crate::real_dir::is_real_dir(&git_dir) {
         return Ok(());
     }
+    refuse_foreign(dir).map_err(std::io::Error::other)?;
     let path = git_dir.join("info").join("exclude");
-    let current = std::fs::read_to_string(&path).unwrap_or_default();
+    let current = match std::fs::symlink_metadata(&path) {
+        Ok(meta) if !meta.is_file() => {
+            return Err(std::io::Error::other(
+                ".git/info/exclude is not a plain file",
+            ))
+        }
+        Ok(_) => std::fs::read_to_string(&path).unwrap_or_default(),
+        Err(_) => String::new(),
+    };
     let missing: Vec<String> = EXCLUDED
         .iter()
         .map(|name| exclude_line(name))
@@ -272,7 +308,7 @@ pub(crate) fn ensure_excludes(dir: &Path) -> std::io::Result<()> {
     if missing.is_empty() {
         return Ok(());
     }
-    std::fs::create_dir_all(path.parent().unwrap_or(&git_dir))?;
+    let info = crate::real_dir::real_dir(dir, ".git/info").map_err(std::io::Error::other)?;
     let mut text = current;
     if !text.is_empty() && !text.ends_with('\n') {
         text.push('\n');
@@ -281,7 +317,21 @@ pub(crate) fn ensure_excludes(dir: &Path) -> std::io::Result<()> {
         text.push_str(&line);
         text.push('\n');
     }
-    std::fs::write(&path, text)
+    let temp = info.join(format!(
+        ".exclude.{}-{}",
+        std::process::id(),
+        INDEX_SEQ.fetch_add(1, Ordering::Relaxed)
+    ));
+    let written = std::fs::File::options()
+        .write(true)
+        .create_new(true)
+        .open(&temp)
+        .and_then(|mut file| std::io::Write::write_all(&mut file, text.as_bytes()))
+        .and_then(|()| std::fs::rename(&temp, &path));
+    if written.is_err() {
+        let _ = std::fs::remove_file(&temp);
+    }
+    written
 }
 
 /// `git init` plus one commit of everything but the excluded folders; an explicit identity so it succeeds without a global git config.
@@ -364,7 +414,7 @@ fn owned_by_app(dir: &Path) -> Result<(), String> {
 }
 
 /// Rewrites every branch and lightweight tag without the excluded folders (authors, dates and messages kept), untracks them in the
-/// index, expires the reflog and prunes. A ref another writer moved meanwhile is left alone and the next open tries again.
+/// index, expires the reflog and prunes objects (never gc, whose worktree prune deletes records). A ref another writer moved meanwhile is left alone and the next open tries again.
 pub(crate) fn purge_excluded(dir: &Path) -> Result<Purged, String> {
     owned_by_app(dir)?;
     let before = crate::clip_cache::dir_bytes(&dir.join(".git"));
@@ -376,7 +426,8 @@ pub(crate) fn purge_excluded(dir: &Path) -> Result<Purged, String> {
     let rewritten = rewritten?;
     untrack_excluded(dir)?;
     git(dir, &["reflog", "expire", "--expire=now", "--all"])?;
-    git(dir, &["gc", "--prune=now", "--quiet"])?;
+    git(dir, &["repack", "-a", "-d", "-q"])?;
+    git(dir, &["prune", "--expire=now"])?;
     let after = crate::clip_cache::dir_bytes(&dir.join(".git"));
     Ok(Purged {
         commits_rewritten: rewritten,
@@ -682,7 +733,7 @@ mod tests {
         let dir = app_repo("config-link");
         std::fs::remove_file(dir.join(".git/config")).unwrap();
         std::os::unix::fs::symlink(target.join("config"), dir.join(".git/config")).unwrap();
-        assert!(refuse_foreign(&dir).unwrap_err().contains("plain file"));
+        assert!(refuse_foreign(&dir).unwrap_err().contains("link"));
 
         let dir = app_repo("config-broken");
         std::fs::write(dir.join(".git/config"), "[core\nfsmonitor = x\n").unwrap();
@@ -926,6 +977,79 @@ mod tests {
                 .commits_rewritten,
             0
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn legacy_repo(tag: &str) -> PathBuf {
+        let dir = app_repo(tag);
+        git(&dir, &["add", "-f", "assets/shot.png"]).unwrap();
+        let mut args: Vec<&str> = IDENTITY.to_vec();
+        args.extend(["commit", "-q", "--no-verify", "-m", "checkpoint"]);
+        git(&dir, &args).unwrap();
+        assert!(holds_excluded(&dir));
+        dir
+    }
+
+    fn victim(dir: &Path) -> PathBuf {
+        let victim = dir.with_file_name(format!(
+            "{}.victim",
+            dir.file_name().unwrap().to_string_lossy()
+        ));
+        let _ = std::fs::remove_dir_all(&victim);
+        std::fs::create_dir_all(victim.join("other-project")).unwrap();
+        std::fs::write(victim.join("other-project/project.json"), b"{}").unwrap();
+        std::fs::write(victim.join("notes.txt"), b"mine\n").unwrap();
+        victim
+    }
+
+    fn assert_victim_untouched(victim: &Path) {
+        assert_eq!(
+            std::fs::read(victim.join("other-project/project.json")).unwrap(),
+            b"{}"
+        );
+        assert_eq!(std::fs::read(victim.join("notes.txt")).unwrap(), b"mine\n");
+        let _ = std::fs::remove_dir_all(victim);
+    }
+
+    #[test]
+    fn a_link_inside_the_git_folder_is_never_written_or_pruned_through() {
+        for rel in ["worktrees", "objects/pack", "logs", "refs/tags", "info"] {
+            let dir = legacy_repo(&format!("inner-link-{}", rel.replace('/', "-")));
+            let victim = victim(&dir);
+            let link = dir.join(".git").join(rel);
+            let _ = std::fs::remove_dir_all(&link);
+            std::os::unix::fs::symlink(&victim, &link).unwrap();
+            let purged = purge_excluded(&dir);
+            let excluded = ensure_excludes(&dir);
+            assert_victim_untouched(&victim);
+            assert!(purged.is_err(), "{rel}");
+            assert!(excluded.is_err(), "{rel}");
+            assert!(refuse_foreign(&dir).unwrap_err().contains("link"), "{rel}");
+            assert!(!holds_excluded(&dir), "{rel}");
+            assert!(agent_git_verdict(&dir).is_err(), "{rel}");
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+
+        let dir = legacy_repo("exclude-link");
+        let victim = victim(&dir);
+        let exclude = dir.join(".git/info/exclude");
+        std::fs::remove_file(&exclude).unwrap();
+        std::os::unix::fs::symlink(victim.join("notes.txt"), &exclude).unwrap();
+        assert!(ensure_excludes(&dir).is_err());
+        assert!(init_repo(&dir, "again").is_err());
+        assert!(purge_excluded(&dir).is_err());
+        assert_victim_untouched(&victim);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_trim_never_prunes_worktree_records() {
+        let dir = legacy_repo("worktree-records");
+        let record = dir.join(".git/worktrees/elsewhere");
+        std::fs::create_dir_all(&record).unwrap();
+        std::fs::write(record.join("HEAD"), b"ref: refs/heads/main\n").unwrap();
+        purge_excluded(&dir).unwrap();
+        assert!(record.join("HEAD").is_file());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

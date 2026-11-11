@@ -67,10 +67,29 @@ class FolderGitSettings(KbTestCase):
         (self.tmp / "other-config").write_bytes(config.read_bytes())
         config.unlink()
         config.symlink_to(self.tmp / "other-config")
-        self.refused(["checkpoint", "x"], "plain file")
+        self.refused(["checkpoint", "x"], "is a link")
         config.unlink()
         config.write_text("[core\nfsmonitor = x\n")
         self.refused(["checkpoint", "x"], "can't be read")
+
+    def test_a_link_inside_the_git_folder_is_refused(self) -> None:
+        victim = self.tmp / "victim"
+        (victim / "other-project").mkdir(parents=True)
+        write(victim / "other-project" / "project.json", "{}")
+        for rel in ["worktrees", "objects/pack", "info"]:
+            with self.subTest(rel=rel):
+                link = self.root / ".git" / rel
+                kept = self.tmp / f"kept-{rel.replace('/', '-')}"
+                if link.exists():
+                    link.rename(kept)
+                link.symlink_to(victim)
+                self.refused(["checkpoint", "x"], "is a link")
+                self.assertEqual((victim / "other-project" / "project.json").read_text(), "{}")
+                self.assertEqual(sorted(p.name for p in victim.iterdir()), ["other-project"])
+                link.unlink()
+                if kept.exists():
+                    kept.rename(link)
+        self.assertExit(self.kb(["checkpoint", "clean again"], cwd=self.root), 0)
 
     def test_the_guards_hold_where_the_refusal_is_not_consulted(self) -> None:
         hook = self.root / ".git" / "hooks" / "reference-transaction"
