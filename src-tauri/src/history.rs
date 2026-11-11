@@ -817,6 +817,58 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Attributes only name a driver; a folder can't define one while its config is held to the inert keys.
+    #[test]
+    fn attributes_naming_a_driver_never_run_one_under_the_agents_git() {
+        let dir = app_repo("agent-attributes");
+        let (program, marker) = marker_program(&dir);
+        let named = "* filter=mark diff=mark merge=mark\n";
+        std::fs::write(dir.join(".gitattributes"), named).unwrap();
+        std::fs::create_dir_all(dir.join(".git/info")).unwrap();
+        std::fs::write(dir.join(".git/info/attributes"), named).unwrap();
+        std::fs::write(dir.join("scenes/intro.tsx"), b"export default 3;\n").unwrap();
+        assert_eq!(agent_git_verdict(&dir), Ok(()));
+        for args in [
+            &["status", "--porcelain"][..],
+            &["diff"],
+            &["add", "-A"],
+            &["commit", "-q", "-m", "x"],
+            &["log", "-p", "-1"],
+        ] {
+            let ran = Command::new("git")
+                .args(args)
+                .current_dir(&dir)
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .output()
+                .unwrap();
+            assert!(ran.status.success(), "{args:?}");
+        }
+        assert!(!marker.exists(), "an attribute ran a program");
+        for key in [
+            "filter.mark.clean",
+            "filter.mark.smudge",
+            "filter.mark.process",
+            "diff.mark.command",
+            "diff.mark.textconv",
+            "merge.mark.driver",
+            "core.attributesFile",
+        ] {
+            set_config(&dir, key, &program);
+            let withheld = agent_git_verdict(&dir).unwrap_err();
+            assert!(withheld.contains(&key.to_lowercase()), "{key}: {withheld}");
+            let unset = Command::new("git")
+                .args(["config", "--file"])
+                .arg(dir.join(".git/config"))
+                .args(["--unset", key])
+                .status()
+                .unwrap();
+            assert!(unset.success());
+        }
+        assert!(!marker.exists(), "the verdict ran a program");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn a_live_hook_or_foreign_config_withholds_the_agents_git() {
         let dir = temp("agent-git");
