@@ -23,6 +23,8 @@ export interface RenderSettings {
   antialias?: AntialiasId;
   /** Export only: each frame averages this many renders, each offset by a fraction of a pixel, after the tone map. Fixes what MSAA can't (slivers thinner than its samples, hot edges) at that many times the render cost. */
   supersample?: (typeof SUPERSAMPLES)[number];
+  /** "optical": preset soften on SDF text becomes a true gaussian defocus (toolkit/text/opticalBlur.ts). Absent (or "edge" on disk) keeps the edge soften and today's bytes. */
+  textBlur?: "optical";
 }
 
 export type AntialiasId = "fxaa" | "smaa";
@@ -84,6 +86,12 @@ export function parseRenderSettings(raw: unknown, source: string): RenderSetting
   if (supersample) settings.supersample = supersample;
   else if (block.supersample !== undefined) {
     parseWarn(`[render] ${source}: supersample must be 4, 8 or 16; left off`);
+  }
+  if (block.textBlur === "optical") settings.textBlur = "optical";
+  else if (block.textBlur !== undefined && block.textBlur !== "edge") {
+    parseWarn(
+      `[render] ${source}: textBlur must be "optical" or "edge"; text keeps its edge soften`,
+    );
   }
   return settings;
 }

@@ -47,6 +47,18 @@ describe("parseRenderSettings", () => {
     }
   });
 
+  it("carries textBlur only when it is optical", () => {
+    expect(parseRenderSettings({ textBlur: "optical" }, "t")).toEqual({
+      ...DEFAULT_RENDER_SETTINGS,
+      textBlur: "optical",
+    });
+    for (const textBlur of ["edge", "gaussian", true, null]) {
+      const parsed = parseRenderSettings({ textBlur }, "t");
+      expect(parsed).toEqual(DEFAULT_RENDER_SETTINGS);
+      expect("textBlur" in parsed).toBe(false);
+    }
+  });
+
   it("carries a known supersample count only", () => {
     for (const supersample of [4, 8, 16] as const) {
       expect(parseRenderSettings({ supersample }, "t")).toEqual({

@@ -1444,6 +1444,32 @@ of which can move pixels for text that uses neither (proven EQUAL on
   emphasis colour uniform: no stagger program changes, and plain emphasis keeps its
   exact text and bytes.
 
+## Optical text blur
+
+`render.textBlur: "optical"` swaps a preset's per-unit SDF soften (`tracking`, `slam`,
+`develop`, `vapor`) for a true gaussian defocus. Absent (or `"edge"`) mounts nothing new,
+so every standing project keeps its programs, scene graph and bytes; flipping the default
+is a deliberate rebase.
+
+- **Plan, then capture.** `planOpticalBlur` (`toolkit/text/opticalBlur.ts`) is a pure
+  function of the frame's unit samples: blurred units leave the main pass (alpha 0) and
+  group into at most four σ levels (σ = 0.53 × soften, the gaussian matching the SDF
+  band's centre slope). Each level's capture rect is the moved units' envelope padded
+  by 3.5σ, so the kernel never meets a cell or target edge.
+- **Layout space, camera free.** `OpticalBlurPass` draws only the headline's text meshes
+  into a half-float target through an orthographic camera in the text's own frame, then
+  runs two separable normalised gaussian passes on texel centres (energy conserving,
+  premultiplied). A card per level composites the result back in straight alpha through
+  three's own tone-map and encode chunks, so it lands in whichever lane the text would.
+  Supersample jitter, mirror passes and motion-blur samples reuse one capture per
+  committed frame (keyed by a render serial and the capture density).
+- **Density is the only camera input.** Texels per layout unit come from the drawing
+  buffer height and the camera's projection at the level's centre, supersampled 1.5×
+  while σ is small, dropped so σ spans at most 6 texels while it is large, and quantised
+  to quarter octaves: a pure function of the frame's camera and size.
+- **Flat only.** Units with depth or a tip or turn (`dolly`, `stand-up`, `flip-cascade`)
+  and the `frosted` look keep the SDF soften; soften under 0.006 em snaps crisp.
+
 ## Generative 3D primitives
 
 The generative toolkit primitives (`ExtrudedText`, `ParticleField`, `WireGrid`,

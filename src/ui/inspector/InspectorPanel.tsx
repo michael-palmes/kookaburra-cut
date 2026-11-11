@@ -853,6 +853,18 @@ export function InspectorPanel({
                         }
                       />
                     </div>
+                    <ToggleRow
+                      icon={<RowIcon id="typography" />}
+                      label="Optical text blur"
+                      description="Text that softens in or out defocuses like a lens: overlapping letters melt into one soft shape."
+                      checked={project.renderSettings.textBlur === "optical"}
+                      onChange={(on) =>
+                        onSetRenderSettings({
+                          ...project.renderSettings,
+                          textBlur: on ? "optical" : undefined,
+                        })
+                      }
+                    />
                   </div>
                 )}
                 {row.id === "motionBlur" && openRow === "motionBlur" && (

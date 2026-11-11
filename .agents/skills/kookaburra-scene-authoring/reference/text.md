@@ -212,6 +212,14 @@ apply). To make coded motion editable, remove the TSX preset props instead.
 delays: char 35 ms, word 90, paragraph 160, group 260. Per-character units ignore line
 breaks, so on multi-line copy prefer `by-paragraph`.
 
+Text blur: `tracking`, `slam`, `develop` and `vapor` soften each glyph's edge, which
+reads as stacked ghosts where letters overlap. For a launch film set
+`"textBlur": "optical"` in project.json's `render` block: the soften becomes a true
+gaussian defocus, so overlapping letters melt into one soft shape and resolve like a
+lens pulling focus. It is project-wide and export-exact; units with depth or a tip
+(`dolly`, `stand-up`) and the `frosted` look keep the edge soften. `"edge"` (or absent)
+is today's look.
+
 - `stamp` runs its own fixed curve (the toolkit's `stampScale` shape over the in
   window); `ease` is ignored.
 - `build` is single line: each word's slot joins the line as it fades in, so the

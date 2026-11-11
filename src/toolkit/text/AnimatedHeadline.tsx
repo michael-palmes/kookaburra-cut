@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Color, type Object3D } from "three";
+import { Color, type Group, type Object3D } from "three";
 import { useFormat } from "../../engine/format";
 import { registerGizmoTarget, unregisterGizmoTarget } from "../../engine/gizmoTargetRegistry";
 import {
@@ -83,6 +83,9 @@ import {
   type ResolvedTextLook,
   resolveTextLookWithDoc,
 } from "./looks";
+import { OpticalBlurCards, useOpticalTextBlur } from "./OpticalBlurCards";
+import { type OpticalBlurPlan, planOpticalBlur, unitRestRects } from "./opticalBlur";
+import type { OpticalBlurFrame } from "./opticalBlurPass";
 import {
   BLUR_EM,
   buildLineShiftEm,
@@ -1279,6 +1282,15 @@ function StaggeredHeadline(
   const highlighting = usesPreset(HIGHLIGHT_PRESETS, anim);
   const underlining = usesPreset(UNDERLINE_PRESETS, anim);
   const exact = useExactText();
+  // Optical text blur rides the pack's soften, so it mounts only there (frosted's constant soften stays an edge look).
+  const optical = useOpticalTextBlur() && pack && !lookFrosted;
+  const opticalRoot = useRef<Group>(null);
+  const opticalFrame = useRef<OpticalBlurFrame>({
+    serial: 0,
+    levels: [],
+    applyCapture: () => {},
+    applyMain: () => {},
+  });
   const holder = useMemo(
     () =>
       createStaggerTextMaterial({
@@ -1482,11 +1494,35 @@ function StaggeredHeadline(
   const packFrame: StaggerPackFrame | undefined = pack
     ? { accent: accentColor, clipRects }
     : undefined;
-  writeStaggerUniforms(holder, units, samples, fontSize, packFrame);
-  if (echoHolders) {
-    for (const echo of echoHolders) writeStaggerUniforms(echo, units, samples, fontSize, packFrame);
+  const opticalPlan: OpticalBlurPlan | null = optical
+    ? planOpticalBlur(
+        samples,
+        units,
+        unitRestRects(units, unitBoxes, bounds, fontSize),
+        fontSize,
+        offsetHolder && lookSpec ? Math.hypot(...offsetPrintOffset(lookSpec, fontSize)) : 0,
+      )
+    : null;
+  const writeUnits = (unitSamples: readonly TextUnitSample[]) => {
+    writeStaggerUniforms(holder, units, unitSamples, fontSize, packFrame);
+    if (echoHolders) {
+      for (const echo of echoHolders) {
+        writeStaggerUniforms(echo, units, unitSamples, fontSize, packFrame);
+      }
+    }
+    if (offsetHolder) writeStaggerUniforms(offsetHolder, units, unitSamples, fontSize, packFrame);
+  };
+  const mainSamples = opticalPlan?.main ?? samples;
+  writeUnits(mainSamples);
+  if (optical) {
+    const f = opticalFrame.current;
+    f.serial++;
+    f.levels = opticalPlan?.levels ?? [];
+    f.applyCapture = (i) => {
+      if (opticalPlan) writeUnits(opticalPlan.captures[i]);
+    };
+    f.applyMain = () => writeUnits(mainSamples);
   }
-  if (offsetHolder) writeStaggerUniforms(offsetHolder, units, samples, fontSize, packFrame);
   // Emphasis on every layer (the offset under-layer keeps its own colour, gaining only the weight); the typewriter head masks them all alike.
   const emphasised = useEmphasis(emphasis, prepared, carets);
   // A shaped emphasis draws once the whole line has landed, the last unit included, unless `emphasisAt` places it.
@@ -1630,7 +1666,7 @@ function StaggeredHeadline(
   const coreFill = lookSpec?.preset === "neon" ? neonCoreFill(fill, lookSpec.intensity) : fill;
   const offsetXY = offsetHolder && lookSpec ? offsetPrintOffset(lookSpec, fontSize) : null;
 
-  return (
+  const textMeshes = (
     <>
       {offsetHolder && lookSpec && offsetXY && (
         <Text
@@ -1721,6 +1757,30 @@ function StaggeredHeadline(
       >
         {text}
       </Text>
+    </>
+  );
+
+  return (
+    <>
+      {optical ? (
+        <>
+          <group ref={opticalRoot}>{textMeshes}</group>
+          <OpticalBlurCards
+            frame={opticalFrame}
+            root={opticalRoot}
+            levels={opticalPlan?.levels ?? []}
+            position={position}
+            rotZ={rotZ}
+            look={{
+              toneMapped: holder.material.toneMapped,
+              depthTest: holder.material.depthTest,
+              side: holder.material.side,
+            }}
+          />
+        </>
+      ) : (
+        textMeshes
+      )}
       {!props.underLayer && (highlighting || underlining || lookHighlight) && (
         <group position={position} {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}>
           {lookHighlight && lookWordUnits && lookWordBoxes && lookHighlightSamples && (
