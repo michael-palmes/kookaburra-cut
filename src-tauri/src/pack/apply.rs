@@ -1081,6 +1081,7 @@ fn apply_one(
     }
     // The destination is resolved before the source is read, so a hostile slug never reaches the filesystem at all.
     let target = workspace_target(root, item.kind, &item.target_slug)?;
+    target.occupied_by_other()?;
     let source = staged_source(staging, item.kind, &item.slug);
     if !source.exists() {
         return Err(PackError::ManifestEntryMissing(

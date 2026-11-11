@@ -16,19 +16,6 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-/// Folder names the workspace root already owns; a pack project claiming one would shadow a whole library.
-const RESERVED_PROJECT_SLUGS: [&str; 9] = [
-    "themes",
-    crate::brands::BRANDS_DIR_NAME,
-    "fonts",
-    "gradients",
-    "export-presets",
-    "objects",
-    "screenshots",
-    crate::library::TEMPLATES_DIR_NAME,
-    crate::library::PRESETS_DIR_NAME,
-];
-
 /// How far the `-2`, `-3`, … walk goes before giving up.
 const MAX_KEEP_BOTH: u32 = 999;
 
@@ -83,6 +70,20 @@ impl Target {
     pub fn is_dir_item(&self) -> bool {
         self.marker.is_some()
     }
+
+    /// Something is at the path that isn't this kind of item (a stray folder, a link, a library under another case): replacing it would take it unseen.
+    pub fn occupied_by_other(&self) -> Result<(), PackError> {
+        if !self.exists() && std::fs::symlink_metadata(&self.path).is_ok() {
+            return Err(PackError::DestinationInvalid(format!(
+                "\"{}\" is already in the workspace and isn't one of these, so it stays as it is",
+                self.path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_default()
+            )));
+        }
+        Ok(())
+    }
 }
 
 /// Resolve a pack slug to a workspace path, refusing anything that could aim outside its own library.
@@ -105,7 +106,7 @@ pub(crate) fn workspace_target(
         }
         ItemKind::Project => {
             validate_pack_slug(slug)?;
-            if RESERVED_PROJECT_SLUGS.contains(&slug) {
+            if crate::workspace::is_reserved_slug(slug) {
                 return Err(PackError::DestinationInvalid(format!(
                     "\"{slug}\" is a reserved folder name"
                 )));
@@ -348,6 +349,7 @@ fn plan_item(
     base: &PackItemBase,
 ) -> Result<ItemPlan, PackError> {
     let target = workspace_target(root, kind, &base.slug)?;
+    target.occupied_by_other()?;
     let (state, local, keep_both) = if target.exists() {
         let scanned = if target.is_dir_item() {
             scan_dir(&target.path)?
@@ -853,6 +855,46 @@ pub(crate) mod tests {
         assert!(workspace_target(&root, ItemKind::Brand, "../evil").is_err());
         assert!(workspace_target(&root, ItemKind::Screenshot, "../evil.png").is_err());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_reserved_name_in_any_case_or_a_folder_that_is_not_a_project_never_plans() {
+        let root = scratch("reserved-fold");
+        for slug in [
+            "Themes",
+            "TEMPLATES",
+            "Fonts",
+            "Export-Presets",
+            "_bridge",
+            "_Bridge",
+            "_autorun",
+        ] {
+            assert!(
+                workspace_target(&root, ItemKind::Project, slug).is_err(),
+                "{slug}"
+            );
+        }
+        put_local(&root, ItemKind::Theme, "night", "{}");
+        write(&root.join("archive/notes.txt"), "mine");
+        let staging = scratch("reserved-fold-staging");
+        for slug in ["Themes", "archive"] {
+            let base = stage_dir_item(
+                &staging,
+                ItemKind::Project,
+                slug,
+                &[("project.json", "{}")],
+                FUTURE,
+            );
+            let staged = staged_pack(staging.clone(), contents_for(ItemKind::Project, vec![base]));
+            assert!(
+                plan_conflicts(&root, &staged, &selection_of(ItemKind::Project, &[slug])).is_err(),
+                "{slug}"
+            );
+        }
+        assert!(root.join("themes/night/theme.json").is_file());
+        assert!(root.join("archive/notes.txt").is_file());
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&staging);
     }
 
     #[test]

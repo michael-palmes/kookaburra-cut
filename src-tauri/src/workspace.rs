@@ -414,8 +414,8 @@ pub(crate) fn slugify(name: &str) -> String {
     slug
 }
 
-/// Workspace folders owned by the app rather than by projects; a project taking one of these names would shadow a library, so creation and duplication both refuse them.
-const RESERVED_SLUGS: [&str; 9] = [
+/// Workspace folders owned by the app rather than by projects; a project taking one of these names would shadow a library or the bridge, so creation, duplication and pack import all refuse them.
+const RESERVED_SLUGS: [&str; 11] = [
     "themes",
     crate::brands::BRANDS_DIR_NAME,
     "fonts",
@@ -425,10 +425,19 @@ const RESERVED_SLUGS: [&str; 9] = [
     "screenshots",
     crate::library::TEMPLATES_DIR_NAME,
     crate::library::PRESETS_DIR_NAME,
+    "_bridge",
+    "_autorun",
 ];
 
+/// Matched as the volume matches names: slugs are ASCII, so APFS folds them as ASCII case.
+pub(crate) fn is_reserved_slug(slug: &str) -> bool {
+    RESERVED_SLUGS
+        .iter()
+        .any(|reserved| reserved.eq_ignore_ascii_case(slug))
+}
+
 fn reject_reserved_slug(slug: &str) -> Result<(), String> {
-    if RESERVED_SLUGS.contains(&slug) {
+    if is_reserved_slug(slug) {
         return Err(format!(
             "\"{slug}\" is a reserved folder name: pick another"
         ));
@@ -3491,6 +3500,9 @@ mod tests {
             "templates",
             "presets",
         ] {
+            assert!(reject_reserved_slug(name).is_err(), "{name} was allowed");
+        }
+        for name in ["Themes", "PRESETS", "_bridge", "_Autorun"] {
             assert!(reject_reserved_slug(name).is_err(), "{name} was allowed");
         }
         assert!(reject_reserved_slug("my-video").is_ok());
