@@ -21,9 +21,9 @@ export default defineScene({
         <AnimatedHeadline
           text={name}
           textKey="title"
-          from={0}
-          fontSize={0.5}
-          position={[1.33, -0.1, 1.2]}
+          hitAt={0}
+          fontSize={0.56}
+          position={[1.4, 0, 1.2]}
         />
       </SceneStage>
     );

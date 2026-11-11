@@ -144,9 +144,9 @@
       "effects": {
         "lens": {
           "intensity": 1,
-          "bloom": 0.14,
+          "bloom": 0.08,
           "bloomRadius": 0.88,
-          "halation": 0.4,
+          "halation": 0.2,
           "halationThreshold": 1,
           "halationColor": "#ff7a30"
         }
