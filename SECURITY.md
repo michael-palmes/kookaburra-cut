@@ -471,7 +471,7 @@ stamped before the profile stays in its folder, and its kb still runs.
   keeps out the home folder, shallow paths and credential folders; the webview
   cannot add one); `assets restore` takes an archive line only for a file in
   `assets/` and its copy in that batch's archive folder, never through a link
-  (`kblib/asset_ops.py`, `_check_restorable`); reads outside the workspace print the resolved
+  or from another project (`kblib/asset_ops.py`, `_check_restorable`); reads outside the workspace print the resolved
   path and size to stderr and refuse `~/.ssh`, `~/.aws`, `~/.config`,
   `~/.gnupg`, `~/Library/Keychains`, `~/.docker`, `~/.kube`, `~/.azure`,
   `~/.claude`, `.env*`, `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`, private

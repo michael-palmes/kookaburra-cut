@@ -614,20 +614,23 @@ def _check_restorable(project: Project, ident: str, source: Any, to: Any) -> Non
         return os.path.realpath(str(root / rel)) == str(root / rel)
 
     if not (isinstance(source, str) and isinstance(to, str) and safe_rel(source) and source.startswith("assets/") and literal(source)):
-        raise refuse("names a file outside assets/")
+        raise refuse("names a file outside assets/ or behind a link")
     tail = f"/{ident}/{source}"
-    if not re.fullmatch(r"[0-9A-Za-z_-]+", str(ident)) or not to.endswith(tail):
+    if not re.fullmatch(r"\d{8}-\d{6}-\d{3}(-\d+)?", str(ident)) or not to.endswith(tail):
         raise refuse("names an archive copy outside its batch folder")
     folder = to[: -len(tail)]
     if folder == archive.ARCHIVE_DIR:
         if not literal(to):
             raise refuse("names an archive copy that is a link")
         return
-    if ".." in folder.split("/") or not (os.path.isabs(folder) or safe_rel(folder)) or folder.startswith("assets"):
+    if ".." in folder.split("/") or not (os.path.isabs(folder) or safe_rel(folder)) or folder == "assets" or folder.startswith("assets/"):
         raise refuse("names an archive folder kb didn't make")
     held = Path(to) if os.path.isabs(to) else root / to
-    if held.is_symlink() or reach.denied_reason(reach.resolve(str(held))):
+    real = reach.resolve(str(held))
+    if held.is_symlink() or reach.denied_reason(real):
         raise refuse("names an archive copy kb won't read")
+    if any(parent != root and (parent / "project.json").is_file() for parent in real.parents):
+        raise refuse("names an archive copy inside another project")
     reach.guard_write(project, str(held), "the archive folder")
 
 

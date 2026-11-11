@@ -271,7 +271,7 @@ class HostileFolder(KbTestCase):
         (self.project / "assets" / "sub").parent.mkdir(exist_ok=True)
         (self.project / "assets" / "sub").symlink_to(self.victim / "keep-0")
         held_rel = held.relative_to(self.project).as_posix()
-        hostile = [
+        hostile: List[tuple] = [
             ("../victim/planted.txt", held_rel),
             ("../victim/thesis.txt", held_rel),
             (str(self.victim / "absolute.txt"), held_rel),
@@ -280,9 +280,20 @@ class HostileFolder(KbTestCase):
             ("assets/restored.png", str(self.victim / "keep-1" / "doc.txt")),
             ("assets/restored.png", ".kb/archive/20260101-000000-001/assets/linked.png"),
         ]
-        for n, (source, to) in enumerate(hostile):
+        sibling = self.tmp / "sibling"
+        (sibling / "assets").mkdir(parents=True)
+        (sibling / "project.json").write_text("{}")
+        (sibling / "assets" / "restored.png").write_bytes(png_bytes())
+        archived = sibling / ".kb" / "archive" / "20260103-000000-000" / "assets" / "restored.png"
+        archived.parent.mkdir(parents=True)
+        archived.write_bytes(png_bytes())
+        hostile += [
+            ("assets/restored.png", str(sibling / "assets" / "restored.png"), "sibling"),
+            ("assets/restored.png", str(archived), "20260103-000000-000"),
+        ]
+        for n, (source, to, *named) in enumerate(hostile):
             with self.subTest(source=source, to=to):
-                ident = f"20260102-000000-{n:03d}"
+                ident = named[0] if named else f"20260102-000000-{n:03d}"
                 line = {"atMs": 1, "id": ident, "op": "unused", "from": source, "to": to, "sha256": "0" * 64, "by": None}
                 (archive / "index.jsonl").write_text(json.dumps(line) + "\n")
                 proc = self.kb(["assets", "restore", ident, "--json"], cwd=self.project)
@@ -292,6 +303,8 @@ class HostileFolder(KbTestCase):
                 self.assertTrue(held.is_file())
                 self.assertFalse((self.victim / "planted.txt").exists())
                 self.assertFalse((self.victim / "absolute.txt").exists())
+                self.assertTrue((sibling / "assets" / "restored.png").is_file())
+                self.assertTrue(archived.is_file())
                 self.untouched()
 
     def test_real_folders_still_work(self) -> None:
