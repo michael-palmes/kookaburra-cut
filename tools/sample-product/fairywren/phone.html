@@ -44,7 +44,7 @@
         position: absolute;
         inset: -40px;
         border-radius: 50%;
-        background: radial-gradient(closest-side, rgba(240, 128, 91, 0.2), transparent);
+        background: radial-gradient(closest-side, rgba(238, 132, 100, 0.16), transparent);
       }
       .fv-ring .readout {
         position: absolute;
@@ -279,7 +279,7 @@
             <div class="chips"><div class="chip">${icon("calendar")}Today</div><div class="chip pick" id="when">${icon("clock")}16:30</div><div class="chip">${icon("bell")}10 min before</div></div>
             <div class="save">Add to today</div></div>
           <div class="focus-view" id="focusView"><div class="fv-head"><small>Until 14:30</small><h1 class="display">Focus</h1></div>
-            <div class="fv-ring"><div class="halo" id="halo"></div><svg viewBox="0 0 300 300"><circle cx="150" cy="150" r="136" fill="none" stroke="rgba(246,242,235,0.1)" stroke-width="10"/><circle id="fvArc" cx="150" cy="150" r="136" fill="none" stroke="var(--coral)" stroke-width="10" stroke-linecap="round" stroke-dasharray="${2 * Math.PI * 136}" stroke-dashoffset="${2 * Math.PI * 136}"/></svg>
+            <div class="fv-ring"><div class="halo" id="halo"></div><svg viewBox="0 0 300 300"><circle cx="150" cy="150" r="136" fill="none" stroke="rgba(246,242,235,0.1)" stroke-width="10"/><circle id="fvArc" cx="150" cy="150" r="136" fill="none" stroke="#ee7867" stroke-width="10" stroke-linecap="round" stroke-dasharray="${2 * Math.PI * 136}" stroke-dashoffset="${2 * Math.PI * 136}"/></svg>
               <div class="readout"><div class="clock tnum" id="clock">25:00</div><div class="task">Write the brief</div></div></div>
             <div class="fv-chips"><div class="chip" id="paused">${icon("bellOff")}Notifications paused</div></div>
             <div class="fv-end" id="fvEnd">End focus</div></div>
@@ -356,7 +356,7 @@
         $("when").style.transform = `scale(${t >= 4700 ? 1 + 0.08 * Math.sin(Math.PI * seg(t, 4700, 300)) : 1})`;
       }
 
-      const DARK = { bg: "#141211", surface: "#24211f", ink: "#f6f2eb", muted: "#a8a096" };
+      const DARK = { bg: "#1f1c1b", surface: "#2b2826", ink: "#f6f2eb", muted: "#aaa298" };
       const FROM = P.mode === "dark" ? DARK : { bg: "#f6f3ee", surface: "#fffdfa", ink: "#1b1917", muted: "#777067" };
 
       function renderFocus(t) {
@@ -368,7 +368,7 @@
         ripple(tap, t, 700, { size: 70, colour: "rgba(111,174,132,0.45)" });
         const k = ease.outBack(seg(t, 760, 280));
         $("toggle").querySelector(".knob").style.transform = `translateX(${20 * k}px)`;
-        $("toggle").style.background = mix(P.mode === "dark" ? "#4a453f" : "#d9d5cd", "#6f9f68", ease.out(seg(t, 760, 240)));
+        $("toggle").style.background = mix(P.mode === "dark" ? "#4d4843" : "#d9d5cd", P.mode === "dark" ? "#84a877" : "#6f9f68", ease.out(seg(t, 760, 240)));
 
         const m = ease.inOut(seg(t, 1150, 1000));
         for (const key of Object.keys(DARK)) phone.style.setProperty(`--${key}`, mix(FROM[key], DARK[key], m));

@@ -34,6 +34,11 @@
           0 0 0 1px rgba(246, 242, 235, 0.08) inset;
         overflow: hidden;
       }
+      .dark .sorted {
+        background:
+          radial-gradient(80% 90% at 100% 0%, rgba(238, 120, 103, 0.28), transparent 60%),
+          linear-gradient(160deg, #423a35, #2a2624);
+      }
       .sorted .top {
         display: flex;
         align-items: center;
@@ -374,7 +379,7 @@
       .dark .hero {
         background:
           radial-gradient(70% 90% at 90% 10%, rgba(255, 214, 170, 0.22), transparent 60%),
-          linear-gradient(135deg, #b8684a, #a8473c 60%, #7e3531);
+          linear-gradient(135deg, #9c6450, #8a4c43 60%, #6c3b37);
       }
       .hero small {
         font-size: 14px;
@@ -1009,7 +1014,7 @@
         }
         const k = ease.outBack(seg(t, 1500, 320));
         $("toggle").querySelector(".knob").style.transform = `translateX(${28 * k}px)`;
-        $("toggle").style.background = mix(dark ? "#4a453f" : "#d9d5cd", dark ? "#86ad72" : "#6f9f68", ease.out(seg(t, 1500, 260)));
+        $("toggle").style.background = mix(dark ? "#4d4843" : "#d9d5cd", dark ? "#84a877" : "#6f9f68", ease.out(seg(t, 1500, 260)));
         const grow = ease.inOut(seg(t, 1850, 650));
         $("fcard").style.height = `${108 + 112 * grow}px`;
         $("timer").style.opacity = String(ease.out(seg(t, 2150, 420)));
