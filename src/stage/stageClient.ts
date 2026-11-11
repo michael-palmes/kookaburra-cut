@@ -54,7 +54,7 @@ import { windowNativePort } from "../engine/windowNativePort";
 import { workspaceFontEntries } from "../theme/fonts";
 import type { FrameRect } from "../toolkit/frame/frameLayout";
 import { applyMirroredEmoji } from "../toolkit/text/emojiRaster";
-import { mirroredStores } from "./mirroredStores";
+import { acceptFromWorker, mirroredStores } from "./mirroredStores";
 import { REACH_REFUSED } from "./realmGuard";
 import stageWorkerScript from "./stageWorker.ts?worker&url";
 import { mirrorStores, type StoreMirror } from "./storeMirror";
@@ -170,6 +170,7 @@ export class StageClient implements StageHandle {
         depthStage: useDepthStageRegistry as never,
       },
       (name, patch) => this.send({ type: "store", name, patch }),
+      acceptFromWorker,
     );
     this.worker = new Worker(stageWorkerUrl(), { type: "module" });
     this.worker.onmessage = (ev: MessageEvent<ToWindow>) => this.onMessage(ev.data);

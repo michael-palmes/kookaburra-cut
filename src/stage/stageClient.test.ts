@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { reportAutoRunError } from "../engine/autorun";
+import { useObjectEditStore } from "../engine/objectEditStore";
 import type { LoadedProject } from "../engine/project";
 import { STAGE_PROTOCOL_VERSION, type WindowNotice } from "../engine/stageProtocol";
+import { initialDeckState } from "../present/presentStateMachine";
+import { usePresentStore } from "../present/presentStore";
+import { useEditorStore } from "../store/editorStore";
+import { useUiStore } from "../store/uiStore";
 import { StageClient, stageWorkerUrl, toStageProject } from "./stageClient";
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => {}) }));
@@ -189,5 +194,51 @@ describe("StageClient boot", () => {
     expect(retry.client.boot()).toEqual({ status: "ready", late: false });
     await expect(retry.client.ready).resolves.toBeUndefined();
     expect(worker.terminated && !retry.worker.terminated).toBe(true);
+  });
+});
+
+describe("StageClient store mirror", () => {
+  const clients: StageClient[] = [];
+  beforeEach(() => {
+    FakeWorker.instances = [];
+    vi.stubGlobal("Worker", FakeWorker);
+    useEditorStore.setState({ projectId: "ws:allowed" });
+    useUiStore.setState({ audioMuted: false });
+    usePresentStore.setState({ websiteFocused: false, deck: initialDeckState() });
+    useObjectEditStore.setState({
+      selected: { sceneIndex: 1, objectId: "cube" },
+      pendingCommit: null,
+    });
+  });
+  afterEach(() => {
+    for (const client of clients.splice(0)) client.dispose();
+    vi.unstubAllGlobals();
+  });
+  const worker = () => {
+    clients.push(new StageClient(fakeCanvas().canvas, "editor", size, "demand"));
+    return FakeWorker.instances.at(-1) as FakeWorker;
+  };
+  const placement = { position: [0, 0, 0] };
+
+  it("never lets the worker pick a project, drive the chrome or hold Present's focus", () => {
+    const w = worker();
+    w.emit({ type: "store", name: "editor", patch: { projectId: "ws:other" } });
+    w.emit({ type: "store", name: "ui", patch: { audioMuted: true } });
+    w.emit({ type: "store", name: "presentDeck", patch: { websiteFocused: true } });
+    expect(useEditorStore.getState().projectId).toBe("ws:allowed");
+    expect(useUiStore.getState().audioMuted).toBe(false);
+    expect(usePresentStore.getState().websiteFocused).toBe(false);
+  });
+
+  it("takes a gizmo's commit only for the item the inspector has selected", () => {
+    const w = worker();
+    const elsewhere = { sceneIndex: 2, objectId: "cube", placement };
+    w.emit({ type: "store", name: "objectEdit", patch: { pendingCommit: elsewhere } });
+    expect(useObjectEditStore.getState().pendingCommit).toBeNull();
+    const attached = { sceneIndex: 1, objectId: "cube", placement };
+    w.emit({ type: "store", name: "objectEdit", patch: { pendingCommit: attached } });
+    expect(useObjectEditStore.getState().pendingCommit).toEqual(attached);
+    w.emit({ type: "store", name: "objectEdit", patch: { selected: null } });
+    expect(useObjectEditStore.getState().selected).toBeNull();
   });
 });
