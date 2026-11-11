@@ -44,6 +44,7 @@ import {
 } from "three";
 import type { EffectsConfig, EffectsOverride } from "../theme/tokens";
 import { DeterministicGrainEffect } from "./DeterministicGrainEffect";
+import { DitherEffect } from "./DitherEffect";
 import { asDisplayTarget } from "./displayTarget";
 import type { DofUnion, ResolvedDof } from "./dof";
 import { ExposureEffect } from "./ExposureEffect";
@@ -238,12 +239,13 @@ function projectEffectKeys(): Set<string> {
 
 /** Resolves the effect stack for the frame, or `null` if the project declares no effects at all (the compositor keeps its byte-identical composer-free paths); a project that declares any effect returns non-null for every frame, even a scene with no params returns `{}`, so tone-mapping is uniform project-wide (three's ACES and postprocessing's ACES aren't bit-identical, so they're never mixed). */
 export function resolveFrameEffects(resolved: Resolved): EffectsConfig | null {
-  const { projectDefault, overrides, sceneDefaults } = useEffectsStore.getState();
+  const { projectDefault, overrides, sceneDefaults, renderSettings } = useEffectsStore.getState();
   const anySceneEffects = Object.values(sceneDefaults).some((b) => Object.keys(b).length > 0);
   if (
     Object.keys(projectDefault).length === 0 &&
     Object.keys(overrides).length === 0 &&
-    !anySceneEffects
+    !anySceneEffects &&
+    renderSettings.dither !== true
   ) {
     return null;
   }
@@ -283,7 +285,8 @@ export function ensureComposer(
     `|tm:${renderSettings.toneMapping}` +
     `|dof:${dofKeyOf(dofUnion)}` +
     (renderSettings.antialias ? `|aa:${renderSettings.antialias}` : "") +
-    (renderSettings.antialias === "smaa" && !smaaTextures ? "-pending" : "");
+    (renderSettings.antialias === "smaa" && !smaaTextures ? "-pending" : "") +
+    (renderSettings.dither ? "|dither" : "");
   if (
     composerState &&
     composerState.gl === gl &&
@@ -362,6 +365,8 @@ export function ensureComposer(
   // Antialiasing reads its pass's input, so it rides its own pass after the tone map: on display values, where MSAA's linear resolve leaves hot highlights hard-edged.
   if (renderSettings.antialias)
     composer.addPass(new EffectPass(undefined, antialiasEffect(renderSettings.antialias)));
+  // The dither rides the last pass, on the encoded display values just before the 8-bit write.
+  if (renderSettings.dither) composer.addPass(new EffectPass(undefined, new DitherEffect()));
 
   composerState = {
     gl,

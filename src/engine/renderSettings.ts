@@ -25,6 +25,10 @@ export interface RenderSettings {
   supersample?: (typeof SUPERSAMPLES)[number];
   /** "optical": preset soften on SDF text becomes a true gaussian defocus (toolkit/text/opticalBlur.ts). Absent (or "edge" on disk) keeps the edge soften and today's bytes. */
   textBlur?: "optical";
+  /** Triangular dither at the final 8-bit write, so dark gradients don't band. Routes every frame through the effect chain. Absent keeps today's chain and bytes. */
+  dither?: true;
+  /** Device metal filters its roughness by the screen-space spread of the normal in GGX alpha space, and a finish's grain fades per octave, so highlights stop sparkling. Absent keeps today's programs and bytes. */
+  specularAA?: true;
 }
 
 export type AntialiasId = "fxaa" | "smaa";
@@ -92,6 +96,14 @@ export function parseRenderSettings(raw: unknown, source: string): RenderSetting
     parseWarn(
       `[render] ${source}: textBlur must be "optical" or "edge"; text keeps its edge soften`,
     );
+  }
+  if (block.dither === true) settings.dither = true;
+  else if (block.dither !== undefined && block.dither !== false) {
+    parseWarn(`[render] ${source}: dither must be true or false; left off`);
+  }
+  if (block.specularAA === true) settings.specularAA = true;
+  else if (block.specularAA !== undefined && block.specularAA !== false) {
+    parseWarn(`[render] ${source}: specularAA must be true or false; left off`);
   }
   return settings;
 }

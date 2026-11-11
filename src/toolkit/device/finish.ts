@@ -12,7 +12,7 @@ import {
   type SkinnedMesh,
 } from "three";
 import type { DeviceId } from "./catalog";
-import { GSAA_FRAGMENT } from "./gsaa";
+import { gsaaChunk, SPECULAR_AA_GRAIN } from "./specularAA";
 
 /** Opt-in hero finishes for device bodies (research prototype): absent means the glb's authored materials, untouched. */
 
@@ -169,18 +169,23 @@ float kbNoise( vec2 p ) {
 }
 `;
 
-const FRAME_ROUGHNESS = /* glsl */ `
+const LEGACY_GRAIN = /* glsl */ `
+	float kbFw = fwidth( kbC.x );
+	float kbFade = clamp( 2.0 - kbFw * 3.0, 0.0, 1.0 ) * ( 1.0 - kbChamfer );
+	kbG = ( kbNoise( kbC ) * 0.6 + kbNoise( kbC * vec2( 3.1, 1.3 ) + vec2( 17.0, 3.0 ) ) * 0.4 - 0.5 ) * kbFade * kbGrain;
+`;
+
+function frameRoughness(specularAA: boolean): string {
+  return /* glsl */ `
 float kbG = 0.0;
 float kbChamfer = kbChamferRough >= 0.0 ? smoothstep( 0.3, 0.8, abs( normalize( vKbDevNrm ).z ) ) : 0.0;
 if ( kbGrain > 0.0 ) {
 	vec2 kbC = vec2( vKbDevPos.z * kbGrainScale, ( vKbDevPos.x + vKbDevPos.y ) * kbGrainScale * 0.012 );
-	float kbFw = fwidth( kbC.x );
-	float kbFade = clamp( 2.0 - kbFw * 3.0, 0.0, 1.0 ) * ( 1.0 - kbChamfer );
-	kbG = ( kbNoise( kbC ) * 0.6 + kbNoise( kbC * vec2( 3.1, 1.3 ) + vec2( 17.0, 3.0 ) ) * 0.4 - 0.5 ) * kbFade * kbGrain;
-	roughnessFactor = clamp( roughnessFactor * ( 1.0 + kbG * 0.35 ), 0.0, 1.0 );
+${specularAA ? SPECULAR_AA_GRAIN : LEGACY_GRAIN}	roughnessFactor = clamp( roughnessFactor * ( 1.0 + kbG * 0.35 ), 0.0, 1.0 );
 }
 if ( kbChamferRough >= 0.0 ) roughnessFactor = mix( roughnessFactor, kbChamferRough, kbChamfer );
 `;
+}
 
 const FRAME_NORMAL = /* glsl */ `
 if ( kbGrain > 0.0 ) {
@@ -242,18 +247,26 @@ function toPhysical(material: Material): MeshPhysicalMaterial {
   return physical;
 }
 
-function gsaaOnly(material: Material, key: string): void {
+function gsaaOnly(material: Material, key: string, specularAA: boolean): void {
+  const gsaa = gsaaChunk(specularAA);
   material.onBeforeCompile = (shader) => {
     shader.fragmentShader = mustReplace(
       shader.fragmentShader,
       "#include <lights_physical_fragment>",
-      GSAA_FRAGMENT,
+      gsaa.fragment,
     );
   };
-  material.customProgramCacheKey = () => key;
+  const programKey = key + gsaa.key;
+  material.customProgramCacheKey = () => programKey;
 }
 
-function applyFrame(source: Material, spec: DeviceFrameFinish, root: Object3D): Material {
+function applyFrame(
+  source: Material,
+  spec: DeviceFrameFinish,
+  root: Object3D,
+  specularAA: boolean,
+): Material {
+  const gsaa = gsaaChunk(specularAA);
   const material = toPhysical(source);
   if (spec.roughness !== undefined) material.roughness = spec.roughness;
   if (spec.metalness !== undefined) material.metalness = spec.metalness;
@@ -294,7 +307,7 @@ function applyFrame(source: Material, spec: DeviceFrameFinish, root: Object3D): 
     fs = mustReplace(
       fs,
       "#include <roughnessmap_fragment>",
-      `#include <roughnessmap_fragment>${FRAME_ROUGHNESS}`,
+      `#include <roughnessmap_fragment>${frameRoughness(specularAA)}`,
     );
     fs = mustReplace(
       fs,
@@ -304,7 +317,7 @@ function applyFrame(source: Material, spec: DeviceFrameFinish, root: Object3D): 
     fs = mustReplace(
       fs,
       "#include <lights_physical_fragment>",
-      `${GSAA_FRAGMENT}${FRAME_ANISOTROPY}`,
+      `${gsaa.fragment}${FRAME_ANISOTROPY}`,
     );
     if (taps > 0) {
       fs = mustReplace(
@@ -321,9 +334,9 @@ function applyFrame(source: Material, spec: DeviceFrameFinish, root: Object3D): 
     shader.fragmentShader = fs;
   };
   const frameKey =
-    taps > 0
+    (taps > 0
       ? `kookaburra-device-finish-frame-v1-taps${taps}`
-      : "kookaburra-device-finish-frame-v1";
+      : "kookaburra-device-finish-frame-v1") + gsaa.key;
   material.customProgramCacheKey = () => frameKey;
   // World matrices are final by draw time, so the device frame is read here, never cached across frames.
   material.onBeforeRender = () => {
@@ -340,18 +353,19 @@ export function applyDeviceFinish(
   model: DeviceId,
   spec: DeviceFinishSpec,
   root: Object3D,
+  specularAA = false,
 ): Material | null {
   if (name && spec.debug?.includes(name)) {
     return new MeshBasicMaterial({ color: new Color(1, 0, 1) });
   }
   const role = name ? FINISH_ROLES[model]?.[name] : undefined;
   if (!role) return null;
-  if (role === "frame" && spec.frame) return applyFrame(material, spec.frame, root);
+  if (role === "frame" && spec.frame) return applyFrame(material, spec.frame, root, specularAA);
   if (role === "polished" && spec.polished) {
     const m = material as MeshStandardMaterial;
     if (spec.polished.roughness !== undefined) m.roughness = spec.polished.roughness;
     if (spec.polished.envIntensity !== undefined) m.envMapIntensity = spec.polished.envIntensity;
-    gsaaOnly(m, "kookaburra-device-finish-polished-v1");
+    gsaaOnly(m, "kookaburra-device-finish-polished-v1", specularAA);
     return m;
   }
   if (role === "back" && spec.back) {
@@ -363,14 +377,18 @@ export function applyDeviceFinish(
     if (s.clearcoat !== undefined) b.clearcoat = s.clearcoat;
     if (s.clearcoatRoughness !== undefined) b.clearcoatRoughness = s.clearcoatRoughness;
     if (s.envIntensity !== undefined) b.envMapIntensity = s.envIntensity;
-    gsaaOnly(b, "kookaburra-device-finish-back-v1");
+    gsaaOnly(b, "kookaburra-device-finish-back-v1", specularAA);
     return b;
   }
   return null;
 }
 
 /** Adds the glass coat over each display mesh: same geometry and transform, black base, additive, so only the reflection lands. */
-export function addScreenCoats(screens: readonly Mesh[], spec: DeviceFinishSpec): void {
+export function addScreenCoats(
+  screens: readonly Mesh[],
+  spec: DeviceFinishSpec,
+  specularAA = false,
+): void {
   const glass = spec.glass;
   if (!glass) return;
   const coat = new MeshPhysicalMaterial({
@@ -387,7 +405,7 @@ export function addScreenCoats(screens: readonly Mesh[], spec: DeviceFinishSpec)
     polygonOffsetFactor: -1,
     polygonOffsetUnits: -1,
   });
-  gsaaOnly(coat, "kookaburra-device-finish-coat-v1");
+  gsaaOnly(coat, "kookaburra-device-finish-coat-v1", specularAA);
   for (const screen of screens) {
     // A folding display's skin would leave a rigid coat behind.
     if ((screen as SkinnedMesh).isSkinnedMesh) continue;
