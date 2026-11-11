@@ -148,9 +148,21 @@ the scene's; blur animates, the mode does not.
 | `radial` | Burst: zoom streaks from a centre | `blur`, `centerX`, `centerY` -1..1 |
 | `directional` | Swipe: smear along an angle | `blur`, `angleDeg` -90..90 |
 | `split` | Split diopter: two focus planes | `blur`, `range`, `focus`, `focusB`, `offset`, `angleDeg`, `squeeze` |
+| `lens` | A real lens: blur from the f-stop and true depth | `fStop` 0.7..64, `focus`, `sensorMm` 2..70 (24 full frame), `focalMm` 4..1200, `blur` 0..1 (starts at 1), `squeeze` |
 
 - `focus` absent or `"auto"` follows the aim distance (orbit: the distance to target),
   so the subject stays sharp through a move.
+- Prefer `lens` for product and device shots. `depth`'s `blur` is an arbitrary
+  amount, so a macro reads as a half-resolution smear; `lens` keeps the focus band
+  at full resolution and its bokeh round and bright. One unit is ~56 mm (a phone is
+  2.6 units tall), so a camera 2 units from a phone is a 10 cm macro: start at
+  `fStop` 11 to 16 there, 4 to 5.6 for a hero shot across the set. The focal length
+  follows the fov on `sensorMm`; set `focalMm` only to name a lens. `range` is
+  ignored, and a focus closer than the focal length saturates the blur.
+
+```json
+"dof": { "mode": "lens", "fStop": 11, "focus": "auto" }
+```
 - Everything blurs by its true depth, text and screens included: keep text you need
   legible on the focus plane. `blur: 0` frames are unchanged. Inspector depth presets:
   Subtle (blur 0.25, range 2), Cinematic (0.6, 1.2), Macro (0.9, 0.5).

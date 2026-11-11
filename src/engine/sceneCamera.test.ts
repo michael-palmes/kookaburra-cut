@@ -649,7 +649,7 @@ describe("orbit dof", () => {
   });
 
   it("every mode raises its own union flag", () => {
-    const docFor = (mode: "soft" | "radial" | "directional" | "split"): SceneDoc => ({
+    const docFor = (mode: "soft" | "radial" | "directional" | "split" | "lens"): SceneDoc => ({
       version: 1,
       camera: {
         keys: [{ id: "k", tMs: 0, pose: pose({ dof: { mode, blur: 0.4 } }) }],
@@ -663,6 +663,7 @@ describe("orbit dof", () => {
       radial: false,
       directional: false,
       split: true,
+      lens: false,
     });
     expect(dofUnionOf(buildSceneCameraTracks([docFor("radial"), docFor("directional")]))).toEqual({
       depth: false,
@@ -671,7 +672,27 @@ describe("orbit dof", () => {
       radial: true,
       directional: true,
       split: false,
+      lens: false,
     });
+    expect(dofUnionOf(buildSceneCameraTracks([docFor("lens")]))).toMatchObject({
+      depth: false,
+      lens: true,
+    });
+  });
+
+  it("lens mode opens at full aperture, so an f-stop alone turns it on", () => {
+    const doc: SceneDoc = {
+      version: 1,
+      camera: {
+        keys: [{ id: "k", tMs: 0, pose: pose({ dof: { mode: "lens", fStop: 8 } }) }],
+        segments: [],
+      },
+    };
+    const slots: SceneSlot[] = [{ index: 0, id: "s0", startMs: 0, endMs: 4000, durationMs: 4000 }];
+    const tracks = buildSceneCameraTracks([doc]);
+    expect(dofUnionOf(tracks)).toMatchObject({ lens: true });
+    const plan = resolveFrameCameras(tracks, undefined, resolveAt(slots, 500), 500);
+    expect(plan?.solo?.dof).toMatchObject({ mode: "lens", blur: 1, fStop: 8, focalMm: null });
   });
 });
 

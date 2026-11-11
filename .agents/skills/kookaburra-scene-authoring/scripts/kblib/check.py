@@ -45,6 +45,13 @@ DECLARED_RE = re.compile(r"\b(?:function|const|let|var)\s+([\w$]+)")
 EDITOR_SPEEDS = (0.25, 6)
 KICK_FIELDS = ("id", "at", "zoom", "offset", "rollDeg", "attackMs", "holdMs", "releaseMs", "ease")
 KICK_ZOOM = (0.25, 4)
+# A camera key's dof fields and the ranges the app clamps them to (engine/dof.ts, engine/lensDof.ts).
+DOF_RANGES = {
+    "blur": (0, 1), "range": (0, 10), "focus": (0.05, 50), "band": (0, 1), "offset": (-1, 1),
+    "angleDeg": (-90, 90), "glow": (0, 1), "centerX": (-1, 1), "centerY": (-1, 1), "squeeze": (1, 2),
+    "focusB": (0.05, 50), "fStop": (0.7, 64), "focalMm": (4, 1200), "sensorMm": (2, 70),
+}
+DOF_LENS_ONLY = ("fStop", "focalMm", "sensorMm")
 DEPTH_STAGE_RE = re.compile(r"<DepthStage\b")
 
 
@@ -1378,6 +1385,8 @@ class Checker:
             seen.add(k["id"])
             if "at" in k and path in ("chart.track", "layeredScreenshot.animation"):
                 self.report.warn(file, f"{path}.keys[{i}].at", "this track takes plain tMs, so the app ignores at (./kb beats --scene S lists each bar's ms)")
+        if path in ("camera", "cameraRig"):
+            self.dof_blocks(file, path, keys)
         eases = self.ctx.ids("eases")
         for i, seg in enumerate(segments):
             if not isinstance(seg, dict):
@@ -1389,6 +1398,41 @@ class Checker:
             for field in ("ease", "easeDof"):
                 if field in seg and eases is not None:
                     self.enum(file, f"{path}.segments[{i}].{field}", seg[field], "eases", "ease", extra=["jump"])
+
+    def dof_blocks(self, file: str, path: str, keys: List[Any]) -> None:
+        rep = self.report
+        timed = sorted((k for k in keys if isinstance(k, dict) and is_number(k.get("tMs"))), key=lambda k: k["tMs"])
+        blocks = [(keys.index(k), k["pose"]["dof"]) for k in timed if isinstance(k.get("pose"), dict) and "dof" in k["pose"]]
+        # The app's rule: the first dof block sets the mode, "depth" when it names none.
+        first = next((b for _, b in blocks if isinstance(b, dict)), None)
+        scene_mode = first.get("mode", "depth") if first is not None else None
+        for i, dof in blocks:
+            at = f"{path}.keys[{i}].pose.dof"
+            if not isinstance(dof, dict):
+                rep.error(file, at, "must be an object (the app drops it)")
+                continue
+            if "mode" in dof:
+                self.enum(file, f"{at}.mode", dof["mode"], "camera.dof", "dof mode")
+                if dof["mode"] != scene_mode:
+                    rep.warn(file, f"{at}.mode", f"dof mode is per scene and the first key's \"{scene_mode}\" wins, so the app ignores this one")
+            for field, value in dof.items():
+                if field == "mode":
+                    continue
+                if field not in DOF_RANGES:
+                    rep.warn(file, f"{at}.{field}", f"unknown dof field (the app ignores it).{did_you_mean(field, DOF_RANGES)}")
+                    continue
+                if field == "focus" and value == "auto":
+                    continue
+                lo, hi = DOF_RANGES[field]
+                if not _finite(value):
+                    hint = ' or "auto"' if field == "focus" else ""
+                    rep.error(file, f"{at}.{field}", f"must be a number{hint} (the app drops it)")
+                elif not lo <= value <= hi:
+                    rep.warn(file, f"{at}.{field}", f"{value:g} is outside {lo:g} to {hi:g}, so the app clamps it")
+                if field in DOF_LENS_ONLY and scene_mode != "lens":
+                    rep.warn(file, f"{at}.{field}", f"only lens mode reads {field}; this scene's dof mode is \"{scene_mode}\"")
+                elif field == "range" and scene_mode == "lens":
+                    rep.warn(file, f"{at}.range", "lens mode ignores range: the f-stop and focus set what is sharp")
 
     def assets_in(self, file: str, path: str, value: Any) -> None:
         if isinstance(value, dict):

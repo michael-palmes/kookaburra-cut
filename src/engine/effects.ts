@@ -56,6 +56,7 @@ import {
 import { useEffectsStore } from "./effectsStore";
 import { isExporting } from "./exportState";
 import { MSAA_SAMPLES } from "./format";
+import { LensDofEffect } from "./LensDofEffect";
 import { LensEffect } from "./LensEffect";
 import { type CubeLut, parseCubeLut } from "./lutCube";
 import { composerToneMapping } from "./renderSettings";
@@ -84,6 +85,7 @@ export const SMEAR_DIR_SPAN = 0.25;
 /** The dof-family effect handles a chain carries (main and side composers alike); applyDofUniforms drives whichever exist. */
 interface DofEffects {
   dof: DepthOfFieldEffect | null;
+  lensDof: LensDofEffect | null;
   tilt: TiltShiftEffect | null;
   smear: SmearEffect | null;
   soft: SoftFocusEffect | null;
@@ -333,15 +335,28 @@ export function ensureComposer(
     lut = new LUT3DEffect(seedTex, { blendFunction: BlendFunction.NORMAL });
   }
   // The dof family sits at the chain head: it samples linear HDR colour (+ depth for the CoC modes) pre-everything, and blurred highlights still bloom coherently. Placeholder camera, overwritten per frame via setMainCamera (which copies camera settings into the CoC material). All effects build zeroed; applyDofUniforms drives them per frame. (EffectPass itself orders by attributes, so the convolution smear runs first; modes are exclusive per scene, so only uniforms care.)
-  const { dof, tilt, smear, soft } = buildDofChain(dofUnion);
-  const blurs = [dof, tilt, smear, soft].filter(isEffect);
+  const { dof, lensDof, tilt, smear, soft } = buildDofChain(dofUnion);
+  const blurs = [dof, lensDof, tilt, smear, soft].filter(isEffect);
   if (lens && blurs.length > 0) {
     // The lens reads its pass's input, so it rides a second pass behind the blur families: a defocused highlight blooms as a disc.
     composer.addPass(new EffectPass(undefined, ...blurs));
     const tail = [lens, bloom, vignette, grain, exposure, tonemap, lut].filter(isEffect);
     composer.addPass(new EffectPass(undefined, ...tail));
   } else {
-    const chain = [dof, tilt, smear, soft, lens, bloom, vignette, grain, exposure, tonemap, lut];
+    const chain = [
+      dof,
+      lensDof,
+      tilt,
+      smear,
+      soft,
+      lens,
+      bloom,
+      vignette,
+      grain,
+      exposure,
+      tonemap,
+      lut,
+    ];
     composer.addPass(new EffectPass(undefined, ...chain.filter(isEffect)));
   }
   // Antialiasing reads its pass's input, so it rides its own pass after the tone map: on display values, where MSAA's linear resolve leaves hot highlights hard-edged.
@@ -354,6 +369,7 @@ export function ensureComposer(
     renderPass,
     overlayPass,
     dof,
+    lensDof,
     tilt,
     smear,
     soft,
@@ -375,16 +391,17 @@ function isEffect<T>(e: T | null): e is T {
 
 /** The chain-shape key bit per blur family (composer rebuild keys, main and side alike). */
 function dofKeyOf(u: DofUnion | null | undefined): string {
-  if (!u) return "000000";
-  return [u.depth, u.tilt, u.soft, u.radial, u.directional, u.split]
+  if (!u) return "0000000";
+  return [u.depth, u.tilt, u.soft, u.radial, u.directional, u.split, u.lens]
     .map((f) => (f ? 1 : 0))
     .join("");
 }
 
-/** Build the dof-family effects a union asks for (split rides the depth effect via the patched CoC). */
-function buildDofChain(dofUnion: DofUnion | null | undefined): DofEffects {
+/** Build the dof-family effects a union asks for (split rides the depth effect via the patched CoC). `display` marks the dof-only lane, whose input is finished display bytes rather than linear HDR. */
+function buildDofChain(dofUnion: DofUnion | null | undefined, display = false): DofEffects {
   return {
     dof: dofUnion?.depth || dofUnion?.split ? buildDofEffect() : null,
+    lensDof: dofUnion?.lens ? new LensDofEffect(display) : null,
     tilt: dofUnion?.tilt ? buildTiltEffect() : null,
     smear: dofUnion?.radial || dofUnion?.directional ? new SmearEffect() : null,
     soft: dofUnion?.soft ? new SoftFocusEffect(DOF_RESOLUTION_SCALE) : null,
@@ -487,6 +504,9 @@ function applyDofUniforms(effects: DofEffects, d: ResolvedDof | null | undefined
     (u.splitNormal.value as Vector2).set(Math.cos(rad), Math.sin(rad));
     const squeezeX = active ? 1 / active.squeeze : 1;
     for (const mat of bokehMaterials(effects.dof)) mat.uniforms.squeeze.value = squeezeX;
+  }
+  if (effects.lensDof) {
+    effects.lensDof.setLens(d && d.mode === "lens" && d.blur > 0 ? d : null);
   }
   if (effects.tilt) {
     const active = d && d.mode === "tilt" && d.blur > 0 ? d : null;
@@ -602,8 +622,8 @@ function ensureDofSide(gl: WebGLRenderer, w: number, h: number, dofUnion: DofUni
 
   const renderPass = new RenderPass(new Scene(), new Camera());
   composer.addPass(renderPass);
-  const { dof, tilt, smear, soft } = buildDofChain(dofUnion);
-  const chain = [dof, tilt, smear, soft].filter((e): e is NonNullable<typeof e> => e !== null);
+  const { dof, lensDof, tilt, smear, soft } = buildDofChain(dofUnion);
+  const chain = [dof, lensDof, tilt, smear, soft].filter(isEffect);
   composer.addPass(new EffectPass(undefined, ...chain));
   // Copies the dof-graded linear HDR frame into the side target the transition composite samples; autoResize off, the compositor owns that target's size.
   const copyPlaceholder = new WebGLRenderTarget(1, 1, { depthBuffer: false });
@@ -615,6 +635,7 @@ function ensureDofSide(gl: WebGLRenderer, w: number, h: number, dofUnion: DofUni
     composer,
     renderPass,
     dof,
+    lensDof,
     tilt,
     smear,
     soft,
@@ -703,14 +724,14 @@ function ensureDofOverlay(gl: WebGLRenderer, w: number, h: number, u: DofUnion):
   }
   releaseDofOverlay();
 
-  const effects = buildDofChain(u);
-  const chain = [effects.dof, effects.tilt, effects.smear, effects.soft].filter(
-    (e): e is NonNullable<typeof e> => e !== null,
+  const effects = buildDofChain(u, true);
+  const chain = [effects.dof, effects.lensDof, effects.tilt, effects.smear, effects.soft].filter(
+    isEffect,
   );
   const pass = new EffectPass(undefined, ...chain);
   pass.initialize(gl, false, UnsignedByteType);
   pass.setSize(w, h);
-  const needsDepth = u.depth || u.split;
+  const needsDepth = u.depth || u.split || u.lens;
   let depthTarget: WebGLRenderTarget | null = null;
   if (needsDepth) {
     // A real scene draw fills this (never an override material, which would let the depth-immune fixed quads write depth); no MSAA, depth textures resolve nowhere.

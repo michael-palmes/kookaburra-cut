@@ -667,6 +667,45 @@ class CheckTests(KbTestCase):
         unresolved = [i.message for i in self.kick_scene([{"at": "bar:2", "zoom": 1.1, "releaseMs": 100}]).issues if i.severity == "warning"]
         self.assertTrue(any("no audio.grid" in w and "./kb beats set-grid" in w for w in unresolved), unresolved)
 
+    def test_camera_dof_blocks(self) -> None:
+        def key(i: int, dof: object) -> dict:
+            return {"id": f"k{i}", "tMs": i * 500, "pose": {"position": [0, 0, 4], "aim": {"mode": "point", "at": [0, 0, 0]}, "dof": dof}}
+
+        rig = {
+            "keys": [
+                key(0, {"mode": "lens", "fStop": 11, "focus": "auto"}),
+                key(1, {"fStop": 0.2, "range": 1, "focalMm": "long"}),
+                key(2, {"mode": "depth", "aperture": 2}),
+                key(3, "nope"),
+            ],
+            "segments": [],
+        }
+        write_json(self.root / "scenes" / "02-hero.json", {"version": 1, "cameraMode": "rig", "cameraRig": rig})
+        report = self.run_check(["scenes/02-hero.json"])
+        errors, warnings = messages(report), messages(report, "warning")
+        self.assertTrue(any("keys[1].pose.dof.focalMm" in e and "must be a number" in e for e in errors), "\n".join(errors))
+        self.assertTrue(any("keys[3].pose.dof" in e and "must be an object" in e for e in errors), "\n".join(errors))
+        for path, needle in (
+            ("keys[1].pose.dof.fStop", "clamps"),
+            ("keys[1].pose.dof.range", "lens mode ignores range"),
+            ("keys[2].pose.dof.mode", "first key's"),
+            ("keys[2].pose.dof.aperture", "unknown dof field"),
+        ):
+            self.assertTrue(any(path in w and needle in w for w in warnings), f"{path}: {needle}\n" + "\n".join(warnings))
+        self.assertFalse(any("keys[0]" in m for m in errors + warnings), "\n".join(errors + warnings))
+        rig["keys"] = [key(0, {"mode": "depth", "blur": 0.5, "fStop": 4})]
+        write_json(self.root / "scenes" / "02-hero.json", {"version": 1, "cameraMode": "rig", "cameraRig": rig})
+        warnings = messages(self.run_check(["scenes/02-hero.json"]), "warning")
+        self.assertTrue(any("only lens mode reads fStop" in w for w in warnings), "\n".join(warnings))
+        rig["keys"] = [key(0, {"blur": 0.5}), key(1, {"mode": "lens", "fStop": 8})]
+        write_json(self.root / "scenes" / "02-hero.json", {"version": 1, "cameraMode": "rig", "cameraRig": rig})
+        warnings = messages(self.run_check(["scenes/02-hero.json"]), "warning")
+        self.assertTrue(any("keys[1].pose.dof.mode" in w and '"depth" wins' in w for w in warnings), "\n".join(warnings))
+        self.assertTrue(any("keys[1].pose.dof.fStop" in w and "only lens mode" in w for w in warnings), "\n".join(warnings))
+        rig["keys"] = [key(0, {"mode": "bokeh"})]
+        write_json(self.root / "scenes" / "02-hero.json", {"version": 1, "cameraMode": "rig", "cameraRig": rig})
+        self.assertTrue(any('unknown dof mode "bokeh"' in e for e in messages(self.run_check(["scenes/02-hero.json"]))))
+
     def test_duplicate_ids_flag_only_the_later_scene(self) -> None:
         write(self.root / "scenes" / "03-outro.tsx", SCENE_TSX.format(id="hero"))
         errs = messages(self.run_check())

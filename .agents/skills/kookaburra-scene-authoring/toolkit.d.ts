@@ -2511,8 +2511,8 @@ declare module "@kookaburra/toolkit" {
     fold?: { hingeZ: number };
   }
 
-  /** The blur families a scene can pick (track-level, first authored key wins). Depth and split read scene depth through the CoC; the rest are screen-space. */
-  type DofMode = "depth" | "tilt" | "soft" | "radial" | "directional" | "split";
+  /** The blur families a scene can pick (track-level, first authored key wins). Depth, split and lens read scene depth through the CoC; the rest are screen-space. */
+  type DofMode = "depth" | "tilt" | "soft" | "radial" | "directional" | "split" | "lens";
 
   /** A count run with its colour resolved to linear RGB. */
   interface DotCountRun {
@@ -2549,6 +2549,10 @@ declare module "@kookaburra/toolkit" {
     centerY: number;
     squeeze: number;
     focusB: number;
+    fStop: number;
+    /** Null derives the focal length from the sensor and fov. */
+    focalMm: number | null;
+    sensorMm: number;
   }
 
   /** The postprocessing stack: every field is a plain number/string set on the CPU, never time-derived, so effect frames stay a pure function of the timeline. Omitting a key omits that effect. A theme with NO `effects` keeps the byte-identical (composer-free) render path. See docs/determinism.md. */
@@ -3555,6 +3559,12 @@ declare module "@kookaburra/toolkit" {
     squeeze?: number;
     /** Split mode: the second focus distance in world units (always manual). */
     focusB?: number;
+    /** Lens mode: aperture as an f-number. */
+    fStop?: number;
+    /** Lens mode: focal length in mm; absent derives it from `sensorMm` and the fov. */
+    focalMm?: number;
+    /** Lens mode: sensor extent along the fov axis in mm (24 is full frame). */
+    sensorMm?: number;
   }
 
   interface SceneDocImageSpec {

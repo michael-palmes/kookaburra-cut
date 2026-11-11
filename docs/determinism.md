@@ -2037,6 +2037,24 @@ Verify ×2 here (the 2026-10-23 note):
 | `ws:motion-toolkit-spike` (the toolkit primitives: shapes, device anchors, text metrics and presets, stamps, dashes, mosaic, taps; machine-local, gated when motion or shape primitives change) | `06b79ae2…` | `fa64bced…` | — | — | — | — | — | — | — |
 | `ws:fx-spike` (the effects chain: bloom, vignette, LUT, grain; machine-local, gated when effects change; first recorded 2026-11-07 from a Verify ×2 on the grain-hold branch, which leaves an unheld grain's seed as it was) | `6abcbe67…` | — | — | — | — | — | — | — | — |
 
+> **2026-11-11 (lens depth of field, additive):** dof gained a `lens` mode
+> rendered by its own `LensDofEffect` (`engine/LensDofEffect.ts`, shaders in
+> `engine/lensDofShaders.ts`, maths in `engine/lensDof.ts`). The stock depth
+> effect, its patched materials and every existing constant are untouched; the
+> effect is built only when a project's camera union includes lens, so a
+> project without it compiles the same chain as before. New export-contract
+> constants: `LENS_MM_PER_UNIT` (146.6 / 2.6), `LENS_COC_MAX` 0.05 of image
+> height, `LENS_RESOLUTION_SCALE` 0.5 and `LENS_TAPS` 128. Every pass is a pure
+> function of the frame: a fixed Vogel pattern, a screen-fixed per-pixel
+> rotation (interleaved gradient noise of the fragment coordinate), half-float
+> targets sampled with `texelFetch`, and the composite returns the input pixel
+> unchanged wherever the full-res CoC is under half a pixel. Proof: Unveil's
+> Glimpses in lens mode, stillsverify ×2 byte-identical (effects lane, supersample
+> 4 and SMAA); `showcase-tour` with lens on an orbit camera through a crossfade
+> and on the DepthStage flight, Verify ×2 EQUAL (dof-only lane and its per-side
+> target path); an Unveil crossfade out of a lens scene renders both sides
+> through the HDR side composer.
+
 > **2026-10-31 (five machine-local cells re-recorded, four with no known cause):**
 > `ws:overlay-spike` 16:9 `f3d115a5…` → `ef78da55…` is #268's floor shift: `23e4c58b`
 > exports the old hash and `2ca01528` the new, and only the first 276 frames differ (the two

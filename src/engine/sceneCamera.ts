@@ -126,7 +126,7 @@ export function normalizeSceneCamera(
       );
     }
     if (authored && dofMode === null) dofMode = authored.mode ?? "depth";
-    dofCarried = carryDof(dofCarried, authored);
+    dofCarried = carryDof(dofCarried, authored, dofMode);
     if (dofCarried && dofCarried.blur > 0) dofActive = true;
     dofByKey.set(key.id, dofCarried);
   }
@@ -413,6 +413,7 @@ export function dofUnionOf(
     radial: false,
     directional: false,
     split: false,
+    lens: false,
   };
   let any = false;
   for (const scene of tracks ?? []) {
