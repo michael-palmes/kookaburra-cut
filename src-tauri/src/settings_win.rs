@@ -140,7 +140,10 @@ pub fn forget_allowed_project(
         return Err("that project is open: close it in Kookaburra Cut first".into());
     }
     workspace::forget_project_trust(&app, &state, &trust, &slug)?;
-    log::info!("[trust] {slug}: forgotten in Settings");
+    log::info!(
+        "[trust] {}: forgotten in Settings",
+        crate::audit::field(&slug)
+    );
     Ok(())
 }
 
@@ -199,6 +202,7 @@ pub async fn clear_app_data(
     if let Some(why) = clear_blocked(&app) {
         return Err(why.into());
     }
+    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let mut failed = Vec::new();
     workspace::forget_session_trust(&trust);
     bridge::forget_session_grants(&app);
@@ -212,7 +216,6 @@ pub async fn clear_app_data(
     if let Err(e) = clear_media(&app) {
         failed.push(format!("media previews: {e}"));
     }
-    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let autorun = app
         .path()
         .home_dir()
@@ -245,29 +248,46 @@ pub async fn clear_app_data(
 
 /// The files half of the clear: the rest of `cache/`, the window geometry, the bridge queues and the terminal runs. Returns what stayed, by path.
 fn clear_files(app_data: &Path, bridge: Option<&Path>, autorun: Option<&Path>) -> Vec<String> {
-    let mut targets: Vec<PathBuf> = std::fs::read_dir(app_data.join("cache"))
-        .map(|read| {
-            read.flatten()
-                .filter(|entry| !CACHE_KEPT.iter().any(|kept| entry.file_name() == *kept))
-                .map(|entry| entry.path())
-                .collect()
-        })
-        .unwrap_or_default();
+    let mut stayed = Vec::new();
+    let cache = app_data.join("cache");
+    let mut targets: Vec<PathBuf> = match real_root(&cache, &mut stayed) {
+        Some(cache) => std::fs::read_dir(cache)
+            .map(|read| {
+                read.flatten()
+                    .filter(|entry| !CACHE_KEPT.iter().any(|kept| entry.file_name() == *kept))
+                    .map(|entry| entry.path())
+                    .collect()
+            })
+            .unwrap_or_default(),
+        None => Vec::new(),
+    };
     targets.push(app_data.join(".window-state.json"));
-    if let Some(bridge) = bridge {
+    if let Some(bridge) = bridge.and_then(|root| real_root(root, &mut stayed)) {
         targets.extend(BRIDGE_QUEUES.iter().map(|name| bridge.join(name)));
     }
-    if let Some(autorun) = autorun {
+    if let Some(autorun) = autorun.and_then(|root| real_root(root, &mut stayed)) {
         targets.push(autorun.join("runs"));
     }
-    targets
-        .into_iter()
-        .filter_map(|path| {
-            remove_entry(&path)
-                .err()
-                .map(|e| format!("{}: {e}", path.display()))
-        })
-        .collect()
+    stayed.extend(targets.into_iter().filter_map(|path| {
+        remove_entry(&path)
+            .err()
+            .map(|e| format!("{}: {e}", path.display()))
+    }));
+    stayed
+}
+
+/// A root the clear works inside, only when it is a real folder; a link or file there is reported and never followed.
+fn real_root<'a>(root: &'a Path, stayed: &mut Vec<String>) -> Option<&'a Path> {
+    if crate::real_dir::is_real_dir(root) {
+        return Some(root);
+    }
+    if std::fs::symlink_metadata(root).is_ok() {
+        stayed.push(format!(
+            "{}: not a folder, so it was left alone",
+            root.display()
+        ));
+    }
+    None
 }
 
 /// A file, folder or link removed without following a link; already gone counts as removed.
@@ -450,6 +470,14 @@ mod tests {
         assert!(
             clear_files(&data, None, None).is_empty(),
             "a second clear finds nothing to fail on"
+        );
+        let linked_bridge = root.join("linked-bridge");
+        touch(&outside.join("responses/a.json"));
+        std::os::unix::fs::symlink(&outside, &linked_bridge).unwrap();
+        assert_eq!(clear_files(&data, Some(&linked_bridge), None).len(), 1);
+        assert!(
+            outside.join("responses/a.json").exists(),
+            "a linked root is never cleared through"
         );
         let _ = std::fs::remove_dir_all(&root);
     }
