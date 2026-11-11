@@ -216,6 +216,9 @@
   "render": {
     "toneMapping": "neutral",
     "antialias": "smaa",
-    "supersample": 4
+    "supersample": 4,
+    "textBlur": "optical",
+    "dither": true,
+    "specularAA": true
   }
 }
