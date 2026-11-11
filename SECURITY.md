@@ -124,7 +124,9 @@ a release build's worker refuses to start unless the policy is live
 (`provePolicy`), and before any scene loads `src/stage/realmGuard.ts` limits
 `fetch`, `WebSocket`, `XMLHttpRequest`, `EventSource` and `importScripts` to the
 `asset:` paths its window handed over, `blob:`, `data:` and the app's own files,
-and refuses every nested worker.
+and refuses every nested worker. A dev build's worker (`pnpm tauri dev` and
+terminal autoruns) starts without the policy, and its Vite server serves the
+checkout only (`vite.config.ts`, `server.fs.allow`), never the home folder.
 
 | Path | Trigger | Destination | Data | Consent and off switch | Control |
 | --- | --- | --- | --- | --- | --- |
@@ -174,8 +176,9 @@ backup. Everything else is backed up like any document: projects with their own
   before this rule has them rewritten out of its history, reflog expired and
   pruned, on its next open, off the load path, with one toast and one
   `[history]` log line, only when the app made the repository: one with a
-  remote, a root commit by someone else or a `.git` file is left as it is and
-  logged: `src-tauri/src/history.rs`), `CLAUDE.md`,
+  remote, a root commit by someone else, a `.git` file or a link anywhere in
+  `.git` is left as it is and logged, and the trim prunes objects only, never
+  worktree records: `src-tauri/src/history.rs`), `CLAUDE.md`,
   `NOTES.md`, `BRAND.md`, the stamped `.claude/` and `./kb`, anything a stamp
   moved out of the way (`kb.moved-aside`, `.claude.moved-aside*`),
   `.kookaburra/app-edits.jsonl` (what the app's own writers changed, for the
@@ -361,8 +364,8 @@ Also:
   agent's verdict. A folder's `.git` arrives with it, so each run sets
   `GIT_CONFIG_NOSYSTEM`, `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CEILING_DIRECTORIES`
   and overrides every key that names a program (`GUARDS`), and the app refuses a
-  `.git` that is a link or file, or a `.git/config` holding a key the app and
-  git's own setup don't write. kb's git does the same (`kblib/git.py`). The
+  `.git` that is a link or file, holds a link (outside its hooks, which never
+  run), or a `.git/config` holding a key the app and git's own setup don't write. kb's git does the same (`kblib/git.py`). The
   agent's own plain git has no such overrides, so it gets the same verdict and a
   hook check instead (`history::agent_git_verdict`, "What the kit auto-allows").
 - `/usr/bin/sips` to check and convert a dropped still (`src-tauri/src/imagefile.rs`,
@@ -448,7 +451,10 @@ stamped before the profile stays in its folder, and its kb still runs.
   a misled agent and asks a person; it doesn't stop a determined one.
 - **A folder's own `kb` and links** (`kit.rs`, `real_dir.rs`, `kblib/realdir.py`):
   a `./kb` that is not the app's, or a `.claude` that is a link, is moved aside
-  as `<name>.moved-aside` and logged before anything runs it, and the folders
+  as `<name>.moved-aside` (a timestamped name once the numbered ones are taken)
+  and logged. Edit with Claude refuses the handoff when that stamp fails or the
+  `./kb` is not exactly the app's shim, so the folder's own never runs under the
+  auto-allowed `Bash(./kb *)`, and the folders
   the app and kb write inside a project must be real folders, so a planted link
   can't steer their writes or deletes.
 - **The untrusted-text rule** (`.agents/skills/kookaburra-scene-authoring/RULES.md`,
@@ -463,7 +469,9 @@ stamped before the profile stays in its folder, and its kb still runs.
   workspace or a folder a Rust-run dialog returned this session (`pick_folder`
   and the pack Save dialog, through `note_chosen_folder` in `bridge.rs`, which
   keeps out the home folder, shallow paths and credential folders; the webview
-  cannot add one); reads outside the workspace print the resolved
+  cannot add one); `assets restore` takes an archive line only for a file in
+  `assets/` and its copy in that batch's archive folder, never through a link
+  (`kblib/asset_ops.py`, `_check_restorable`); reads outside the workspace print the resolved
   path and size to stderr and refuse `~/.ssh`, `~/.aws`, `~/.config`,
   `~/.gnupg`, `~/Library/Keychains`, `~/.docker`, `~/.kube`, `~/.azure`,
   `~/.claude`, `.env*`, `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`, private
@@ -604,7 +612,11 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
   builds that item's staged scene set (`scenes/**/*.tsx` in the signed file
   list) and refuses the pack when its `sceneFiles` is not exactly that set
   (`SceneFilesMismatch`), so the scene counts, the code viewer and the review
-  list what would land under `scenes/`, matched by exact case.
+  list what would land under `scenes/`, matched by exact case. A project slug
+  naming one of the workspace's own folders (`themes`, `templates`, `_bridge`
+  and the rest) is refused in any case, as the volume matches it, and so is a
+  slug whose folder is already there but isn't that kind of item
+  (`workspace::is_reserved_slug`, `Target::occupied_by_other`).
 - **TOFU and its limits.** The key id is `hex(sha256(pubkey)[0..8])`; the store
   (`known_publishers` in `settings.json`) is keyed by the id recomputed from
   the public key, never the declared one (a store an older build keyed by the

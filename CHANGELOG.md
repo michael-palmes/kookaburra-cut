@@ -47,6 +47,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   dependency that would run an install script until someone reviews it.
 - `SECURITY.md` records why the app isn't App Sandboxed, and `docs/decisions.md`
   what would change that.
+- Opening a shared project can no longer reach outside it. Its git history is
+  left alone when `.git` holds a link, and trimming old footage no longer
+  touches worktree records. Claude stays off when the app can't put its own
+  `./kb` in place. `./kb assets restore` puts back only files in `assets/`
+  from that batch's archive.
+- A pack can no longer replace a library or the bridge folder with a project
+  named `Themes`, `Templates`, `_bridge` or another workspace folder in any
+  case, or replace a folder that isn't a project.
+- In dev builds and terminal runs, scene code can no longer read files in your
+  home folder through the dev server.
 
 ## [0.22.4] - 2026-11-10
 
