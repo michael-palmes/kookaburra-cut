@@ -1816,7 +1816,8 @@ Types: `src/engine/loadDiagnostics.ts`; `LoadedProject.sceneErrors`,
   it changed ("App edits"), and a
   kb write landing while the project is open and trusted in this app session re-stamps on
   the reload (Rust recomputes the hash in `check_project_trust`). Content that changed
-  while the project was closed asks again through the native sheet on the next open.
+  while the project was closed asks again through the native sheet on the next launch;
+  a project allowed earlier in this launch re-stamps instead.
 - Edit documents work the same way. `save_edit` carries the base hash and refuses a
   stale one; the editor window polls its doc's stamp (1 s and on focus, applied once two
   polls agree) and takes an outside change as ONE "Claude edit" undo step, merging any

@@ -16,7 +16,7 @@ contract and the threat model for the native child WKWebView boundary.
 | Live scope | Explicit activation in the paused editor and the holding phase of a slideshow | Native content cannot participate in deterministic WebGL composition or slide transitions |
 | Export truth | A manually captured viewport PNG; an imported image is the fallback | Export remains a pure function of project bytes |
 | URL policy | HTTPS, plus opt-in HTTP on exact loopback hosts with an explicit port | Remote cleartext transport is never needed; local development remains practical |
-| Consent | Every top-level origin needs a local project-and-origin grant before its first request, asked on a native sheet (`website_grant_origin`, Return declines) once per origin per project, and only for a request the scene raised this session | Opening, importing and selecting a project must remain offline, and a webview must not be able to answer for the person |
+| Consent | Every top-level origin needs a local project-and-origin grant before its first request, asked on a native sheet (`website_grant_origin`, Return declines) once per origin per project folder path, and only for a request the scene raised this session | Opening, importing and selecting a project must remain offline, and a webview must not be able to answer for the person |
 | Browser profile | One app-wide persistent Website profile, separate from Safari and the app webview | Logins work across projects without giving packs cookies or grants |
 | Focus | Click to focus; Shift+Esc or the first outside click releases | Input stays with the panel without stealing deck navigation |
 | Permissions | Deny device access, uploads, downloads and autofill | A presentation is not a general-purpose browser |
@@ -26,7 +26,8 @@ contract and the threat model for the native child WKWebView boundary.
 
 The application minimum is macOS 26. Website views share one named persistent
 WebKit data store. Origin grants remain keyed to the canonical project path, so
-copying or importing a project never inherits approval.
+a copy never inherits approval, but a project deleted, renamed or replaced by a pack
+leaves its grants to whatever next lands at that path.
 
 ## The block
 
@@ -92,7 +93,7 @@ origin pauses before its request. The stage then shows the blocked origin with o
 Allow button, and the consent is a native sheet from Rust (`website_grant_origin`):
 it names the origin and the project, Return declines, and only a request the scene
 raised this session can reach it. Allowing adds both the authored request and the
-local grant, once per origin per project; declining adds nothing, and the page
+local grant, once per origin per project folder path; declining adds nothing, and the page
 stays blocked until the scene opens it again. Present never prompts or mutates a project;
 it denies unapproved navigation and leaves the capture visible.
 
@@ -183,8 +184,10 @@ browser frame.
 
 A pack includes the sidecar and capture PNG. It never includes cookies, WebKit
 storage, local origin grants, current navigation, history, forms or scroll.
-Import performs no network access and grants no origin. The pack trust screen
-lists every requested Website origin and calls out loopback requests before
+Import performs no network access and adds no grant, though a pack that replaces a
+project keeps the grants already held for its path. The pack trust screen
+lists every requested Website origin under a lower-case `scenes/` folder (a `Scenes/`
+one is not shown but still loads on APFS) and calls out loopback requests before
 Continue, read from the pack's sidecars and checked against the signed hash
 (`src/packs/packReview.ts`), so the review is done before anything lands.
 

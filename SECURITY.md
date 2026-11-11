@@ -86,9 +86,9 @@ It is built for these risks:
 - **An agent that reaches too far.** The app starts no Claude Code, and no
   shell but the updater's administrator install ("On the Mac"): a session
   begins in the Claude app or the person's own terminal. kb
-  writes only inside the project, the workspace or a folder a person picked in the app this
-  session, and refuses credential folders; other projects need an in-app
-  confirmation; commands that look like sending work off the Mac ask a person
+  writes only inside the project (any folder with a `project.json`, through `-C`), the workspace or a folder a person picked in the app this
+  session, and refuses the credential folders it names, by exact case; the whole workspace is routine to it, and only
+  bridge captures, frame ranges, checks, preset inserts and `openEdit` for another project ask in the app; commands that look like sending work off the Mac ask a person
   first. None of this is a sandbox (see "Not yet").
 - **Confidential work on disk.** Projects, caches and exports stay in the
   user's home folder; nothing is uploaded or synchronised by the app. The
@@ -145,8 +145,9 @@ organisation's own server (see "Managed preferences").
 ## On the Mac
 
 Every location the app writes, with its mode. `$APPDATA`, everything under
-it, `_bridge` and `_autorun` are created 0700 (folders) and 0600 (files),
-every launch re-seals the trees in the background and logs one `[privacy]`
+it, `_bridge` and `_autorun` are created 0700 (folders); files open inside them at the umask
+unless written through `privacy::atomic_write_private` (0600 from the first byte),
+every launch re-seals the trees to 0700/0600 in the background and logs one `[privacy]`
 line when it had to correct anything, and `cache/`, `logs/`, `_bridge/` and
 `_autorun/` carry `.metadata_never_index` (`src-tauri/src/privacy.rs`, `audit.rs`;
 `scripts/kookaburra-run.sh` seals the queue it creates). Projects and the
@@ -197,9 +198,10 @@ backup. Everything else is backed up like any document: projects with their own
   (`release_project`) or when the window closes; only the main window also reads
   `templates/`, `presets/`, `brands/`, `screenshots/` and the snapshots and scene
   thumbs under `.kookaburra/`; a child webview (a live website) is served
-  nothing. The stage worker holds a narrower list still: see `realmGuard.ts`. Paths are
+  nothing. The stage worker holds a narrower list still, checked only in its own JavaScript
+  (`realmGuard.ts`); Rust enforces the window's list. Paths are
   canonicalised before the check, so a link inside a project that leads out of
-  it is refused, and no hidden folder below a root is served (`.emoji-cache`
+  it is served only when it lands under another root that window may read, and no hidden folder below a root is served (`.emoji-cache`
   reads through a command). Native reads of a project asset go through
   `media::resolve_asset_in`, which refuses the same links by name, and
   `copy_dir_recursive` refuses to copy a link at all.
@@ -227,7 +229,7 @@ backup. Everything else is backed up like any document: projects with their own
   `knownPublishers` (the TOFU store), `websiteOriginGrants` per project path,
   `agentFiles` (per folder, what a stamp moved and whether a person has seen it),
   the publisher profile and the Claude preferences; per-project entries other
-  than the trust grant outlive a project delete. Settings ▸ Allowed projects
+  than the trust grant and `agentFiles` outlive a project delete. Settings ▸ Allowed projects
   lists `trustedProjects` and forgets one grant, stored and session alike
   (`forget_allowed_project` in `settings_win.rs`, settings window only, through
   `forget_project_trust`). Written through a temporary file that is 0600 from its first byte, then
@@ -466,7 +468,8 @@ stamped before the profile stays in its folder, and its kb still runs.
   `~/.gnupg`, `~/Library/Keychains`, `~/.docker`, `~/.kube`, `~/.azure`,
   `~/.claude`, `.env*`, `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`, private
   keys by name, `credentials*.json`, `*.pem`, `*.p12`, `*.key`, `*.jks`,
-  `*.keystore`, `*.tfstate` and shell histories (`kit.rs` `CREDENTIAL_*` is the
+  `*.keystore`, `*.tfstate` and shell histories, matched by exact case (so `~/.AWS`
+  passes on APFS; `~/.claude.json` is not listed) (`kit.rs` `CREDENTIAL_*` is the
   same list, and a test holds them together). The kit denies the agent's own Read
   tool the credential paths kb refuses (of `~/.claude`, only the secrets), which
   binds Claude Code's file tools and not a script the agent runs. Bridge captures,
@@ -507,7 +510,8 @@ drop a request, which is the out-of-scope case above.
   grant is path and hash bound (`trustedProjects` in `settings.json`): the app's
   own writers re-stamp inside `restamping_trust`, an edit landing while the
   project is open and allowed this session re-stamps from the hash Rust
-  computes, and content changed while the project was closed re-asks. Present
+  computes, as does any change to a project allowed this launch (released or not), so
+  content changed while the project was closed re-asks only at the next launch. Present
   and `KOOKABURRA_TRUST=stored-only` loads never re-stamp; an autorun
   (`KOOKABURRA_ACTION` set) mints its nonce without a sheet, and in a release
   build that grant lasts for the launch and never reaches `trustedProjects`. All three commands
@@ -525,7 +529,8 @@ drop a request, which is the out-of-scope case above.
   `NSAlert` sheet names the origin and the project; the default button, Return,
   is Don't allow. Only a request `website_open` or a blocked navigation raised
   this session can reach it, and any answer spends that request. A grant is once
-  per origin per project; an origin already granted asks nothing. The Allow
+  per origin per project folder path, kept through a delete, rename or pack replace at that
+  path; an origin already granted asks nothing. The Allow
   gate, moving the workspace, bridge confirmations and these grants are all
   answered natively, so a compromised webview can show the question but never
   press the button.
@@ -533,11 +538,11 @@ drop a request, which is the out-of-scope case above.
   every `#[tauri::command]` belongs to exactly one permission set, and each
   window gets only its sets. Main: project read, render and write, trust, media
   library, library, export, capture host, studio, Claude launcher, updater,
-  website editor. Present: project read, render, its own window and
+  website editor, managed preferences. Present: project read, render, its own window and
   website show. Render: project read, render, bridge serving. Settings: its
-  caches, the workspace location, updater, publisher, forgetting an Allow,
-  clearing all app data and showing the log folder. Packs: pack commands
-  and the dialog. Editor and theme editor: theirs. Dev-only commands are
+  caches, the workspace location, Claude launcher, updater, managed preferences, publisher, forgetting an Allow,
+  clearing all app data and showing the log folder. Packs: pack commands,
+  managed preferences and the dialog. Editor and theme editor: theirs. Dev-only commands are
   `cfg(debug_assertions)` and granted only by `capabilities/dev/`, which
   `build.rs` includes in debug builds alone. `src-tauri/src/acl.rs` lists each
   window's commands and fails on a new command until it is placed, on any
@@ -546,12 +551,13 @@ drop a request, which is the out-of-scope case above.
   any window but settings reaching `init_workspace`, `move_workspace`,
   `forget_allowed_project`, `clear_app_data` or `reveal_app_logs`.
   `website::guard_invoke` is the second layer: any label outside the seven app
-  windows gets no command at all.
+  windows gets none of the app's own commands (it wraps `generate_handler!`); plugin
+  commands rely on Tauri refusing remote origins.
 - **Worker isolation** (`src/stage/`): every scene tree runs in a Web Worker on
   an OffscreenCanvas with no `window`, `document` or `__TAURI_INTERNALS__`, so
   scene code can't reach IPC even from the main window, and the network is shut
   ("What leaves the Mac"); its native port refuses any project the window did not
-  hand it (`stageClient.ts`). Over `asset://` the guard admits its project, pinned
+  hand it (`stageClient.ts`). Over `asset://` the guard, in the worker's JavaScript, admits its project, pinned
   fonts and the objects it read, and it refuses nested workers, which would start
   without it.
 - **Stills on the way in** (`src-tauri/src/imagefile.rs`, `kblib/imagefile.py`,
@@ -598,7 +604,7 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
   builds that item's staged scene set (`scenes/**/*.tsx` in the signed file
   list) and refuses the pack when its `sceneFiles` is not exactly that set
   (`SceneFilesMismatch`), so the scene counts, the code viewer and the review
-  list what would land.
+  list what would land under `scenes/`, matched by exact case.
 - **TOFU and its limits.** The key id is `hex(sha256(pubkey)[0..8])`; the store
   (`known_publishers` in `settings.json`) is keyed by the id recomputed from
   the public key, never the declared one (a store an older build keyed by the
@@ -615,7 +621,8 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
   under this key; a first-time, renamed or re-keyed publisher gets Cancel as
   the primary button.
 - **Review before Continue.** The trust screen lists every requested Website
-  origin a pack carries, read from its scene sidecars and hash-checked (`read_pack_scene_docs`,
+  origin a pack carries under a lower-case `scenes/` folder (a `Scenes/` one is not shown but
+  still loads on APFS), read from its scene sidecars and hash-checked (`read_pack_scene_docs`,
   `src/packs/packReview.ts`), so nothing is reviewed after the files land. A
   project, template or preset a pack adds or replaces loses that slug's F-001
   grant and its place in this session's allow set
@@ -636,7 +643,7 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
   may hold anything. Import writes files and never
   compiles: the first open hits the Allow gate.
 - **Caps and paths** (`pack/limits.rs`, `pack/paths.rs`): 50,000 entries, 8 GiB
-  total, 4 GiB per entry, a 200:1 ratio per entry, path depth 16, path length
+  total, 4 GiB per entry, a 200:1 ratio per entry (over the sizes its zip header declares), path depth 16, path length
   512 bytes, manifest 8 MiB; a structural path validator refuses control, bidi
   and zero-width characters, absolute paths, `..`, dotted folders and files,
   drive letters and extensions outside each kind's allow-list; symlinks and any
@@ -650,7 +657,8 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
   `object.json` `glb` or `thumbnail` path must sit beside the manifest
   (`objects::validate_object_rel`, `isObjectRel`).
 - **Review before apply.** The trust screen shows the scene code and website
-  origins (loopback flagged as session-only), read from the pack's signed
+  origins (`localhost`, `127.0.0.1` and `[::1]` flagged as session-only; other local spellings
+  such as `app.localhost` or `0.0.0.0` are not, and get lasting grants), read from the pack's signed
   sidecars, never the manifest; the summary shows the author's notes.
 
 ## Saved secrets
@@ -796,7 +804,9 @@ builds it in separate jobs, each on a fresh runner.
   one today, so the empty list changes nothing yet.
 - **Verify an install.** On the release page's files. `scripts/verify-install.sh`
   runs all of this on a downloaded release, plus the sidecars' signatures and a
-  diff of this file against the previous release's, and downloads nothing:
+  diff of this file against the previous release's, from 0.23.0 on. It downloads no release
+  files, but reads the tag, the SBOM attestation (and the provenance unless its bundle is in the
+  folder) and, with `--previous`, SECURITY.md at each tag from GitHub through `gh`:
 
   ```bash
   gh release download v<version> --repo michael-palmes/kookaburra-cut --dir <dir>

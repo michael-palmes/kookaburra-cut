@@ -169,7 +169,7 @@ Pressing Allow on a project means
 - A native sheet, with Don't open as its default, names the project and its
   folder. The grant is bound to the hash of its scenes, `project.json`,
   `CLAUDE.md` and `.claude/settings.json` (not its assets); a change made
-  outside the app asks again (`workspace.rs`, `trust_covered_files`).
+  outside the app asks again at the next launch (`workspace.rs`, `trust_covered_files`).
 - Scene code runs in a Web Worker with no DOM and none of the app's commands,
   under a content security policy naming no outside host, behind a guard that
   limits every request to the project's own files; a release build will not

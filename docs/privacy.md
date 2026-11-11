@@ -64,8 +64,8 @@ never holds a key for you, and it never starts Claude Code, or a shell for Claud
 
 A project's scenes are code. The first time a project opens, a macOS sheet
 names it and its folder and asks whether to run its scenes; Return declines.
-The question returns if the scenes changed while the project was closed, which
-is how a shared folder or a pack is caught. Nothing in a pack runs when you import
+The question returns if a pack replaced the project, or at the next launch if the scenes
+changed while it was closed, which is how a pack or a shared folder is caught. Nothing in a pack runs when you import
 it: importing only writes files, and the first open asks the question above.
 
 A pack is signed by the app that made it. On import the app checks that every
