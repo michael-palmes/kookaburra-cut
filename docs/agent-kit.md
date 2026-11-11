@@ -115,10 +115,12 @@ scripts/
   template means archiving the old one first (a test pins its digest).
 - **The allow-list** (`sweep_agent_files`, before everything else on every stamp).
   `CLAUDE.local.md`, `AGENTS.md`, `.claude.json`, `.claude/CLAUDE.md` and any `CLAUDE.md`
-  below the root (case variants too, `.git` skipped, links never followed) move to `## From
+  below the root (any name the filesystem opens as one of these, `AGENTſ.md` included, `.git`
+  skipped, links never followed, folders moved aside walked too) move to `## From
   <path>` sections of `NOTES.md`, fenced, then go. `.mcp.json` lands there with `env` and
   `headers` values removed, and the original moves aside. Anything else in `.claude/` beyond
-  `settings.json`, `settings.local.json`, `skills` and `worktrees`, a nested `.claude`, a link,
+  `settings.json`, `settings.local.json`, `skills` and `worktrees` (each `worktrees/*` a checkout
+  this repository registered), a nested `.claude`, a link,
   a folder, a file over 256 KB or not UTF-8, and a settings file that doesn't parse move aside
   unread. A root `CLAUDE.md` that isn't a shipped default moves only on the first open of a
   folder; after that it is the person's. The same goes for hooks: on the first open everything
@@ -295,10 +297,11 @@ As built (`scripts/kblib/`):
   are silent inside the workspace, announced on stderr with the resolved path and size
   outside it (`kb: reading /Users/x/Desktop/deck.csv (812 bytes) from outside the
   workspace`), and refused outright for `~/.ssh`, `~/.aws`, `~/.config`, `~/.gnupg`,
-  `~/Library/Keychains`, `~/.docker`, `~/.kube`, `~/.azure`, `~/.claude`, `.env*`, `.netrc`,
+  `~/Library/Keychains`, `~/.docker`, `~/.kube`, `~/.azure`, `~/.claude`,
+  `~/Library/Application Support/Claude`, `.claude.json`, `.env*`, `.netrc`,
   `.git-credentials`, `.npmrc`, `.pypirc`, `id_rsa*`, `id_ed25519*`, `id_ecdsa*`, `id_dsa*`,
   `credentials*.json`, `*.pem`, `*.p12`, `*.key`, `*.jks`, `*.keystore`, `*.tfstate` and shell
-  history files. `kit.rs` `CREDENTIAL_*` is the same list for the managed `Read` deny rules
+  history files, names compared in any case as APFS does. `kit.rs` `CREDENTIAL_*` is the same list for the managed `Read` deny rules
   and the folders `bridge.rs` never takes as a write root, and a test holds them together. The
   deny rules name only the secrets in `~/.claude`, since Claude Code tells the agent to read
   its saved results and memory there. Folders are `Read(~/<dir>/**)`; a file name gets

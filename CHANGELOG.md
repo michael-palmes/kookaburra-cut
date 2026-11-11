@@ -62,6 +62,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   longer forge a capture, a check result or an export request, or replay an old
   one. A project whose tools predate this gets a one-line answer: open it in
   Kookaburra Cut once to update them.
+- Agent files a shared folder hides under another spelling of their name, in a
+  worktree folder git never made, or inside a folder moved aside earlier are
+  now moved out before Claude starts. `./kb` refuses credential paths in any
+  case, and Claude's own settings and the Claude app's folder too.
 
 ## [0.22.4] - 2026-11-10
 

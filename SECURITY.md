@@ -87,7 +87,7 @@ It is built for these risks:
   shell but the updater's administrator install ("On the Mac"): a session
   begins in the Claude app or the person's own terminal. kb
   writes only inside the project (any folder with a `project.json`, through `-C`), the workspace or a folder a person picked in the app this
-  session, and refuses the credential folders it names, by exact case; the whole workspace is routine to it, and only
+  session, and refuses the credential folders it names, in any case; the whole workspace is routine to it, and only
   bridge captures, frame ranges, checks, preset inserts and `openEdit` for another project ask in the app; commands that look like sending work off the Mac ask a person
   first. None of this is a sandbox (see "Not yet").
 - **Confidential work on disk.** Projects, caches and exports stay in the
@@ -416,7 +416,8 @@ stamped before the profile stays in its folder, and its kb still runs.
   plain git runs the folder's hooks and the programs its config names: a live
   hook found on a folder's first open moves to `.git/hooks.moved-aside/` and the
   review sheet lists it (`sweep_agent_files`), and a `.git/config` the app
-  refuses, a `.git` that is a link or file, a hook added later, or another
+  refuses (any key beyond git's own setup, so a filter or diff driver a
+  `.gitattributes` names is never defined there), a `.git` that is a link or file, a hook added later, or another
   repository inside the project leaves the agent no git allow rule and a `Bash(git:*)` deny, decided again at every
   stamp and logged `[kit]`. kb's `bash-pre` hook refuses the same live, for a
   session that starts in a terminal after the folder changed
@@ -439,7 +440,10 @@ stamped before the profile stays in its folder, and its kb still runs.
   `NOTES.md`; `.mcp.json` goes there with its `env` and `headers` values removed,
   and the original moves aside. Anything else in `.claude/` outside the kit, and
   a link, folder, oversized or non-UTF-8 file under one of those names, moves aside
-  unread. A root `CLAUDE.md` that isn't a shipped default moves on the first open
+  unread. Names are matched as the filesystem opens them, so a case or Unicode
+  variant (`AGENTſ.md`) counts. A `.claude/worktrees/*` that isn't a checkout this
+  repository registered moves aside, and folders a stamp moved aside are swept
+  too. A root `CLAUDE.md` that isn't a shipped default moves on the first open
   of a folder; after that it is the person's. The record sits in `settings.json`,
   outside the folder, so a folder can't mark itself reviewed.
 - **The review before Claude** (`workspace.rs`, `review_agent_files_for`): a native
@@ -477,10 +481,9 @@ stamped before the profile stays in its folder, and its kb still runs.
   or from another project (`kblib/asset_ops.py`, `_check_restorable`); reads outside the workspace print the resolved
   path and size to stderr and refuse `~/.ssh`, `~/.aws`, `~/.config`,
   `~/.gnupg`, `~/Library/Keychains`, `~/.docker`, `~/.kube`, `~/.azure`,
-  `~/.claude`, `.env*`, `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`, private
+  `~/.claude`, `~/Library/Application Support/Claude`, `.claude.json`, `.env*`, `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`, private
   keys by name, `credentials*.json`, `*.pem`, `*.p12`, `*.key`, `*.jks`,
-  `*.keystore`, `*.tfstate` and shell histories, matched by exact case (so `~/.AWS`
-  passes on APFS; `~/.claude.json` is not listed) (`kit.rs` `CREDENTIAL_*` is the
+  `*.keystore`, `*.tfstate` and shell histories, in any case (`kit.rs` `CREDENTIAL_*` is the
   same list, and a test holds them together). The kit denies the agent's own Read
   tool the credential paths kb refuses (of `~/.claude`, only the secrets), which
   binds Claude Code's file tools and not a script the agent runs. Bridge captures,
