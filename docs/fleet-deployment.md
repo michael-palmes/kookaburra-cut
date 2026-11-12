@@ -1,6 +1,6 @@
 # Deploying Kookaburra Cut with an MDM
 
-Written against version 0.22.2, the current release, and the keys 0.23.0 adds;
+Written against version 0.22.4, the current release, and what 0.23.0 adds;
 wherever 0.23.0 differs, the text says so. Copy-paste recipes for Jamf Pro,
 Kandji (now Iru), Mosyle and Microsoft Intune: install the app, force a posture
 with a configuration profile, check a Mac, serve updates from your own server,
@@ -21,8 +21,8 @@ recipes has run on a live tenant yet ([Not yet](#not-yet)).
   `.github/workflows/release.yml` say there is no Intel build).
 - **The release.** Verify it first ([fleet.md, "Verify a
   release"](./fleet.md#verify-a-release)), then take the DMG's SHA-256 from its
-  `SHA256SUMS`. For 0.22.2 that is
-  `7ae5fd102ab1c6ba29e584adbda0418ae7699b2118b9ec614fab792ceebbb252`.
+  `SHA256SUMS`. For 0.22.4 that is
+  `a71315babdc38eac53dfcb75163416709721b8edb515db1385ac214c86e35278`.
 - **The version.** Managed keys start at 0.22.2: an earlier build honours none
   ([Choose a posture](#2-choose-a-posture) says which key arrives when).
 - **One updater per Mac.** Either your MDM delivers each version, or the in-app
@@ -44,8 +44,8 @@ tries again later.
 
 | Parameter | Default | Set it to |
 | --- | --- | --- |
-| 4 | `0.22.2` | The version to install |
-| 5 | 0.22.2's DMG SHA-256 | That version's DMG line in `SHA256SUMS` |
+| 4 | `0.22.4` | The version to install |
+| 5 | 0.22.4's DMG SHA-256 | That version's DMG line in `SHA256SUMS` |
 | 6 | The GitHub release's download folder | Your own copy of the DMG's folder, for Macs that cannot reach GitHub (HTTPS only) |
 
 Jamf Pro passes parameters 4 to 6 (1 to 3 are its own). Elsewhere, edit the
@@ -58,8 +58,8 @@ while the app is open.
 # Installs Kookaburra Cut from its release DMG once the pinned SHA-256 and Developer ID team check out (docs/fleet-deployment.md).
 set -euo pipefail
 
-VERSION="${4:-0.22.2}"
-DMG_SHA256="${5:-7ae5fd102ab1c6ba29e584adbda0418ae7699b2118b9ec614fab792ceebbb252}"
+VERSION="${4:-0.22.4}"
+DMG_SHA256="${5:-a71315babdc38eac53dfcb75163416709721b8edb515db1385ac214c86e35278}"
 BASE_URL="${6:-https://github.com/michael-palmes/kookaburra-cut/releases/download/v$VERSION}"
 
 TEAM_ID="Q4B8N8ZKA2"
@@ -168,7 +168,7 @@ the Library items kept their names.
   ```bash
   #!/bin/bash
   v="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "/Applications/Kookaburra Cut.app/Contents/Info.plist" 2>/dev/null)"
-  [ "$v" = "0.22.2" ]
+  [ "$v" = "0.22.4" ]
   ```
 
   Or run `install-kookaburra-cut.sh` as a Custom Script instead, which also
@@ -220,17 +220,17 @@ domain `com.mpalmes.kookaburracut` (`DOMAIN` in `managed.rs`).
 | `AllowedPublisherKeyIds` | 0.22.2 | `[]`: no pack imports | your approved key ids | not forced |
 | `DisableUpdateCheck` | 0.22.2 | `true` | not forced | not forced |
 | `WorkspaceRoot` | 0.22.2 | `~/Kookaburra Cut` | `~/Kookaburra Cut` | not forced |
-| `DisableAgentKit` | 0.23.0 | `true` | not forced | not forced |
-| `DisablePackExport` | 0.23.0 | `true` | not forced | not forced |
-| `ExportsInProject` | 0.23.0 | `true` | `true` | `true` |
-| `UpdateEndpoint` | 0.23.0 | your mirror | your mirror | not forced |
+| `DisableAgentKit` | 0.22.3 | `true` | not forced | not forced |
+| `DisablePackExport` | 0.22.3 | `true` | not forced | not forced |
+| `ExportsInProject` | 0.22.3 | `true` | `true` | `true` |
+| `UpdateEndpoint` | 0.22.3 | your mirror | your mirror | not forced |
 
 The files: [`kookaburra-cut-locked-down.mobileconfig`](../packaging/mdm/kookaburra-cut-locked-down.mobileconfig),
 [`kookaburra-cut-agents-mirrored.mobileconfig`](../packaging/mdm/kookaburra-cut-agents-mirrored.mobileconfig)
 and [`kookaburra-cut-open.mobileconfig`](../packaging/mdm/kookaburra-cut-open.mobileconfig).
 The From column is the first release whose `Key::ALL` in `managed.rs` holds the
-key; 0.22.2 ignores the other four, so on 0.22.2 the open profile changes
-nothing and the mirrored one leaves checks on GitHub.
+key; 0.22.2 ignores the other four, so deploy 0.22.3 or later: on 0.22.2 the
+open profile changes nothing and the mirrored one leaves checks on GitHub.
 
 - **Locked down** forces all nine. `UpdateEndpoint` does nothing while
   `DisableUpdateCheck` is forced, since that key wins ([mdm.md](./mdm.md)); it is
@@ -356,7 +356,7 @@ A user-level profile lands in `/Library/Managed Preferences/<user>/` instead
   grep '\[managed\]' ~/Library/Application\ Support/com.mpalmes.kookaburracut/logs/app.log
   ```
 
-- **0.22.2.** A release build keeps no log; the same boot line goes to stderr
+- **Before 0.23.0.** A release build keeps no log; the same boot line goes to stderr
   (`log_at_boot` in that version's `managed.rs`). Launch it from Terminal as
   the person, read the line, then quit the app:
 
@@ -383,7 +383,7 @@ install with Homebrew; it is not published until its tap exists
 
 ### The in-app updater, from your own mirror
 
-`UpdateEndpoint` (0.23.0) points the in-app updater at a manifest you host, so
+`UpdateEndpoint` (0.22.3) points the in-app updater at a manifest you host, so
 the app asks your server instead of GitHub and your server decides when a
 version reaches the fleet (`updater.rs`). The archive must still carry this
 project's updater signature, so a mirror can serve only builds this project
