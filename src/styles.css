@@ -6372,6 +6372,11 @@ button.beat-status {
 .shortcuts-sheet {
   width: min(calc(34rem * var(--text-scale)), calc(100vw - 4rem));
 }
+.shortcuts-note {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
 .shortcuts-group h3 {
   margin: var(--space-3) 0 var(--space-1);
   font-size: var(--text-xs);

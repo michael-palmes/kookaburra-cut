@@ -160,4 +160,11 @@ describe("Settings › Accessibility", () => {
     }
     expect(size).toContain('aria-checked="true"');
   });
+
+  it("offers Single-key shortcuts as a switch, on by default", async () => {
+    const html = await render({ managed: false });
+    expect(html).toMatch(/<\/svg>Single-key shortcuts<\/span>/);
+    const keys = row(html, "Single-key shortcuts");
+    expect(keys).toMatch(/type="checkbox" aria-label="Single-key shortcuts" checked=""/);
+  });
 });

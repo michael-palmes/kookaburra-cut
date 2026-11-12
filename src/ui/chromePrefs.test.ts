@@ -33,6 +33,23 @@ async function load(stored: Record<string, string> = {}) {
   return prefs;
 }
 
+const key = (k: string, extra: Record<string, unknown> = {}) => {
+  const stopPropagation = vi.fn();
+  return {
+    event: {
+      key: k,
+      metaKey: false,
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: false,
+      target: { tagName: "BUTTON" },
+      stopPropagation,
+      ...extra,
+    } as unknown as KeyboardEvent,
+    stopPropagation,
+  };
+};
+
 beforeEach(() => {
   emit.mockClear();
   vi.unstubAllGlobals();
@@ -108,5 +125,60 @@ describe("never reaches an export", () => {
       expect(read(`../engine/${file}`), file).not.toMatch(/chromePrefs|text-scale/);
     }
     expect(read("../renderMain.tsx")).not.toContain("chromePrefs");
+  });
+});
+
+describe("single-key shortcuts (2.1.4)", () => {
+  it("lets every key through while the switch is on", async () => {
+    const prefs = await load();
+    const { event, stopPropagation } = key("s");
+    prefs.guardSingleKeyShortcuts(event);
+    expect(stopPropagation).not.toHaveBeenCalled();
+  });
+
+  it("stops bare letters and symbols short of the window shortcuts once off", async () => {
+    const prefs = await load({ "kookaburra:single-key-shortcuts": "0" });
+    expect(prefs.singleKeyShortcutsEnabled()).toBe(false);
+    for (const [k, extra] of [
+      ["s", {}],
+      ["S", { shiftKey: true }],
+      ["/", {}],
+      ["o", {}],
+    ] as const) {
+      const { event, stopPropagation } = key(k, extra);
+      prefs.guardSingleKeyShortcuts(event);
+      expect(stopPropagation, k).toHaveBeenCalled();
+    }
+  });
+
+  it("keeps Space, arrows, modified keys and typing working when off", async () => {
+    const prefs = await load({ "kookaburra:single-key-shortcuts": "0" });
+    for (const { event, stopPropagation } of [
+      key(" "),
+      key("ArrowLeft"),
+      key("Backspace"),
+      key("k", { metaKey: true }),
+      key("s", { altKey: true }),
+      key("s", { target: { tagName: "INPUT" } }),
+      key("s", { target: { tagName: "TEXTAREA" } }),
+      key("s", { target: { tagName: "DIV", isContentEditable: true } }),
+    ]) {
+      prefs.guardSingleKeyShortcuts(event);
+      expect(stopPropagation, event.key).not.toHaveBeenCalled();
+    }
+  });
+
+  it("persists the switch and tells the other windows", async () => {
+    const prefs = await load();
+    prefs.setSingleKeyShortcuts(false);
+    expect(store.get("kookaburra:single-key-shortcuts")).toBe("0");
+    expect(prefs.singleKeyShortcutsEnabled()).toBe(false);
+    expect(emit).toHaveBeenCalledWith(prefs.CHROME_PREFS_EVENT);
+  });
+
+  it("guards at document, below every window shortcut listener", () => {
+    expect(read("./chromePrefs.ts")).toContain(
+      'document.addEventListener("keydown", guardSingleKeyShortcuts);',
+    );
   });
 });
