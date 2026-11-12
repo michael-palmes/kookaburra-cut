@@ -177,6 +177,7 @@ import { planDeletes, planDuplicates, planMoves } from "./engine/sceneOrder";
 import { reconcileTerminalBakes, settleTerminalBakes } from "./engine/sceneTerminalBaker";
 import { ensureSceneThumbs, listCachedSceneThumbs } from "./engine/sceneThumbs";
 import { activeSceneIndex } from "./engine/sceneTimeline";
+import { sceneTitle } from "./engine/sceneTitle";
 import { SHUTTER_SAMPLES_DEFAULT } from "./engine/shutter";
 import { canCaptureSnapshot, captureSnapshot, type SnapshotSaved } from "./engine/snapshots";
 import {
@@ -271,6 +272,7 @@ import { ALL_PROJECTS } from "./ui/projectLibrary";
 import { SceneWebsiteOverlay } from "./ui/SceneWebsiteOverlay";
 import { SceneWizardHost } from "./ui/SceneWizardHost";
 import { ShortcutsSheet } from "./ui/ShortcutsSheet";
+import { stageRegionLabel } from "./ui/stageRegion";
 import { playheadStillMs, stillAtFrame } from "./ui/stillsModel";
 import { TerminalGizmo } from "./ui/TerminalGizmo";
 import { TextGizmo } from "./ui/TextGizmo";
@@ -2104,6 +2106,21 @@ export default function App() {
   );
   // Where the active scene's world lands on screen: an overlay draws it into the cutout, so every gizmo surface projects and hit-tests against that rect, not the frame's.
   const sceneFrame = project?.sceneFrames[camSceneIndex];
+  const stageLabel = stageRegionLabel(
+    project?.slots.length
+      ? {
+          title: sceneTitle(
+            project.sceneDocs[camSceneIndex],
+            null,
+            sceneFileStem(project.sceneFiles[camSceneIndex]),
+            camSceneIndex,
+          ),
+          index: camSceneIndex,
+          count: project.slots.length,
+        }
+      : null,
+    currentMs,
+  );
   const sceneCutout = useMemo(
     () => frameWorldCutout(sceneFrame, format.width / format.height),
     [sceneFrame, format.width, format.height],
@@ -3029,7 +3046,7 @@ export default function App() {
             />
           )}
           <div className="editor-main">
-            <div className="stage">
+            <main className="stage" aria-label={stageLabel}>
               {/* Letterbox frame: contain-fit at the export aspect (design.md §7.2); the preview frames exactly like the export and can never overflow the window. */}
               <div
                 className="stage-frame"
@@ -3341,7 +3358,7 @@ export default function App() {
                   </div>
                 )}
               </div>
-            </div>
+            </main>
           </div>
 
           {/* The right-hand inspector: hidden during export/autorun like the edit bar; bundled projects get its Project tab only (decision 12). */}

@@ -101,7 +101,7 @@ export function SceneOverviewSectionHeader({
           className="inspector-scene-overview-add"
           aria-label={addLabel}
           aria-expanded={expanded}
-          aria-controls={controls}
+          aria-controls={expanded === false ? undefined : controls}
           aria-haspopup={controls ? "dialog" : undefined}
           title={addTitle ?? addLabel}
           disabled={addDisabled}
