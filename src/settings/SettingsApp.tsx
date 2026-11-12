@@ -807,7 +807,7 @@ export function SettingsApp() {
 
       <section className="settings-section">
         <h2>Accessibility</h2>
-        <div className="settings-row">
+        <div className="settings-row stacked">
           <div className="settings-row-text">
             <span
               className="settings-row-title"
@@ -821,17 +821,19 @@ export function SettingsApp() {
               they are.
             </span>
           </div>
-          <SegmentedRow
-            className="settings-segments"
-            ariaLabel="Text size"
-            value={textSize}
-            onChange={setTextSize}
-            options={TEXT_SIZES.map((s) => ({
-              value: s.id,
-              label: s.label,
-              icon: <LetterIcon size={TEXT_SIZE_ICON[s.id]} />,
-            }))}
-          />
+          <div className="settings-row-actions">
+            <SegmentedRow
+              className="settings-segments"
+              ariaLabel="Text size"
+              value={textSize}
+              onChange={setTextSize}
+              options={TEXT_SIZES.map((s) => ({
+                value: s.id,
+                label: s.label,
+                icon: <LetterIcon size={TEXT_SIZE_ICON[s.id]} />,
+              }))}
+            />
+          </div>
         </div>
         <div className="settings-row">
           <div className="settings-row-text">

@@ -153,7 +153,7 @@ describe("Settings › Accessibility", () => {
   it("offers Text size as three options, each with a leading icon", async () => {
     const html = await render({ managed: false });
     expect(html).toMatch(/<\/svg>Text size<\/span>/);
-    const size = row(html, "Text size");
+    const size = html.slice(html.indexOf("Text size<"), html.indexOf("Single-key shortcuts<"));
     expect(size).toContain('role="radiogroup" aria-label="Text size"');
     for (const label of ["Default", "Large", "Larger"]) {
       expect(size).toMatch(new RegExp(`role="radio"[^>]*>\\s*<svg[^]*?</svg>${label}<`));

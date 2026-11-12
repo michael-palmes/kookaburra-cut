@@ -2250,7 +2250,7 @@ button.beat-status {
 }
 
 .editor-window {
-  --chrome-top: 52px; /* .editor-topbar */
+  --chrome-top: calc(52px * var(--text-scale)); /* .editor-topbar */
 }
 
 .modal-overlay {
@@ -2262,6 +2262,9 @@ button.beat-status {
   z-index: 20;
   display: grid;
   place-items: center;
+  /* A dialog taller than the window (Larger text, a short window) scrolls instead of clipping. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--surface-overlay);
 }
 
@@ -2568,6 +2571,12 @@ button.beat-status {
   font-size: var(--text-xs);
   line-height: var(--lh-xs);
   color: var(--text-secondary);
+}
+
+/* Larger text keeps whole sentences rather than cutting them off. */
+:root[data-text-size] :is(.template-card-tagline, .theme-card-use-label) {
+  -webkit-line-clamp: unset;
+  line-clamp: none;
 }
 
 .template-card-meta {
@@ -8374,7 +8383,8 @@ button.beat-status {
   display: flex;
   flex-direction: column;
   flex: none;
-  width: 342px;
+  /* Grows half as fast as the text, so Larger rows wrap less without starving the stage. */
+  width: calc(342px * (1 + (var(--text-scale) - 1) / 2));
   min-height: 0;
   overflow: hidden;
   background: var(--surface-panel);

@@ -109,6 +109,17 @@ describe("text size tokens", () => {
     }
   });
 
+  it("reflows rather than clips at Larger", () => {
+    const rule = (sel: string) =>
+      styles.slice(styles.indexOf(`\n${sel} {`), styles.indexOf("}", styles.indexOf(`\n${sel} {`)));
+    expect(rule(".modal-overlay")).toContain("overflow-y: auto;");
+    expect(rule(".inspector")).toContain("width: calc(342px * (1 + (var(--text-scale) - 1) / 2));");
+    expect(rule(".editor-window")).toContain("--chrome-top: calc(52px * var(--text-scale));");
+    expect(styles).toMatch(
+      /:root\[data-text-size\] :is\(\.template-card-tagline, \.theme-card-use-label\) \{\s*-webkit-line-clamp: unset;/,
+    );
+  });
+
   it.each(["../styles.css", "../packs/packs.css"])(
     "leaves no fixed pixel font size in %s",
     (file) => {
