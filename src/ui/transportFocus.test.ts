@@ -35,6 +35,13 @@ describe("App transport keydown", () => {
     );
   });
 
+  it("leaves Space to a focused button, tab, option or card", () => {
+    expect(spaceBranch.indexOf("if (spacePressesControl(target)) return;")).toBeGreaterThan(-1);
+    expect(spaceBranch.indexOf("if (spacePressesControl(target)) return;")).toBeLessThan(
+      spaceBranch.indexOf("togglePlay()"),
+    );
+  });
+
   it("lets Space through only where a literal space means nothing", () => {
     expect(spaceBranch).toContain("if (formControl && !spaceMeansPlayback(target)) return;");
   });
