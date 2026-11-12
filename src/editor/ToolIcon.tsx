@@ -17,7 +17,11 @@ export type ToolIconId =
   | "fitCrop"
   | "resetCrop"
   | "easeLinear"
-  | "easeSmooth";
+  | "easeSmooth"
+  | "insert"
+  | "append"
+  | "moveEarlier"
+  | "moveLater";
 
 export function ToolIcon({ id }: { id: ToolIconId }) {
   const glyph = {
@@ -118,6 +122,20 @@ export function ToolIcon({ id }: { id: ToolIconId }) {
         <circle cx="13.5" cy="2.5" r="1" fill="currentColor" stroke="none" />
       </>
     ),
+    insert: (
+      <>
+        <path d="M8 4.5v10" />
+        <path d="M5.5 1.5h5L8 4.5z" />
+      </>
+    ),
+    append: (
+      <>
+        <rect x="1.5" y="4.5" width="7" height="7" rx="1" />
+        <path d="M12 5.5v5M9.5 8h5" />
+      </>
+    ),
+    moveEarlier: <path d="M13.5 8h-10M7 4.5 3.5 8 7 11.5" />,
+    moveLater: <path d="M2.5 8h10M9 4.5 12.5 8 9 11.5" />,
   }[id];
   return (
     <svg

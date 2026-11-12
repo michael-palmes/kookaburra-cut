@@ -2,7 +2,7 @@ import { useSingleKeyShortcuts } from "./chromePrefs";
 import { useEscapeClose } from "./useEscapeClose";
 
 /** Keyboard-shortcut reference, opened by ⌘/ or Project ▸ Keyboard Shortcuts…; static content, grouped by surface, with the accelerator also on the native menu item for menu-bar discoverability. */
-const GROUPS: { title: string; rows: [string, string][] }[] = [
+export const GROUPS: { title: string; rows: [string, string][] }[] = [
   {
     title: "Preview",
     rows: [
@@ -15,9 +15,19 @@ const GROUPS: { title: string; rows: [string, string][] }[] = [
     title: "Editing",
     rows: [
       ["⌥⌘E", "Edit with Claude (workspace projects)"],
-      ["⌫", "Animation lane: delete the selected keyframe or segment"],
+      ["⌫", "Animation lane: delete the focused or selected keyframe or animation"],
       ["← / →", "Animation lane: nudge the selected keyframe (⇧ = 10 frames)"],
-      ["Esc", "Animation lane: disarm the tool, then deselect"],
+      [
+        "Esc",
+        "Animation lane: disarm the tool, then deselect; from a focused item, back to the lane",
+      ],
+      ["Tab", "Animation lane: focus its keyframes and animations, one stop per lane"],
+      ["← / → · Home / End", "Animation lane, focused: previous or next item, first or last"],
+      ["↑ / ↓", "Animation lanes, focused: the lane above or below"],
+      ["⏎ or Space", "Animation lane, focused: select (again on a chart keyframe: open its data)"],
+      ["⌘← / ⌘→", "Animation lane, focused: move the keyframe or animation one frame (⇧ = 10)"],
+      ["⌥← / ⌥→", "Animation lane, focused: move an animation's start one frame (⇧ = 10)"],
+      ["⌥⌘← / ⌥⌘→", "Animation lane, focused: move an animation's end one frame (⇧ = 10)"],
       ["O / P / Z", "Camera tools, Orbit mode: arm Orbit / Pan / Zoom (animation mode open)"],
       ["M / F / L / T", "Camera tools, Free mode: arm Move / Forward / Look / Tilt"],
       ["⌘ / ⌃ / ⌥ + drag", "Camera tools: slide / dolly / turn while dragging the stage"],
@@ -28,8 +38,11 @@ const GROUPS: { title: string; rows: [string, string][] }[] = [
         "⌃ while dragging",
         "Gizmos, text, hero charts and decorations: turn off alignment snapping",
       ],
-      ["Right-click", "Scenes · theme cards · animation segments: context menu"],
-      ["⇧F10", "Scenes list, scene overview and text rows: the same menu from the keyboard"],
+      ["Right-click", "Scenes · theme cards · keyframes · animations: context menu"],
+      [
+        "⇧F10",
+        "Scenes list, scene overview, text rows, theme cards and focused lane items: the same menu",
+      ],
     ],
   },
   {
@@ -42,9 +55,17 @@ const GROUPS: { title: string; rows: [string, string][] }[] = [
       ["T", "Tap tool: click the preview to place a tap highlight"],
       ["M", "Mask tool: drag over the preview to hide an area"],
       ["⌥ while dragging", "Mask: move its whole path instead of keying this frame"],
-      ["⌫", "Delete the selected mask or clip"],
+      ["⌫", "Delete the selected mask or clip, or the focused timeline item"],
       ["Trackpad scroll", "Scrub the playhead"],
-      ["Right-click", "Tap marker · mask: context menu"],
+      ["Right-click", "Clip · zoom key · tap marker · mask: context menu"],
+      ["Tab", "Timeline: focus its clips, then its masks, one stop per lane"],
+      ["← / → · Home / End", "Timeline, focused: previous or next clip or zoom key, first or last"],
+      ["↑ / ↓", "Timeline, focused: the clips or masks lane"],
+      ["⏎ or Space", "Timeline, focused: select a clip or mask, or jump to a zoom key"],
+      ["⌘← / ⌘→", "Timeline, focused: move a clip one place, or a zoom key one frame (⇧ = 10)"],
+      ["⌥← / ⌥→", "Timeline, focused: trim a clip's or mask's start one frame (⇧ = 10)"],
+      ["⌥⌘← / ⌥⌘→", "Timeline, focused: trim a clip's or mask's end, or a freeze's length"],
+      ["⇧F10", "Timeline, focused: the item's menu"],
     ],
   },
   {
