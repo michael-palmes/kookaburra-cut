@@ -84,11 +84,13 @@ const SPACE_PRESSES_ROLES = new Set([
 interface PressTargetLike {
   tagName: string;
   getAttribute?: (name: string) => string | null;
+  matches?: (selector: string) => boolean;
 }
 
-/** True for a focused control that Space presses (a button, tab, option or card), so the transport leaves the key to it. */
+/** True for a control keyboard focus rests on that Space presses (a button, tab, option or card), so the transport leaves the key to it; a card focused by a click keeps Space for playback. */
 export function spacePressesControl(el: PressTargetLike | null): boolean {
   if (!el) return false;
+  if (el.matches && !el.matches(":focus-visible")) return false;
   if (el.tagName === "BUTTON" || el.tagName === "SUMMARY") return true;
   if (el.tagName === "A" && el.getAttribute?.("href") != null) return true;
   return SPACE_PRESSES_ROLES.has(el.getAttribute?.("role") ?? "");

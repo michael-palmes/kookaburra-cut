@@ -71,6 +71,13 @@ describe("spacePressesControl (2.1.1)", () => {
     expect(spacePressesControl(el("A", { href: "#" }))).toBe(true);
   });
 
+  it("keeps Space for playback on a card a click focused", () => {
+    const clicked = { ...el("DIV", { role: "button" }), matches: () => false };
+    const keyed = { ...el("DIV", { role: "button" }), matches: () => true };
+    expect(spacePressesControl(clicked)).toBe(false);
+    expect(spacePressesControl(keyed)).toBe(true);
+  });
+
   it("keeps Space for the transport everywhere else", () => {
     expect(spacePressesControl(null)).toBe(false);
     expect(spacePressesControl(el("BODY"))).toBe(false);
