@@ -215,6 +215,7 @@ describe("error suggestion (3.3.3)", () => {
     const row = read("./inspector/SceneTab.tsx");
     const body = row.slice(row.indexOf("function DurationRow("), row.indexOf("function HingeRow("));
     expect(body).toContain("setInvalid(ms === null);");
+    expect(body).toMatch(/onCommit: \(seconds\) => \{\s*setInvalid\(false\);/);
     expect(body).toContain("aria-describedby={invalid ? hintId : undefined}");
     expect(body).toMatch(/role="alert">\s*\{SCENE_LENGTH_HINT\}/);
     expect(read("./durationText.ts")).toContain('SCENE_LENGTH_HINT = "Use m:ss, like 0:04"');

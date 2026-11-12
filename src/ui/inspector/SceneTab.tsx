@@ -1476,7 +1476,10 @@ function DurationRow({
     onText: setText,
     format: formatSceneLength,
     inputRef,
-    onCommit: (seconds) => onCommit(Math.round(seconds * 1000)),
+    onCommit: (seconds) => {
+      setInvalid(false);
+      onCommit(Math.round(seconds * 1000));
+    },
   });
   useEffect(() => {
     if (!dragging && !isTypingIn(inputRef.current)) setText(formatSceneLengthMs(durationMs));
