@@ -6,8 +6,7 @@ and how an engagement should run. Quote from it freely. Every claim it points at
 is stated, with its control, in [SECURITY.md](../SECURITY.md) at the version
 under test; where the two disagree, SECURITY.md wins and this file is stale.
 
-Written on 2026-11-09 against 0.22.2, the latest release, while 0.23.0 is in
-review.
+Checked against 0.22.4, the latest release, while 0.23.0 is in review.
 
 ## The product
 
@@ -87,7 +86,7 @@ people who trust what colleagues send them.
   dependencies. Where the app widens one (handing untrusted bytes to a decoder
   it could avoid, say), that use is in scope.
 - **Known gaps.** SECURITY.md, "Not yet", lists what is deliberately deferred
-  (bridge request signing, a sealed trust store, a per-project website store,
+  (bridge signing against same-user processes, a sealed trust store, a per-project website store,
   an agent sandbox). A finding that only restates one is noted, not scored,
   unless it shows a wider impact than the entry admits.
 - **Infrastructure.** The release pipeline's design, workflows and scripts are
@@ -284,7 +283,7 @@ Ask each firm for a fixed quote against this file.
 
 Every release from 0.22.0 on carries what an install's integrity rests on
 (SECURITY.md, "Release integrity"; `build-info.txt` from 0.22.1). Later
-releases may add assets, and their own `SECURITY.md` lists them. For 0.22.2:
+releases may add assets, and their own `SECURITY.md` lists them. For 0.22.4:
 
 | Asset | What it proves |
 | --- | --- |
