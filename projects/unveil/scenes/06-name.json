@@ -384,10 +384,10 @@
     "centre": [-2.2, 0.3],
     "fade": [1.2, 5.5],
     "reflection": {
-      "strength": 0.9,
-      "blur": 40,
+      "strength": 1.3,
+      "blur": 24,
       "heightBlur": 0.9,
-      "contact": 1
+      "contact": 0.75
     },
     "glitter": {
       "scale": 90,
