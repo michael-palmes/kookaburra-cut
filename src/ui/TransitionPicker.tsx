@@ -1,6 +1,6 @@
 /** Transition picker: an edit-bar modal editing the transition into the scene at the playhead, with a live-GL preview driven by the real composite shaders (engine/transitionShader.ts) so every type previews faithfully; one small renderer per modal open, disposed on close, never one context per card (WKWebView context pressure); wall-clock use is fine here since the edit bar is unmounted during export/autorun; textures load linear-tagged so they sample raw, like the compositor's display targets, while the browser still converts embedded colour profiles. */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   Camera,
   CanvasTexture,
@@ -680,9 +680,13 @@ export function TransitionModal({
   const [durationText, setDurationText] = useState(durationSeconds);
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-seed on type pick
   useEffect(() => setDurationText(durationSeconds), [draft?.type]);
+  const [durationInvalid, setDurationInvalid] = useState(false);
+  const durationHintId = useId();
   const commitDuration = () => {
     const seconds = Number(durationText);
-    if (!Number.isFinite(seconds) || seconds < 0.1 || seconds > 2 || !draft) {
+    const valid = Number.isFinite(seconds) && seconds >= 0.1 && seconds <= 2;
+    setDurationInvalid(!valid);
+    if (!valid || !draft) {
       setDurationText(durationSeconds);
       return;
     }
@@ -767,7 +771,12 @@ export function TransitionModal({
                   value={durationText}
                   inputMode="decimal"
                   aria-label="Transition duration in seconds"
-                  onChange={(e) => setDurationText(e.target.value)}
+                  aria-invalid={durationInvalid || undefined}
+                  aria-describedby={durationInvalid ? durationHintId : undefined}
+                  onChange={(e) => {
+                    setDurationText(e.target.value);
+                    setDurationInvalid(false);
+                  }}
                   onBlur={commitDuration}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") (e.target as HTMLInputElement).blur();
@@ -776,6 +785,11 @@ export function TransitionModal({
                 />
                 s
               </span>
+              {durationInvalid && (
+                <span className="field-error" id={durationHintId} role="alert">
+                  Use 0.1 to 2 seconds
+                </span>
+              )}
 
               {meta?.needsDirection && (
                 <span className="transition-directions">

@@ -210,6 +210,23 @@ describe("option card clips (2.2.2, 2.3.3)", () => {
   });
 });
 
+describe("error suggestion (3.3.3)", () => {
+  it("says why a typed scene length reverted, beside the field", () => {
+    const row = read("./inspector/SceneTab.tsx");
+    const body = row.slice(row.indexOf("function DurationRow("), row.indexOf("function HingeRow("));
+    expect(body).toContain("setInvalid(ms === null);");
+    expect(body).toContain("aria-describedby={invalid ? hintId : undefined}");
+    expect(body).toMatch(/role="alert">\s*\{SCENE_LENGTH_HINT\}/);
+    expect(read("./durationText.ts")).toContain('SCENE_LENGTH_HINT = "Use m:ss, like 0:04"');
+  });
+
+  it("says why a transition length reverted", () => {
+    const picker = read("./TransitionPicker.tsx");
+    expect(picker).toContain("setDurationInvalid(!valid);");
+    expect(picker).toMatch(/role="alert">\s*Use 0\.1 to 2 seconds/);
+  });
+});
+
 describe("names and purposes (1.3.5, 4.1.2)", () => {
   it("marks the publisher fields with their input purpose", () => {
     const pane = read("../settings/PublisherPane.tsx");

@@ -2354,6 +2354,14 @@ button.beat-status {
   font-size: var(--text-sm);
 }
 
+/* Why a typed value reverted, under or beside its field. */
+.field-error {
+  margin: 0;
+  padding: 0 8px 4px;
+  color: var(--danger-text);
+  font-size: var(--text-xs);
+}
+
 .modal-hint {
   color: var(--text-tertiary);
   font-size: var(--text-xs);

@@ -20,6 +20,9 @@ export function formatSceneLengthMs(ms: number): string {
   return formatSceneLength(ms / 1000);
 }
 
+/** Said beside a scene length field when typed text does not parse, so the revert is never silent (WCAG 3.3.3). */
+export const SCENE_LENGTH_HINT = "Use m:ss, like 0:04";
+
 /** A typed scene length in seconds, or null when the text is not one. Accepts `m:ss`, `m:ss.f…`, `:ss` and a plain seconds number; in `m:ss` form the seconds field is a clock field, so 60 and over is a typo, not 1:15. Applies no floor: use `parseSceneLengthMs` for that. */
 export function parseSceneLength(text: string): number | null {
   const raw = text.trim();

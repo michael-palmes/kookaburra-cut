@@ -200,7 +200,12 @@ import { ComparisonSideIcon } from "../ComparisonSideIcon";
 import { ContextMenu, type ContextMenuState } from "../ContextMenu";
 import { useCameraDoc } from "../cameraDoc";
 import { ColourPicker } from "../colour/ColourPicker";
-import { formatSceneLength, formatSceneLengthMs, parseSceneLengthMs } from "../durationText";
+import {
+  formatSceneLength,
+  formatSceneLengthMs,
+  parseSceneLengthMs,
+  SCENE_LENGTH_HINT,
+} from "../durationText";
 import { FontPicker } from "../FontPicker";
 import { useFreeCameraWarning } from "../freeCameraWarning";
 import { GradientPickerModal } from "../GradientPicker";
@@ -1460,6 +1465,8 @@ function DurationRow({
   onCommit: (ms: number) => void;
 }) {
   const [text, setText] = useState(formatSceneLengthMs(durationMs));
+  const [invalid, setInvalid] = useState(false);
+  const hintId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const { dragging, onPointerDown } = useDragScrub({
     value: durationMs / 1000,
@@ -1476,6 +1483,7 @@ function DurationRow({
   }, [durationMs, dragging]);
   const commit = () => {
     const ms = parseSceneLengthMs(text);
+    setInvalid(ms === null);
     if (ms === null) {
       setText(formatSceneLengthMs(durationMs));
       return;
@@ -1484,30 +1492,42 @@ function DurationRow({
     else setText(formatSceneLengthMs(durationMs));
   };
   return (
-    <div
-      className={`inspector-duration-row${dragging ? " scrubbing" : ""}`}
-      title="Scene length, m:ss or seconds (switches to manual)"
-    >
-      <span className="action-row-icon">
-        <SceneRowIcon id="motion.duration" />
-      </span>
-      <span className="action-row-label">Duration</span>
-      {mode && <span className="action-row-value">{mode}</span>}
-      <input
-        ref={inputRef}
-        className="modal-input inspector-num inspector-seconds inspector-num-drag"
-        data-space-plays=""
-        value={text}
-        aria-label="Scene length in minutes and seconds"
-        onPointerDown={onPointerDown}
-        onChange={(e) => setText(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-          if (e.key === "Escape") setText(formatSceneLengthMs(durationMs));
-        }}
-      />
-    </div>
+    <>
+      <div
+        className={`inspector-duration-row${dragging ? " scrubbing" : ""}`}
+        title="Scene length, m:ss or seconds (switches to manual)"
+      >
+        <span className="action-row-icon">
+          <SceneRowIcon id="motion.duration" />
+        </span>
+        <span className="action-row-label">Duration</span>
+        {mode && <span className="action-row-value">{mode}</span>}
+        <input
+          ref={inputRef}
+          className="modal-input inspector-num inspector-seconds inspector-num-drag"
+          data-space-plays=""
+          value={text}
+          aria-label="Scene length in minutes and seconds"
+          aria-invalid={invalid || undefined}
+          aria-describedby={invalid ? hintId : undefined}
+          onPointerDown={onPointerDown}
+          onChange={(e) => {
+            setText(e.target.value);
+            setInvalid(false);
+          }}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+            if (e.key === "Escape") setText(formatSceneLengthMs(durationMs));
+          }}
+        />
+      </div>
+      {invalid && (
+        <p className="field-error" id={hintId} role="alert">
+          {SCENE_LENGTH_HINT}
+        </p>
+      )}
+    </>
   );
 }
 
