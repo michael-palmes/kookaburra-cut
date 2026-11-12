@@ -28,6 +28,10 @@ interface DragState {
 }
 
 const ROW_DRAG_THRESHOLD_PX = 5;
+const BUSY_TITLE = "Wait for the current change to finish";
+
+const sceneOrderKey = (rows: readonly SceneManagerRow[]) =>
+  rows.map((row) => `${row.name}\u0000${row.durationMs}`).join("\u0001");
 
 export function ScenesDrillIn({
   scenes,
@@ -86,7 +90,7 @@ export function ScenesDrillIn({
   const kept = useKeptLength();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
-  const focusAfterMove = useRef<number | null>(null);
+  const focusAfterMove = useRef<{ at: number; order: string } | null>(null);
   const edits = { busy, renaming, timing };
 
   const commitReorder = (desired: number[]) => {
@@ -95,12 +99,12 @@ export function ScenesDrillIn({
     onReorder(desired);
   };
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a menu move refocuses its item once the reordered list renders
   useEffect(() => {
-    const at = focusAfterMove.current;
-    if (at === null) return;
+    const pending = focusAfterMove.current;
+    // The host re-renders with the old order while the move is in flight; wait for the new one.
+    if (pending === null || sceneOrderKey(scenes) === pending.order) return;
     focusAfterMove.current = null;
-    listRef.current?.querySelectorAll<HTMLElement>('[role="option"]')[at]?.focus();
+    listRef.current?.querySelectorAll<HTMLElement>('[role="option"]')[pending.at]?.focus();
   }, [scenes]);
 
   const select = (index: number, e: Pick<React.MouseEvent, "shiftKey" | "metaKey" | "ctrlKey">) => {
@@ -201,7 +205,7 @@ export function ScenesDrillIn({
       const desired = busy ? null : nudgeSelection(scenes.length, bulk ?? [scene.index], delta);
       if (!desired) return null;
       return () => {
-        focusAfterMove.current = desired.indexOf(scene.index);
+        focusAfterMove.current = { at: desired.indexOf(scene.index), order: sceneOrderKey(scenes) };
         commitReorder(desired);
       };
     };
@@ -240,7 +244,11 @@ export function ScenesDrillIn({
           (i) => scenes.find((row) => row.index === i)?.stillsExcluded === true,
         ),
         onStills: onStills ? (include) => onStills(bulk ?? [scene.index], include) : undefined,
-        moves: { up: move(-1), down: move(1) },
+        moves: {
+          up: move(-1),
+          down: move(1),
+          ...(busy ? { upTitle: BUSY_TITLE, downTitle: BUSY_TITLE } : {}),
+        },
       }),
     });
   };

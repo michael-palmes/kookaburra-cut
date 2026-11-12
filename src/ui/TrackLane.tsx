@@ -322,6 +322,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
 
   /** A press on an item never takes focus (so the arrows keep their pointer meaning), but it moves the lane's Tab stop there. */
   function pointerTakesStop(id: string) {
+    pendingFocus.current = null;
     setFocusedItem(id);
     const lane = trackRef.current;
     const active = document.activeElement;
@@ -675,6 +676,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
   function onItemKeyDown(e: React.KeyboardEvent<HTMLElement>, item: TrackLaneItem) {
     const intent = laneKeyIntent(e);
     if (!intent) return;
+    pendingFocus.current = null;
     if (intent.kind === "escape") {
       // The window handler still disarms or deselects; focus steps back to the lane.
       trackRef.current?.focus({ preventScroll: true });

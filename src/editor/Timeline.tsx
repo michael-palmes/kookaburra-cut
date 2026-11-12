@@ -49,8 +49,8 @@ export interface TimelineProps {
   playheadMs: number;
   onSelect: (id: string | null) => void;
   onPlayhead: (ms: number) => void;
-  /** A finished trim, hold, reorder or mask-edge drag. */
-  onEditOp: (op: EditOp) => void;
+  /** A finished trim, hold, reorder or mask-edge drag; the host's result (`{ ok: false }` when refused) silences the announcement. */
+  onEditOp: (op: EditOp) => unknown;
   /** Live trim feedback: the dragged edge's source frame, null when the drag ends. */
   onTrimScrub?: (scrub: TrimScrub | null) => void;
   /** Horizontal wheel/trackpad delta scrubs the playhead (scroll scrubs in both the preview and the timeline; the timeline pans via auto-follow). */
@@ -115,6 +115,9 @@ interface Block {
   w: number;
   dragging: boolean;
 }
+
+const refused = (result: unknown) =>
+  typeof result === "object" && result !== null && (result as { ok?: unknown }).ok === false;
 
 function clampZoom(pxPerMs: number): number {
   return Math.min(MAX_PX_PER_MS, Math.max(MIN_PX_PER_MS, pxPerMs));
@@ -606,15 +609,11 @@ export function Timeline({
   const announce = (message: string) =>
     setAnnouncement((previous) => nextAnnouncement(previous, message));
 
-  /** A press on an item never takes focus (so arrows keep stepping frames), but it moves the lane's Tab stop there. */
+  /** A press on an item focuses its lane, not the item (so arrows keep stepping frames), and moves the lane's Tab stop there. */
   function pointerTakesStop(id: string) {
+    pendingFocus.current = null;
     setFocusedItem(id);
-    const active = document.activeElement;
-    for (const lane of [trackRef.current, maskLaneRef.current]) {
-      if (lane && active instanceof Node && lane.contains(active) && active !== lane) {
-        lane.focus({ preventScroll: true });
-      }
-    }
+    (id.startsWith("mask:") ? maskLaneRef : trackRef).current?.focus({ preventScroll: true });
   }
 
   function focusItem(item: TimelineItem | undefined) {
@@ -627,6 +626,7 @@ export function Timeline({
   function onItemKeyDown(e: React.KeyboardEvent<HTMLElement>, item: TimelineItem) {
     const intent = laneKeyIntent(e);
     if (!intent) return;
+    pendingFocus.current = null;
     const isMask = item.kind === "mask";
     if (intent.kind === "escape") {
       // The window handler still disarms or deselects; focus steps back to the lane.
@@ -659,7 +659,10 @@ export function Timeline({
           const keepId =
             op.op === "moveZoomKey" ? zoomItemId(op.clipId, op.toMs) : (item.id as string);
           pendingFocus.current = { id: keepId, index, lane: isMask ? "masks" : "clips" };
-          onEditOp(op);
+          if (refused(onEditOp(op))) {
+            pendingFocus.current = null;
+            return;
+          }
         }
         announce(result.message);
         return;
@@ -689,7 +692,10 @@ export function Timeline({
           index: Math.max(0, index - 1),
           lane: isMask ? "masks" : "clips",
         };
-        onEditOp(op);
+        if (refused(onEditOp(op))) {
+          pendingFocus.current = null;
+          return;
+        }
         announce(
           item.kind === "clip"
             ? "Clip removed"
