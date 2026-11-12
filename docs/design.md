@@ -145,7 +145,7 @@ Translucent white, so a border adapts to whichever surface tier it sits on (crit
 | `--border-subtle` | `rgba(255,255,255,0.06)` | Hairline dividers between rows, internal separators |
 | `--border-default` | `rgba(255,255,255,0.10)` | Panel edges, control outlines, card borders |
 | `--border-strong` | `rgba(255,255,255,0.16)` | Emphasised separators |
-| `--border-control` | `rgba(255,255,255,0.34)` | Field, select and segmented outlines: 3:1 on every surface tier (WCAG 1.4.11) |
+| `--border-control` | `rgba(255,255,255,0.34)` | Field and select outlines: 3:1 on every surface tier (WCAG 1.4.11) |
 | `--border-window` | `#000000` | 1px outer window line / panel-split lines that read against the desktop |
 
 ### 4.3 Text roles

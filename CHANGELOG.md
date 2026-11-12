@@ -168,6 +168,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   exports in Downloads) and `UpdateEndpoint` (update checks ask your own
   server). Settings shows a lock on each row they govern, and Settings ▸ Claude
   gains an Agent kit row. See `docs/mdm.md`.
+- Settings ▸ Accessibility: **Text size** (Default, Large, Larger) enlarges the
+  words and controls in every window, live, without touching the preview or an
+  export; **Single-key shortcuts** turns off letter shortcuts such as S to split
+  or O for Orbit, and the shortcuts sheet says when they're off.
+- The transition preview has a pause button, and starts paused under Reduce
+  motion.
+
+### Changed
+
+- A selected option preview plays once and holds its last frame; hover or focus
+  plays it again.
+- Field, select and selected-card borders are easier to see (3:1 contrast).
+
+### Fixed
+
+- Space on a focused button, tab, option or card presses it instead of also
+  playing the preview.
+- VoiceOver hears export progress every 10% and how the export ended.
+- Hints inside a hovered or selected row stay readable, a scene or transition
+  length that doesn't parse says why it reverted, and the preview is a named
+  landmark. See `docs/accessibility.md`.
+- A dialog taller than the window scrolls instead of cutting off its buttons.
 
 ### Security
 
