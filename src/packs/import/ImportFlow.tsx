@@ -261,7 +261,7 @@ function Busy({
         : 0;
   return (
     <div className="packs-progress">
-      <div style={{ fontSize: 15 }}>{label}</div>
+      <div style={{ fontSize: "calc(15px * var(--text-scale))" }}>{label}</div>
       <div className="packs-progress-bar">
         <div className="packs-progress-fill" style={{ width: `${pct}%` }} />
       </div>

@@ -61,6 +61,8 @@ import {
   userHomeDir,
 } from "../engine/workspace";
 import { ClaudeSpark } from "../ui/ClaudeLauncher";
+import { setTextSize, TEXT_SIZES, type TextSize, useTextSize } from "../ui/chromePrefs";
+import { SegmentedRow } from "../ui/inspector/rows";
 import { LockGlyph, ManagedLock } from "../ui/ManagedLock";
 import { UpdateAvailableDialog } from "../ui/updateDialogs";
 import { useNativeTextUndo } from "../ui/useNativeTextUndo";
@@ -320,6 +322,38 @@ function FinderIcon() {
   );
 }
 
+function TextSizeIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M2.5 13 6 3.5 9.5 13M3.8 9.8h4.4M10.5 13l2-5.5 2 5.5M11.2 11.3h2.6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function LetterIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M3.5 13.5 8 2.5l4.5 11M5.2 9.5h5.6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={16 / size}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+const TEXT_SIZE_ICON: Record<TextSize, number> = { default: 10, large: 12, larger: 14 };
+
 /** The Settings window: native titlebar, opened via the app menu (⌘,). Cache management (media previews + clip extractions), the workspace location (the only place it can be changed, since first run no longer asks), the opt-in update lane (toggle + Check now), and read-only info (sidecar versions, app version). */
 
 export function SettingsApp() {
@@ -353,6 +387,7 @@ export function SettingsApp() {
   const [forgetting, setForgetting] = useState<string | null>(null);
   const [clearingAll, setClearingAll] = useState(false);
   const [publisherEpoch, setPublisherEpoch] = useState(0);
+  const textSize = useTextSize();
 
   const refreshStats = useCallback(() => {
     cacheStats()
@@ -745,6 +780,36 @@ export function SettingsApp() {
             </button>
           </div>
         ))}
+      </section>
+
+      <section className="settings-section">
+        <h2>Accessibility</h2>
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span
+              className="settings-row-title"
+              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+            >
+              <TextSizeIcon />
+              Text size
+            </span>
+            <span className="muted settings-row-detail">
+              Sizes the words and controls in every window. Your preview and exports stay exactly as
+              they are.
+            </span>
+          </div>
+          <SegmentedRow
+            className="settings-segments"
+            ariaLabel="Text size"
+            value={textSize}
+            onChange={setTextSize}
+            options={TEXT_SIZES.map((s) => ({
+              value: s.id,
+              label: s.label,
+              icon: <LetterIcon size={TEXT_SIZE_ICON[s.id]} />,
+            }))}
+          />
+        </div>
       </section>
 
       <section className="settings-section">

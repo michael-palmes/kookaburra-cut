@@ -263,6 +263,12 @@ let the OS do it. Crisp on Retina, zero load, unmistakably a Mac app.
 | `--text-xl` | 20 / 26 | 620 | Empty-state / first-run headings |
 | `--text-display` | 28 / 34 | 680 | About / first-run hero **only** |
 
+**Text size.** Settings › Accessibility › Text size sets `--text-scale` (1, 1.25 or 1.5) on the
+root, and every `--text-*`, `--lh-*`, `--control-h-*`, `--row-h-list`, `--hit-min` and `--titlebar-h`
+multiplies by it, in every window. A literal size is written `calc(12px * var(--text-scale))`,
+never bare px, and a fixed height that holds text scales the same way. Chrome only: the preview
+and exports never read it.
+
 Weights are SF numeric axes (510 ≈ a touch above Regular for crispness on dark; 590 ≈ Semibold). If
 not using a variable axis, map to 510→Regular/Medium, 590→Semibold, 620/680→Bold. On dark, the
 slightly heavier weight plus the off-white `--text-primary` prevents "thin grey on black" smear.
@@ -557,6 +563,8 @@ confirms). Theme cards and animation segments use it today.
 --timeline-h-min: 140px;
 --hit-min: 28px;       /* minimum interactive hit target */
 ```
+
+Each value above is at the Default text size; Larger multiplies it by `--text-scale` (§5.2).
 
 Controls read at 22–28px but always carry a ≥28px hit target: pad the click area beyond the visible
 bounds for tiny controls (timeline grips, stepper arrows).
