@@ -4,9 +4,10 @@ import { devDeleteBuiltinTheme } from "../engine/library";
 import { WORKSPACE_THEME_PREFIX } from "../theme/registry";
 import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./ContextMenu";
 import { MoveThemeModal } from "./MoveThemeModal";
+import { type MenuMoves, moveMenuItems } from "./moveMenu";
 import { NamePromptModal } from "./NamePromptModal";
 import { SceneMenuIcon } from "./sceneMenu";
-import type { ThemeChoice } from "./ThemePicker";
+import type { CardMenuEvent, ThemeChoice } from "./ThemePicker";
 import { ThemeEditorIcon, type ThemeEditorIconName } from "./theme-editor/icons";
 import { canEditBundledThemes, openThemeEditor } from "./theme-editor/themeEditorIo";
 
@@ -39,6 +40,7 @@ export function buildThemeCardMenu(
   opts: ThemeCardMenuOptions,
   onRename: (choice: ThemeChoice) => void,
   dev = canEditBundledThemes,
+  moves?: MenuMoves,
 ): (ContextMenuItem | "separator")[] {
   const isWs = choice.id.startsWith(WORKSPACE_THEME_PREFIX);
   const slug = choice.id.slice(WORKSPACE_THEME_PREFIX.length);
@@ -143,22 +145,32 @@ export function buildThemeCardMenu(
       <ThemeEditorIcon name={icons[item.id] ?? "colours"} />
     );
   }
+  if (moves) {
+    const at = items.indexOf("separator");
+    items.splice(at < 0 ? items.length : at, 0, "separator", ...moveMenuItems(moves));
+  }
   return items;
 }
 
 export function useThemeCardMenu(opts: ThemeCardMenuOptions): {
-  openMenu: (choice: ThemeChoice, e: React.MouseEvent) => void;
+  openMenu: (choice: ThemeChoice, e: CardMenuEvent, moves?: MenuMoves) => void;
   menuElement: ReactNode;
 } {
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [renaming, setRenaming] = useState<ThemeChoice | null>(null);
   const [moving, setMoving] = useState<ThemeChoice | null>(null);
-  const openMenu = (choice: ThemeChoice, event: React.MouseEvent) => {
+  const openMenu = (choice: ThemeChoice, event: CardMenuEvent, moves?: MenuMoves) => {
     event.preventDefault();
     setMenu({
       x: event.clientX,
       y: event.clientY,
-      items: buildThemeCardMenu(choice, { ...opts, onMove: setMoving }, setRenaming),
+      items: buildThemeCardMenu(
+        choice,
+        { ...opts, onMove: setMoving },
+        setRenaming,
+        canEditBundledThemes,
+        moves,
+      ),
       returnFocus: event.currentTarget as HTMLElement,
     });
   };

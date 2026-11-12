@@ -1,4 +1,11 @@
-import { type ReactNode, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  type ReactNode,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { type CatalogueOrderEntry, renumberOrders } from "../engine/catalogueOrder";
 import {
   deleteUserPreset,
@@ -40,7 +47,7 @@ import {
   TEMPLATE_CATEGORY_ICONS,
 } from "./libraryIcons";
 import { libraryCardMenuItems } from "./libraryMenus";
-import { dropTargetIndex, gridInsertionIndex } from "./libraryReorder";
+import { cardMoveTargets, dropTargetIndex, gridInsertionIndex } from "./libraryReorder";
 import { PresetCard } from "./PresetCard";
 import { TemplateCard } from "./TemplateCard";
 
@@ -148,6 +155,8 @@ export function LibraryGrid({
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [busy, setBusy] = useState(false);
   const writable = source === "user" || import.meta.env.DEV;
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const focusAfterMove = useRef<string | null>(null);
   const [override, setOverride] = useState<{ from: unknown; key: string; ids: string[] } | null>(
     null,
   );
@@ -222,6 +231,22 @@ export function LibraryGrid({
     );
   };
 
+  const moves = (card: LibraryCard) => {
+    const group = groups.find((g) => g.cards.includes(card));
+    if (!writable || !group) return undefined;
+    const index = group.cards.indexOf(card);
+    const statuses = group.cards.map((c) => c.entry.status);
+    const t = cardMoveTargets(statuses, index, query.trim() !== "" || busy);
+    const to = (insertBefore: number | null) =>
+      insertBefore === null
+        ? null
+        : () => {
+            focusAfterMove.current = card.id;
+            commitOrder(group, index, insertBefore);
+          };
+    return { up: to(t.up), down: to(t.down), upTitle: t.upTitle, downTitle: t.downTitle };
+  };
+
   const openMenu = (card: LibraryCard, e: React.MouseEvent) => {
     e.preventDefault();
     const button = e.type === "click" ? (e.currentTarget as HTMLElement) : null;
@@ -241,6 +266,7 @@ export function LibraryGrid({
           onEditDetails({ kind, source, slug: card.slug, manifest: card.entry.manifest }),
         onDuplicate: () => duplicate(card),
         onDelete: () => remove(card),
+        moves: moves(card),
       }),
     });
   };
@@ -271,9 +297,19 @@ export function LibraryGrid({
       });
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a menu move refocuses its item once the reordered list renders
+  useLayoutEffect(() => {
+    const id = focusAfterMove.current;
+    if (id === null) return;
+    focusAfterMove.current = null;
+    wrapRef.current
+      ?.querySelector<HTMLElement>(`[data-card-id="${CSS.escape(id)}"] > button`)
+      ?.focus({ preventScroll: true });
+  }, [groups]);
+
   const total = cards.length;
   return (
-    <div className="library-grid-wrap">
+    <div className="library-grid-wrap" ref={wrapRef}>
       {writable && query.trim() && cards.length > 1 && (
         <p className="modal-hint">Clear the search to reorder items.</p>
       )}
@@ -394,7 +430,7 @@ function CategoryGrid({
               />
             );
           return (
-            <div key={card.id} className="library-card-slot">
+            <div key={card.id} className="library-card-slot" data-card-id={card.id}>
               {rendered}
               <button
                 type="button"

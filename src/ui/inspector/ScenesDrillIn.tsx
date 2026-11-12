@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { moveSelection, planDeletes } from "../../engine/sceneOrder";
+import { moveSelection, nudgeSelection, planDeletes } from "../../engine/sceneOrder";
 import { useUiStore } from "../../store/uiStore";
 import { ContextMenu, type ContextMenuState, opensContextMenu } from "../ContextMenu";
 import { formatSceneLengthMs, parseSceneLengthMs } from "../durationText";
@@ -86,7 +86,22 @@ export function ScenesDrillIn({
   const kept = useKeptLength();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const focusAfterMove = useRef<number | null>(null);
   const edits = { busy, renaming, timing };
+
+  const commitReorder = (desired: number[]) => {
+    setSelected(new Set());
+    setAnchor(null);
+    onReorder(desired);
+  };
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a menu move refocuses its item once the reordered list renders
+  useEffect(() => {
+    const at = focusAfterMove.current;
+    if (at === null) return;
+    focusAfterMove.current = null;
+    listRef.current?.querySelectorAll<HTMLElement>('[role="option"]')[at]?.focus();
+  }, [scenes]);
 
   const select = (index: number, e: Pick<React.MouseEvent, "shiftKey" | "metaKey" | "ctrlKey">) => {
     if (e.shiftKey && anchor !== null) {
@@ -146,11 +161,7 @@ export function ScenesDrillIn({
     }
     const block = selected.has(drag.index) ? [...selected].sort((a, b) => a - b) : [drag.index];
     const desired = moveSelection(scenes.length, block, insertBefore);
-    if (desired.some((original, i) => original !== i)) {
-      setSelected(new Set());
-      setAnchor(null);
-      onReorder(desired);
-    }
+    if (desired.some((original, i) => original !== i)) commitReorder(desired);
   }
 
   const startRename = (scene: SceneManagerRow) => {
@@ -186,6 +197,14 @@ export function ScenesDrillIn({
     const bulk =
       selected.has(scene.index) && selected.size > 1 ? [...selected].sort((a, b) => a - b) : null;
     const deletable = planDeletes(bulk ?? [scene.index], scenes.length);
+    const move = (delta: -1 | 1) => {
+      const desired = busy ? null : nudgeSelection(scenes.length, bulk ?? [scene.index], delta);
+      if (!desired) return null;
+      return () => {
+        focusAfterMove.current = desired.indexOf(scene.index);
+        commitReorder(desired);
+      };
+    };
     setMenu({
       x: e.clientX,
       y: e.clientY,
@@ -221,6 +240,7 @@ export function ScenesDrillIn({
           (i) => scenes.find((row) => row.index === i)?.stillsExcluded === true,
         ),
         onStills: onStills ? (include) => onStills(bulk ?? [scene.index], include) : undefined,
+        moves: { up: move(-1), down: move(1) },
       }),
     });
   };
@@ -334,8 +354,8 @@ export function ScenesDrillIn({
         </div>
         <KeptLengthNote note={kept.note} />
         <p className="modal-hint">
-          Drag to reorder. ⌘-click to multi-select, ⇧-click for a range. Double-click renames. ⇧F10
-          opens a scene's menu.
+          Drag, or use a scene's menu, to reorder. ⌘-click to multi-select, ⇧-click for a range.
+          Double-click renames. ⇧F10 opens a scene's menu.
         </p>
       </div>
       <div className="inspector-drill-actions">

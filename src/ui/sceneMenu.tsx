@@ -1,4 +1,5 @@
 import type { ContextMenuItem } from "./ContextMenu";
+import { type MenuMoves, moveMenuItems } from "./moveMenu";
 import { StillsIcon } from "./stillsIcons";
 
 /** The action label for a scene selection: one scene keeps the bare verb, more take the count ("Delete 3 scenes"). */
@@ -26,6 +27,8 @@ export type SceneMenuIconId =
   | "copy-background"
   | "paste-background"
   | "move-to-group"
+  | "move-up"
+  | "move-down"
   | "delete";
 
 /** Leading glyphs shared by the scene, media and project card menus: the Project tab's 20-viewBox stroke style. */
@@ -198,6 +201,25 @@ export function SceneMenuIcon({ id }: { id: SceneMenuIconId }) {
           <path d="M3.5 6A1.5 1.5 0 015 4.5h3l1.5 2H15A1.5 1.5 0 0116.5 8v6.5A1.5 1.5 0 0115 16H5a1.5 1.5 0 01-1.5-1.5V6z" />
         </svg>
       );
+    case "move-up":
+    case "move-down":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <path
+            d={
+              id === "move-up" ? "M10 16V4M5.5 8.5L10 4l4.5 4.5" : "M10 4v12M5.5 11.5L10 16l4.5-4.5"
+            }
+          />
+        </svg>
+      );
     case "delete":
       return (
         <svg
@@ -242,6 +264,8 @@ export function sceneMenuItems(opts: {
   stillsInclude?: boolean;
   /** Present to show the stills toggle; called with `stillsInclude`. */
   onStills?: (include: boolean) => void;
+  /** Surfaces that can reorder pass the drag's own reorder here. */
+  moves?: MenuMoves;
 }): (ContextMenuItem | "separator")[] {
   const count = opts.selectionCount ?? 0;
   const bulk = count > 1;
@@ -323,6 +347,7 @@ export function sceneMenuItems(opts: {
           } as ContextMenuItem,
         ]
       : []),
+    ...(opts.moves ? ["separator" as const, ...moveMenuItems(opts.moves)] : []),
     "separator",
     {
       id: "copy-background",

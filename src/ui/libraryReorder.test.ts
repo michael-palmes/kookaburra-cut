@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { type CardBox, dropTargetIndex, gridInsertionIndex } from "./libraryReorder";
+import {
+  type CardBox,
+  cardMoveTargets,
+  dropTargetIndex,
+  gridInsertionIndex,
+} from "./libraryReorder";
 
 /** Two rows of two 100x60 cards, 20px apart, the layout a two-column grid produces. */
 const boxes: CardBox[] = [
@@ -38,5 +43,30 @@ describe("dropTargetIndex", () => {
   it("leaves a backward move alone", () => {
     expect(dropTargetIndex(3, 1)).toBe(1);
     expect(dropTargetIndex(2, 2)).toBe(2);
+  });
+});
+
+describe("cardMoveTargets", () => {
+  it("drops one place either way through the drag's own insertion point", () => {
+    const t = cardMoveTargets(["stable", "stable", "stable"], 1, false);
+    expect(t).toMatchObject({ up: 0, down: 3 });
+    expect(dropTargetIndex(1, t.up ?? -1)).toBe(0);
+    expect(dropTargetIndex(1, t.down ?? -1)).toBe(2);
+  });
+  it("stops at the ends without a reason beyond the default", () => {
+    const first = cardMoveTargets(["stable", "stable"], 0, false);
+    expect(first.up).toBeNull();
+    expect(first.upTitle).toBeUndefined();
+    expect(cardMoveTargets(["stable", "stable"], 1, false).down).toBeNull();
+  });
+  it("keeps stable items ahead of beta ones, as a drag does", () => {
+    const t = cardMoveTargets(["stable", "beta", "beta"], 1, false);
+    expect(t.up).toBeNull();
+    expect(t.upTitle).toBe("Stable items stay before beta items");
+    expect(t.down).toBe(3);
+  });
+  it("waits for the search to clear", () => {
+    const t = cardMoveTargets(["stable", "stable", "stable"], 1, true);
+    expect(t).toMatchObject({ up: null, down: null, upTitle: "Clear the search to reorder" });
   });
 });
