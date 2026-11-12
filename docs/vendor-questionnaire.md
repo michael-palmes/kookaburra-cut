@@ -86,6 +86,7 @@ SIG: Enterprise risk management, Information assurance. CAIQ: GRC.
 | Are accepted and deferred risks recorded? | Yes | [SECURITY.md, "Not yet"](../SECURITY.md#not-yet), [scene-website.md](./scene-website.md#accepted-residual-risk) | A public, versioned list, so nothing deferred reads as done. |
 | Are security decisions recorded with their reasons? | Yes | [decisions.md](./decisions.md) | One dated row per decision. |
 | Is someone accountable for security? | Yes | [CODEOWNERS](../.github/CODEOWNERS), `gh api repos/michael-palmes/kookaburra-cut/collaborators` | The maintainer, the repository's one admin. One person: see [Business continuity](#business-continuity). |
+| Is there a contract, licence agreement or support agreement? | No | [LICENSE-MIT](../LICENSE-MIT), [LICENSE-APACHE](../LICENSE-APACHE), `docs/support-policy.md` | An individual maintainer, with no company or trading entity. The app is free and open source with no paid offer, so the MIT OR Apache-2.0 licence files are the only terms. Support is community support through GitHub issues, best effort, with no response-time promise. |
 | Is the project assessed against a public baseline? | Partial | [best-practices.md](./best-practices.md), [scorecard.yml](../.github/workflows/scorecard.yml) | OpenSSF Best Practices answers, self-certified, with the Unmet criteria named; OpenSSF Scorecard runs weekly and on every push to `main`, results published. Neither is an audit. |
 
 ## Third parties
@@ -160,6 +161,8 @@ SIG: Access control. CAIQ: IAM.
 | Are the app's internal privileges least privilege? | Yes | [capabilities](../src-tauri/capabilities/), [acl.rs](../src-tauri/src/acl.rs) | Each window holds only the native commands it uses, and a test fails on a command not yet placed. Remote website content gets none. |
 | Are trust decisions made outside the webview? | Yes | [native_alert.rs](../src-tauri/src/native_alert.rs), [SECURITY.md](../SECURITY.md#scene-code-and-the-trust-boundary) | Allow, website grants, moving the workspace and Clear all app data are answered on native sheets, so a compromised page cannot press the button. |
 | Who can change the code or ship a release? | Partial | `gh api repos/michael-palmes/kookaburra-cut/collaborators`, [allowed_tag_signers](../.github/allowed_tag_signers), [allowed_signers](../.github/allowed_signers) | One admin, the maintainer, who is also the only reviewer on the `release` environment. The pipeline rests on that account. |
+| Does the maintainer's GitHub account require a second factor? | Yes | The maintainer's statement; GitHub shows a personal account's second factor to no one else | A passkey. |
+| Is the Mac holding the release tag key protected? | Partial | [release skill, "Signing keys"](../.agents/skills/kookaburra-release/SKILL.md#signing-keys) | FileVault is on, and the tag key sits in its Secure Enclave behind Touch ID. The Mac is not managed by MDM and runs no EDR or antivirus beyond macOS's own. |
 | Is access separated from other users on the same Mac? | Partial | [privacy.rs](../src-tauri/src/privacy.rs) | App data is owner-only. Projects are as readable to other accounts as any home-folder file. |
 
 ## Logging and audit
@@ -185,6 +188,7 @@ SIG: Threat management. CAIQ: TVM.
 | Is there a private way to report a vulnerability? | Yes | [SECURITY.md, "Reporting a vulnerability"](../SECURITY.md#reporting-a-vulnerability), `gh api repos/michael-palmes/kookaburra-cut/private-vulnerability-reporting` | GitHub private vulnerability reporting, enabled: a draft advisory only the maintainer sees. |
 | Is there an acknowledgement time? | Yes | [SECURITY.md, "Reporting a vulnerability"](../SECURITY.md#reporting-a-vulnerability) | Within 14 days, usually sooner. |
 | Which versions receive security fixes? | Yes | [SECURITY.md, "Supported versions"](../SECURITY.md#supported-versions) | The latest release only. |
+| Is there a committed time to fix? | No | [SECURITY.md, "Supported versions"](../SECURITY.md#supported-versions), `docs/release-cadence.md` | Fixes ship in the latest release only, best effort, with no committed time. Older versions are not patched; the in-app updater moves people forward. |
 | Are fixes disclosed? | Yes | [CHANGELOG.md](../CHANGELOG.md) | Each fix is a `### Security` entry, with its GHSA advisory linked when one exists; the release notes are built from that section. |
 | Are dependencies scanned for known vulnerabilities? | Yes | [audit.yml](../.github/workflows/audit.yml), [dependency-review.yml](../.github/workflows/dependency-review.yml), [dependabot.yml](../.github/dependabot.yml), `gh api repos/michael-palmes/kookaburra-cut --jq .security_and_analysis` | `pnpm audit` and `cargo deny` against RustSec on every pull request and weekly; dependency review on what a pull request adds; Dependabot weekly for npm, both Cargo locks and Actions, with security updates on. |
 | Is osv-scanner used? | Partial | [osv-scanner.toml](../src-tauri/osv-scanner.toml), [scorecard.yml](../.github/workflows/scorecard.yml) | Its configuration sits beside each Cargo lock and records two Linux-only advisories as ignored with the reason; Scorecard's Vulnerabilities check reads it. There is no separate osv-scanner job. |
@@ -252,7 +256,8 @@ SIG: Cybersecurity incident management. CAIQ: SEF.
 
 | Question | Answer | Evidence | Notes |
 | --- | --- | --- | --- |
-| Is there an incident response process? | Partial | [SECURITY.md, "Reporting a vulnerability"](../SECURITY.md#reporting-a-vulnerability), [CHANGELOG.md](../CHANGELOG.md) | A report becomes a private draft advisory, the fix ships in a release with a `### Security` entry, and the advisory is linked. No separate written plan. |
+| Is there an incident response process? | Partial | [SECURITY.md, "Reporting a vulnerability"](../SECURITY.md#reporting-a-vulnerability), [CHANGELOG.md](../CHANGELOG.md), `docs/incident-response.md` | A report becomes a private draft advisory, the fix ships in a release with a `### Security` entry, and the advisory is linked. One person runs it, best effort. |
+| What happens if a release or a signing key is compromised? | Partial | `docs/incident-response.md` | Pull the release, publish a GitHub security advisory, rotate the tag, updater and Developer ID keys, and ship a fixed version through the updater. A new updater key costs one manual download per install, and there is no check of an installed app against its release file by file yet. |
 | Will customers be told of a breach of their data? | Not applicable | [subprocessors.md](./subprocessors.md) | The vendor holds no customer data and no customer list. Security releases reach people through the in-app update check, the release notes and the repository's advisories. |
 | Is there evidence on the device for an investigation? | Yes | `src-tauri/src/audit.rs` | The app log records grants, imports, updates and refusals. The vendor holds no logs. |
 | Can a customer contain an incident on their own fleet? | Yes | [mdm.md](./mdm.md#keys) | A profile can stop updates, pack imports, live websites and every Claude entry point at the next launch. |
@@ -322,5 +327,5 @@ SIG: Compliance management. CAIQ: A&A.
 | Physical and environmental security (DCS) | No office, data centre or hosted data. Releases build on GitHub-hosted runners ([release.yml](../.github/workflows/release.yml)). |
 | Server security, Cloud hosting services (IVS) | No server and no hosted service. |
 
-Not answered here: the vendor's legal entity, contract and support terms,
-insurance, ESG and accessibility.
+Not answered here: insurance, ESG and accessibility. The vendor, the terms and
+support are in [Governance and risk](#governance-and-risk).
