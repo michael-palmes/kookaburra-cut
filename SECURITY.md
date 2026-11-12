@@ -27,8 +27,9 @@ private vulnerability reporting: open the
 [Security tab](https://github.com/michael-palmes/kookaburra-cut/security) and
 choose **Report a vulnerability**, or use the
 [report form](https://github.com/michael-palmes/kookaburra-cut/security/advisories/new)
-directly. That creates a draft advisory visible only to the maintainer, so
-details stay private until a fix ships. Please do not open a public issue for
+directly, or email `security@kookaburracut.com`. A GitHub report creates a
+draft advisory visible only to the maintainer, so details stay private until a
+fix ships. Please do not open a public issue for
 anything that looks like a security problem.
 
 Include the app version (Settings ▸ About), your macOS version and steps to
@@ -38,8 +39,10 @@ under `### Security` in `CHANGELOG.md` and in the release notes built from it.
 
 ## Supported versions
 
-Only the latest release receives security fixes; please update before
-reporting.
+Only the latest release receives security fixes. Older versions are not
+patched; the in-app updater moves each Mac forward. Fixes are best effort, with
+no committed time; please update before reporting. If a release or a signing
+key is compromised: [docs/incident-response.md](docs/incident-response.md).
 
 ## Version 0.21.1
 
@@ -883,8 +886,8 @@ builds it in separate jobs, each on a fresh runner.
   ```
 
 One maintainer holds admin rights on the repository and is the only reviewer on
-the `release` environment, so this pipeline rests on one account. A hardware
-security key on the account makes a takeover harder, and a Touch ID tag key in
+the `release` environment, so this pipeline rests on one account. A passkey on
+the account makes a takeover harder, and a Touch ID tag key in
 the Mac's Secure Enclave can't be copied off the Mac, while the promptless commit
 key, which agents use, can't tag. Neither stops an account that has been taken
 over: the list the tag key is checked against lives in the repository, and an
