@@ -2,7 +2,13 @@
   "version": 1,
   "name": "Glimpses",
   "background": {
-    "type": "none"
+    "type": "gradient",
+    "spec": {
+      "type": "linear",
+      "angleDeg": 135,
+      "stops": [["#140c07", 0], ["#060504", 0.3], ["#030303", 1]],
+      "space": "oklch"
+    }
   },
   "devices": [
     {
@@ -10,14 +16,14 @@
       "model": "iphone-15-pro",
       "colour": "natural-titanium",
       "media": {
-        "src": "assets/fairywren-plan-phone.mp4",
+        "src": "assets/fairywren-plan-dark-phone.mp4",
         "kind": "video",
         "inMs": 150,
         "speed": 1.2
       },
       "placement": {
         "position": [0, 0, 0],
-        "rotationDeg": [-55, 8, 0],
+        "rotationDeg": [-6, 14, -3],
         "scale": 1
       },
       "motion": {
@@ -61,7 +67,7 @@
       "model": "iphone-15-pro",
       "colour": "natural-titanium",
       "media": {
-        "src": "assets/fairywren-quickadd-phone.mp4",
+        "src": "assets/fairywren-quickadd-dark-phone.mp4",
         "kind": "video",
         "startMs": 1875,
         "at": "bar:4",
@@ -70,7 +76,7 @@
       },
       "placement": {
         "position": [25, 0, 0],
-        "rotationDeg": [-20, -40, -6],
+        "rotationDeg": [-8, -14, 3],
         "scale": 1
       },
       "motion": {
@@ -114,7 +120,7 @@
       "model": "iphone-15-pro",
       "colour": "natural-titanium",
       "media": {
-        "src": "assets/fairywren-reschedule-phone.mp4",
+        "src": "assets/fairywren-reschedule-dark-phone.mp4",
         "kind": "video",
         "startMs": 3750,
         "at": "bar:5",
@@ -122,7 +128,7 @@
       },
       "placement": {
         "position": [50, 0, 0],
-        "rotationDeg": [-40, 30, 8],
+        "rotationDeg": [-5, 14, 3],
         "scale": 1
       },
       "motion": {
@@ -166,15 +172,15 @@
       "model": "iphone-15-pro",
       "colour": "natural-titanium",
       "media": {
-        "src": "assets/fairywren-share-phone.mp4",
+        "src": "assets/fairywren-share-dark-phone.mp4",
         "kind": "video",
         "startMs": 5625,
         "at": "bar:6",
-        "inMs": 800
+        "inMs": 1500
       },
       "placement": {
         "position": [75, 0, 0],
-        "rotationDeg": [-70, 0, -10],
+        "rotationDeg": [-9, -14, -4],
         "scale": 1
       },
       "motion": {
@@ -221,16 +227,15 @@
         "id": "g1a",
         "tMs": 0,
         "pose": {
-          "position": [0.1816, 0.2414, 1.6572],
+          "position": [-0.1355, 0.4881, 2.3371],
           "aim": {
             "mode": "point",
-            "at": [0.0346, 0.2562, -0.1869]
+            "at": [0.0282, 0.3651, -0.004]
           },
           "fov": 28,
           "dof": {
-            "mode": "depth",
-            "blur": 1,
-            "range": 0.08,
+            "mode": "lens",
+            "fStop": 64,
             "focus": "auto"
           }
         }
@@ -239,24 +244,34 @@
         "id": "g1b",
         "tMs": 1874,
         "pose": {
-          "position": [0.3131, 0.2089, 1.5186],
+          "position": [-0.0617, 0.4776, 2.1412],
           "aim": {
             "mode": "point",
-            "at": [0.094, 0.2321, -0.1671]
+            "at": [0.0282, 0.3651, -0.004]
           },
-          "fov": 28
+          "fov": 28,
+          "dof": {
+            "mode": "lens",
+            "fStop": 64,
+            "focus": "auto"
+          }
         }
       },
       {
         "id": "g2a",
         "tMs": 1875,
         "pose": {
-          "position": [24.1768, 0.4899, 1.5719],
+          "position": [25.1414, 0.5007, 1.9211],
           "aim": {
             "mode": "point",
-            "at": [24.9499, 0.4277, -0.0524]
+            "at": [24.9718, 0.3647, -0.0167]
           },
-          "fov": 28
+          "fov": 28,
+          "dof": {
+            "mode": "lens",
+            "fStop": 64,
+            "focus": "auto"
+          }
         },
         "at": "bar:4"
       },
@@ -264,24 +279,34 @@
         "id": "g2b",
         "tMs": 3749,
         "pose": {
-          "position": [24.3022, 0.4943, 1.4875],
+          "position": [25.0648, 0.4889, 1.7565],
           "aim": {
             "mode": "point",
-            "at": [25.0109, 0.4373, -0.0015]
+            "at": [24.9718, 0.3647, -0.0167]
           },
-          "fov": 28
+          "fov": 28,
+          "dof": {
+            "mode": "lens",
+            "fStop": 64,
+            "focus": "auto"
+          }
         }
       },
       {
         "id": "g3a",
         "tMs": 3750,
         "pose": {
-          "position": [50.3655, 0.3786, 1.6268],
+          "position": [49.8033, 0.3283, 2.2616],
           "aim": {
             "mode": "point",
-            "at": [50.1029, 0.2791, -0.1512]
+            "at": [49.9991, 0.2105, 0.0232]
           },
-          "fov": 28
+          "fov": 28,
+          "dof": {
+            "mode": "lens",
+            "fStop": 64,
+            "focus": "auto"
+          }
         },
         "at": "bar:5"
       },
@@ -289,24 +314,34 @@
         "id": "g3b",
         "tMs": 5624,
         "pose": {
-          "position": [50.3951, 0.3576, 1.4505],
+          "position": [49.892, 0.3178, 2.0676],
           "aim": {
             "mode": "point",
-            "at": [50.1543, 0.2664, -0.1793]
+            "at": [49.9991, 0.2105, 0.0232]
           },
-          "fov": 28
+          "fov": 28,
+          "dof": {
+            "mode": "lens",
+            "fStop": 64,
+            "focus": "auto"
+          }
         }
       },
       {
         "id": "g4a",
         "tMs": 5625,
         "pose": {
-          "position": [74.6556, 0.8836, 2.094],
+          "position": [75.1335, -0.686, 2.3871],
           "aim": {
             "mode": "point",
-            "at": [74.8431, -0.1058, 0.602]
+            "at": [74.9375, -0.7645, 0.1471]
           },
-          "fov": 28
+          "fov": 28,
+          "dof": {
+            "mode": "lens",
+            "fStop": 64,
+            "focus": "auto"
+          }
         },
         "at": "bar:6"
       },
@@ -314,12 +349,17 @@
         "id": "g4b",
         "tMs": 7500,
         "pose": {
-          "position": [74.75, 0.7964, 1.9827],
+          "position": [75.0448, -0.693, 2.193],
           "aim": {
             "mode": "point",
-            "at": [74.9219, -0.1105, 0.6151]
+            "at": [74.9375, -0.7645, 0.1471]
           },
-          "fov": 28
+          "fov": 28,
+          "dof": {
+            "mode": "lens",
+            "fStop": 64,
+            "focus": "auto"
+          }
         }
       }
     ],
@@ -363,15 +403,74 @@
   },
   "lighting": {
     "environment": {
-      "source": "kookaburra:monochrome-studio",
-      "intensity": 0.12,
-      "rotationDeg": 0
+      "source": "kookaburra:strips",
+      "intensity": 0.8,
+      "rotationDeg": 0,
+      "strips": [
+        {
+          "azimuthDeg": -107.33,
+          "elevationDeg": 34,
+          "rollDeg": -13.82,
+          "lengthDeg": 59.49,
+          "widthDeg": 24.19,
+          "color": "#fff0e0",
+          "intensity": 14,
+          "feather": 0.95,
+          "falloff": 0.85
+        },
+        {
+          "azimuthDeg": 179.1,
+          "elevationDeg": 6.22,
+          "rollDeg": 14.95,
+          "lengthDeg": 45.24,
+          "widthDeg": 5.72,
+          "color": "#9ccfff",
+          "intensity": 80,
+          "feather": 0.6,
+          "falloff": 0.5
+        },
+        {
+          "azimuthDeg": -152.32,
+          "elevationDeg": 20.4,
+          "rollDeg": 0,
+          "lengthDeg": 7.63,
+          "widthDeg": 7.63,
+          "color": "#ffd2a0",
+          "intensity": 1583,
+          "feather": 0.3,
+          "falloff": 0.3
+        },
+        {
+          "azimuthDeg": -79.81,
+          "elevationDeg": 49.47,
+          "rollDeg": 0,
+          "lengthDeg": 12.2,
+          "widthDeg": 12.2,
+          "color": "#ffb070",
+          "intensity": 119,
+          "feather": 0.3,
+          "falloff": 0.3
+        },
+        {
+          "azimuthDeg": 76,
+          "elevationDeg": 27,
+          "rollDeg": 90,
+          "lengthDeg": 70,
+          "widthDeg": 12,
+          "color": "#e9efff",
+          "intensity": 12,
+          "feather": 1,
+          "falloff": 0.4
+        }
+      ]
     },
     "sun": {
       "azimuthDeg": -55,
       "elevationDeg": 32,
-      "intensity": 1,
-      "enabled": false
+      "intensity": 0,
+      "enabled": false,
+      "color": "#ffc888",
+      "castShadow": false
     },
     "ambient": 0,
     "fills": []

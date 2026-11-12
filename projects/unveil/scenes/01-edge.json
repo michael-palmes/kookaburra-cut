@@ -2,7 +2,13 @@
   "version": 1,
   "name": "Edge",
   "background": {
-    "type": "none"
+    "type": "gradient",
+    "spec": {
+      "type": "linear",
+      "angleDeg": 135,
+      "stops": [["#140c07", 0], ["#060504", 0.3], ["#030303", 1]],
+      "space": "oklch"
+    }
   },
   "devices": [
     {
@@ -109,9 +115,66 @@
   },
   "lighting": {
     "environment": {
-      "source": "kookaburra:monochrome-studio",
+      "source": "kookaburra:strips",
       "intensity": 0.12,
-      "rotationDeg": 0
+      "rotationDeg": 0,
+      "strips": [
+        {
+          "azimuthDeg": -107.33,
+          "elevationDeg": 34,
+          "rollDeg": -13.82,
+          "lengthDeg": 59.49,
+          "widthDeg": 24.19,
+          "color": "#fff0e0",
+          "intensity": 14,
+          "feather": 0.95,
+          "falloff": 0.85
+        },
+        {
+          "azimuthDeg": 179.1,
+          "elevationDeg": 6.22,
+          "rollDeg": 14.95,
+          "lengthDeg": 45.24,
+          "widthDeg": 5.72,
+          "color": "#9ccfff",
+          "intensity": 200,
+          "feather": 0.6,
+          "falloff": 0.5
+        },
+        {
+          "azimuthDeg": -152.32,
+          "elevationDeg": 20.4,
+          "rollDeg": 0,
+          "lengthDeg": 7.63,
+          "widthDeg": 7.63,
+          "color": "#ffd2a0",
+          "intensity": 1583,
+          "feather": 0.3,
+          "falloff": 0.3
+        },
+        {
+          "azimuthDeg": -79.81,
+          "elevationDeg": 49.47,
+          "rollDeg": 0,
+          "lengthDeg": 12.2,
+          "widthDeg": 12.2,
+          "color": "#ffb070",
+          "intensity": 119,
+          "feather": 0.3,
+          "falloff": 0.3
+        },
+        {
+          "azimuthDeg": 76,
+          "elevationDeg": 27,
+          "rollDeg": 90,
+          "lengthDeg": 70,
+          "widthDeg": 12,
+          "color": "#e9efff",
+          "intensity": 12,
+          "feather": 1,
+          "falloff": 0.4
+        }
+      ]
     },
     "sun": {
       "azimuthDeg": -55,
@@ -126,7 +189,6 @@
         "id": "key",
         "type": "spot",
         "intensity": 40,
-        "kelvin": 2700,
         "angleDeg": 30,
         "penumbra": 0.7,
         "castShadow": false,
@@ -134,7 +196,8 @@
           "mode": "point",
           "position": [-2.4, 0.9, -1.0]
         },
-        "target": [-0.6, 0.03, 1.0]
+        "target": [-0.6, 0.03, 1.0],
+        "color": "#ffc79a"
       }
     ],
     "keys": [

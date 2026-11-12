@@ -1,6 +1,12 @@
 {
   "background": {
-    "type": "none"
+    "type": "gradient",
+    "spec": {
+      "type": "linear",
+      "angleDeg": 135,
+      "stops": [["#140c07", 0], ["#060504", 0.3], ["#030303", 1]],
+      "space": "oklch"
+    }
   },
   "camera": {
     "keys": [
@@ -51,5 +57,8 @@
     "out": "fade",
     "staggerMs": 0
   },
-  "version": 1
+  "version": 1,
+  "textStyle": {
+    "titleColor": "#fffaf0"
+  }
 }
