@@ -4400,6 +4400,20 @@ mod tests {
     }
 
     #[test]
+    fn forget_in_settings_drops_the_session_allow_even_when_the_write_fails() {
+        let dir = Path::new("/Users/x/Kookaburra Cut/demo");
+        let shared = Mutex::new(HashSet::from(["demo".to_owned(), "other".to_owned()]));
+        let failed = drop_session_then(&shared, "demo", || Err("disk full".to_owned()));
+        assert_eq!(failed, Err("disk full".to_owned()));
+        let mut session = shared.into_inner().unwrap();
+        assert_eq!(
+            session_trust_decision(None, dir, "fp-2", &mut session, "demo"),
+            SessionTrust::Ask
+        );
+        assert_eq!(session, ["other".to_owned()].into());
+    }
+
+    #[test]
     fn edits_in_an_allowed_session_re_stamp_and_everything_else_asks() {
         let dir = PathBuf::from("/ws/demo");
         let record = TrustRecord {
