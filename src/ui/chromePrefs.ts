@@ -46,9 +46,24 @@ function applyTextSize(): void {
   else root.dataset.textSize = textSize;
 }
 
+interface ChromePrefsPayload {
+  textSize: TextSize;
+  singleKey: boolean;
+}
+
+/** Another window's change: the payload carries the values, since its localStorage write can reach this web view after the event does. */
+export function applyChromePrefs(next: Partial<ChromePrefsPayload> | null | undefined): void {
+  adopt(
+    parseTextSize(next?.textSize ?? textSize),
+    typeof next?.singleKey === "boolean" ? next.singleKey : singleKey,
+  );
+}
+
 function reload(): void {
-  const nextSize = parseTextSize(read(TEXT_SIZE_KEY));
-  const nextSingle = read(SINGLE_KEY_KEY) !== "0";
+  adopt(parseTextSize(read(TEXT_SIZE_KEY)), read(SINGLE_KEY_KEY) !== "0");
+}
+
+function adopt(nextSize: TextSize, nextSingle: boolean): void {
   if (nextSize === textSize && nextSingle === singleKey) return;
   textSize = nextSize;
   singleKey = nextSingle;
@@ -58,7 +73,8 @@ function reload(): void {
 
 function broadcast(): void {
   for (const l of listeners) l();
-  emit(CHROME_PREFS_EVENT).catch(() => {});
+  const payload: ChromePrefsPayload = { textSize, singleKey };
+  emit(CHROME_PREFS_EVENT, payload).catch(() => {});
 }
 
 export function getTextSize(): TextSize {
@@ -131,5 +147,7 @@ export function installChromePrefs(): void {
   window.addEventListener("storage", (e) => {
     if (e.key === null || e.key === TEXT_SIZE_KEY || e.key === SINGLE_KEY_KEY) reload();
   });
-  listen(CHROME_PREFS_EVENT, reload).catch(() => {});
+  listen<ChromePrefsPayload>(CHROME_PREFS_EVENT, (e) => applyChromePrefs(e.payload)).catch(
+    () => {},
+  );
 }

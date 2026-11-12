@@ -73,7 +73,10 @@ describe("text size (1.4.4)", () => {
     prefs.setTextSize("large");
     expect(root.dataset.textSize).toBe("large");
     expect(store.get("kookaburra:text-size")).toBe("large");
-    expect(emit).toHaveBeenCalledWith(prefs.CHROME_PREFS_EVENT);
+    expect(emit).toHaveBeenCalledWith(prefs.CHROME_PREFS_EVENT, {
+      textSize: "large",
+      singleKey: true,
+    });
     prefs.setTextSize("default");
     expect(root.dataset.textSize).toBeUndefined();
   });
@@ -98,6 +101,16 @@ describe("text size tokens", () => {
         new RegExp(`--${name}: calc\\(\\d+px \\* var\\(--text-scale\\)\\);`),
       );
     }
+  });
+
+  it("applies another window's change from the event, ahead of its storage write", async () => {
+    const prefs = await load();
+    prefs.applyChromePrefs({ textSize: "larger", singleKey: false });
+    expect(root.dataset.textSize).toBe("larger");
+    expect(prefs.singleKeyShortcutsEnabled()).toBe(false);
+    prefs.applyChromePrefs({ textSize: "huge" as never });
+    expect(prefs.getTextSize()).toBe("default");
+    expect(store.size).toBe(0);
   });
 
   it("matches each Settings choice to a CSS scale", async () => {
@@ -136,6 +149,7 @@ describe("never reaches an export", () => {
       expect(read(`../engine/${file}`), file).not.toMatch(/chromePrefs|text-scale/);
     }
     expect(read("../renderMain.tsx")).not.toContain("chromePrefs");
+    expect(read("../presentMain.tsx")).not.toContain("chromePrefs");
   });
 });
 
@@ -184,7 +198,10 @@ describe("single-key shortcuts (2.1.4)", () => {
     prefs.setSingleKeyShortcuts(false);
     expect(store.get("kookaburra:single-key-shortcuts")).toBe("0");
     expect(prefs.singleKeyShortcutsEnabled()).toBe(false);
-    expect(emit).toHaveBeenCalledWith(prefs.CHROME_PREFS_EVENT);
+    expect(emit).toHaveBeenCalledWith(prefs.CHROME_PREFS_EVENT, {
+      textSize: "default",
+      singleKey: false,
+    });
   });
 
   it("guards at document, below every window shortcut listener", () => {
