@@ -29,22 +29,17 @@ app with no service, no account and no hosted data.
 ## Version
 
 This page describes 0.23.0, pending: `main` once the 0.23.0 work has merged,
-before that release is tagged. On 0.22.2 these rows differ:
+before that release is tagged. On 0.22.4, the latest release, these rows differ:
 
-- **Managed Macs:** 0.22.2 has five keys; `DisableAgentKit`,
-  `DisablePackExport`, `ExportsInProject` and `UpdateEndpoint` arrive in
-  0.23.0.
-- **Logging and audit:** 0.22.2 keeps no log in a release build.
+- **Logging and audit:** 0.22.4 keeps no log in a release build.
 - **Data at rest:** Settings ▸ Allowed projects ▸ Forget and Settings ▸ Storage
   ▸ Clear all app data arrive in 0.23.0.
 - **Supply chain:** the SBOM, the crate list embedded in the binary,
-  `scripts/verify-install.sh`, the licence and source policy, no dependency
-  install scripts, and the provenance bundle and updater signature as release
-  assets.
-- **Vulnerability management:** fuzzing, the 14-day acknowledgement, CodeQL
-  over Python and the `unsafe` allow-list.
-- **Change control:** CODEOWNERS names a second reviewer on the security
-  surfaces, not yet active (see the review row).
+  [verify-install.sh](../scripts/verify-install.sh), the licence and source
+  policy, no dependency install scripts, and the provenance bundle and updater
+  signature as release assets.
+- **Vulnerability management:** the 14-day acknowledgement, CodeQL over Python
+  and the `unsafe` allow-list.
 
 Evidence written as a plain path, not a link, is a file that lands with 0.23.0.
 When 0.23.0 is tagged, this line and the one in
@@ -171,11 +166,11 @@ SIG: IT operations management. CAIQ: LOG.
 
 | Question | Answer | Evidence | Notes |
 | --- | --- | --- | --- |
-| Does the app keep an audit log? | Yes | `src-tauri/src/audit.rs`, [SECURITY.md, "On the Mac"](../SECURITY.md#on-the-mac) | `~/Library/Application Support/com.mpalmes.kookaburracut/logs/app.log`, in release and dev builds. |
-| What does it record? | Yes | `src-tauri/src/audit.rs` | Allow given, declined and asked again; website origins allowed and removed; pack imports with the publisher's key id and verdict; update checks and installs; workspace moves and project deletes; what a kit stamp moved; managed keys and each key's first refusal a launch; what the startup seal corrected. |
-| Does it exclude content and secrets? | Yes | `src-tauri/src/audit.rs` | Paths, slugs, origins, key ids, versions and counts only; never a file's contents or a secret. Names a pack or page chose are escaped onto one line. |
-| Is it bounded and protected? | Yes | `src-tauri/src/audit.rs`, [privacy.rs](../src-tauri/src/privacy.rs) | 1 MiB a file, three files, at most 3 MiB. Folder 0700, files re-sealed to 0600 at launch, skipped by Spotlight. |
-| Is it tamper-evident? | No | `src-tauri/src/audit.rs` | Plain text with no signature or hash chain; a process running as the same user can edit it. |
+| Does the app keep an audit log? | Yes | [audit.rs](../src-tauri/src/audit.rs), [SECURITY.md, "On the Mac"](../SECURITY.md#on-the-mac) | `~/Library/Application Support/com.mpalmes.kookaburracut/logs/app.log`, in release and dev builds. |
+| What does it record? | Yes | [audit.rs](../src-tauri/src/audit.rs) | Allow given, declined and asked again; website origins allowed and removed; pack imports with the publisher's key id and verdict; update checks and installs; workspace moves and project deletes; what a kit stamp moved; managed keys and each key's first refusal a launch; what the startup seal corrected. |
+| Does it exclude content and secrets? | Yes | [audit.rs](../src-tauri/src/audit.rs) | Paths, slugs, origins, key ids, versions and counts only; never a file's contents or a secret. Names a pack or page chose are escaped onto one line. |
+| Is it bounded and protected? | Yes | [audit.rs](../src-tauri/src/audit.rs), [privacy.rs](../src-tauri/src/privacy.rs) | 1 MiB a file, three files, at most 3 MiB. Folder 0700, files re-sealed to 0600 at launch, skipped by Spotlight. |
+| Is it tamper-evident? | No | [audit.rs](../src-tauri/src/audit.rs) | Plain text with no signature or hash chain; a process running as the same user can edit it. |
 | Can it be turned off? | No | [decisions.md](./decisions.md) | No managed key turns it off: nothing in it leaves the Mac, and a switch that removes evidence is the first thing an attacker with admin would set. |
 | Is it forwarded to a SIEM or to the vendor? | No | [subprocessors.md](./subprocessors.md) | Never leaves the Mac. It is a plain file at a fixed path, so a fleet's own agent can collect it. |
 
@@ -226,11 +221,11 @@ SIG: Supply chain risk management. CAIQ: STA.
 | Are dependencies and tools pinned? | Yes | [rust-toolchain.toml](../rust-toolchain.toml), [package.json](../package.json), [install-build-tools.sh](../scripts/install-build-tools.sh), [build-ffmpeg-sidecar.sh](../scripts/build-ffmpeg-sidecar.sh), [setup-models.sh](../scripts/setup-models.sh) | Lock files for npm and both Cargo graphs; exact Rust, Node and pnpm; build tools, ffmpeg, x264, x265 and the beat model by SHA-256. |
 | Do dependency install scripts run? | No | [pnpm-workspace.yaml](../pnpm-workspace.yaml) | pnpm runs none, and a lock that adds one fails install until it is reviewed. |
 | Is there a dependency licence and source policy? | Yes | [deny.toml](../src-tauri/deny.toml), [dependency-review.yml](../.github/workflows/dependency-review.yml) | An allow list of permissive licences (plus OFL-1.1 for fonts), crates.io as the only source, no wildcard versions. |
-| Is an SBOM published? | Yes | `scripts/sbom.mjs`, [release.yml](../.github/workflows/release.yml) | CycloneDX 1.5, `KookaburraCut-<version>.cdx.json` on each release, attested on the DMG: npm packages, crates for the shipped target, the sidecar's sources and the beat model. The binary also embeds its crate list (`cargo auditable`). |
+| Is an SBOM published? | Yes | [sbom.mjs](../scripts/sbom.mjs), [release.yml](../.github/workflows/release.yml) | CycloneDX 1.5, `KookaburraCut-<version>.cdx.json` on each release, attested on the DMG: npm packages, crates for the shipped target, the sidecar's sources and the beat model. The binary also embeds its crate list (`cargo auditable`). |
 | Is build provenance published? | Yes | [release.yml](../.github/workflows/release.yml) | A GitHub build provenance attestation (SLSA provenance predicate) over the DMG, zip, updater archive, `build-info.txt` and the SBOM, published as `KookaburraCut-<version>.intoto.jsonl` for offline checks. No SLSA level is claimed. |
 | Are releases signed and notarised? | Yes | [sign-and-notarize.sh](../scripts/sign-and-notarize.sh), [verify-release.sh](../scripts/verify-release.sh) | Developer ID, hardened runtime, no entitlements, notarised and stapled; Team ID `Q4B8N8ZKA2`. A separate job checks every signature and every file against the keyless build's record. |
 | Are updates verified before install? | Yes | [tauri.conf.json](../src-tauri/tauri.conf.json), [updater.rs](../src-tauri/src/updater.rs) | Ed25519 signature against the key built into the app, bound to the announced version, so an old archive cannot roll an install back. |
-| Can a customer verify a download? | Yes | [security-overview.md](./security-overview.md#verify-it-yourself), `scripts/verify-install.sh` | `SHA256SUMS`, `gh attestation verify`, `codesign` and `spctl`, and one script that runs them all. |
+| Can a customer verify a download? | Yes | [security-overview.md](./security-overview.md#verify-it-yourself), [verify-install.sh](../scripts/verify-install.sh) | `SHA256SUMS`, `gh attestation verify`, `codesign` and `spctl`, and one script that runs them all. |
 | Are builds reproducible? | No | [determinism.md](./determinism.md) | Not claimed: the runner image and Xcode float and are recorded in `build-info.txt`. The exported film is reproducible, and each release is gated on it. |
 | Is the build environment fresh and recorded? | Partial | [release.yml](../.github/workflows/release.yml) | A fresh GitHub-hosted runner per job; toolchains pinned, runner image and Xcode recorded, not pinned. |
 | Are licensed third-party assets checked? | Yes | [licensed.sha256](../src/assets/models/licensed.sha256) | The licensed device models arrive encrypted from a private repository and must match pinned SHA-256s. |
@@ -259,7 +254,7 @@ SIG: Cybersecurity incident management. CAIQ: SEF.
 | Is there an incident response process? | Partial | [SECURITY.md, "Reporting a vulnerability"](../SECURITY.md#reporting-a-vulnerability), [CHANGELOG.md](../CHANGELOG.md), `docs/incident-response.md` | A report becomes a private draft advisory, the fix ships in a release with a `### Security` entry, and the advisory is linked. One person runs it, best effort. |
 | What happens if a release or a signing key is compromised? | Partial | `docs/incident-response.md` | Pull the release, publish a GitHub security advisory, rotate the tag, updater and Developer ID keys, and ship a fixed version through the updater. A new updater key costs one manual download per install, and there is no check of an installed app against its release file by file yet. |
 | Will customers be told of a breach of their data? | Not applicable | [subprocessors.md](./subprocessors.md) | The vendor holds no customer data and no customer list. Security releases reach people through the in-app update check, the release notes and the repository's advisories. |
-| Is there evidence on the device for an investigation? | Yes | `src-tauri/src/audit.rs` | The app log records grants, imports, updates and refusals. The vendor holds no logs. |
+| Is there evidence on the device for an investigation? | Yes | [audit.rs](../src-tauri/src/audit.rs) | The app log records grants, imports, updates and refusals. The vendor holds no logs. |
 | Can a customer contain an incident on their own fleet? | Yes | [mdm.md](./mdm.md#keys) | A profile can stop updates, pack imports, live websites and every Claude entry point at the next launch. |
 
 ## Managed Macs
@@ -280,7 +275,7 @@ SIG: Endpoint security. CAIQ: UEM.
 | Can the project location be fixed? | Yes | [mdm.md](./mdm.md#keys) | `WorkspaceRoot`. |
 | Does the app install background processes? | No | [security-overview.md](./security-overview.md#what-the-app-does-not-do), [fleet.md](./fleet.md#what-to-expect-in-edr) | No launch agent, login item or helper tool. Its child processes are listed for EDR. |
 | Does it run sandboxed? | Partial | [decisions.md](./decisions.md), [realmGuard.ts](../src/stage/realmGuard.ts) | Hardened runtime, no entitlements, no App Sandbox. Scene code runs in a worker with no DOM, IPC or network. |
-| Can versions be installed and pinned through MDM? | Partial | [fleet.md](./fleet.md#updates-in-app-or-mdm-delivery), [SECURITY.md, "Not yet"](../SECURITY.md#not-yet) | Deliver the signed DMG and set `DisableUpdateCheck`. A Homebrew cask is not yet available. |
+| Can versions be installed and pinned through MDM? | Partial | [fleet.md](./fleet.md#updates-in-app-or-mdm-delivery), [SECURITY.md, "Not yet"](../SECURITY.md#not-yet) | Deliver the signed DMG and set `DisableUpdateCheck`. A Homebrew cask is staged in [packaging/homebrew](../packaging/homebrew/) until its tap is published; [fleet-deployment.md](./fleet-deployment.md) has an install script that pins a version and its SHA-256. |
 
 ## Privacy
 
