@@ -11917,8 +11917,8 @@ textarea.text-inspector-copy-input {
   display: flex;
   flex-direction: column;
   flex: none;
-  height: 43px;
-  min-height: 43px;
+  height: calc(42px * var(--text-scale) + 1px);
+  min-height: calc(42px * var(--text-scale) + 1px);
   max-height: calc(100% - 66px - 120px);
   overflow: hidden;
   background: var(--surface-panel-alt);
