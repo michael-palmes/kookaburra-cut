@@ -37,6 +37,21 @@ function contrast(a: string, b: string): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
+/** `top` at `alpha` over the opaque `base`, as the browser composites a translucent border. */
+function over(base: string, top: string, alpha: number): string {
+  const ch = (hex: string, i: number) => Number.parseInt(hex.slice(i, i + 2), 16);
+  return `#${[1, 3, 5]
+    .map((i) => Math.round(ch(base, i) + (ch(top, i) - ch(base, i)) * alpha))
+    .map((v) => v.toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
+function ruleBody(rule: string): string {
+  const at = styles.indexOf(`\n${rule}`);
+  if (at === -1) throw new Error(`no rule ${rule}`);
+  return styles.slice(at, styles.indexOf("}", at));
+}
+
 const SURFACES = ["window", "panel", "panel-alt", "recessed", "raised", "elevated"];
 
 describe("chrome contrast (1.4.3, 1.4.11)", () => {
@@ -52,6 +67,35 @@ describe("chrome contrast (1.4.3, 1.4.11)", () => {
   it("keeps the focus ring at 3:1 or better on every surface tier", () => {
     for (const surface of SURFACES) {
       expect(contrast(token("focus-ring"), token(`surface-${surface}`))).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("draws field and select outlines at 3:1 or better on every surface tier", () => {
+    const m = styles.match(/--border-control: rgba\(255, 255, 255, ([0-9.]+)\);/);
+    const alpha = Number(m?.[1]);
+    for (const surface of SURFACES) {
+      const base = token(`surface-${surface}`);
+      expect(contrast(over(base, "#ffffff", alpha), base), surface).toBeGreaterThanOrEqual(3);
+    }
+    for (const rule of [
+      ".select {",
+      ".modal-input {",
+      ".palette-input {",
+      ".editor-hold-input {",
+    ]) {
+      expect(ruleBody(rule), rule).toContain("var(--border-control)");
+    }
+  });
+
+  it("frames a selected chip or card at 3:1 against its surface and its own fill", () => {
+    for (const surface of SURFACES) {
+      const base = token(`surface-${surface}`);
+      const fill = over(base, token("accent"), 0.15);
+      expect(contrast(token("accent"), base), surface).toBeGreaterThanOrEqual(3);
+      expect(contrast(token("accent"), fill), surface).toBeGreaterThanOrEqual(3);
+    }
+    for (const rule of [".chip.selected {", ".btn.selected {", ".theme-card.selected {"]) {
+      expect(ruleBody(rule), rule).toContain("border-color: var(--accent);");
     }
   });
 

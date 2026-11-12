@@ -22,6 +22,7 @@
   --border-subtle: rgba(255, 255, 255, 0.06);
   --border-default: rgba(255, 255, 255, 0.1);
   --border-strong: rgba(255, 255, 255, 0.16);
+  --border-control: rgba(255, 255, 255, 0.34);
   --border-window: #000000;
 
   /* ── Text (§4.3) ───────────────────────────────────────────── */
@@ -754,13 +755,13 @@ body {
 /* Toggle-style buttons (transition direction/ease, aria-pressed rows): the chip.selected look. */
 .btn.selected {
   color: var(--text-primary);
-  border-color: var(--accent-border);
+  border-color: var(--accent);
   background: var(--accent-subtle);
 }
 
 .btn.selected:hover:not(:disabled) {
   background: var(--accent-subtle);
-  border-color: var(--accent-border);
+  border-color: var(--accent);
 }
 
 .btn:active:not(:disabled) {
@@ -828,7 +829,7 @@ body {
   font-size: var(--text-sm);
   color: var(--text-primary);
   background: var(--surface-raised);
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-xs);
 }
 
@@ -893,7 +894,7 @@ body {
 /* Selected state for chip-styled choices (wizard duration presets). */
 .chip.selected {
   color: var(--text-primary);
-  border-color: var(--accent-border);
+  border-color: var(--accent);
   background: var(--accent-subtle);
 }
 
@@ -2340,12 +2341,12 @@ button.beat-status {
   font: inherit;
   color: var(--text-primary);
   background: var(--surface-recessed);
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-xs);
 }
 
 .modal-input:focus {
-  border-color: var(--border-strong);
+  border-color: var(--text-tertiary);
 }
 
 .modal-error {
@@ -2495,7 +2496,7 @@ button.beat-status {
 }
 
 .template-card.selected {
-  border-color: var(--accent-border);
+  border-color: var(--accent);
   background: var(--accent-subtle);
   color: var(--text-primary);
 }
@@ -3135,7 +3136,7 @@ button.beat-status {
 }
 
 .theme-browser-chip.active {
-  border-color: var(--accent-border);
+  border-color: var(--accent);
 }
 
 .theme-browser-empty {
@@ -3181,7 +3182,7 @@ button.beat-status {
 }
 
 .theme-card.selected {
-  border-color: var(--accent-border);
+  border-color: var(--accent);
   background: var(--accent-subtle);
   color: var(--text-primary);
 }
@@ -3814,7 +3815,7 @@ button.beat-status {
 }
 .group-chip.selected {
   color: var(--text-primary);
-  border-color: var(--accent-border);
+  border-color: var(--accent);
   background: var(--surface-hover);
 }
 
@@ -4729,7 +4730,7 @@ button.beat-status {
   color: var(--text-primary);
   text-align: right;
   background: var(--surface-recessed);
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-md);
 }
 
@@ -5348,7 +5349,7 @@ button.beat-status {
 }
 
 .device-card.selected {
-  border-color: var(--accent-border);
+  border-color: var(--accent);
 }
 
 .device-card-main {
@@ -5439,7 +5440,7 @@ button.beat-status {
 }
 
 .scene-card.selected {
-  border-color: var(--accent-border);
+  border-color: var(--accent);
   background: var(--accent-subtle);
 }
 
@@ -5595,7 +5596,7 @@ button.beat-status {
 
 /* The playhead scene: an accent frame and foot, and a badge in the band above the card. */
 .insert-card.current .insert-card-thumb {
-  border-color: var(--accent-border);
+  border-color: var(--accent);
 }
 
 .insert-card.current .insert-card-thumb::after {
@@ -5913,7 +5914,7 @@ button.beat-status {
 
 .add-scene-card.selected {
   background: var(--accent-subtle);
-  border-color: var(--accent-border);
+  border-color: var(--accent);
 }
 
 .add-scene-card-thumb {
@@ -6147,7 +6148,7 @@ button.beat-status {
 .range-value-edit {
   color: var(--text-primary);
   background: var(--surface-recessed);
-  border-color: var(--border-default);
+  border-color: var(--border-control);
   cursor: text;
   user-select: text;
 }
@@ -6746,7 +6747,7 @@ button.beat-status {
   text-align: left;
   color: var(--text-primary);
   background: var(--surface-recessed);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-xs);
 }
 
@@ -8249,12 +8250,12 @@ button.beat-status {
   font-size: var(--text-md);
   color: var(--text-primary);
   background: var(--surface-recessed);
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-md);
 }
 
 .palette-input:focus {
-  border-color: var(--border-strong);
+  border-color: var(--text-tertiary);
 }
 
 .palette-input::placeholder {
@@ -8850,7 +8851,7 @@ button.beat-status {
 }
 
 .brand-choice.active {
-  border-color: var(--accent-border);
+  border-color: var(--accent);
   background: var(--accent-subtle);
   box-shadow: inset 2px 0 0 var(--accent);
 }
@@ -9783,7 +9784,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 }
 
 .scene-pick-row.selected .scene-pick-check {
-  border-color: var(--accent-border);
+  border-color: var(--accent);
 }
 
 .project-copy-thumb {
@@ -10630,7 +10631,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 .device-editor-pose-choice.selected {
   color: var(--text-primary);
   background: var(--accent-subtle);
-  border-color: var(--accent-border);
+  border-color: var(--accent);
 }
 
 .device-editor-reset-position {
@@ -11042,7 +11043,7 @@ textarea.text-inspector-copy-input {
 .text-inspector-icon-recent-grid button[aria-pressed="true"] {
   color: var(--text-primary);
   background: var(--accent-subtle);
-  border-color: var(--accent-border);
+  border-color: var(--accent);
 }
 
 .text-inspector-icon-preview {
@@ -11168,7 +11169,7 @@ textarea.text-inspector-copy-input {
 
 .text-motion-preset-card.selected {
   background: var(--accent-subtle);
-  border-color: var(--accent-border);
+  border-color: var(--accent);
 }
 
 .text-motion-preset-card small {
@@ -11671,7 +11672,7 @@ textarea.text-inspector-copy-input {
 .bg-type-strip-tab.selected {
   color: var(--text-primary);
   background: var(--surface-raised);
-  border-color: var(--border-strong);
+  border-color: var(--border-control);
 }
 
 .bg-type-strip-tab:focus-visible {
@@ -11743,7 +11744,7 @@ textarea.text-inspector-copy-input {
 
 .theme-card.compact.selected {
   background: var(--accent-subtle);
-  border-color: var(--accent-border);
+  border-color: var(--accent);
 }
 
 /* Inset, so a family's sticky header never paints over a first-row tile's ring. */
@@ -12019,7 +12020,7 @@ textarea.text-inspector-copy-input {
   font-weight: 500;
   color: var(--text-primary);
   background: var(--surface-raised);
-  border-color: var(--border-strong);
+  border-color: var(--border-control);
 }
 
 .bg-sheet-segmented .inspector-subtab svg {
@@ -13446,7 +13447,7 @@ textarea.text-inspector-copy-input {
 .theme-editor-nav-item.active {
   color: var(--text-primary);
   background: var(--accent-subtle);
-  box-shadow: inset 0 0 0 1px var(--accent-border);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .theme-editor-nav-note {

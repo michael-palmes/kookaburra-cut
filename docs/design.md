@@ -144,7 +144,8 @@ Translucent white, so a border adapts to whichever surface tier it sits on (crit
 |---|---|---|
 | `--border-subtle` | `rgba(255,255,255,0.06)` | Hairline dividers between rows, internal separators |
 | `--border-default` | `rgba(255,255,255,0.10)` | Panel edges, control outlines, card borders |
-| `--border-strong` | `rgba(255,255,255,0.16)` | Emphasised separators, input borders |
+| `--border-strong` | `rgba(255,255,255,0.16)` | Emphasised separators |
+| `--border-control` | `rgba(255,255,255,0.34)` | Field, select and segmented outlines: 3:1 on every surface tier (WCAG 1.4.11) |
 | `--border-window` | `#000000` | 1px outer window line / panel-split lines that read against the desktop |
 
 ### 4.3 Text roles
@@ -177,7 +178,7 @@ accent**: the buff-gold and sea-blue sets retired with the previous identity.
 | `--accent-hover` | `#82A7BB` | Hover state of accent surfaces |
 | `--accent-pressed` | `#5D8296` | Pressed/active (lifted from the brief's `#587C91` for AA; §4.6) |
 | `--accent-subtle` | `rgba(111,147,168,0.15)` | Subtle fill: selected-row background, active-tab underlay |
-| `--accent-border` | `rgba(111,147,168,0.48)` | Accent outline / selected-block frame |
+| `--accent-border` | `rgba(111,147,168,0.48)` | Decorative accent outline (badges, drop targets); never a selected state |
 | `--accent-text` | `#9EBFD0` | Accent used **as text** (links, active labels); lightened for contrast |
 
 ### 4.5 Semantic colours
@@ -412,7 +413,7 @@ scene.)*
 - **Playhead**: a 1px vertical line in `--accent` with a small triangular head at the ruler; above all
   blocks. This is one of the few legitimate large uses of the accent.
 - **Scene blocks**: `--radius-xs`, surface `--surface-raised`, `--border-default`. **Selected** =
-  `--accent-border` outline + `--accent-subtle` fill (never a full accent fill). Label `--text-sm`
+  `--accent` outline + `--accent-subtle` fill (never a full accent fill). Label `--text-sm`
   truncated; duration `--text-2xs` tabular. Resize grips appear on hover at the block edges.
 - **Snapping**: a 1px `--focus-ring` snap line while dragging; snap toggle in the timeline header.
 - **Multi-track** (if scenes layer): tracks separated by `--border-subtle`, alternating recessed
@@ -439,7 +440,7 @@ scene.)*
 
 - **Row**: label left (`--text-secondary`, fixed ~96px column), control right, `--border-subtle`
   divider between rows, `--space-5` vertical padding.
-- **Numeric field**: `--surface-recessed` trough, `--border-default`; focus → `--border-strong` +
+- **Numeric field**: `--surface-recessed` trough, `--border-control`; focus → `--text-tertiary` +
   focus ring; value `--text-primary` tabular; unit suffix `--text-tertiary`. **Drag-on-label
   scrubbing** (FCP/Blender style): hovering the label shows `ew-resize`, dragging adjusts the value;
   stepper arrows appear on hover only.
@@ -467,7 +468,9 @@ Resolution (e.g. 4K) sits in an adjacent dropdown. Changing aspect re-letterboxe
 
 - **Card**: `--surface-raised`, `--border-default`, `--radius-sm`; thumbnail (aspect-matched), name
   (`--text-base`, inline-editable), duration (`--text-xs` tabular).
-- **Selected**: `--accent-border` + `--accent-subtle` (consistent with timeline blocks).
+- **Selected**: `--accent` border + `--accent-subtle` (consistent with timeline blocks). A selected
+  border is always solid `--accent` (3.6:1 or better on every tier and its own fill); the translucent
+  `--accent-border` is for decoration that marks no state.
 - **Drag-to-reorder**: grip dots `--text-tertiary` on hover; dragging lifts the card to
   `--surface-elevated` + `--elev-popover`; the drop indicator is a 2px `--accent` insertion line
   between cards.
@@ -668,6 +671,7 @@ wing blue) and no alternate.
   --border-subtle:  rgba(255,255,255,0.06);
   --border-default: rgba(255,255,255,0.10);
   --border-strong:  rgba(255,255,255,0.16);
+  --border-control: rgba(255,255,255,0.34);
   --border-window:  #000000;
 
   /* ── Text (§4.3) ───────────────────────────────────────────── */
