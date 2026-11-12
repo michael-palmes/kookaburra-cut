@@ -99,6 +99,25 @@ describe("chrome contrast (1.4.3, 1.4.11)", () => {
     }
   });
 
+  it("lifts tertiary hints to secondary inside a hovered or selected row", () => {
+    const at = styles.indexOf("/* A hovered or selected row's wash");
+    const rule = styles.slice(at, styles.indexOf("}", at));
+    for (const hint of [
+      ".font-picker-row:is(:hover, .selected) .font-picker-style",
+      ".template-card:is(:hover, .selected) .template-card-meta",
+      ".text-motion-preset-card:is(:hover, .selected):not(:disabled) small",
+    ]) {
+      expect(rule, hint).toContain(hint);
+    }
+    expect(rule).toContain("color: var(--text-secondary);");
+    for (const surface of SURFACES) {
+      const base = token(`surface-${surface}`);
+      for (const wash of [over(base, "#ffffff", 0.09), over(base, token("accent"), 0.15)]) {
+        expect(contrast(token("text-secondary"), wash), surface).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
   it("keeps the disabled grey off running text", () => {
     for (const rule of [".welcome-legal {", ".version-label {"]) {
       const body = styles.slice(styles.indexOf(rule), styles.indexOf("}", styles.indexOf(rule)));

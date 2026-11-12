@@ -5398,6 +5398,17 @@ button.beat-status {
   border: 0;
 }
 
+/* A hovered or selected row's wash drops tertiary hints under 4.5:1 on raised tiers. */
+.font-picker-row:is(:hover, .selected) .font-picker-style,
+.theme-browser-collection:is(:hover, .active) .theme-browser-collection-count,
+.action-row:hover:not(:disabled) :is(.action-row-value, .action-row-chevron),
+.toggle-row:hover .toggle-row-desc,
+.stills-row:hover .stills-row-value,
+.template-card:is(:hover, .selected) .template-card-meta,
+.text-motion-preset-card:is(:hover, .selected):not(:disabled) small {
+  color: var(--text-secondary);
+}
+
 .swatch {
   width: 18px;
   height: 18px;
