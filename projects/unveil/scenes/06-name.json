@@ -379,23 +379,23 @@
   "backdrop": {
     "type": "satin",
     "color": "#22201e",
-    "roughness": 0.12,
-    "specular": 0.5,
+    "roughness": 0.35,
+    "specular": 0.3,
     "centre": [-2.2, 0.3],
     "fade": [1.2, 5.5],
     "reflection": {
       "strength": 0.9,
-      "blur": 10,
+      "blur": 40,
       "heightBlur": 0.9,
-      "contact": 0.6
+      "contact": 1
     },
     "glitter": {
-      "scale": 30,
+      "scale": 90,
       "density": 0,
       "roughness": 0.15,
       "tilt": 0.5,
       "weight": 0,
-      "grain": 0,
+      "grain": 0.5,
       "seed": 5
     },
     "pools": [
