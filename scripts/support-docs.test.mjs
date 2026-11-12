@@ -14,12 +14,6 @@ const DOCS = [
   "docs/legal/privacy-notice-draft.md",
 ];
 const DROPPED = ["docs/legal/EULA-draft.md", "docs/licensing-options.md"];
-// Pages other docs branches add; a link to one may dangle only until it lands.
-const LANDING_ELSEWHERE = new Set([
-  "docs/fleet.md",
-  "docs/fleet-deployment.md",
-  "docs/subprocessors.md",
-]);
 
 const read = (path) => readFileSync(join(ROOT, path), "utf8");
 const withoutFences = (text) => text.replace(/^```[\s\S]*?^```/gm, "");
@@ -54,8 +48,7 @@ function brokenLinks(doc) {
     if (inRepo.startsWith(`..${sep}`) || inRepo === "..") {
       broken.push(`${link} leaves the repository`);
     } else if (!existsSync(target)) {
-      if (!LANDING_ELSEWHERE.has(inRepo.split(sep).join("/")))
-        broken.push(`${link} names a missing file`);
+      broken.push(`${link} names a missing file`);
     } else if (anchor && target.endsWith(".md")) {
       if (!headingSlugs(readFileSync(target, "utf8")).has(anchor))
         broken.push(`${link} names a missing heading`);
@@ -88,7 +81,6 @@ test("every repository path the support documents name exists", () => {
     for (const match of withoutFences(read(doc)).matchAll(/`([^`\n]+)`/g)) {
       const path = match[1];
       if (!pathLike.test(path) || path.includes("<")) continue;
-      if (LANDING_ELSEWHERE.has(path)) continue;
       assert.ok(existsSync(join(ROOT, path)), `${doc} names ${path}, which does not exist`);
     }
   }
