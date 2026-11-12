@@ -248,6 +248,7 @@ import {
   type ExportSelection,
   type StillsExportSelection,
 } from "./ui/ExportModal";
+import { exportProgressAnnouncement, exportVerbFor } from "./ui/exportAnnouncement";
 import { type ExportInterruption, interruptedExportMessage, STILLS_ID } from "./ui/exportOptions";
 import { clearExportCard, FlashWarning, noteExportFlashes } from "./ui/FlashWarning";
 import { GpuNotices } from "./ui/GpuNotices";
@@ -390,6 +391,7 @@ export default function App() {
   const [dismissedLoadNotice, setDismissedLoadNotice] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
+  const [exportOutcome, setExportOutcome] = useState("");
   // What the running export writes; the titlebar pill and the preparing overlay name it.
   const [exportKind, setExportKind] = useState<"video" | "pdf" | "png-zip">("video");
   // The running export's or verify's abort switch; the titlebar Cancel trips it.
@@ -2497,7 +2499,9 @@ export default function App() {
 
   // Never let preview playback run during an export/verify; they share the clock store.
   useEffect(() => {
-    if (exporting) setPlaying(false);
+    if (!exporting) return;
+    setPlaying(false);
+    setExportOutcome("");
   }, [exporting]);
 
   // Any pause (spacebar, export, end-of-replay) drops the bounded-replay stop mark.
@@ -2641,7 +2645,9 @@ export default function App() {
       });
       void invoke("notify_export_done");
       void setLastExportPreset(project.id, STILLS_ID).catch(() => {});
+      setExportOutcome("Export finished.");
     } catch (e) {
+      setExportOutcome(abort.signal.aborted ? "Export cancelled." : "Export failed.");
       setToast(
         abort.signal.aborted
           ? { kind: "info", message: "Export cancelled. Nothing was saved." }
@@ -2687,7 +2693,9 @@ export default function App() {
       void setLastExportPreset(project.id, sel.presetId).catch(() => {});
       // Refresh the welcome-card snapshot with the just-exported look.
       if (isWorkspaceBackedProjectId(project.id)) void captureSnapshot(project);
+      setExportOutcome("Export finished.");
     } catch (e) {
+      setExportOutcome(abort.signal.aborted ? "Export cancelled." : "Export failed.");
       setToast(
         abort.signal.aborted
           ? { kind: "info", message: "Export cancelled. Nothing was saved." }
@@ -2798,7 +2806,9 @@ export default function App() {
         message: `${allOk ? "Deterministic ✓" : "NOT deterministic ✗"} — ${summary}`,
       });
       void invoke("notify_export_done"); // long run either way, bounce if unfocused
+      setExportOutcome(allOk ? "Verify finished: identical." : "Verify finished: not identical.");
     } catch (e) {
+      setExportOutcome(abort.signal.aborted ? "Verify cancelled." : "Verify failed.");
       setToast(
         abort.signal.aborted
           ? { kind: "info", message: "Verify cancelled." }
@@ -2845,12 +2855,10 @@ export default function App() {
   }
 
   const pct = progress ? Math.round((progress.frame / progress.total) * 100) : 0;
-  const exportVerb =
-    exportKind === "pdf"
-      ? "Exporting PDF…"
-      : exportKind === "png-zip"
-        ? "Exporting images…"
-        : "Exporting…";
+  const exportSpoken = exporting
+    ? exportProgressAnnouncement(progress, exportVerbFor(exportKind))
+    : exportOutcome;
+  const exportVerb = `${exportVerbFor(exportKind)}…`;
   // Figure-space padding (U+2007 = one tabular-digit width) keeps the label the same width from "  1%" to "100%", no mid-export jitter.
   const exportLabel =
     progress?.stage === "pass1"
@@ -2875,6 +2883,9 @@ export default function App() {
 
   return (
     <div className="app">
+      <div className="visually-hidden" role="status" aria-live="polite">
+        {exportSpoken}
+      </div>
       {/* Titlebar: projects folder + identity left; ⌘K trigger + Export CTA right. The old center strip's actions live in the command palette (commandRegistry pins the vocabulary); Welcome keeps a New project button. */}
       <Titlebar>
         {editorView ? (
