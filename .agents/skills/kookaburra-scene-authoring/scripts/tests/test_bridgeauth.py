@@ -129,8 +129,12 @@ class SignedBridge(KbTestCase):
             reach.guard_read_at(self.root, str(keys / "1.key"))
         with self.assertRaises(KbError):
             reach.guard_write(_Project(self.root), str(keys / "out.png"))
+        for spelt in ("KEYS", "Keys", "\u212aeys"):
+            with self.assertRaises(KbError):
+                reach.guard_write(_Project(self.root), str(self.bridge / spelt / "out.png"))
         for command in ('cat ~/Kookaburra\\ Cut/_bridge/keys/1.key', 'cat "$HOME/Kookaburra Cut/_bridge/"k"eys"/*',
-                        "xxd _bridge//./keys/1.key", "cp _bridge/k*/1.key /tmp"):
+                        "xxd _bridge//./keys/1.key", "cp _bridge/k*/1.key /tmp", "cat _bridge/KEYS/1.key",
+                        "cat _BRIDGE/Keys/1.key", "cp _bridge/K*/1.key /tmp"):
             self.assertTrue(hookfast.names_bridge_keys(command), command)
         for command in ("./kb capture --scene 1", "ls ~/Kookaburra\\ Cut/_bridge/responses"):
             self.assertFalse(hookfast.names_bridge_keys(command), command)

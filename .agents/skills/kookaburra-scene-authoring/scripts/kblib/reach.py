@@ -61,7 +61,7 @@ def workspace_roots(project_root: Path) -> List[Path]:
 def bridge_keys_reason(path: Path) -> Optional[str]:
     """The app's bridge keys are never read or written for the agent: they sign its requests and answers."""
     for keys in (bridge_dir() / "keys", home() / WORKSPACE_DIR_NAME / "_bridge" / "keys"):
-        if _inside(path, resolve(str(keys))):
+        if _under_folded(path, resolve(str(keys))):
             return "~/Kookaburra Cut/_bridge/keys holds the app's bridge keys"
     return None
 

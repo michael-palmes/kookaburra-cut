@@ -609,9 +609,11 @@ def session_marker(root: str, session: str) -> str:
 def names_bridge_keys(command: str) -> bool:
     """The command names the bridge keys or a glob matching them, quotes and escapes aside (best effort)."""
     import fnmatch
+    import unicodedata
 
     plain = re.sub(r"/(\./)+", "/", re.sub(r"/+", "/", re.sub(r"[\"'\\]", "", command)))
-    return any(fnmatch.fnmatchcase("keys", part) for part in re.findall(r"_bridge/([^/\s;|&<>()]+)", plain))
+    folded = unicodedata.normalize("NFD", unicodedata.normalize("NFD", plain).casefold())
+    return any(fnmatch.fnmatchcase("keys", part) for part in re.findall(r"_bridge/([^/\s;|&<>()]+)", folded))
 
 
 def bash_pre(payload: Dict[str, Any]) -> Tuple[int, str, str]:

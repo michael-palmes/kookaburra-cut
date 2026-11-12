@@ -521,7 +521,7 @@ same way with each PNG it names hashed, and kb refuses an unsigned or wrong
 answer or frame (exit 2, `bad-signature`) whenever the instance signs (its
 heartbeat says so or its key file exists). The stamp denies the agent's tools
 `Read` of `_bridge/keys/**` and `Edit` of `_bridge/**`, and `reach.py` and the
-bash-pre hook refuse a path or command naming `_bridge/keys`. Progress files
+bash-pre hook refuse a path or command naming `_bridge/keys` in any case. Progress files
 stay unsigned: they only move a progress bar.
 
 ## Scene code and the trust boundary
