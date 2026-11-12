@@ -7763,12 +7763,39 @@ button.beat-status {
 }
 
 .transition-preview {
+  position: relative;
   width: 100%;
   aspect-ratio: 16 / 9;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
   background: var(--surface-recessed);
   overflow: hidden;
+}
+
+.transition-preview-stage {
+  width: 100%;
+  height: 100%;
+}
+
+.transition-preview-pause {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--hit-min);
+  height: var(--hit-min);
+  padding: 0;
+  color: var(--text-primary);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+
+.transition-preview-pause:hover {
+  background: var(--surface-elevated);
 }
 
 .transition-preview-canvas {

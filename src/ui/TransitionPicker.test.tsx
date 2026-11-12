@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProjectMusic } from "../engine/musicTime";
 import type { LoadedProject } from "../engine/project";
 import type { TransitionSpec } from "../engine/sceneTimeline";
@@ -81,5 +81,18 @@ describe("TransitionModal", () => {
     expect(onBeat).toContain("Keep later scenes on the beat");
     expect(onBeat).toContain("The cut lands on bar 1, beat 3");
     expect(onBeat).toContain("Hard cut on the same beat");
+  });
+});
+
+describe("transition preview pause (2.2.2)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("runs with a pause control", () => {
+    expect(render()).toMatch(/<button[^>]*aria-label="Pause preview"[^>]*>\s*<svg/);
+  });
+
+  it("starts paused under Reduce motion", () => {
+    vi.stubGlobal("window", { matchMedia: () => ({ matches: true }) });
+    expect(render()).toContain('aria-label="Play preview"');
   });
 });

@@ -1,10 +1,10 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
-const reducedMotion = () =>
+export const reducedMotion = () =>
   typeof window !== "undefined" &&
   (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
 
-/** One option-picker card: a still image, or a clip while hovered/selected; missing assets fall back to a text swatch. */
+/** One option-picker card: a still image, or a clip while hovered/selected; missing assets fall back to a text swatch. A selected clip plays once and holds its last frame (WCAG 2.2.2); hover or focus plays it again. */
 export function OptionCard({
   label,
   title,
@@ -26,7 +26,7 @@ export function OptionCard({
   image: string | null;
   /** A small inline glyph shown instead of a still (an explicit "none" state); takes priority over `image`. */
   icon?: ReactNode;
-  /** Looping clip URL, rendered while `playing` (hover or selected). */
+  /** Clip URL, rendered while `playing` (hover or selected); it loops only while hovered or focused. */
   clip?: string | null;
   playing?: boolean;
   selected: boolean;
@@ -34,8 +34,12 @@ export function OptionCard({
   onHoverChange?: (hovering: boolean) => void;
 }) {
   const [near, setNear] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
   // Under Reduce motion a clip plays only while the pointer or focus is on its card.
-  const live = !!clip && (reducedMotion() ? near : playing);
+  const live = !!clip && (reducedMotion() ? near : playing || near);
+  useEffect(() => {
+    if (near) videoRef.current?.play().catch(() => {});
+  }, [near]);
   const hover = (on: boolean) => {
     setNear(on);
     onHoverChange?.(on);
@@ -62,7 +66,15 @@ export function OptionCard({
     >
       <div className="theme-card-thumb">
         {live ? (
-          <video src={clip} poster={image ?? undefined} autoPlay loop muted playsInline />
+          <video
+            ref={videoRef}
+            src={clip}
+            poster={image ?? undefined}
+            autoPlay
+            loop={near}
+            muted
+            playsInline
+          />
         ) : icon ? (
           <div className="option-card-icon">{icon}</div>
         ) : image ? (

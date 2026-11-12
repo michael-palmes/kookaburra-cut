@@ -169,8 +169,18 @@ describe("option card clips (2.2.2, 2.3.3)", () => {
       />,
     );
 
-  it("loops the selected card's clip by default", () => {
-    expect(card()).toContain("<video");
+  it("plays the selected card's clip once and holds its last frame", () => {
+    const html = card();
+    expect(html).toContain("<video");
+    expect(html).toContain("autoPlay");
+    expect(html).not.toMatch(/<video[^>]*\bloop\b/);
+  });
+
+  it("plays it again, looping, only while the card is hovered or focused", () => {
+    const source = read("./OptionCard.tsx");
+    expect(source).toContain("loop={near}");
+    expect(source).toMatch(/if \(near\) videoRef\.current\?\.play\(\)/);
+    expect(source).toContain("onFocus={() => setNear(true)}");
   });
 
   it("holds the still under Reduce motion until the card is hovered or focused", () => {
