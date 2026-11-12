@@ -54,3 +54,21 @@ architecture → determinism → decisions.
 Scene-authoring rules and the toolkit reference live in the
 `kookaburra-scene-authoring` skill (`.agents/skills/`); `/new-scene` scaffolds a
 scene, and the `kookaburra-export-presets` skill covers export preset flows.
+
+## Support and releases
+
+| Doc | For | What's in it |
+| --- | --- | --- |
+| [support-policy.md](./support-policy.md) | Anyone who needs help | Community support through GitHub issues, what is supported, what to send and how to report a security problem |
+| [release-cadence.md](./release-cadence.md) | The IT team | How versions are numbered, which release gets security fixes, how a fleet holds a version and how to check a release |
+| [incident-response.md](./incident-response.md) | Anyone running the app, and the maintainer | What happens if a release or a signing key is compromised, and how to check what you have |
+
+## Drafts
+
+Not in force. Each carries a banner: a draft for a lawyer's review, not legal
+advice. The terms for the app and its code are the licence files,
+[LICENSE-MIT](../LICENSE-MIT) or [LICENSE-APACHE](../LICENSE-APACHE).
+
+| Doc | What's in it |
+| --- | --- |
+| [legal/privacy-notice-draft.md](./legal/privacy-notice-draft.md) | The legal form of [privacy.md](./privacy.md) for the app and `kookaburracut.com`, against the Australian Privacy Principles and the GDPR |
