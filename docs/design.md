@@ -148,6 +148,10 @@ Translucent white, so a border adapts to whichever surface tier it sits on (crit
 | `--border-control` | `rgba(255,255,255,0.34)` | Field and select outlines: 3:1 on every surface tier (WCAG 1.4.11) |
 | `--border-window` | `#000000` | 1px outer window line / panel-split lines that read against the desktop |
 
+Fields and selects outline in `--border-control`; a selected chip, card or row borders in solid
+`--accent`, never white, so selection keeps its colour and never reads as an empty field. Both clear
+3:1 on every tier (WCAG 1.4.11); this split is deliberate, not a pending change.
+
 ### 4.3 Text roles
 
 Slightly **warm** against the cool surfaces ("moonlit white"), which lifts type forward without
@@ -264,11 +268,15 @@ let the OS do it. Crisp on Retina, zero load, unmistakably a Mac app.
 | `--text-xl` | 20 / 26 | 620 | Empty-state / first-run headings |
 | `--text-display` | 28 / 34 | 680 | About / first-run hero **only** |
 
-**Text size.** Settings › Accessibility › Text size sets `--text-scale` (1, 1.25 or 1.5) on the
+**Text size.** Settings › Accessibility › Text size sets `--text-scale` (1, 1.25, 1.5 or 2) on the
 root, and every `--text-*`, `--lh-*`, `--control-h-*`, `--row-h-list`, `--hit-min` and `--titlebar-h`
 multiplies by it, in every window. A literal size is written `calc(12px * var(--text-scale))`,
-never bare px, and a fixed height that holds text scales the same way. Chrome only: the preview
-and exports never read it.
+never bare px, and a fixed height or field width that holds text scales the same way. Rails, side
+panels, popovers and card grid minimums use `--panel-scale`, which grows half as fast, so the stage
+keeps its room. At an enlarged size a row that cannot fit wraps or scrolls, and a label that
+ellipsises at Default wraps instead (one `:root[data-text-size]` rule lists them; add new
+ellipsis labels to it). SVG illustration text is in the drawing's own units and keeps fixed sizes.
+Chrome only: the preview and exports never read it.
 
 Weights are SF numeric axes (510 ≈ a touch above Regular for crispness on dark; 590 ≈ Semibold). If
 not using a variable axis, map to 510→Regular/Medium, 590→Semibold, 620/680→Bold. On dark, the
@@ -567,7 +575,8 @@ confirms). Theme cards and animation segments use it today.
 --hit-min: 28px;       /* minimum interactive hit target */
 ```
 
-Each value above is at the Default text size; Larger multiplies it by `--text-scale` (§5.2).
+Each value above is at the Default text size; an enlarged size multiplies it by `--text-scale`
+(§5.2).
 
 Controls read at 22–28px but always carry a ≥28px hit target: pad the click area beyond the visible
 bounds for tiny controls (timeline grips, stepper arrows).

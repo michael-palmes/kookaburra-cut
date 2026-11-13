@@ -168,9 +168,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   exports in Downloads) and `UpdateEndpoint` (update checks ask your own
   server). Settings shows a lock on each row they govern, and Settings ▸ Claude
   gains an Agent kit row. See `docs/mdm.md`.
-- Settings ▸ Accessibility: **Text size** (Default, Large, Larger) enlarges the
-  words and controls in every window, live, without touching the preview or an
-  export; **Single-key shortcuts** turns off letter shortcuts such as S to split
+- Settings ▸ Accessibility: **Text size** (Default, Large, Larger, Largest, up
+  to 200%) enlarges the words and controls in every window, live, without
+  touching the preview or an export; **Single-key shortcuts** turns off letter shortcuts such as S to split
   or O for Orbit, and the shortcuts sheet says when they're off.
 - The transition preview has a pause button, and starts paused under Reduce
   motion.

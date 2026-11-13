@@ -10,8 +10,8 @@ map, how to report a problem, and the Accessibility Conformance Report (ACR) for
   own assistive technology (VoiceOver, Keyboard navigation, Reduce motion, Zoom).
 - **Where it stands:** most of the chrome is reachable and named, dialogs manage focus, text and
   field borders meet AA contrast, text can be enlarged in Settings, and single-key shortcuts can be
-  turned off. Gaps remain: several timeline and reorder edits need a pointer, and text size stops at
-  150%. The report below names each one.
+  turned off. The main gap left: several timeline and reorder edits need a pointer. The report below
+  names each one.
 - **What it does not cover:** the films you export. Their pixels, captions and contrast are your
   content, built in your theme. The app helps where it can: every export runs a flash check against
   WCAG 2.3.1 and ITU-R BT.1702 and flags stretches to fix.
@@ -43,8 +43,9 @@ Single-key shortcuts** turns off every shortcut that is one letter or symbol wit
 O P Z, M F L T and S F T M rows above, and / to search); the sheet then marks those rows off. Every
 action they reach keeps its button.
 
-**Settings › Accessibility › Text size** (Default, Large, Larger) enlarges the words and controls in
-every window by up to 150%. It never changes the preview or an export.
+**Settings › Accessibility › Text size** (Default, Large, Larger, Largest) enlarges the words and
+controls in every window by up to 200%. Present, which shows only the film, keeps its size. It never
+changes the preview or an export.
 
 ## Report a problem
 
@@ -86,7 +87,7 @@ content; the Claude desktop app reached through Edit with Claude.
 | N | The macOS accessibility API (System Events) on the running app: window titles, native dialogs and their buttons |
 | T | Contrast computed from the chrome tokens in `src/styles.css` with the WCAG formula; held by `src/ui/accessibility.test.tsx` |
 | C | Code review of keyboard handlers, drag interactions, live regions and timing across `src/ui`, `src/editor`, `src/settings` and `src/packs` |
-| R | Reflow at Larger text: the real Settings, welcome, editor, Export, palette, shortcuts and packs windows rendered in a browser with native calls stubbed, at each window's minimum size, scanned for clipped or overflowing elements (Chromium, not WKWebView) |
+| R | Reflow at Largest (200%) text: every window (Settings, welcome and New project, the editor with each inspector drill, Add a scene, Export, Present, the palette, the shortcuts sheet, menus and the colour popover, the theme editor's nine sections, the video editor and its tools, the packs window) rendered in a browser with native calls stubbed, at each window's minimum size, scanned for clipped, cut-off, overflowing and trapped content, then spot-checked at Large and Larger (Chromium, not WKWebView) |
 
 Not yet done, and listed as open below: an end-to-end VoiceOver pass, a physical keyboard pass with
 Keyboard navigation on, Voice Control, and a text spacing override across every surface (the live
@@ -146,9 +147,9 @@ run was inconclusive).
 | 1.3.4 Orientation | Supports | Windows resize freely and nothing locks to one orientation (C) |
 | 1.3.5 Identify Input Purpose | Supports | The only fields about the user, Settings' pack publisher name, organisation and website, declare their purpose. Fixed in 0.23.0 (C, T) |
 | 1.4.3 Contrast (Minimum) | Supports | Fixed in 0.23.0: the tertiary text token rose from 3.1 to 4.1:1 to 4.7 to 6.3:1 on every surface tier; two labels moved off the disabled grey (2.2:1); danger text on dialogs and menus now reads 5.4:1. Every axe-core contrast failure before the fix (about 80 elements across the surfaces tested) traced to these tokens (A, T). Also fixed: tertiary hints inside a hovered or selected row (font picker, collections, action and toggle rows, template and text motion cards) lift to the secondary tier, 4.6:1 or better on every wash (T) |
-| 1.4.4 Resize Text | Partially Supports | Fixed in 0.23.0: Settings › Accessibility › Text size enlarges every window's text and control heights to 125% or 150%, live and without a restart; dialogs scroll when they outgrow the window, and the inspector widens with the text (R). It stops short of the 200% the criterion names; beyond 150%, macOS Zoom magnifies the screen (finding H3) |
+| 1.4.4 Resize Text | Supports | Fixed in 0.23.0: Settings › Accessibility › Text size enlarges every window's text, control heights and field widths to 125%, 150% or 200%, live and without a restart. At 200% and each window's minimum size nothing is lost: dialogs, notices, menus and the scene overview scroll when they outgrow their space, toolbars wrap, rails and the inspector widen, and labels that ellipsise at Default wrap (R). The project folder in the editor titlebar and scene names in the playback bar and the insert strip keep an ellipsis, each with the full text in a tooltip or elsewhere on screen |
 | 1.4.5 Images of Text | Supports | All chrome text, including the wordmark, is live text (C) |
-| 1.4.10 Reflow | Partially Supports | The stage, timeline and inspector are a two-dimensional editing layout the exception covers; scene labels in the playback bar shorten with their scene's length. At Larger text and each window's minimum size, Settings, the welcome screen, Export, the palette, the shortcuts sheet and the packs window reflow without clipping or sideways scroll (R). Not yet checked at that size: the video editor and theme editor windows, and any window in WKWebView itself. A 320 px equivalent is out of reach without zoom (finding H3) |
+| 1.4.10 Reflow | Partially Supports | The stage, timelines and inspector are a two-dimensional editing layout the exception covers; scene labels in the playback bar shorten with their scene's length. At 200% text and each window's minimum size every window reflows without clipping or sideways scroll (R). Windows have minimum sizes (520 to 1200 px wide), so the 320 px equivalent the criterion names is out of reach; not yet confirmed in WKWebView itself |
 | 1.4.11 Non-text Contrast | Supports | The focus ring (5.3 to 7.0:1), accent fills (4.8 to 5.4:1) and switch thumbs clear 3:1 (T). Fixed in 0.23.0: field and select outlines use `--border-control` (white at 34%, 3.0 to 3.1:1 on every tier) and selected borders solid accent (3.6:1 or better) (T) |
 | 1.4.12 Text Spacing | Partially Supports | Not confirmed live: the override run was inconclusive. By code review, 57 rules hold labels to one line with an ellipsis in fixed widths, so wider spacing truncates those labels rather than overlapping them (finding L5) |
 | 1.4.13 Content on Hover or Focus | Supports | Tooltips are the system's own; no custom pop-up appears on hover or focus without a click (C) |
@@ -181,7 +182,6 @@ needs the maintainer's call.
 | ID | Severity | Criteria | Finding | Proposed approach | Decision |
 | --- | --- | --- | --- | --- | --- |
 | H2 | High | 2.1.1, 2.5.7, 4.1.2 | Timeline and reorder edits need a pointer (the 2.1.1 list) | Short term: Move up and Move down in the scene, theme and library menus (a click alternative and a keyboard one). Then a keyboard model for the animation lane and the video editor timeline: roving focus over keys and segments, arrows to move, ⇧F10 for the menu | Yes, for the lane model |
-| H3 | Medium | 1.4.4, 1.4.10 | Text size stops at 150%; the criterion names 200% | Add a Largest step at 200% after a reflow pass of every window at that size | Yes |
 | L2 | Low | 3.3.3 | A scene length typed in the playback bar or Project › Scenes reverts without a word | Show `SCENE_LENGTH_HINT` beside those fields, as the inspector does (after the H2 work in those files lands) | No |
 | L5 | Low | 1.4.12 | Text spacing unverified; ellipsis labels truncate | Run the spacing override across every surface; allow two lines where a label truncates | No |
 
@@ -189,7 +189,8 @@ needs the maintainer's call.
 
 | ID | Criteria | What changed |
 | --- | --- | --- |
-| H1 | 1.4.4, 1.4.10 | Settings › Accessibility › Text size scales every text and control-height token in every window, live; the preview and exports never read it. 200% is still open as H3 |
+| H1 | 1.4.4, 1.4.10 | Settings › Accessibility › Text size scales every text and control-height token in every window, live; the preview and exports never read it |
+| H3 | 1.4.4 | A Largest step at 200%, with every window reflowed at that size |
 | M1 | 2.1.1 | The transport's Space handler stands down on a focused button, tab, option or card |
 | M2 | 2.1.4 | Settings › Accessibility › Single-key shortcuts, on by default, turns every bare letter or symbol shortcut off; the shortcuts sheet says so |
 | M3 | 1.4.11, 1.4.1 | Field and select outlines at white 34% (3:1 on every tier); selected borders solid accent |
@@ -202,6 +203,7 @@ needs the maintainer's call.
 
 Verification still owed: a VoiceOver walk through New project, editing a scene and Export,
 including the export progress announcements; a physical keyboard pass with Keyboard navigation on;
-the theme editor window live; Text size at Larger in the app itself (WKWebView), the video editor
-and theme editor windows included; the Single-key shortcuts switch in the animation lane and the
-video editor; the text spacing override (L5).
+the theme editor window live; Text size at Largest in the app itself (WKWebView, every window; the
+reflow pass ran in Chromium with native calls stubbed, so a pack import and the video editor's
+render were not reached); the Single-key shortcuts switch in the animation lane and
+the video editor; the text spacing override (L5).
