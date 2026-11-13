@@ -126,17 +126,42 @@ describe("text size tokens", () => {
     const rule = (sel: string) =>
       styles.slice(styles.indexOf(`\n${sel} {`), styles.indexOf("}", styles.indexOf(`\n${sel} {`)));
     expect(rule(".modal-overlay")).toContain("overflow-y: auto;");
-    expect(rule(".inspector")).toContain("width: calc(342px * (1 + (var(--text-scale) - 1) / 2));");
+    expect(rule(".inspector")).toContain("width: calc(342px * var(--panel-scale));");
     expect(rule(".editor-window")).toContain("--chrome-top: calc(52px * var(--text-scale));");
     expect(styles).toMatch(
       /:root\[data-text-size\] :is\(\.template-card-tagline, \.theme-card-use-label\) \{\s*-webkit-line-clamp: unset;/,
     );
   });
 
+  it("reflows at Largest: rails widen, crowded rows wrap or scroll, cut-off labels wrap", () => {
+    const rule = (sel: string) =>
+      styles.slice(styles.indexOf(`\n${sel} {`), styles.indexOf("}", styles.indexOf(`\n${sel} {`)));
+    expect(styles).toContain("--panel-scale: calc(1 + (var(--text-scale) - 1) / 2);");
+    expect(rule(".editor-toolbar")).toContain("flex-wrap: wrap;");
+    expect(rule(".context-menu")).toContain("overflow-y: auto;");
+    expect(rule(".load-notices")).toContain("overflow-y: auto;");
+    expect(rule(".colour-popover")).toContain("width: calc(288px * var(--panel-scale));");
+    expect(rule(".timeline-ruler")).toContain("height: calc(26px * var(--text-scale));");
+    expect(rule(":root[data-text-size] .inspector-scene-overview")).toContain("overflow-y: auto;");
+    expect(rule(":root[data-text-size] .theme-editor-body")).toContain("minmax(0, 1fr) 320px");
+    const wrap = styles.slice(styles.indexOf("/* Enlarged text wraps labels"));
+    for (const label of [
+      ".project-card-name",
+      ".theme-card-meta",
+      ".template-card-name",
+      ".settings-path",
+    ]) {
+      expect(wrap.slice(0, wrap.indexOf("}")), label).toContain(label);
+    }
+    expect(read("../packs/packs.css")).toContain("flex: 0 0 calc(208px * var(--panel-scale));");
+  });
+
   it.each(["../styles.css", "../packs/packs.css"])(
     "leaves no fixed pixel font size in %s",
     (file) => {
-      const fixed = read(file).match(/(font-size|line-height): \d+(\.\d+)?px/g);
+      // SVG illustration text is in the drawing's own units, so it keeps fixed sizes.
+      const css = read(file).replace(/\.claude-art \.c-[a-z]+ \{[^}]*\}/g, "");
+      const fixed = css.match(/(font-size|line-height): \d+(\.\d+)?px/g);
       expect(fixed).toBeNull();
     },
   );

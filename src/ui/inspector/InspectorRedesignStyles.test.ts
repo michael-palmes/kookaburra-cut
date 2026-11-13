@@ -139,7 +139,7 @@ describe("inspector redesign styles", () => {
       /\.bg-options-sheet-body\s*\{[^}]*min-height: 0;[^}]*overflow-y: auto;/s,
     );
     expect(styles).toMatch(
-      /\.bg-sheet-slider\s*\{[^}]*grid-template-columns: 76px minmax\(0, 1fr\) 44px;/s,
+      /\.bg-sheet-slider\s*\{[^}]*grid-template-columns: calc\(76px \* var\(--text-scale\)\) minmax\(0, 1fr\) calc\(\s*44px \*\s*var\(--text-scale\)\s*\);/s,
     );
     expect(styles).toMatch(/\.bg-sheet-slider \.popover-inline\s*\{[^}]*display: contents;/s);
     expect(styles).toMatch(

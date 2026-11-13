@@ -53,6 +53,8 @@
   /* ── Typography (§5) ───────────────────────────────────────── */
   /* Settings › Text size scales type and control heights through this one factor. */
   --text-scale: 1;
+  /* Rails and side panels grow half as fast as the text, so wrapped rows stay readable without starving the stage. */
+  --panel-scale: calc(1 + (var(--text-scale) - 1) / 2);
   --font-ui: -apple-system, "SF Pro Text", "SF Pro Display", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, monospace;
   --text-2xs: calc(10px * var(--text-scale));
@@ -155,6 +157,31 @@
 
 :root[data-text-size="largest"] {
   --text-scale: 2;
+}
+
+/* Enlarged text wraps labels that cut themselves off at Default: names, details, paths, error lines. */
+:root[data-text-size]
+  :is(
+    .settings-path,
+    .project-card-name,
+    .inspector-drill-current,
+    .device-editor-media-detail,
+    .device-editor-arrangement-copy > span:last-child,
+    .load-notice-list li,
+    .theme-card-meta,
+    .add-scene-cat-label,
+    .add-scene-mine-label,
+    .add-scene-card-name,
+    .template-card-name
+  ) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+:root[data-text-size] .inspector-drill-header {
+  height: auto;
+  min-height: calc(40px * var(--text-scale));
 }
 
 * {
@@ -302,6 +329,16 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Enlarged text: the project name wraps to two lines rather than lose its end; the folder keeps its tooltip. */
+:root[data-text-size] .titlebar-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* The ⌘K launcher: a recessed field-shaped button with a trailing keycap. */
@@ -2169,7 +2206,10 @@ button.beat-status {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  max-width: min(30rem, calc(100% - 2rem));
+  max-width: min(calc(30rem * var(--text-scale)), calc(100% - 2rem));
+  max-height: calc(100% - 2 * var(--space-6));
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .load-notice {
@@ -2794,7 +2834,7 @@ button.beat-status {
 .claude-art .c-greeting {
   fill: var(--claude-ivory);
   font-family: "Anthropic Serif", Georgia, "Times New Roman", serif;
-  font-size: calc(24px * var(--text-scale));
+  font-size: 24px;
 }
 
 .claude-art .c-field {
@@ -2805,7 +2845,7 @@ button.beat-status {
 .claude-art .c-prompt {
   fill: var(--claude-ivory);
   font-family: var(--font-ui);
-  font-size: calc(15px * var(--text-scale));
+  font-size: 15px;
 }
 
 .claude-art .c-caret,
@@ -2821,7 +2861,7 @@ button.beat-status {
 .claude-art .c-model {
   fill: var(--claude-muted);
   font-family: var(--font-ui);
-  font-size: calc(12px * var(--text-scale));
+  font-size: 12px;
 }
 
 .claude-art .c-tool-glyph,
@@ -3371,7 +3411,7 @@ button.beat-status {
 
 .theme-library-modal .theme-browser-body {
   flex: 1;
-  grid-template-columns: 200px minmax(0, 1fr);
+  grid-template-columns: calc(200px * var(--panel-scale)) minmax(0, 1fr);
   gap: 0;
 }
 
@@ -3388,7 +3428,7 @@ button.beat-status {
 
 .theme-library-modal .theme-grid {
   max-height: none;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(calc(150px * var(--panel-scale)), 1fr));
   gap: 10px;
   padding: 0;
 }
@@ -3842,7 +3882,7 @@ button.beat-status {
 
 .project-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(calc(230px * var(--panel-scale)), 1fr));
   gap: var(--space-6);
   margin-bottom: var(--space-8);
 }
@@ -4716,6 +4756,7 @@ button.beat-status {
 .editor-toolbar {
   flex: 0 0 auto;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
@@ -4743,7 +4784,7 @@ button.beat-status {
 }
 
 .editor-hold-input {
-  width: 60px;
+  width: calc(60px * var(--text-scale));
   height: var(--control-h-md);
   padding: 0 8px;
   font-size: var(--text-sm);
@@ -4806,6 +4847,10 @@ button.beat-status {
   background: var(--surface-panel);
   border-right: 1px solid var(--border-default);
   overflow: hidden;
+}
+
+:root[data-text-size] .editor-media-panel {
+  overflow-y: auto;
 }
 
 .editor-timecode {
@@ -5007,7 +5052,7 @@ button.beat-status {
 
 .timeline-ruler {
   position: relative;
-  height: 26px;
+  height: calc(26px * var(--text-scale));
   cursor: ew-resize;
   border-bottom: 1px solid var(--border-subtle);
   /* The ruler is the seek surface — keep every px hittable. */
@@ -5263,7 +5308,8 @@ button.beat-status {
 }
 
 .inspector-subtabs.settings-segments {
-  flex: none;
+  flex-wrap: wrap;
+  max-width: 100%;
   margin: 0;
 }
 
@@ -5802,7 +5848,7 @@ button.beat-status {
   display: grid;
   flex: 1;
   grid-template-rows: minmax(0, 1fr);
-  grid-template-columns: 200px minmax(0, 1fr);
+  grid-template-columns: calc(200px * var(--panel-scale)) minmax(0, 1fr);
   min-height: 300px;
 }
 
@@ -5922,7 +5968,7 @@ button.beat-status {
 
 .add-scene-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(calc(150px * var(--panel-scale)), 1fr));
   align-content: start;
   gap: 10px;
 }
@@ -6162,7 +6208,7 @@ button.beat-status {
   box-sizing: border-box;
   /* A FIXED width, not min-width: an <input> has a large intrinsic default width that
      min-width won't shrink, so the display button and edit field must be pinned equal. */
-  width: 52px;
+  width: calc(52px * var(--text-scale));
   flex-shrink: 0;
   padding: 2px 4px;
   margin: 0;
@@ -6398,7 +6444,7 @@ button.beat-status {
   margin-bottom: var(--space-2);
 }
 .gradient-angle {
-  width: 72px;
+  width: calc(72px * var(--text-scale));
 }
 /* ── Keyboard-shortcut sheet (v12 · M2 B3) ─────────────────────────────────── */
 
@@ -6753,7 +6799,7 @@ button.beat-status {
 /* The scene-length half of the readout doubles as the edit affordance; button and input share one fixed box so editing never resizes it. */
 .anim-duration {
   box-sizing: border-box;
-  width: 68px;
+  width: calc(68px * var(--text-scale));
   padding: 0 4px;
   color: inherit;
   font: inherit;
@@ -6770,7 +6816,7 @@ button.beat-status {
 
 .anim-duration-input {
   box-sizing: border-box;
-  width: 68px;
+  width: calc(68px * var(--text-scale));
   padding: 0 4px;
   /* The one editable island in a select-none row. */
   user-select: text;
@@ -7149,7 +7195,7 @@ button.beat-status {
 
 /* The lane's Resize… modal: one seconds field, sized to its digits rather than the modal width. */
 .resize-anim-field {
-  width: 120px;
+  width: calc(120px * var(--text-scale));
 }
 
 /* The rig's segment extras: smoothing, then the three channel eases behind a disclosure. */
@@ -7685,7 +7731,7 @@ button.beat-status {
 }
 
 .ls-builder-field .modal-input {
-  width: 72px;
+  width: calc(72px * var(--text-scale));
 }
 
 /* ── Motion floor (§9): reduced motion collapses all transitions ───────────── */
@@ -8387,8 +8433,7 @@ button.beat-status {
   display: flex;
   flex-direction: column;
   flex: none;
-  /* Grows half as fast as the text, so Larger rows wrap less without starving the stage. */
-  width: calc(342px * (1 + (var(--text-scale) - 1) / 2));
+  width: calc(342px * var(--panel-scale));
   min-height: 0;
   overflow: hidden;
   background: var(--surface-panel);
@@ -9075,7 +9120,7 @@ img.inspector-scene-thumb {
 .inspector-scene-overview > .inspector-scene-identity {
   gap: var(--space-4);
   width: 100%;
-  height: 42px;
+  height: calc(42px * var(--text-scale));
   padding: 4px 10px;
 }
 
@@ -9104,6 +9149,18 @@ img.inspector-scene-thumb {
   overflow-y: auto;
   overscroll-behavior: contain;
   padding-bottom: 8px;
+}
+
+/* Enlarged text has no room to pin the settings list under a scrolling content list, so the whole overview scrolls. */
+:root[data-text-size] .inspector-scene-overview {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+:root[data-text-size]
+  :is(.inspector-scene-overview-content, .inspector-scene-overview-content-scroll) {
+  flex: none;
+  overflow-y: visible;
 }
 
 .inspector-scene-overview-section {
@@ -10159,7 +10216,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 
 .scene-manager-edit-duration {
   flex: none;
-  width: 64px;
+  width: calc(64px * var(--text-scale));
   font-size: var(--text-xs);
 }
 
@@ -10295,7 +10352,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 }
 
 .inspector-seconds {
-  width: 78px;
+  width: calc(78px * var(--text-scale));
   flex: none;
 }
 
@@ -10314,7 +10371,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 }
 
 .inspector-scene-overview-duration .inspector-seconds {
-  width: 78px;
+  width: calc(78px * var(--text-scale));
   height: calc(22px * var(--text-scale));
 }
 
@@ -12036,13 +12093,13 @@ textarea.text-inspector-copy-input {
 
 .bg-sheet-row {
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr);
+  grid-template-columns: calc(76px * var(--text-scale)) minmax(0, 1fr);
   align-items: center;
   gap: 8px;
 }
 
 .bg-sheet-row.has-trailing {
-  grid-template-columns: 76px minmax(0, 1fr) 22px;
+  grid-template-columns: calc(76px * var(--text-scale)) minmax(0, 1fr) 22px;
 }
 
 /* Backing: segments size to their content so all three fit beside the label and swatch. */
@@ -12091,7 +12148,7 @@ textarea.text-inspector-copy-input {
 /* Colours: slots two per row in the same columns, the odd ones (even children) starting each row. */
 .bg-sheet-colours {
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: calc(76px * var(--text-scale)) minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
   gap: 8px;
 }
@@ -12118,7 +12175,10 @@ textarea.text-inspector-copy-input {
 /* Motion sliders: DebouncedRange restyled in place, its span dissolved into the row's grid. */
 .bg-sheet-slider {
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr) 44px;
+  grid-template-columns: calc(76px * var(--text-scale)) minmax(0, 1fr) calc(
+      44px *
+      var(--text-scale)
+    );
   align-items: center;
   column-gap: 8px;
   height: 24px;
@@ -12195,7 +12255,7 @@ textarea.text-inspector-copy-input {
 .bg-sheet-slider .range-value {
   grid-row: 1;
   grid-column: 3;
-  width: 44px;
+  width: calc(44px * var(--text-scale));
   padding: 2px 0;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
@@ -12524,6 +12584,9 @@ textarea.text-inspector-copy-input {
   position: fixed;
   z-index: 30;
   min-width: 180px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 4px;
   background: var(--surface-elevated);
   border: 1px solid var(--border-default);
@@ -12703,7 +12766,7 @@ textarea.text-inspector-copy-input {
   position: fixed;
   /* Above .modal-overlay (20), below .context-menu (30) so chip menus stack on top. */
   z-index: 22;
-  width: 288px;
+  width: calc(288px * var(--panel-scale));
   padding: 0;
   background: var(--surface-elevated);
   border: 1px solid var(--border-default);
@@ -12797,7 +12860,7 @@ textarea.text-inspector-copy-input {
 }
 
 .colour-popover-hex-input {
-  width: 84px;
+  width: calc(84px * var(--text-scale));
   font-family: var(--font-mono);
   font-size: var(--text-sm);
 }
@@ -13364,7 +13427,7 @@ textarea.text-inspector-copy-input {
   width: auto;
 }
 .chart-drill .range-value {
-  width: 44px;
+  width: calc(44px * var(--text-scale));
 }
 .chart-drill .popover-row > input {
   flex: 1 1 0;
@@ -13469,9 +13532,14 @@ textarea.text-inspector-copy-input {
 
 .theme-editor-body {
   display: grid;
-  grid-template-columns: 190px minmax(0, 1fr) minmax(320px, 420px);
+  grid-template-columns: calc(190px * var(--panel-scale)) minmax(0, 1fr) minmax(320px, 420px);
   flex: 1;
   min-height: 0;
+}
+
+/* Enlarged text: the form takes the room the specimen would grow into. */
+:root[data-text-size] .theme-editor-body {
+  grid-template-columns: calc(190px * var(--panel-scale)) minmax(0, 1fr) 320px;
 }
 
 .theme-editor-nav {
@@ -13608,7 +13676,7 @@ textarea.text-inspector-copy-input {
 }
 
 .theme-editor-number input {
-  width: 92px;
+  width: calc(92px * var(--text-scale));
   font-variant-numeric: tabular-nums;
 }
 
@@ -13633,7 +13701,7 @@ textarea.text-inspector-copy-input {
 }
 
 .theme-editor-tag-input {
-  width: 140px;
+  width: calc(140px * var(--text-scale));
 }
 
 .theme-editor-colour {
@@ -13659,6 +13727,7 @@ textarea.text-inspector-copy-input {
 
 .theme-editor-swatch-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
 }
@@ -14085,7 +14154,7 @@ textarea.text-inspector-copy-input {
 
 .library-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(calc(230px * var(--panel-scale)), 1fr));
   align-content: start;
   gap: var(--space-5);
   min-width: 0;

@@ -45,7 +45,7 @@
 }
 
 .packs-rail {
-  flex: 0 0 208px;
+  flex: 0 0 calc(208px * var(--panel-scale));
   border-right: 1px solid var(--hairline, rgba(255, 255, 255, 0.08));
   padding: 8px 10px 16px;
   overflow-y: auto;
