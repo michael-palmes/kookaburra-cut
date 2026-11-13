@@ -129,3 +129,20 @@ ffmpeg, x264, x265 and build tool sources
 [install-build-tools.sh](../scripts/install-build-tools.sh)), the beat model's
 pinned files on `raw.githubusercontent.com`
 ([setup-models.sh](../scripts/setup-models.sh)) and Apple's notary service.
+
+## The project's own services
+
+The project runs no service the app talks to. Its source, website and mail use
+these, and none of them receives anything from the app.
+
+- **GitHub** hosts the source, the releases, issues and private security
+  reports. It sees what people post there and, as for any site, the network
+  address of anyone who visits or downloads.
+- **DigitalOcean** hosts `kookaburracut.com` on a server in Sydney, Australia.
+  It carries the site's traffic. The site sets no cookie, runs no analytics and
+  loads nothing from another host; the app never contacts it.
+- **Cloudflare** runs the domain's DNS, DNS only, so it sees name lookups but
+  never the site's traffic. Its Email Routing forwards mail sent to
+  `security@` and `privacy@kookaburracut.com` to the maintainer's mailbox, so
+  it handles those messages in transit.
+- **Apple** notarises each release ([above](#apple-build-time-only)).
