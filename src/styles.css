@@ -153,6 +153,10 @@
   --text-scale: 1.5;
 }
 
+:root[data-text-size="largest"] {
+  --text-scale: 2;
+}
+
 * {
   box-sizing: border-box;
 }

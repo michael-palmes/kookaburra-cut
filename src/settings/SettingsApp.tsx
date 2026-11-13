@@ -374,7 +374,7 @@ function KeycapIcon() {
   );
 }
 
-const TEXT_SIZE_ICON: Record<TextSize, number> = { default: 10, large: 12, larger: 14 };
+const TEXT_SIZE_ICON: Record<TextSize, number> = { default: 9, large: 11, larger: 13, largest: 15 };
 
 /** The Settings window: native titlebar, opened via the app menu (⌘,). Cache management (media previews + clip extractions), the workspace location (the only place it can be changed, since first run no longer asks), the opt-in update lane (toggle + Check now), and read-only info (sidecar versions, app version). */
 

@@ -3,12 +3,13 @@ import { useSyncExternalStore } from "react";
 
 /** Per-Mac chrome preferences every window shares: text size and single-key shortcuts. Chrome only: the export path never reads them, and text size moves CSS tokens, never the canvas. */
 
-export type TextSize = "default" | "large" | "larger";
+export type TextSize = "default" | "large" | "larger" | "largest";
 
 export const TEXT_SIZES: readonly { id: TextSize; label: string; scale: number }[] = [
   { id: "default", label: "Default", scale: 1 },
   { id: "large", label: "Large", scale: 1.25 },
   { id: "larger", label: "Larger", scale: 1.5 },
+  { id: "largest", label: "Largest", scale: 2 },
 ];
 
 const TEXT_SIZE_KEY = "kookaburra:text-size";
