@@ -79,8 +79,8 @@
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "three": "^0.186.1",
-    "troika-three-text": "0.53.0",
-    "troika-three-utils": "0.53.0",
+    "troika-three-text": "0.53.1",
+    "troika-three-utils": "0.53.1",
     "zustand": "^5.0.16"
   },
   "devDependencies": {

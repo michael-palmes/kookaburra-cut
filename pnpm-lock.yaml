@@ -5,10 +5,10 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@react-three/drei>troika-three-text': 0.53.0
+  '@react-three/drei>troika-three-text': 0.53.1
 
 patchedDependencies:
-  troika-three-text@0.53.0: 62d9f3bba34e5815bda164ad6395098aa144db4014f4c1bc34eb23004b5f0fde
+  troika-three-text@0.53.1: 62d9f3bba34e5815bda164ad6395098aa144db4014f4c1bc34eb23004b5f0fde
 
 importers:
 
@@ -63,11 +63,11 @@ importers:
         specifier: ^0.186.1
         version: 0.186.1
       troika-three-text:
-        specifier: 0.53.0
-        version: 0.53.0(patch_hash=62d9f3bba34e5815bda164ad6395098aa144db4014f4c1bc34eb23004b5f0fde)(three@0.186.1)
+        specifier: 0.53.1
+        version: 0.53.1(patch_hash=62d9f3bba34e5815bda164ad6395098aa144db4014f4c1bc34eb23004b5f0fde)(three@0.186.1)
       troika-three-utils:
-        specifier: 0.53.0
-        version: 0.53.0(three@0.186.1)
+        specifier: 0.53.1
+        version: 0.53.1(three@0.186.1)
       zustand:
         specifier: ^5.0.16
         version: 5.0.16(@types/react@19.3.0)(react@19.3.1)(use-sync-external-store@1.7.0(react@19.3.1))
@@ -1082,13 +1082,13 @@ packages:
     resolution: {integrity: sha512-wXR/dYpcqKmfWpEdZjiKJOwCNFndD0DMnrW/cYjVGttEkBfVgcLFHoNrlj47mjOVic9yyNu65alsgF4NQyTa2g==}
     engines: {node: '>=12.0.0'}
 
-  troika-three-text@0.53.0:
-    resolution: {integrity: sha512-uLwiwujA3DEPiSABVW3jiHro3rgXFTENjcW2Om9wKSL8FBIhfekbubkrIM6cu7047e+LoQ6PvlDMA6oLf5lCkw==}
+  troika-three-text@0.53.1:
+    resolution: {integrity: sha512-vVcWolk0/LoVjIwYL8OxDKXP2P/NDGKPA9l7EaSyuc/DLSSK0wpBuD+vrnEKG5E0E3DhW5MIXNfgVp85hbkE7w==}
     peerDependencies:
       three: '>=0.125.0'
 
-  troika-three-utils@0.53.0:
-    resolution: {integrity: sha512-dWX+K1l/Km4uIPQ1knJl5l6d7Q/vbeKj8mDKPoImcYhEgBVUfXitSBueoPEDwJo3b7o3myo4+blnCOHU10d7lg==}
+  troika-three-utils@0.53.1:
+    resolution: {integrity: sha512-xgf/risxw+sYt0uiAEhpiNvS9l0kQwiqvLMBCik4Ikx+IWYkVVfMtH/QN5UnYH2bYAre6+tSsY/Lwep6HCW2hg==}
     peerDependencies:
       three: '>=0.125.0'
 
@@ -1347,7 +1347,7 @@ snapshots:
       three: 0.186.1
       three-mesh-bvh: 0.8.3(three@0.186.1)
       three-stdlib: 2.36.1(three@0.186.1)
-      troika-three-text: 0.53.0(patch_hash=62d9f3bba34e5815bda164ad6395098aa144db4014f4c1bc34eb23004b5f0fde)(three@0.186.1)
+      troika-three-text: 0.53.1(patch_hash=62d9f3bba34e5815bda164ad6395098aa144db4014f4c1bc34eb23004b5f0fde)(three@0.186.1)
       tunnel-rat: 0.1.2(@types/react@19.3.0)(react@19.3.1)
       use-sync-external-store: 1.7.0(react@19.3.1)
       utility-types: 3.11.0
@@ -1953,15 +1953,15 @@ snapshots:
       fdir: 6.5.0(picomatch@4.0.7)
       picomatch: 4.0.7
 
-  troika-three-text@0.53.0(patch_hash=62d9f3bba34e5815bda164ad6395098aa144db4014f4c1bc34eb23004b5f0fde)(three@0.186.1):
+  troika-three-text@0.53.1(patch_hash=62d9f3bba34e5815bda164ad6395098aa144db4014f4c1bc34eb23004b5f0fde)(three@0.186.1):
     dependencies:
       bidi-js: 1.0.3
       three: 0.186.1
-      troika-three-utils: 0.53.0(three@0.186.1)
+      troika-three-utils: 0.53.1(three@0.186.1)
       troika-worker-utils: 0.53.0
       webgl-sdf-generator: 1.1.1
 
-  troika-three-utils@0.53.0(three@0.186.1):
+  troika-three-utils@0.53.1(three@0.186.1):
     dependencies:
       three: 0.186.1
 

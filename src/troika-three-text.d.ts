@@ -1,4 +1,4 @@
-// troika-three-text wires no type declarations (0.53.0's dist/types has no package.json entry); declare only what we import directly (drei's <Text> consumes it internally with its own typings).
+// troika-three-text wires no type declarations (0.53.1's dist/types has no package.json entry); declare only what we import directly (drei's <Text> consumes it internally with its own typings).
 declare module "troika-three-text" {
   import type { BufferGeometry, Material, Mesh, Object3DEventMap } from "three";
 
@@ -35,7 +35,7 @@ declare module "troika-three-text" {
     outlineBlur: number | string;
     /** Atlas cell size; every site pins `SDF_GLYPH_SIZE` (theme/fonts.ts). */
     sdfGlyphSize: number | null;
-    /** Private but stable in the pinned 0.53.0: the only quiescence signal, since `sync(cb)` drops the callback when no sync is needed (including mid-typeset). */
+    /** Private but stable in the pinned 0.53.1: the only quiescence signal, since `sync(cb)` drops the callback when no sync is needed (including mid-typeset). */
     _needsSync?: boolean;
     _isSyncing?: boolean;
     sync(callback?: () => void): void;
