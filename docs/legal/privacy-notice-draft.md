@@ -4,7 +4,8 @@
 > this text. Don't publish it or rely on it until an Australian lawyer, and
 > for people in Europe a European data protection adviser, has.
 > `[LAWYER: ...]` marks a question for the reviewer; `[TO CONFIRM: ...]` marks
-> a fact about the website that this repository can't show.
+> a fact still to check; `[PENDING: ...]` marks a sentence that must not be
+> published until the change it describes is live.
 
 This is the legal form of [privacy.md](../privacy.md). Sections 3 to 5 name
 their source in that page or in [SECURITY.md](../../SECURITY.md), which hold
@@ -20,8 +21,9 @@ sold: no customers, no payments, no accounts and no support agreements. The
 terms for the app and its code are the licence files,
 [LICENSE-MIT](../../LICENSE-MIT) or [LICENSE-APACHE](../../LICENSE-APACHE).
 
-1.2 Contact me about privacy at `security@kookaburracut.com`, or through a
-private report on the repository's Security tab
+1.2 Contact me about privacy at `privacy@kookaburracut.com`. Security
+problems go to `security@kookaburracut.com` or a private report on the
+repository's Security tab
 ([SECURITY.md, "Reporting a vulnerability"](../../SECURITY.md#reporting-a-vulnerability)).
 
 1.3 This notice covers the Kookaburra Cut app, the website
@@ -33,7 +35,8 @@ private report on the repository's Security tab
 no crash reporting, and nothing phones home. I run no server the app talks to,
 so there is nothing for me to receive.
 
-2.2 **The website** is covered in section 6.
+2.2 **The website collects nothing either**: no analytics, no cookies and no
+forms (section 6).
 
 2.3 **I hold only what you choose to send me**: an issue, a security report or
 an email.
@@ -124,25 +127,26 @@ and ["What the Claude integration sends"](../privacy.md#what-the-claude-integrat
 
 ## 6. The website
 
-6.1 `kookaburracut.com` is the project's home page, linked from the README and
-the app's package metadata. Nothing is sold on it. Its source and hosting are
-not in the app's repository, so the facts below are the maintainer's to
-confirm.
+6.1 `kookaburracut.com` is the project's home page: one page, with no account
+or sign-in, and nothing sold.
 
-6.2 **Hosting and logs.** [TO CONFIRM: who hosts the site, where, what its
-server or CDN logs record (IP address, user agent, pages, referrer) and for how
-long, and who can read them.]
+6.2 **Hosting.** The site runs on a DigitalOcean server in Sydney, Australia,
+over HTTPS. Cloudflare provides its DNS only: it answers lookups for the
+domain name and never carries the site's traffic.
 
-6.3 **Analytics and cookies.** [TO CONFIRM: whether the site runs any
-analytics, sets any cookie or uses local storage, and if so which provider and
-what it receives.]
+6.3 **Visitor logs.** The web server keeps no access log for the site.
+[PENDING: publish only once access logging is off for kookaburracut.com.]
 
-6.4 **Embedded content.** [TO CONFIRM: whether the site loads anything from
-another host, such as fonts, a video player or images, and so sends that host
-the visitor's IP address.]
+6.4 **Analytics, cookies and other hosts.** None. The site runs no analytics,
+sets no cookie and uses no local storage. Its content security policy lets
+your browser load only from the site itself, which serves its own fonts, so
+no other host learns of your visit.
 
-6.5 **Forms.** [TO CONFIRM: whether the site has any form or mailing list. If
-not, say so here.]
+6.5 **The download button** links to GitHub Releases. GitHub sees you only if
+you click it, under its own privacy terms [S7]. The site looks up the latest
+release on its server, never from your browser.
+
+6.6 **Forms.** There is no form and no mailing list.
 
 ## 7. When you contact me
 
@@ -158,12 +162,14 @@ advisory that only you, the maintainer and anyone the maintainer adds to it
 can see, until a fix is published [S10].
 
 7.4 **Who holds it for me.** GitHub hosts issues and reports, in the United
-States, under its own terms. [TO CONFIRM: the provider that hosts the
-`security@kookaburracut.com` mailbox, and where it keeps mail.]
+States, under its own terms. Mail to `privacy@` and `security@kookaburracut.com`
+is forwarded by Cloudflare Email Routing to my personal mailbox; nothing is
+stored on the domain itself. [TO CONFIRM: the personal mailbox's provider, and
+where it keeps mail.]
 
 7.5 **How long.** Issues and published advisories stay on GitHub as the
-project's public record; you can edit your own comments there. [TO CONFIRM:
-how long emails are kept.]
+project's public record; you can edit your own comments there. Emails are kept
+for 2 years after the last message in their thread, then deleted.
 
 Source: [SECURITY.md, "Reporting a vulnerability"](../../SECURITY.md#reporting-a-vulnerability).
 
@@ -191,16 +197,15 @@ protection by design (Article 25) and security (Article 32): the app sends
 nothing unless a person starts it, and a configuration profile can force each
 path off ([mdm.md](../mdm.md)).
 
-8.3 **For the website and when you contact me, I am the controller** of what
-I receive (sections 6 and 7). My lawful basis is my legitimate interest in
-running the project's website, answering you and fixing the app (Article
-6(1)(f)).
+8.3 **When you contact me, I am the controller** of what I receive (section
+7). My lawful basis is my legitimate interest in answering you and fixing the
+app (Article 6(1)(f)).
 
 8.4 **Transfers.** Nothing goes from the app to me. What you send me is held
-in Australia and with GitHub in the United States [TO CONFIRM: and the email
-and website hosts]. [LAWYER: the transfer basis for messages a person in the
-EU or UK sends to an individual in Australia, given that Australia has no
-adequacy decision.]
+in Australia and with GitHub in the United States, and email passes through
+Cloudflare on its way to my mailbox. The website runs in Australia.
+[LAWYER: the transfer basis for messages a person in the EU or UK sends to an
+individual in Australia, given that Australia has no adequacy decision.]
 
 8.5 [LAWYER: (1) whether the GDPR reaches an individual maintaining free
 software at all, for the website and for messages people send, given Article
@@ -235,12 +240,12 @@ nothing to describe [S4].
 | --- | --- |
 | APP 1, open and transparent management | This notice, [privacy.md](../privacy.md) and [SECURITY.md](../../SECURITY.md), all public and versioned with the app |
 | APP 2, anonymity and pseudonymity | The app needs no account or name. You can report an issue under a GitHub username of your choice |
-| APP 3, collection of solicited information | I collect only what you send me (section 7) and what the website's hosting records (section 6), and nothing through the app |
+| APP 3, collection of solicited information | I collect only what you send me (section 7), and nothing through the app or the website (section 6) |
 | APP 4, unsolicited information | Personal information sent to me that I don't need is deleted or, in a public issue, removed on request |
 | APP 5, notice of collection | This notice, published with the [support policy](../support-policy.md) before anyone contacts me |
-| APP 6, use and disclosure | Used only to answer you, fix the app and run the website (sections 6 and 7.2) |
+| APP 6, use and disclosure | Used only to answer you and fix the app (section 7.2) |
 | APP 7, direct marketing | None |
-| APP 8, cross-border disclosure | GitHub in the United States holds issues and reports (section 7.4) |
+| APP 8, cross-border disclosure | GitHub in the United States holds issues and reports, and Cloudflare forwards email (section 7.4) |
 | APP 9, government identifiers | None collected |
 | APP 10, quality | You can correct what you sent at any time |
 | APP 11, security | Security reports stay private until a fix ships (section 7.3); I delete what I no longer need (section 7.5) |

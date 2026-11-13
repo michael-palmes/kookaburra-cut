@@ -14,6 +14,7 @@ your choice.
 | For | Where | Visibility |
 | --- | --- | --- |
 | A bug, a question or a feature idea | [GitHub issues](https://github.com/michael-palmes/kookaburra-cut/issues/new/choose), using the bug report or feature request form | Public |
+| A privacy request | Email `privacy@kookaburracut.com` | The requester and the maintainer |
 | A security problem | GitHub private vulnerability reporting, as [SECURITY.md](../SECURITY.md#reporting-a-vulnerability) describes, or email `security@kookaburracut.com` | The reporter and the maintainer |
 
 An issue is public. Never put a confidential project, product or client name,
