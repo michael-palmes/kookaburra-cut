@@ -1918,6 +1918,14 @@ Verify ×2 here (the 2026-10-23 note):
 | `ws:mask-fx-spike` (an image-mask seam between two bloom scenes on the effects lane; machine-local, never gated) | `6555ff7f…` | — | — | — | — | — | — | — | — |
 | `ws:motion-toolkit-spike` (the toolkit primitives: shapes, device anchors, text metrics and presets, stamps, dashes, mosaic, taps; machine-local, gated when motion or shape primitives change) | `06b79ae2…` | `fa64bced…` | — | — | — | — | — | — | — |
 
+> **2026-11-14 (troika 0.53.1: hash-neutral):** troika-three-text and
+> troika-three-utils move to `0.53.1`. The only code change is `BatchedText`'s
+> fallback colour lookup, which neither the app nor drei uses; the utils build
+> and every other source file are byte-identical, so the stagger rewriters still
+> match and the patch applies unchanged as `troika-three-text@0.53.1.patch`.
+> `pnpm ready` is EQUAL (`showcase-tour` `fe6b6c20…`, `ws:launch-2026`
+> `cc23761e…`, `ws:text-outline-spike` `a644c039…`, the pack round trip).
+
 > **2026-11-06 (troika 0.53.0: hash-neutral):** troika-three-text and
 > troika-three-utils move to an exact `0.53.0` pin; drei still asks for
 > `^0.52.4`, so a pnpm override keeps one copy. The utils build and troika's
