@@ -1,24 +1,20 @@
 {
   "version": 1,
   "name": "Edge",
-  "background": {
-    "type": "gradient",
-    "spec": {
-      "type": "linear",
-      "angleDeg": 135,
-      "stops": [["#140c07", 0], ["#060504", 0.3], ["#030303", 1]],
-      "space": "oklch"
-    }
-  },
   "devices": [
     {
       "id": "hero",
       "model": "iphone-15-pro",
       "colour": "natural-titanium",
+      "media": {
+        "src": "assets/fairywren-today-dark-phone.jpg",
+        "kind": "image"
+      },
       "placement": {
-        "position": [0, 0, 0],
-        "rotationDeg": [-90, 0, 0],
-        "scale": 1
+        "position": [-2.05, 0.079, -0.318],
+        "rotationDeg": [0, 120, 0],
+        "scale": 1.39,
+        "ground": true
       },
       "motion": {
         "preset": "none"
@@ -78,16 +74,15 @@
         "id": "k1",
         "tMs": 0,
         "pose": {
-          "position": [-1.28, 0.25, 1.955],
+          "position": [-0.1087, 1.2335, 2.9464],
           "aim": {
             "mode": "point",
-            "at": [-0.62, 0.02, 1.05]
+            "at": [-1.6087, 1.0835, 0.4464]
           },
-          "fov": 24,
+          "fov": 18,
           "dof": {
-            "mode": "depth",
-            "blur": 0.85,
-            "range": 0.35,
+            "mode": "lens",
+            "fStop": 4,
             "focus": "auto"
           }
         }
@@ -96,12 +91,17 @@
         "id": "k2",
         "tMs": 1858,
         "pose": {
-          "position": [-1.23, 0.245, 1.9075],
+          "position": [-0.6087, 0.4385, 2.6464],
           "aim": {
             "mode": "point",
-            "at": [-0.61, 0.02, 1.025]
+            "at": [-1.6087, 0.3885, 0.4464]
           },
-          "fov": 24
+          "fov": 18,
+          "dof": {
+            "mode": "lens",
+            "fStop": 4,
+            "focus": "auto"
+          }
         }
       }
     ],
@@ -109,14 +109,23 @@
       {
         "from": "k1",
         "to": "k2",
-        "ease": "inOutSine"
+        "ease": "linear"
       }
     ]
   },
   "lighting": {
+    "ambient": 0,
+    "fills": [],
+    "sun": {
+      "azimuthDeg": -55,
+      "elevationDeg": 32,
+      "intensity": 0,
+      "color": "#ffc888",
+      "castShadow": false
+    },
     "environment": {
       "source": "kookaburra:strips",
-      "intensity": 0.12,
+      "intensity": 1,
       "rotationDeg": 0,
       "strips": [
         {
@@ -176,100 +185,167 @@
         }
       ]
     },
-    "sun": {
-      "azimuthDeg": -55,
-      "elevationDeg": 32,
-      "intensity": 1,
-      "enabled": false
-    },
-    "ambient": 0,
-    "fills": [],
     "lights": [
       {
         "id": "key",
         "type": "spot",
-        "intensity": 40,
-        "angleDeg": 30,
-        "penumbra": 0.7,
-        "castShadow": false,
+        "intensity": 360,
         "placement": {
           "mode": "point",
-          "position": [-2.4, 0.9, -1.0]
+          "position": [-7, 4.85, -7.6]
         },
-        "target": [-0.6, 0.03, 1.0],
-        "color": "#ffc79a"
+        "target": [-2.15, -0.4, -0.3],
+        "angleDeg": 38,
+        "penumbra": 1,
+        "color": "#ffc79a",
+        "decay": 2,
+        "castShadow": true,
+        "volumetric": {
+          "box": {
+            "min": [-14, -1.905, -30],
+            "max": [8, 9, -0.8]
+          },
+          "haze": {
+            "density": 0.028,
+            "anisotropy": 0.65,
+            "strength": 1,
+            "heightFalloff": 0,
+            "groundFade": 1.5
+          },
+          "extinction": true,
+          "shadowMapSize": 2048,
+          "smoke": {
+            "scale": 0.4,
+            "warp": 1.6,
+            "contrast": [0.4, 0.6],
+            "floor": 0.15,
+            "drift": [0.12, 0.08, 0],
+            "evolve": 0.08
+          },
+          "dust": {
+            "count": 280,
+            "min": [-6.5, 0.3, -7],
+            "max": [-1.9, 3.6, -0.9],
+            "radius": [0.006, 0.012],
+            "gain": 0.26,
+            "drift": [0.05, 0.06, 0]
+          }
+        }
+      },
+      {
+        "id": "fill",
+        "type": "spot",
+        "intensity": 30,
+        "placement": {
+          "mode": "point",
+          "position": [-4.5, 0.5, -1]
+        },
+        "target": [-3, -1.9, 0.2],
+        "angleDeg": 50,
+        "penumbra": 1,
+        "color": "#ffb880",
+        "decay": 2
       }
     ],
     "keys": [
       {
-        "id": "l1",
+        "id": "l0",
         "tMs": 0,
         "pose": {
           "lights": {
             "key": {
               "intensity": 0
+            },
+            "fill": {
+              "intensity": 0
             }
           },
-          "environmentIntensity": 0
+          "environmentIntensity": 0,
+          "environmentRotationDeg": -6
         }
       },
       {
-        "id": "l2",
-        "tMs": 600,
+        "id": "l1",
+        "tMs": 500,
         "pose": {
           "lights": {
             "key": {
-              "intensity": 40
+              "intensity": 360
+            },
+            "fill": {
+              "intensity": 30
             }
           },
-          "environmentIntensity": 0.12
+          "environmentIntensity": 1,
+          "environmentRotationDeg": -2.8
         }
       },
       {
-        "id": "l3",
-        "tMs": 920,
-        "at": "bar:1.3",
-        "pose": {
-          "lights": {
-            "key": {
-              "placement": {
-                "mode": "point",
-                "position": [-2.4, 0.9, -1.0]
-              }
-            }
-          }
-        }
-      },
-      {
-        "id": "l4",
+        "id": "r1",
         "tMs": 1858,
         "pose": {
-          "lights": {
-            "key": {
-              "placement": {
-                "mode": "point",
-                "position": [-2.6, 0.9, 1.4]
-              }
-            }
-          }
+          "environmentRotationDeg": 6
         }
       }
     ],
     "segments": [
       {
-        "from": "l1",
-        "to": "l2",
+        "from": "l0",
+        "to": "l1",
         "ease": "outCubic"
       },
       {
-        "from": "l2",
-        "to": "l3",
-        "ease": "jump"
-      },
+        "from": "l1",
+        "to": "r1",
+        "ease": "linear"
+      }
+    ],
+    "shadow": {
+      "technique": "map",
+      "softness": 0.375,
+      "opacity": 0.85,
+      "mapSize": 2048,
+      "bias": -0.0005
+    }
+  },
+  "background": {
+    "type": "gradient",
+    "spec": {
+      "type": "linear",
+      "angleDeg": 135,
+      "stops": [["#140c07", 0], ["#060504", 0.3], ["#030303", 1]],
+      "space": "oklch"
+    }
+  },
+  "backdrop": {
+    "type": "satin",
+    "color": "#22201e",
+    "roughness": 0.35,
+    "specular": 0.3,
+    "centre": [-2.2, 0.3],
+    "fade": [1.2, 5.5],
+    "reflection": {
+      "strength": 1.3,
+      "blur": 24,
+      "heightBlur": 0.9,
+      "contact": 0.75
+    },
+    "glitter": {
+      "scale": 90,
+      "density": 0,
+      "roughness": 0.15,
+      "tilt": 0.5,
+      "weight": 0,
+      "grain": 0.5,
+      "seed": 5
+    },
+    "pools": [
       {
-        "from": "l3",
-        "to": "l4",
-        "ease": "inOutSine"
+        "at": [-2.4, 0.5],
+        "radius": [1.3, 0.5],
+        "angleDeg": -10,
+        "color": "#ffb070",
+        "intensity": 0.1
       }
     ]
   }

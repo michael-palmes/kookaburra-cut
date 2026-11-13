@@ -6,7 +6,7 @@ export default defineScene({
   Scene() {
     const devices = useSceneDevices();
     return (
-      <SceneStage>
+      <SceneStage floorY={-1.905}>
         {devices.map((d) => (
           <Device key={d.id} {...d} />
         ))}
