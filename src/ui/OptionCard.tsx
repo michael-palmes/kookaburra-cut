@@ -65,22 +65,24 @@ export function OptionCard({
       }}
     >
       <div className="theme-card-thumb">
-        {live ? (
-          <video
-            ref={videoRef}
-            src={clip}
-            poster={image ?? undefined}
-            autoPlay
-            loop={near}
-            muted
-            playsInline
-          />
-        ) : icon ? (
+        {icon ? (
           <div className="option-card-icon">{icon}</div>
         ) : image ? (
           <img src={image} alt="" draggable={false} />
         ) : (
           <div className="option-card-swatch">{label}</div>
+        )}
+        {live && (
+          // Layered over the still and shown from its first decoded frame, so hover never flashes an empty thumb.
+          <video
+            ref={videoRef}
+            src={clip}
+            autoPlay
+            loop={near}
+            muted
+            playsInline
+            onLoadedData={(e) => e.currentTarget.classList.add("ready")}
+          />
         )}
       </div>
       <div className="theme-card-meta">

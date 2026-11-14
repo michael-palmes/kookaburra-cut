@@ -12497,10 +12497,16 @@ textarea.text-inspector-copy-input {
 }
 
 .theme-card-thumb video {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  display: block;
+  opacity: 0;
+}
+
+.theme-card-thumb video.ready {
+  opacity: 1;
 }
 
 /* Text-motion cards: tighter meta (3-up leaves ~90px per card). */

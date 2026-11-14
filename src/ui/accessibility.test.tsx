@@ -202,6 +202,12 @@ describe("option card clips (2.2.2, 2.3.3)", () => {
     expect(source).toContain("onFocus={() => setNear(true)}");
   });
 
+  it("keeps the still under the clip until its first frame, so hover never flashes", () => {
+    expect(card()).toMatch(/<img[^>]*poster\.jpg[^>]*>\s*<video/);
+    expect(styles).toMatch(/\.theme-card-thumb video \{[^}]*opacity: 0;/);
+    expect(styles).toContain(".theme-card-thumb video.ready {\n  opacity: 1;\n}");
+  });
+
   it("holds the still under Reduce motion until the card is hovered or focused", () => {
     vi.stubGlobal("window", { matchMedia: () => ({ matches: true }) });
     const html = card();
