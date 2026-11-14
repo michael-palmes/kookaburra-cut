@@ -14,7 +14,7 @@ import {
 } from "./fontMetrics";
 import type { FontRef } from "./tokens";
 
-/** Parity: `measureText` against troika 0.52.5's own font resolver and typesetter, run on the same parsed faces (metrics only, so no SDF or bidi work). */
+/** Parity: `measureText` against troika 0.53.0's own font resolver and typesetter, run on the same parsed faces (metrics only, so no SDF or bidi work). */
 
 const FACES: { ref: FontRef; file: string }[] = [
   { ref: { family: "Inter", weight: 400 }, file: "Inter-Regular.woff" },
@@ -83,8 +83,8 @@ function troikaMeasure(
       {
         text: prepareEmojiText(text).text,
         font: [
-          { label: "default", src: kookaburraFallbackUrl },
-          { label: "user", src: metricsFontUrl(opts.font) },
+          { label: "system", src: kookaburraFallbackUrl },
+          { label: "default", src: metricsFontUrl(opts.font) },
         ],
         fontSize: opts.fontSize,
         letterSpacing: opts.letterSpacing ?? 0,
