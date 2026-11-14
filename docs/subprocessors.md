@@ -145,4 +145,6 @@ these, and none of them receives anything from the app.
   never the site's traffic. Its Email Routing forwards mail sent to
   `security@` and `privacy@kookaburracut.com` to the maintainer's mailbox, so
   it handles those messages in transit.
+- **Google** hosts that mailbox (Gmail), so it stores those messages. They are
+  kept 2 years after the last message in a thread.
 - **Apple** notarises each release ([above](#apple-build-time-only)).

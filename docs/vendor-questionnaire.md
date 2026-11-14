@@ -284,7 +284,7 @@ SIG: Privacy management. CAIQ: DSP.
 
 | Question | Answer | Evidence | Notes |
 | --- | --- | --- | --- |
-| Does the vendor process personal data? | No | [privacy.md](./privacy.md) | No account, telemetry or upload. |
+| Does the vendor process personal data? | No | [privacy.md](./privacy.md), [subprocessors.md](./subprocessors.md) | No account, telemetry or upload. Mail sent to `security@` or `privacy@` reaches the maintainer's Gmail mailbox (Google) and is kept 2 years after the last message in a thread. |
 | Is a data processing agreement needed? | Not applicable | [subprocessors.md](./subprocessors.md) | Nothing is processed on the customer's behalf. Anthropic's terms cover what a person sends through their own Claude Code. |
 | Are there cross-border transfers? | Not applicable | [subprocessors.md](./subprocessors.md) | None by the app. Claude Code and approved websites go where their providers do. |
 | Does the app read device or identity data? | No | [packs.md](./packs.md#signing-and-trust-on-first-use), [scene-website.md](./scene-website.md#native-boundary) | No entitlements, so no camera, microphone or location; website views deny device permissions; a pack names its device only as `Mac`, never the computer name. |
