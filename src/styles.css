@@ -172,7 +172,9 @@
     .add-scene-cat-label,
     .add-scene-mine-label,
     .add-scene-card-name,
-    .template-card-name
+    .template-card-name,
+    .media-name,
+    .media-card-foot .media-meta-line
   ) {
   white-space: normal;
   overflow-wrap: anywhere;
@@ -457,6 +459,19 @@ body {
 
 .claude-launcher.first-run {
   width: 400px;
+}
+
+/* Enlarged text: the launcher scrolls inside the window, so its More menu opens upward to stay inside it. */
+:root[data-text-size] .claude-launcher {
+  max-height: calc(100vh - var(--titlebar-h) - 12px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+:root[data-text-size] .claude-launcher-menu {
+  top: auto;
+  bottom: calc(100% + 6px);
+  width: calc(240px * var(--panel-scale));
 }
 
 @keyframes claude-launcher-in {
@@ -7006,6 +7021,30 @@ button.beat-status {
   -webkit-user-select: none;
 }
 
+/* Enlarged text: the pill sizes to its tools instead of a fixed width, so only the shown layer stays in flow. */
+:root[data-text-size] .camera-pill {
+  width: auto;
+  max-width: 100%;
+}
+
+:root[data-text-size] :is(.camera-pill-idle, .camera-pill-active) {
+  position: static;
+  height: 100%;
+}
+
+:root[data-text-size] .camera-pill-idle {
+  padding: 0 calc(24px * var(--text-scale));
+}
+
+:root[data-text-size] .camera-pill.active .camera-pill-idle,
+:root[data-text-size] .camera-pill:not(.active) .camera-pill-active {
+  display: none;
+}
+
+:root[data-text-size] .camera-pill-blurb {
+  flex: 0 1 auto;
+}
+
 /* Content-sized: the pill's per-mode width owns the layout, so the stepper never shrinks into the clip. */
 .camera-pill-zoom {
   display: flex;
@@ -12181,7 +12220,7 @@ textarea.text-inspector-copy-input {
     );
   align-items: center;
   column-gap: 8px;
-  height: 24px;
+  height: calc(24px * var(--text-scale));
 }
 
 .bg-sheet-slider > .bg-sheet-label {

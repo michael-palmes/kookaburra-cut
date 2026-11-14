@@ -154,6 +154,13 @@ describe("text size tokens", () => {
       expect(wrap.slice(0, wrap.indexOf("}")), label).toContain(label);
     }
     expect(read("../packs/packs.css")).toContain("flex: 0 0 calc(208px * var(--panel-scale));");
+    expect(rule(":root[data-text-size] .claude-launcher")).toContain("overflow-y: auto;");
+    expect(rule(":root[data-text-size] .claude-launcher-menu")).toContain(
+      "bottom: calc(100% + 6px);",
+    );
+    expect(rule(":root[data-text-size] .camera-pill")).toContain("width: auto;");
+    expect(rule(".bg-sheet-slider")).toContain("height: calc(24px * var(--text-scale));");
+    expect(wrap.slice(0, wrap.indexOf("}"))).toContain(".media-name");
   });
 
   it.each(["../styles.css", "../packs/packs.css"])(
