@@ -163,9 +163,8 @@ can see, until a fix is published [S10].
 
 7.4 **Who holds it for me.** GitHub hosts issues and reports, in the United
 States, under its own terms. Mail to `privacy@` and `security@kookaburracut.com`
-is forwarded by Cloudflare Email Routing to my personal mailbox; nothing is
-stored on the domain itself. [TO CONFIRM: the personal mailbox's provider, and
-where it keeps mail.]
+is forwarded by Cloudflare Email Routing to my Gmail mailbox, which Google
+hosts under its own terms; nothing is stored on the domain itself.
 
 7.5 **How long.** Issues and published advisories stay on GitHub as the
 project's public record; you can edit your own comments there. Emails are kept
@@ -202,8 +201,9 @@ path off ([mdm.md](../mdm.md)).
 app (Article 6(1)(f)).
 
 8.4 **Transfers.** Nothing goes from the app to me. What you send me is held
-in Australia and with GitHub in the United States, and email passes through
-Cloudflare on its way to my mailbox. The website runs in Australia.
+in Australia, with GitHub in the United States and with Google, which hosts my
+mailbox; email passes through Cloudflare on its way there. The website runs in
+Australia.
 [LAWYER: the transfer basis for messages a person in the EU or UK sends to an
 individual in Australia, given that Australia has no adequacy decision.]
 
@@ -245,7 +245,7 @@ nothing to describe [S4].
 | APP 5, notice of collection | This notice, published with the [support policy](../support-policy.md) before anyone contacts me |
 | APP 6, use and disclosure | Used only to answer you and fix the app (section 7.2) |
 | APP 7, direct marketing | None |
-| APP 8, cross-border disclosure | GitHub in the United States holds issues and reports, and Cloudflare forwards email (section 7.4) |
+| APP 8, cross-border disclosure | GitHub in the United States holds issues and reports, Cloudflare forwards email and Google hosts the mailbox it reaches (section 7.4) |
 | APP 9, government identifiers | None collected |
 | APP 10, quality | You can correct what you sent at any time |
 | APP 11, security | Security reports stay private until a fix ships (section 7.3); I delete what I no longer need (section 7.5) |
