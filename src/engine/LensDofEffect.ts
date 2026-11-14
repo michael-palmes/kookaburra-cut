@@ -1,10 +1,12 @@
-/** Lens depth of field (dof mode "lens"): a thin-lens CoC from true scene depth, gathered on a Vogel disc at half resolution and composited at full resolution so the focus band stays exactly as rendered. Deterministic by construction: fixed tap pattern and counts, a screen-fixed per-pixel rotation, CPU-written uniforms, no time reads; when inactive the passes are skipped and the composite never reads their stale targets. Its constants are export-contract constants (lensDof.ts, docs/determinism.md). */
+/** Lens depth of field (dof mode "lens"): a thin-lens CoC from true scene depth, gathered on a Vogel disc at half resolution from a mipmapped prefilter, with small discs blurred at full resolution, and composited so the focus band stays exactly as rendered. Deterministic by construction: fixed tap pattern and counts, a per-pixel rotation offset only by the supersample index, CPU-written uniforms, no time reads; when inactive the passes are skipped and the composite never reads their stale targets. Its constants are export-contract constants (lensDof.ts, docs/determinism.md). */
 import { Effect, EffectAttribute, ShaderPass } from "postprocessing";
 import {
   BasicDepthPacking,
   type Camera,
   type DepthPackingStrategies,
   HalfFloatType,
+  LinearFilter,
+  LinearMipmapLinearFilter,
   NearestFilter,
   NoBlending,
   type PerspectiveCamera,
@@ -18,7 +20,15 @@ import {
   WebGLRenderTarget,
 } from "three";
 import type { LensParams } from "./lensDof";
-import { LENS_COC_MAX, LENS_RESOLUTION_SCALE, LENS_TAPS, lensUniforms } from "./lensDof";
+import {
+  LENS_COC_MAX,
+  LENS_NEAR_COC,
+  LENS_NEAR_FADE,
+  LENS_NEAR_TAPS,
+  LENS_RESOLUTION_SCALE,
+  LENS_TAPS,
+  lensUniforms,
+} from "./lensDof";
 import {
   lensCompositeShader,
   lensDilateShader,
@@ -28,15 +38,21 @@ import {
   lensTileShader,
   lensVertexShader,
 } from "./lensDofShaders";
+import { supersampleSeed } from "./supersample";
 
-function target(format: typeof RGBAFormat | typeof RedFormat, name: string): WebGLRenderTarget {
+function target(
+  format: typeof RGBAFormat | typeof RedFormat,
+  name: string,
+  mips = false,
+): WebGLRenderTarget {
+  // RGBA16F filters natively in WebGL2, so the prefilter's mip chain needs no extension.
   const t = new WebGLRenderTarget(1, 1, {
     type: HalfFloatType,
     format,
-    minFilter: NearestFilter,
-    magFilter: NearestFilter,
+    minFilter: mips ? LinearMipmapLinearFilter : NearestFilter,
+    magFilter: mips ? LinearFilter : NearestFilter,
     depthBuffer: false,
-    generateMipmaps: false,
+    generateMipmaps: mips,
   });
   t.texture.name = name;
   return t;
@@ -60,7 +76,7 @@ function material(
 }
 
 export class LensDofEffect extends Effect {
-  private readonly prefilterTarget = target(RGBAFormat, "LensDof.Prefilter");
+  private readonly prefilterTarget = target(RGBAFormat, "LensDof.Prefilter", true);
   private readonly tileTarget = target(RedFormat, "LensDof.Tiles");
   private readonly dilateTarget = target(RedFormat, "LensDof.NearMax");
   private readonly gatherTarget = target(RGBAFormat, "LensDof.Gather");
@@ -79,7 +95,14 @@ export class LensDofEffect extends Effect {
     const halfSize = new Uniform(new Vector2(1, 1));
     super("LensDofEffect", lensCompositeShader, {
       attributes: EffectAttribute.DEPTH,
-      defines: new Map(Object.entries(defines)),
+      defines: new Map(
+        Object.entries({
+          ...defines,
+          LENS_NEAR_COC: LENS_NEAR_COC.toFixed(1),
+          LENS_NEAR_FADE: LENS_NEAR_FADE.toFixed(1),
+          LENS_NEAR_TAPS: `${LENS_NEAR_TAPS}`,
+        }),
+      ),
       uniforms: new Map<string, Uniform>([
         ["lensBlurBuffer", new Uniform(null)],
         ["lensCocBuffer", new Uniform(null)],
@@ -88,6 +111,7 @@ export class LensDofEffect extends Effect {
         ["lensCocInf", new Uniform(0)],
         ["lensCocMax", new Uniform(0)],
         ["lensHalfScale", new Uniform(LENS_RESOLUTION_SCALE)],
+        ["lensSqueezeX", new Uniform(1)],
         ["lensActive", new Uniform(false)],
       ]),
     });
@@ -140,6 +164,7 @@ export class LensDofEffect extends Effect {
           tileSize,
           cocMax,
           squeezeX: new Uniform(1),
+          sampleSeed: supersampleSeed,
         },
         { LENS_TAPS: `${LENS_TAPS}` },
       ),
@@ -198,8 +223,9 @@ export class LensDofEffect extends Effect {
     pre.focus.value = u.focus;
     pre.cocInf.value = u.cocInf * halfHeight;
     pre.cocMax.value = LENS_COC_MAX * halfHeight;
-    (this.gatherPass.fullscreenMaterial as ShaderMaterial).uniforms.squeezeX.value =
-      1 / Math.max(1, p.squeeze);
+    const squeezeX = 1 / Math.max(1, p.squeeze);
+    (this.gatherPass.fullscreenMaterial as ShaderMaterial).uniforms.squeezeX.value = squeezeX;
+    this.setUniform("lensSqueezeX", squeezeX);
     this.setUniform("lensFocus", u.focus);
     this.setUniform("lensCocInf", u.cocInf * this.fullHeight);
     this.setUniform("lensCocMax", LENS_COC_MAX * this.fullHeight);

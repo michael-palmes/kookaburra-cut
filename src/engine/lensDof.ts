@@ -8,6 +8,12 @@ export const LENS_COC_MAX = 0.05;
 export const LENS_RESOLUTION_SCALE = 0.5;
 /** Most gather taps a pixel takes (fewer for small discs, one per ~4 half-res px²). EXPORT CONTRACT. */
 export const LENS_TAPS = 128;
+/** Discs under this many full-res pixels blur at full resolution; the half-res gather takes over by it. EXPORT CONTRACT. */
+export const LENS_NEAR_COC = 4;
+/** Where the full-res blur starts handing over to the gather, in full-res pixels. EXPORT CONTRACT. */
+export const LENS_NEAR_FADE = 2.5;
+/** Taps of the full-res blur. EXPORT CONTRACT. */
+export const LENS_NEAR_TAPS = 16;
 
 export const LENS_FSTOP_MIN = 0.7;
 export const LENS_FSTOP_MAX = 64;
