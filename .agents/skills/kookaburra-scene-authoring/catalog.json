@@ -26235,7 +26235,7 @@
         "bpm": 128
       },
       "looks": ["kookaburra-obsidian-stage", "kookaburra-daylight", "kookaburra-ink"],
-      "sceneCount": 17,
+      "sceneCount": 16,
       "durationMs": 59983,
       "aspects": ["16:9"],
       "themeId": "kookaburra-obsidian-stage",
@@ -26283,24 +26283,8 @@
           ]
         },
         {
-          "file": "scenes/04-question.tsx",
-          "durationMs": 3750,
-          "transition": null,
-          "blocks": [
-            "backdrop",
-            "background",
-            "cameraKicks",
-            "cameraMode",
-            "cameraRig",
-            "lighting",
-            "text",
-            "textAnimation",
-            "textStyle"
-          ]
-        },
-        {
           "file": "scenes/05-reveal.tsx",
-          "durationMs": 7500,
+          "durationMs": 11250,
           "transition": null,
           "blocks": [
             "backdrop",
@@ -26311,8 +26295,10 @@
             "deviceTrack",
             "devices",
             "lighting",
+            "motionBlur",
             "text",
             "textAnimation",
+            "textAnimationOverrides",
             "textStyle"
           ]
         },

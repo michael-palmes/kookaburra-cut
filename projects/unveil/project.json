@@ -128,23 +128,8 @@
       }
     },
     {
-      "file": "scenes/04-question.tsx",
-      "durationMs": 3750,
-      "cutAt": "bar:9",
-      "effects": {
-        "lens": {
-          "intensity": 1,
-          "bloom": 0.08,
-          "bloomRadius": 0.88,
-          "halation": 0.2,
-          "halationThreshold": 1,
-          "halationColor": "#ff7a30"
-        }
-      }
-    },
-    {
       "file": "scenes/05-reveal.tsx",
-      "durationMs": 7500,
+      "durationMs": 11250,
       "cutAt": "bar:13",
       "effects": {
         "lens": {

@@ -79,7 +79,7 @@ warning with their reason (`./kb pacing accept S --why "..."`) so it isn't raise
 6. **Pay off on the final hit.** The name or the call to action lands on the song's final
    hit and holds at most a bar while it rings out; arriving earlier leaves it sitting still.
 
-The `unveil` template is the worked example: 32 bars at 128 BPM in 17 scenes, something
+The `unveil` template is the worked example: 32 bars at 128 BPM in 16 scenes, something
 new each bar through the build (bars 1 to 8) and the breakdown, every two beats through
 the peaks, a montage that doubles from every two beats to every beat (bars 25 to 28), and
 "Available today." on the final hit (bar 32) with a bar of ring-out.
