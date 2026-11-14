@@ -1,6 +1,7 @@
 import {
   AnimatedHeadline,
   defineScene,
+  SceneStage,
   useBeatGrid,
   useFormat,
   useSceneText,
@@ -17,16 +18,18 @@ export default defineScene({
     const beatMs = Math.round(grid?.beatMs ?? 469);
 
     return (
-      <AnimatedHeadline
-        text={question}
-        textKey="title"
-        stagger="word"
-        staggerMs={beatMs}
-        hitAt={0}
-        fontSize={0.8}
-        fit="width"
-        maxWidth={(frame.width - safe.left - safe.right) * 0.84}
-      />
+      <SceneStage floorY={-1.905}>
+        <AnimatedHeadline
+          text={question}
+          textKey="title"
+          stagger="word"
+          staggerMs={beatMs}
+          hitAt={0}
+          fontSize={0.8}
+          fit="width"
+          maxWidth={(frame.width - safe.left - safe.right) * 0.84}
+        />
+      </SceneStage>
     );
   },
 });

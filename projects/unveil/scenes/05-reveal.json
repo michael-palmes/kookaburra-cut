@@ -60,7 +60,8 @@
         "tMs": 0,
         "pose": {
           "hero": {
-            "screenPower": 0
+            "screenPower": 0,
+            "rotationDeg": [0, 0, 0]
           }
         }
       },
@@ -70,7 +71,8 @@
         "at": "bar:10",
         "pose": {
           "hero": {
-            "screenPower": 0
+            "screenPower": 0,
+            "rotationDeg": [0, 0, 0]
           }
         }
       },
@@ -79,7 +81,29 @@
         "tMs": 2250,
         "pose": {
           "hero": {
-            "screenPower": 1
+            "screenPower": 1,
+            "rotationDeg": [0, 0, 0]
+          }
+        }
+      },
+      {
+        "id": "d4",
+        "tMs": 5625,
+        "at": "bar:12",
+        "pose": {
+          "hero": {
+            "screenPower": 1,
+            "rotationDeg": [0, 0, 0]
+          }
+        }
+      },
+      {
+        "id": "d5",
+        "tMs": 7500,
+        "pose": {
+          "hero": {
+            "screenPower": 1,
+            "rotationDeg": [0, -6, 0]
           }
         }
       }
@@ -94,6 +118,16 @@
         "from": "d2",
         "to": "d3",
         "ease": "outQuad"
+      },
+      {
+        "from": "d3",
+        "to": "d4",
+        "ease": "jump"
+      },
+      {
+        "from": "d4",
+        "to": "d5",
+        "ease": "inOutSine"
       }
     ]
   },
@@ -135,6 +169,19 @@
             "at": [0, -0.1, 0]
           },
           "fov": 21
+        },
+        "at": "bar:11"
+      },
+      {
+        "id": "k4",
+        "tMs": 7500,
+        "pose": {
+          "position": [0.15, -0.95, 11.1],
+          "aim": {
+            "mode": "point",
+            "at": [0, -0.1, 0]
+          },
+          "fov": 21
         }
       }
     ],
@@ -148,6 +195,11 @@
         "from": "k2",
         "to": "k3",
         "ease": "inOutCubic"
+      },
+      {
+        "from": "k3",
+        "to": "k4",
+        "ease": "inOutSine"
       }
     ]
   },
@@ -396,6 +448,32 @@
         "pose": {
           "environmentRotationDeg": 0
         }
+      },
+      {
+        "id": "l5",
+        "tMs": 3750,
+        "at": "bar:11",
+        "pose": {
+          "lights": {
+            "key": {
+              "intensity": 520
+            }
+          },
+          "environmentIntensity": 1
+        }
+      },
+      {
+        "id": "l6",
+        "tMs": 4687,
+        "at": "bar:11.3",
+        "pose": {
+          "lights": {
+            "key": {
+              "intensity": 640
+            }
+          },
+          "environmentIntensity": 1.2
+        }
       }
     ],
     "segments": [
@@ -418,6 +496,16 @@
         "from": "l3",
         "to": "l4",
         "ease": "outCubic"
+      },
+      {
+        "from": "l4",
+        "to": "l5",
+        "ease": "linear"
+      },
+      {
+        "from": "l5",
+        "to": "l6",
+        "ease": "inOutSine"
       }
     ],
     "shadow": {
@@ -468,5 +556,21 @@
         "intensity": 0.1
       }
     ]
+  },
+  "text": {
+    "title": "Meet Fairywren."
+  },
+  "textAnimation": {
+    "in": "stamp",
+    "out": "static",
+    "staggerMs": 0,
+    "staggerExact": true,
+    "durationMs": 938
+  },
+  "textStyle": {
+    "titleFont": "Inter Tight@900",
+    "titleColor": "#fffaf0",
+    "titleSize": 0.9,
+    "titleOffsetX": -0.3
   }
 }

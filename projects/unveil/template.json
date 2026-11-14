@@ -27,8 +27,8 @@
   },
   "looks": ["kookaburra-obsidian-stage", "kookaburra-daylight", "kookaburra-ink"],
   "preview": {
-    "poster": 5,
-    "frames": [4, 5, 7, 17],
+    "poster": 4,
+    "frames": [1, 4, 6, 16],
     "loop": {
       "scene": 4,
       "atMs": 0,
