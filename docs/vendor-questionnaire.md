@@ -254,7 +254,7 @@ SIG: Cybersecurity incident management. CAIQ: SEF.
 | Is there an incident response process? | Partial | [SECURITY.md, "Reporting a vulnerability"](../SECURITY.md#reporting-a-vulnerability), [CHANGELOG.md](../CHANGELOG.md), [incident-response.md](./incident-response.md) | A report becomes a private draft advisory, the fix ships in a release with a `### Security` entry, and the advisory is linked. One person runs it, best effort. |
 | What happens if a release or a signing key is compromised? | Partial | [incident-response.md](./incident-response.md) | Pull the release, publish a GitHub security advisory, rotate the tag, updater and Developer ID keys, and ship a fixed version through the updater. A new updater key costs one manual download per install, and there is no check of an installed app against its release file by file yet. |
 | Will customers be told of a breach of their data? | Not applicable | [subprocessors.md](./subprocessors.md) | The vendor holds no customer data and no customer list. Security releases reach people through the in-app update check, the release notes and the repository's advisories. |
-| Is there evidence on the device for an investigation? | Yes | [audit.rs](../src-tauri/src/audit.rs) | The app log records grants, imports, updates and refusals. The vendor holds no logs. |
+| Is there evidence on the device for an investigation? | Yes | [audit.rs](../src-tauri/src/audit.rs) | The app log records grants, imports, updates and refusals. The vendor holds no logs from the app. |
 | Can a customer contain an incident on their own fleet? | Yes | [mdm.md](./mdm.md#keys) | A profile can stop updates, pack imports, live websites and every Claude entry point at the next launch. |
 
 ## Managed Macs
@@ -283,7 +283,7 @@ SIG: Privacy management. CAIQ: DSP.
 
 | Question | Answer | Evidence | Notes |
 | --- | --- | --- | --- |
-| Does the vendor process personal data? | No | [privacy.md](./privacy.md), [subprocessors.md](./subprocessors.md) | No account, telemetry or upload. Mail sent to `security@` or `privacy@` reaches the maintainer's Gmail mailbox (Google) and is kept 2 years after the last message in a thread. |
+| Does the vendor process personal data? | No | [privacy.md](./privacy.md), [subprocessors.md](./subprocessors.md) | No account, telemetry or upload. Mail sent to `security@` or `privacy@` reaches the maintainer's Gmail mailbox (Google) and is kept 2 years after the last message in a thread. The website keeps no access log; its error log can record a failed request's IP address. |
 | Is a data processing agreement needed? | Not applicable | [subprocessors.md](./subprocessors.md) | Nothing is processed on the customer's behalf. Anthropic's terms cover what a person sends through their own Claude Code. |
 | Are there cross-border transfers? | Not applicable | [subprocessors.md](./subprocessors.md) | None by the app. Claude Code and approved websites go where their providers do. |
 | Does the app read device or identity data? | No | [packs.md](./packs.md#signing-and-trust-on-first-use), [scene-website.md](./scene-website.md#native-boundary) | No entitlements, so no camera, microphone or location; website views deny device permissions; a pack names its device only as `Mac`, never the computer name. |

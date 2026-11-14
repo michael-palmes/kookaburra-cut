@@ -4,8 +4,7 @@
 > this text. Don't publish it or rely on it until an Australian lawyer, and
 > for people in Europe a European data protection adviser, has.
 > `[LAWYER: ...]` marks a question for the reviewer; `[TO CONFIRM: ...]` marks
-> a fact still to check; `[PENDING: ...]` marks a sentence that must not be
-> published until the change it describes is live.
+> a fact still to check.
 
 This is the legal form of [privacy.md](../privacy.md). Sections 3 to 5 name
 their source in that page or in [SECURITY.md](../../SECURITY.md), which hold
@@ -35,8 +34,9 @@ repository's Security tab
 no crash reporting, and nothing phones home. I run no server the app talks to,
 so there is nothing for me to receive.
 
-2.2 **The website collects nothing either**: no analytics, no cookies and no
-forms (section 6).
+2.2 **The website keeps no record of your visit**: no access log, no
+analytics, no cookies and no forms. Only a request the server fails to handle
+can leave a line in its error log (section 6.3).
 
 2.3 **I hold only what you choose to send me**: an issue, a security report or
 an email.
@@ -134,8 +134,12 @@ or sign-in, and nothing sold.
 over HTTPS. Cloudflare provides its DNS only: it answers lookups for the
 domain name and never carries the site's traffic.
 
-6.3 **Visitor logs.** The web server keeps no access log for the site.
-[PENDING: publish only once access logging is off for kookaburracut.com.]
+6.3 **Visitor logs.** The kookaburracut.com web server keeps no access log:
+it does not record your IP address, the pages you visit or your browser for
+any request. If the server fails to handle a request, for example while the
+site is briefly unavailable, its error log can record the time, your IP
+address and the address you requested; that log stays on the server until the
+server software is next rebuilt, with no fixed deletion date.
 
 6.4 **Analytics, cookies and other hosts.** None. The site runs no analytics,
 sets no cookie and uses no local storage. Its content security policy lets
@@ -240,7 +244,7 @@ nothing to describe [S4].
 | --- | --- |
 | APP 1, open and transparent management | This notice, [privacy.md](../privacy.md) and [SECURITY.md](../../SECURITY.md), all public and versioned with the app |
 | APP 2, anonymity and pseudonymity | The app needs no account or name. You can report an issue under a GitHub username of your choice |
-| APP 3, collection of solicited information | I collect only what you send me (section 7), and nothing through the app or the website (section 6) |
+| APP 3, collection of solicited information | I collect only what you send me (section 7): nothing through the app, and through the website only an error-log line when the server fails a request (section 6.3) |
 | APP 4, unsolicited information | Personal information sent to me that I don't need is deleted or, in a public issue, removed on request |
 | APP 5, notice of collection | This notice, published with the [support policy](../support-policy.md) before anyone contacts me |
 | APP 6, use and disclosure | Used only to answer you and fix the app (section 7.2) |
