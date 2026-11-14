@@ -2101,6 +2101,14 @@ Verify ×2 here (the 2026-10-23 note):
 > target path); an Unveil crossfade out of a lens scene renders both sides
 > through the HDR side composer.
 
+> **2026-11-14 (lifted `ScreenRegion` depth, additive):** a lifted card or lens
+> mounts a depth-only copy of its shape on `LENS_DEPTH_LAYER` (31, export
+> contract, `engine/lensDepth.ts`), in its own group drawn last in the
+> transparent list. Only the draw that feeds an active lens pose's depth
+> enables that layer (the HDR composer's render pass, the dof side composer and
+> the dof-only lane's depth pre-pass), so frames with no lens pose, cards at
+> `lift` 0 and projects without a `ScreenRegion` draw exactly as before.
+
 > **2026-10-31 (five machine-local cells re-recorded, four with no known cause):**
 > `ws:overlay-spike` 16:9 `f3d115a5…` → `ef78da55…` is #268's floor shift: `23e4c58b`
 > exports the old hash and `2ca01528` the new, and only the first 276 frames differ (the two

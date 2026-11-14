@@ -185,6 +185,8 @@ samples whatever the screen shows this frame (video or still), so it adds no dec
   turns a pixel of the recording into screen UV, allowing for the cover crop.
 - A card overhanging the screen reads as lifted: scale 1.2 to 1.4 with an `offset` towards
   the frame's centre.
+- Under lens depth of field a lifted card blurs at its own depth, so a focus pull can land on
+  it while the screen behind goes soft.
 
 ## A moving screen's point: `useDeviceScreenPoint`
 
