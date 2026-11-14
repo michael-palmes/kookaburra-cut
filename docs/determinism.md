@@ -44,7 +44,7 @@ GPU/driver, not across fleets.)
 | **A layout that depends on a measurement only the mounted tree can request**: `TitleBlock` cascades its header icon and subtitle off the title's MEASURED block height, but its props exist only once the scene is in the tree, so the preamble cannot pre-warm them the way `preloadPanelMeasures` does for overlay panels. A cold pass would render frame 0 pre-measure while a warm second pass renders it cascaded. | `awaitTitleMeasuresSettled()`, the barrier after `awaitSceneHostsCommitted`: mounted TitleBlocks report their outstanding typesets, and the spin exits only once they have landed AND the tree has re-rendered with them (`engine/titleBlockMeasure.ts`). Single-line text solves to a hard 0 growth, so standing layouts keep their authored constants bit-for-bit either way. |
 | **Layout derived from measured text** (a pill sized by `useTextMetrics`, a pinned `durationMs` reveal waiting on its unit count): the derived state lands one re-render after its face parses or its first typeset, so a frame captured in between draws the pre-measure layout. | Pending reports (`engine/textDerivedState.ts`, from layout effects): `awaitTextSync` settles typesets, spins (bounded at 5000) until nothing is outstanding, then settles once more for typesets the settling commit queued. A tree that reports nothing takes the old path exactly. Preview captures (`captureFrameAt`) also run the export's clip, text and emoji barriers, in that order. |
 | **Preview frames interleaving a Verify ×2**: between the two passes the preview driver rendered a wall-clock-varying number of frames (restored clock, preview size), leaking GPU/render state into pass B's first frames | `verifyDeterminism` holds the preview stand-down across BOTH passes; `engine/exportState` is depth-counted so the whole-run hold nests over each pass's own. Pass B starts from exactly the state pass A ended in. |
-| **The SDF atlas uploaded from a worker canvas** (2026-10-28): three uploads troika's atlas canvas as a texture, and WebKit's upload of a worker OffscreenCanvas is not the raw copy an HTMLCanvasElement's is; every glyph edge moved (jagged, speckled, up to 197 levels), on both anchors | The patched troika option `sdfAtlasReadback` (`patches/troika-three-text@0.53.0.patch`) routes the atlas through troika's own readPixels-to-DataTexture path (its Safari<15 workaround); the stage server sets it once in `configureTextBuilder`. Byte-identical to the main-thread baselines. |
+| **The SDF atlas uploaded from a worker canvas** (2026-10-28): three uploads troika's atlas canvas as a texture, and WebKit's upload of a worker OffscreenCanvas is not the raw copy an HTMLCanvasElement's is; every glyph edge moved (jagged, speckled, up to 197 levels), on both anchors | The patched troika option `sdfAtlasReadback` (`patches/troika-three-text@0.53.1.patch`) routes the atlas through troika's own readPixels-to-DataTexture path (its Safari<15 workaround); the stage server sets it once in `configureTextBuilder`. Byte-identical to the main-thread baselines. |
 | **A realm that mounts scenes before its font preload**: the stage worker's atlas is its own, so a server that hydrated a project before preloading let the mount-time typesets claim the cells in scene order instead of the boot order (stills pages ±1/±2 on glyph edges) | The server runs `preloadAppFonts()` at boot and `preloadAppFonts(projectFaces)` plus the emoji preload inside `loadProject`, before the scenes mount: the window's barriers, in the realm that renders. |
 | **A bitmap clone that asks for the other `flipY`** (2026-10-28): the stage decodes images to ImageBitmaps with the orientation baked in, and WebGL ignores `flipY` for a bitmap upload, so a device screen's private clone (`flipY = false`) drew the plane's pre-flipped pixels: every image on a device screen rendered upside down (20 legs over devices and comparisons MOVED while main at the merge base held every baseline; a PNG on a plane and every video stayed EQUAL) | `engine/bitmapOrientation.ts`: the loader records the orientation it baked and `useScreenImageTexture` suspends on a row-reversed copy (straight alpha, no colour conversion) for the clone, one per bitmap and orientation. Attribute a MOVED device leg by exporting it on main at the merge base before reading the pixels. |
 | **A PNG decoded to an ImageBitmap** (2026-10-29): WebKit's `createImageBitmap` premultiplies and unmultiplies a PNG with alpha on the way in whatever `premultiplyAlpha` asks, so every semi-transparent texel lands off the file (a palette PNG's transparent texels lose their colour outright, which bleeds into every edge under linear filtering), and `colorSpaceConversion: "default"` applied an embedded profile that three's upload never did (it sets `UNPACK_COLORSPACE_CONVERSION_WEBGL = NONE`); the window's `<img>` upload was the file's bytes exactly. Eight legs staging a screenshot with a shadow on a device screen, frame chip icons or an app icon MOVED by 1 to 42 levels while every opaque JPEG held | The stage decodes PNG bytes natively, by signature (`decode_png`, the `png` crate, no gamma or profile, 16-bit to its high byte), and its `StageTexture` uploads the rows as data (`engine/stageTexture.ts`); every other format takes `createImageBitmap` with `colorSpaceConversion: "none"`. Measured with a probe page that uploads one PNG both ways under three's unpack settings and hashes the texels: the `<img>` path equals the file, the bitmap path does not. |
@@ -1289,10 +1289,10 @@ Emoji and text-default symbols route through two different mechanisms, neither
 of which can move pixels for text that uses neither (proven EQUAL on
 `showcase-tour` and `ws:launch-2026` when the feature landed):
 
-- **The wedge is patched away.** troika's fallback resolver (still in 0.53.0)
+- **The wedge is patched away.** troika's fallback resolver (still in 0.53.1)
   has no `.catch()`: any codepoint outside the loaded fonts CSP-blocked a CDN
   fetch and left `_isSyncing` true forever, freezing the `<Text>` on its
-  last-good string. The pnpm patch (`patches/troika-three-text@0.53.0.patch`,
+  last-good string. The pnpm patch (`patches/troika-three-text@0.53.1.patch`,
   exact pin, guarded by `src/theme/troika.test.ts`) degrades
   every failure (fallback fetch, font-file 404, parse error) to `.notdef` tofu
   and keeps sync alive; `unicodeFontsURL` points at a dead same-origin path so
@@ -1339,7 +1339,7 @@ of which can move pixels for text that uses neither (proven EQUAL on
 - **Gated programs.** Emphasis and the typewriter mask are stagger-material features
   (`emphasis`, `typeMask`) that only mount on text that uses them;
   `staggerPrograms.test.ts` pins every pre-existing feature combination's GLSL by hash.
-  Emphasis weight rewrites troika 0.53.0's own edge-offset sites per glyph (the quad
+  Emphasis weight rewrites troika 0.53's own edge-offset sites per glyph (the quad
   grow and the edge alpha, the outline mechanism); the rewrite is pinned to troika's
   exact bytes and warns if they move, so re-check it on any troika upgrade.
 - **Barriers.** Emphasis rects and the type head come from the first typeset's carets,
@@ -1917,6 +1917,14 @@ Verify ×2 here (the 2026-10-23 note):
 | `ws:rooms-spike` (room cuts, a flood with a tokened light, a wipe while both sides flood; machine-local, never gated) | `fee706ac…` | `219c3507…` | — | — | — | — | — | — | — |
 | `ws:mask-fx-spike` (an image-mask seam between two bloom scenes on the effects lane; machine-local, never gated) | `6555ff7f…` | — | — | — | — | — | — | — | — |
 | `ws:motion-toolkit-spike` (the toolkit primitives: shapes, device anchors, text metrics and presets, stamps, dashes, mosaic, taps; machine-local, gated when motion or shape primitives change) | `06b79ae2…` | `fa64bced…` | — | — | — | — | — | — | — |
+
+> **2026-11-14 (troika 0.53.1: hash-neutral):** troika-three-text and
+> troika-three-utils move to `0.53.1`. The only code change is `BatchedText`'s
+> fallback colour lookup, which neither the app nor drei uses; the utils build
+> and every other source file are byte-identical, so the stagger rewriters still
+> match and the patch applies unchanged as `troika-three-text@0.53.1.patch`.
+> `pnpm ready` is EQUAL (`showcase-tour` `fe6b6c20…`, `ws:launch-2026`
+> `cc23761e…`, `ws:text-outline-spike` `a644c039…`, the pack round trip).
 
 > **2026-11-06 (troika 0.53.0: hash-neutral):** troika-three-text and
 > troika-three-utils move to an exact `0.53.0` pin; drei still asks for

@@ -26,9 +26,9 @@ describe("troika is one pinned copy", () => {
     expect(packageDir("troika-three-utils", fromText)).toBe(packageDir("troika-three-utils"));
   });
 
-  it("is 0.53.0, with the patch in the builds the app and tests load", () => {
+  it("is 0.53.1, with the patch in the builds the app and tests load", () => {
     const text = packageDir("troika-three-text");
-    expect(JSON.parse(readFileSync(join(text, "package.json"), "utf8")).version).toBe("0.53.0");
+    expect(JSON.parse(readFileSync(join(text, "package.json"), "utf8")).version).toBe("0.53.1");
     for (const build of ["troika-three-text.esm.js", "troika-three-text.umd.js"]) {
       const src = readFileSync(join(text, "dist", build), "utf8");
       expect(src).toContain("failedFonts.add(fontUrl)");

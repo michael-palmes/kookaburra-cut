@@ -14,7 +14,7 @@ import {
 } from "./fontMetrics";
 import type { FontRef } from "./tokens";
 
-/** Parity: `measureText` against troika 0.53.0's own font resolver and typesetter, run on the same parsed faces (metrics only, so no SDF or bidi work). */
+/** Parity: `measureText` against troika 0.53.1's own font resolver and typesetter, run on the same parsed faces (metrics only, so no SDF or bidi work). */
 
 const FACES: { ref: FontRef; file: string }[] = [
   { ref: { family: "Inter", weight: 400 }, file: "Inter-Regular.woff" },

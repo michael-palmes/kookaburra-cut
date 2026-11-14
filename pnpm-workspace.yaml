@@ -1,4 +1,4 @@
 overrides:
-  "@react-three/drei>troika-three-text": 0.53.0
+  "@react-three/drei>troika-three-text": 0.53.1
 patchedDependencies:
-  troika-three-text@0.53.0: patches/troika-three-text@0.53.0.patch
+  troika-three-text@0.53.1: patches/troika-three-text@0.53.1.patch
