@@ -67,7 +67,7 @@ import {
   type ShutterPlan,
 } from "./shutterPlan";
 import { useSceneStageFloors } from "./stageRegistry";
-import { supersampleOffset } from "./supersample";
+import { beginSupersample, endSupersample } from "./supersample";
 
 const SETTLE_MS = 150;
 const bufferSize = new Vector2();
@@ -438,12 +438,11 @@ export function CompositorDriver({
       }
       try {
         accumulateFrame(s.gl, bufferSize.x, bufferSize.y, count, (k) => {
-          const [dx, dy] = supersampleOffset(k, count);
-          cam.setViewOffset(bufferSize.x, bufferSize.y, dx, dy, bufferSize.x, bufferSize.y);
+          beginSupersample(cam, bufferSize.x, bufferSize.y, k, count);
           renderWith(plan);
         });
       } finally {
-        cam.clearViewOffset();
+        endSupersample(cam);
       }
     };
     const blur = previewBlur(currentMs, editing, tracks);
