@@ -346,23 +346,29 @@ fn system_source() -> impl PreferenceSource {
     HashMap::<&'static str, PrefValue>::new()
 }
 
-/// One `[managed]` line for the forced keys and one per malformed one, at boot; stderr like the other modules' lines, so a packaged app reports it too.
+/// One `[managed]` line for the forced keys and one per malformed one, at boot, in the app log.
 pub fn log_at_boot() {
     let policy = policy();
     if !policy.managed {
         return;
     }
-    eprintln!(
+    log::info!(
         "[managed] configuration profile forces: {}",
         policy.forced_keys.join(", ")
     );
     for issue in &policy.issues {
-        eprintln!("[managed] {issue}");
+        log::warn!("[managed] {issue}");
     }
 }
 
-/// The error a refused command returns: the reason, then the key, so support can find the profile.
+/// The error a refused command returns: the reason, then the key, so support can find the profile. Every refusal passes here, and the first for each key in a launch is logged, since the bridge and heartbeat probe the guards on every tick.
 pub fn refusal(key: Key) -> String {
+    static LOGGED: std::sync::Mutex<Vec<Key>> = std::sync::Mutex::new(Vec::new());
+    let mut logged = LOGGED.lock().unwrap_or_else(|p| p.into_inner());
+    if !logged.contains(&key) {
+        logged.push(key);
+        log::warn!("[managed] refused: {} (logged once a launch)", key.name());
+    }
     format!("{REASON_PREFIX} {} ({}).", key.reason(), key.name())
 }
 

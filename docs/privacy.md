@@ -99,6 +99,12 @@ imported never travel.
   which projects you allowed to run. The key that signs your own packs lives
   in your login Keychain and never synchronises; macOS may ask once, when you
   export a pack or rotate the key, to let the app use it.
+- **A log** of what the app did, in `logs/` under the same folder
+  (`src-tauri/src/audit.rs`): which projects you allowed or declined, which
+  websites, packs and updates, what moved out of a shared folder, and what your
+  organisation's profile refused. It names folders, projects, websites and key
+  ids, never what is in a file, keeps at most three files of 1 MiB, and never
+  leaves the Mac.
 - **Website data**: cookies and site storage for websites you allowed, in a
   profile separate from Safari. Settings ▸ Website data clears one site or all.
 - **Agent files**: the Claude Code skills and settings the app writes inside
@@ -109,7 +115,7 @@ imported never travel.
   to the project's own `exports` folder).
 
 Your projects stay as readable to other accounts on the Mac as any file in
-your home folder is. The app's own caches, settings and the agent's `_bridge`
+your home folder is. The app's own caches, settings, log and the agent's `_bridge`
 and `_autorun` folders are readable by your account alone, and Spotlight skips
 them. FileVault and your account password are the protection at rest.
 

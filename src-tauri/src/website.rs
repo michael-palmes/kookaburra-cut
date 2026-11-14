@@ -942,10 +942,14 @@ pub async fn website_grant_origin(
         },
     )
     .await?;
+    let project = crate::audit::path(std::path::Path::new(&project_key));
+    let shown = crate::audit::field(&origin);
     if declined {
+        log::info!("[website] {shown}: declined for {project}");
         return Ok(false);
     }
     if loopback {
+        log::info!("[website] {shown}: allowed for {project} until the app quits");
         state
             .0
             .lock()
@@ -961,6 +965,7 @@ pub async fn website_grant_origin(
             origins.sort();
         }
     })?;
+    log::info!("[website] {shown}: allowed for {project}");
     Ok(true)
 }
 
@@ -976,6 +981,11 @@ pub fn website_revoke_origin(
     require_caller(&webview, &["main"])?;
     let project_key = canonical_project_key(&app, &settings, &project_path)?;
     let (_, origin, loopback) = parse_navigation_url(&origin)?;
+    log::info!(
+        "[website] {}: removed for {}",
+        crate::audit::field(&origin),
+        crate::audit::path(std::path::Path::new(&project_key))
+    );
     if loopback {
         state
             .0

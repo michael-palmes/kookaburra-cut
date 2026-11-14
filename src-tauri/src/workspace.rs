@@ -962,6 +962,11 @@ fn perform_workspace_move(app: &AppHandle, from: &Path, to: &Path) -> Result<Str
         retarget_trust(settings, from, to);
     })?;
     crate::asset_reach::set_workspace(app, to);
+    log::info!(
+        "[workspace] moved from {} to {}",
+        crate::audit::path(from),
+        crate::audit::path(to)
+    );
     let _ = app.emit("kookaburra://workspace-moved", to.to_string_lossy());
     Ok(to.to_string_lossy().into_owned())
 }
@@ -1021,6 +1026,7 @@ fn adopt_workspace(
     update_settings(app, state, |settings| {
         settings.workspace_root = Some(root.to_string_lossy().into_owned());
     })?;
+    log::info!("[workspace] now at {}", crate::audit::path(&root));
     Ok(root.to_string_lossy().into_owned())
 }
 
@@ -1346,6 +1352,10 @@ pub async fn delete_project(
             .map_err(|e| e.to_string())?
     };
     trash_path(&dir).map_err(|e| format!("couldn't move the project to the Trash: {e}"))?;
+    log::info!(
+        "[workspace] {slug}: moved to the Trash ({})",
+        crate::audit::path(&dir)
+    );
     // The trust grant dies with the project, so a later same-slug project starts untrusted.
     update_settings(&app, &state, |settings| {
         settings.trusted_projects.remove(&slug);
@@ -1932,6 +1942,20 @@ fn agent_files_block(record: Option<&AgentFilesRecord>, present: &[String]) -> O
     }
 }
 
+fn agent_files_sheet_body(unreviewed: &[String], folder: &str) -> String {
+    let listed: Vec<String> = unreviewed.iter().take(12).map(|line| format!("• {line}")).collect();
+    let more = unreviewed.len() - listed.len();
+    let more = if more > 0 { format!("\nand {more} more, named in the log") } else { String::new() };
+    let mut body = format!(
+        "These could have steered Claude, so Kookaburra Cut moved them:\n\n{}{more}\n\nThe text is in NOTES.md, which Claude reads as notes, not instructions. If a CLAUDE.md was your own, copy back what you want.\n\nFolder: {folder}",
+        listed.join("\n")
+    );
+    if unreviewed.iter().any(|line| line.contains(crate::kit::HOOKS_ASIDE)) {
+        body.push_str(&format!("\n\nGit hooks are in {}: move one back into .git/hooks if it was yours.", crate::kit::HOOKS_ASIDE));
+    }
+    body
+}
+
 /// Show the person what moved out of the folder on a native sheet a webview can't answer. `true` starts the session; Return and Not now leave it off.
 pub(crate) async fn review_agent_files_for(
     app: &AppHandle,
@@ -1950,14 +1974,7 @@ pub(crate) async fn review_agent_files_for(
         };
     }
     let name = consent_project_name(dir, slug);
-    let listed: Vec<String> = unreviewed.iter().take(12).map(|line| format!("• {line}")).collect();
-    let more = unreviewed.len() - listed.len();
-    let more = if more > 0 { format!("\nand {more} more, named in the log") } else { String::new() };
-    let body = format!(
-        "These could have steered Claude, so Kookaburra Cut moved them:\n\n{}{more}\n\nThe text is in NOTES.md, which Claude reads as notes, not instructions. If a CLAUDE.md was your own, copy back what you want.\n\nFolder: {}",
-        listed.join("\n"),
-        display_path(app, dir)
-    );
+    let body = agent_files_sheet_body(&unreviewed, &display_path(app, dir));
     let declined = crate::native_alert::ask(
         app,
         "main",
@@ -2455,7 +2472,15 @@ pub fn check_project_trust(
     };
     match decision {
         SessionTrust::Pass => Ok(true),
-        SessionTrust::Ask => Ok(false),
+        SessionTrust::Ask => {
+            if settings.trusted_projects.contains_key(&slug) {
+                log::info!(
+                    "[trust] {slug}: changed since it was allowed, so the sheet asks again ({})",
+                    crate::audit::path(&dir)
+                );
+            }
+            Ok(false)
+        }
         SessionTrust::Restamp => {
             if !grant_lasts_only_this_session(cfg!(debug_assertions), crate::is_autorun()) {
                 update_settings(&app, &state, |settings| {
@@ -2608,6 +2633,7 @@ pub async fn request_project_trust(
         )
         .await?;
         if declined {
+            log::info!("[trust] {slug}: declined ({})", crate::audit::path(&dir));
             return Ok(None);
         }
     }
@@ -2643,7 +2669,8 @@ pub fn trust_project(
     if fingerprint != consented_for {
         return Err("the project changed while the consent sheet was open; open it again".into());
     }
-    if !grant_lasts_only_this_session(cfg!(debug_assertions), crate::is_autorun()) {
+    let session_only = grant_lasts_only_this_session(cfg!(debug_assertions), crate::is_autorun());
+    if !session_only {
         let allowed_at_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|e| e.to_string())?
@@ -2657,6 +2684,11 @@ pub fn trust_project(
             settings.trusted_projects.insert(slug.clone(), record);
         })?;
     }
+    log::info!(
+        "[trust] {slug}: allowed{} ({})",
+        if session_only { " for this launch" } else { "" },
+        crate::audit::path(&dir)
+    );
     trust
         .session
         .lock()
@@ -3035,6 +3067,31 @@ mod tests {
         assert_eq!(blocked(&settings, &[]), None);
         let held = blocked(&settings, &[".mcp.json".to_owned()]).unwrap();
         assert!(held.contains(".mcp.json") && held.contains("Move or delete"), "{held}");
+    }
+
+    #[test]
+    fn a_hook_moved_on_the_first_open_is_on_the_review_sheet() {
+        let dir = std::env::temp_dir().join(format!("kookaburra-review-hook-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("project.json"), "{}").unwrap();
+        crate::history::init_repo(&dir, "chore: create project").unwrap();
+        std::fs::create_dir_all(dir.join(".git/hooks")).unwrap();
+        std::fs::write(dir.join(".git/hooks/pre-commit"), "#!/bin/sh\n").unwrap();
+        let key = dir.to_string_lossy().into_owned();
+        let mut settings = AppSettings::default();
+        note_agent_sweep(&mut settings, &key, &crate::kit::sweep_agent_files(&dir, true), &stamp_opts());
+        let line = ".git/hooks/pre-commit → .git/hooks.moved-aside/pre-commit";
+        let record = &settings.agent_files[&key];
+        assert_eq!(record.unreviewed, vec![line]);
+        let present = crate::kit::foreign_agent_files(&dir);
+        assert!(present.is_empty(), "{present:?}");
+        assert!(agent_files_block(Some(record), &present).unwrap().contains("what moved"));
+        let body = agent_files_sheet_body(&record.unreviewed, "~/w/p");
+        assert!(body.contains(&format!("• {line}")), "{body}");
+        assert!(body.contains("move one back into .git/hooks"), "{body}");
+        assert!(!agent_files_sheet_body(&["AGENTS.md → NOTES.md".into()], "~/w/p").contains("hooks"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

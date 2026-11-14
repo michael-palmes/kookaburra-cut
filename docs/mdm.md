@@ -145,9 +145,12 @@ and add `UpdateEndpoint` beside the other keys:
 2. Launch the app. Settings ▸ Claude shows locked rows, the titlebar has no
    Edit with Claude, the Project menu has no Edit with Claude item, and a new
    project opens without the launcher.
-3. In a dev build, the terminal that runs `pnpm tauri dev` shows
-   `[managed] configuration profile forces: DisableClaude` at boot, plus one
-   line per malformed key.
+3. `~/Library/Application Support/com.mpalmes.kookaburracut/logs/app.log`
+   shows `[managed] configuration profile forces: DisableClaude` at boot, plus
+   one line per malformed key and a `[managed] refused:` line naming the key
+   the first time it refuses a command in a launch (`src-tauri/src/managed.rs`,
+   `refusal`, written by `audit.rs`). A dev build prints the same lines in the terminal that runs
+   `pnpm tauri dev`.
 4. Under `DisableAgentKit`, a project created after launch has no `./kb`,
    `.kb/`, `.claude/` or `CLAUDE.md`, and `ls ~/"Kookaburra Cut"/_bridge` finds
    nothing (on a Mac that never ran the app or kb unmanaged; the app leaves an

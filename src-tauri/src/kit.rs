@@ -38,6 +38,10 @@ const PREVIOUS_CLAUDE_MD: [&str; 4] = [
 ];
 pub(crate) const RULES_IMPORT: &str = "@.claude/skills/kookaburra-scene-authoring/RULES.md";
 const MANAGED_HOOK_MARKER: &str = "kookaburra-scene-authoring/scripts/kb.py hook";
+/// Takes the template's git rules' place where `history::agent_git_verdict` withholds the agent's git.
+const AGENT_GIT_DENY: &str = "Bash(git:*)";
+/// Where a hook a folder arrived with goes on its first open: inside `.git`, so packs, the trust hash and the sweep never see it.
+pub(crate) const HOOKS_ASIDE: &str = ".git/hooks.moved-aside";
 /// Credential folders under the home directory, and credential files by name anywhere: `reach.py` refuses the same set, `bridge.rs` never takes these folders as a write root, and the managed deny rules are built from them (a test holds all three together).
 pub(crate) const CREDENTIAL_DIRS: [&str; 9] = [
     ".ssh", ".aws", ".config", ".gnupg", "Library/Keychains", ".docker", ".kube", ".azure", ".claude",
@@ -146,7 +150,7 @@ pub(crate) fn stamp_project(
     }
     let mut results = vec![
         stamp_claude_md(dir),
-        stamp_settings(&claude.join("settings.json")),
+        stamp_settings(&claude.join("settings.json"), agent_git_allowed(dir)),
         stamp_kb_state(dir),
         stamp_shim(dir, opts),
     ];
@@ -406,13 +410,16 @@ fn is_managed_hook(hook: &Value) -> bool {
         .is_some_and(|command| command.contains(MANAGED_HOOK_MARKER))
 }
 
-/// The permission rules the app owns: the template's git rules and the managed set.
-fn managed_allow_rules() -> Vec<Value> {
-    let template = serde_json::from_str::<Value>(SETTINGS_TEMPLATE).unwrap_or_else(|_| json!({}));
-    let mut rules: Vec<Value> = template["permissions"]["allow"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
+fn template_git_rules() -> Vec<Value> {
+    serde_json::from_str::<Value>(SETTINGS_TEMPLATE)
+        .ok()
+        .and_then(|template| template["permissions"]["allow"].as_array().cloned())
+        .unwrap_or_default()
+}
+
+/// The allow rules the app owns: the template's git rules, only while `agent_git`, then the managed set.
+fn managed_allow_rules(agent_git: bool) -> Vec<Value> {
+    let mut rules = if agent_git { template_git_rules() } else { Vec::new() };
     for rule in managed_settings()["permissions"]["allow"]
         .as_array()
         .into_iter()
@@ -433,10 +440,12 @@ fn short(value: &Value) -> String {
     crate::clean_text::clean_text_with_cap(&text, 120)
 }
 
-/// Keep only the app's own hooks and permission rules, drop every key outside `KEPT_SETTINGS_KEYS`, and re-add the managed set; returns a description of everything removed.
-fn strip_and_merge(root: &mut Value) -> Vec<String> {
+/// Keep only the app's own hooks and permission rules, drop every key outside `KEPT_SETTINGS_KEYS`, and re-add the managed set; returns a description of everything removed. The git rules follow `agent_git` and are never reported, since either set is the app's own.
+fn strip_and_merge(root: &mut Value, agent_git: bool) -> Vec<String> {
     let mut removed = Vec::new();
     let managed = managed_settings();
+    let git_allow = template_git_rules();
+    let git_deny = json!(AGENT_GIT_DENY);
     let Some(obj) = root.as_object_mut() else {
         return removed;
     };
@@ -458,11 +467,20 @@ fn strip_and_merge(root: &mut Value) -> Vec<String> {
     let list = |key: &str| -> Vec<Value> {
         managed["permissions"][key].as_array().cloned().unwrap_or_default()
     };
+    let mut deny = list("deny");
+    if !agent_git {
+        deny.push(git_deny.clone());
+    }
     let managed_lists = [
-        ("allow", managed_allow_rules()),
+        ("allow", managed_allow_rules(agent_git)),
         ("ask", list("ask")),
-        ("deny", list("deny")),
+        ("deny", deny),
     ];
+    let app_git_rule = |key: &str, rule: &Value| match key {
+        "allow" => git_allow.contains(rule),
+        "deny" => *rule == git_deny,
+        _ => false,
+    };
     let mut kept: BTreeMap<&str, Vec<Value>> = BTreeMap::new();
     match obj.remove("permissions") {
         Some(Value::Object(perms)) => {
@@ -483,7 +501,7 @@ fn strip_and_merge(root: &mut Value) -> Vec<String> {
                         if !entry.contains(rule) {
                             entry.push(rule.clone());
                         }
-                    } else {
+                    } else if !app_git_rule(list_key, rule) {
                         removed.push(format!("permissions.{key}: {}", short(rule)));
                     }
                 }
@@ -533,7 +551,7 @@ fn strip_and_merge(root: &mut Value) -> Vec<String> {
 }
 
 /// What `.claude/settings.json` should become (None when unchanged, or not a JSON object), and what the stamp removed.
-pub(crate) fn plan_settings(existing: Option<&str>) -> (Option<String>, Vec<String>) {
+pub(crate) fn plan_settings(existing: Option<&str>, agent_git: bool) -> (Option<String>, Vec<String>) {
     let (mut root, before) = match existing {
         None => (
             serde_json::from_str::<Value>(SETTINGS_TEMPLATE).unwrap_or_else(|_| json!({})),
@@ -544,7 +562,7 @@ pub(crate) fn plan_settings(existing: Option<&str>) -> (Option<String>, Vec<Stri
             _ => return (None, Vec::new()),
         },
     };
-    let removed = strip_and_merge(&mut root);
+    let removed = strip_and_merge(&mut root, agent_git);
     if before.as_ref() == Some(&root) {
         return (None, removed);
     }
@@ -556,16 +574,27 @@ pub(crate) fn plan_settings(existing: Option<&str>) -> (Option<String>, Vec<Stri
 
 #[cfg(test)]
 fn next_settings(existing: Option<&str>) -> Option<String> {
-    plan_settings(existing).0
+    plan_settings(existing, true).0
 }
 
-fn stamp_settings(path: &Path) -> Result<(), String> {
+/// Whether the agent may run its plain `git` in `dir`, logged when not; asked again at every stamp.
+fn agent_git_allowed(dir: &Path) -> bool {
+    match crate::history::agent_git_verdict(dir) {
+        Ok(()) => true,
+        Err(why) => {
+            log::warn!("[kit] {}: the agent's git is turned off: {why}", dir.display());
+            false
+        }
+    }
+}
+
+fn stamp_settings(path: &Path, agent_git: bool) -> Result<(), String> {
     let existing = match std::fs::read_to_string(path) {
         Ok(text) => Some(text),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
         Err(_) => return Ok(()),
     };
-    let (next, removed) = plan_settings(existing.as_deref());
+    let (next, removed) = plan_settings(existing.as_deref(), agent_git);
     if !removed.is_empty() {
         log::warn!(
             "[kit] {}: removed settings that did not come from the app: {}",
@@ -766,6 +795,26 @@ fn move_rel_aside(dir: &Path, rel: &Path) -> Result<String, String> {
     Err(format!("moving {} aside: every name is taken", rel_label(rel)))
 }
 
+/// Rename a hook to the first free name in `HOOKS_ASIDE`; a link moves as a link.
+fn move_hook_aside(dir: &Path, rel: &Path) -> Result<String, String> {
+    let aside = crate::real_dir::real_dir(dir, HOOKS_ASIDE)
+        .map_err(|e| format!("moving {} aside: {e}", rel_label(rel)))?;
+    let name = rel
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    for n in 1..1000 {
+        let free = if n == 1 { name.clone() } else { format!("{name}-{n}") };
+        if std::fs::symlink_metadata(aside.join(&free)).is_ok() {
+            continue;
+        }
+        std::fs::rename(dir.join(rel), aside.join(&free))
+            .map_err(|e| format!("moving {} aside: {e}", rel_label(rel)))?;
+        return Ok(format!("{HOOKS_ASIDE}/{free}"));
+    }
+    Err(format!("moving {} aside: every name is taken", rel_label(rel)))
+}
+
 /// Server definitions keep their shape, but `env` and `headers` values, where tokens live, stay out of a file that packs and the agent read.
 fn redact_mcp(value: &mut Value) {
     match value {
@@ -821,7 +870,7 @@ fn strip_local_settings(path: &Path) -> Result<(), String> {
         return Ok(());
     };
     let before = root.clone();
-    strip_and_merge(&mut root);
+    strip_and_merge(&mut root, true);
     let Some(obj) = root.as_object_mut() else {
         return Ok(());
     };
@@ -837,7 +886,7 @@ fn strip_local_settings(path: &Path) -> Result<(), String> {
     atomic_write(path, &(text + "\n"))
 }
 
-/// What the stamp would strip from the settings files. Read-only.
+/// What the stamp would strip from the settings files, whatever the agent's git verdict. Read-only.
 fn settings_removals(dir: &Path) -> Vec<String> {
     let claude = dir.join(CLAUDE_DIR);
     let mut out = Vec::new();
@@ -845,7 +894,7 @@ fn settings_removals(dir: &Path) -> Vec<String> {
         let Some(text) = plain_text(&claude.join(name)) else {
             continue;
         };
-        for removed in plan_settings(Some(&text)).1 {
+        for removed in plan_settings(Some(&text), true).1 {
             out.push(format!(".claude/{name}: removed {removed}"));
         }
     }
@@ -920,6 +969,15 @@ pub(crate) fn sweep_agent_files(dir: &Path, first_open: bool) -> AgentSweep {
         match move_rel_aside(dir, &rel) {
             Ok(aside) => moved.push(format!("{} → {aside}", rel_label(&rel))),
             Err(e) => errors.push(e),
+        }
+    }
+    // After the first open a hook is the person's; one that won't move only keeps the agent's git off.
+    if first_open && is_real_dir(&dir.join(".git")) {
+        for rel in crate::history::live_hooks(dir) {
+            match move_hook_aside(dir, &rel) {
+                Ok(aside) => moved.push(format!("{} → {aside}", rel_label(&rel))),
+                Err(e) => log::warn!("[kit] {}: {e}", dir.display()),
+            }
         }
     }
     moved.extend(settings_removals(dir));
@@ -1524,11 +1582,11 @@ mod tests {
                 "Stop": [{ "hooks": [{ "type": "command", "command": "say done" }] }]
             }
         });
-        let (text, removed) = plan_settings(Some(&existing.to_string()));
+        let (text, removed) = plan_settings(Some(&existing.to_string()), true);
         let merged: Value = serde_json::from_str(&text.unwrap()).unwrap();
         assert_eq!(merged["model"], "opus");
         assert!(merged.get("env").is_none() && merged.get("apiKeyHelper").is_none());
-        assert_eq!(merged["permissions"]["allow"], json!(managed_allow_rules()));
+        assert_eq!(merged["permissions"]["allow"], json!(managed_allow_rules(true)));
         assert_eq!(merged["permissions"]["ask"], json!(["WebFetch", "WebSearch"]));
         assert_eq!(merged["permissions"]["deny"], managed_settings()["permissions"]["deny"]);
         assert_eq!(merged["permissions"]["allow"][0], "Bash(git status)");
@@ -1548,7 +1606,7 @@ mod tests {
             ]
         );
         let again = serde_json::to_string_pretty(&merged).unwrap();
-        assert_eq!(plan_settings(Some(&again)), (None, Vec::new()));
+        assert_eq!(plan_settings(Some(&again), true), (None, Vec::new()));
     }
 
     #[test]
@@ -1699,7 +1757,7 @@ mod tests {
         let settings = read_json(&project.join(".claude/settings.json"));
         assert_eq!(settings["model"], "opus");
         assert!(settings.get("env").is_none());
-        assert_eq!(settings["permissions"]["allow"], json!(managed_allow_rules()));
+        assert_eq!(settings["permissions"]["allow"], json!(managed_allow_rules(true)));
         assert_eq!(settings["permissions"]["deny"], managed_settings()["permissions"]["deny"]);
         assert_eq!(settings["hooks"], managed_settings()["hooks"]);
         assert!(!project.join(".claude/commands").exists());
@@ -1843,13 +1901,110 @@ mod tests {
     fn stamping_settings_writes_once() {
         let dir = scratch("settings");
         let path = dir.join(".claude/settings.json");
-        stamp_settings(&path).unwrap();
-        let first = std::fs::metadata(&path).unwrap().modified().unwrap();
-        std::thread::sleep(std::time::Duration::from_millis(20));
-        stamp_settings(&path).unwrap();
-        assert_eq!(std::fs::metadata(&path).unwrap().modified().unwrap(), first);
+        let modified = || std::fs::metadata(&path).unwrap().modified().unwrap();
+        for agent_git in [true, false, true] {
+            stamp_settings(&path, agent_git).unwrap();
+            let first = modified();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            stamp_settings(&path, agent_git).unwrap();
+            assert_eq!(modified(), first, "agent git {agent_git}");
+        }
         assert!(!dir.join(".claude/.settings.json.kit-tmp").exists());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn git_project(tag: &str) -> PathBuf {
+        let project = scratch(tag).join("project");
+        write(&project.join("project.json"), r#"{"name":"Demo"}"#);
+        crate::history::init_repo(&project, "chore: create project").unwrap();
+        project
+    }
+
+    fn plant_hook(project: &Path, name: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let hook = project.join(".git/hooks").join(name);
+        write(&hook, "#!/bin/sh\ntouch \"$0.ran\"\n");
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        hook
+    }
+
+    fn git_rules(settings: &Value) -> (Vec<Value>, bool) {
+        let allow = settings["permissions"]["allow"].as_array().cloned().unwrap_or_default();
+        let deny = settings["permissions"]["deny"].as_array().cloned().unwrap_or_default();
+        let git_allow = template_git_rules().into_iter().filter(|rule| allow.contains(rule)).collect();
+        (git_allow, deny.contains(&json!(AGENT_GIT_DENY)))
+    }
+
+    #[test]
+    fn a_live_hook_moves_aside_on_the_first_open_and_is_listed() {
+        let project = git_project("hook-first-open");
+        plant_hook(&project, "pre-commit");
+        std::os::unix::fs::symlink("/bin/true", project.join(".git/hooks/post-checkout")).unwrap();
+        write(&project.join(".git/hooks.moved-aside/pre-commit"), "kept from before");
+        let moved = swept(&project, true);
+        assert_eq!(
+            moved,
+            [
+                ".git/hooks/post-checkout → .git/hooks.moved-aside/post-checkout",
+                ".git/hooks/pre-commit → .git/hooks.moved-aside/pre-commit-2",
+            ]
+        );
+        let aside = project.join(HOOKS_ASIDE);
+        assert!(std::fs::symlink_metadata(aside.join("post-checkout")).unwrap().file_type().is_symlink());
+        assert_eq!(std::fs::read_to_string(aside.join("pre-commit")).unwrap(), "kept from before");
+        assert_eq!(crate::history::live_hooks(&project), Vec::<PathBuf>::new());
+        assert_eq!(crate::history::agent_git_verdict(&project), Ok(()));
+        assert!(foreign_agent_files(&project).is_empty(), "a hook never holds the session back");
+        assert!(swept(&project, true).is_empty());
+        let _ = std::fs::remove_dir_all(project.parent().unwrap());
+    }
+
+    #[test]
+    fn a_hook_added_after_the_first_open_is_the_persons() {
+        let project = git_project("hook-later");
+        let hook = plant_hook(&project, "pre-commit");
+        assert!(swept(&project, false).is_empty());
+        assert!(hook.is_file(), "the person's hook stays where they put it");
+        stamp_project(&[], &project, &opts("0.19.0", false, 1)).unwrap();
+        let settings = read_json(&project.join(".claude/settings.json"));
+        assert_eq!(git_rules(&settings), (Vec::new(), true), "the agent's git stays off around it");
+        let _ = std::fs::remove_dir_all(project.parent().unwrap());
+    }
+
+    #[test]
+    fn a_refused_repo_gets_a_git_deny_rule_and_no_git_allow_rules() {
+        let project = git_project("git-refused");
+        let path = project.join(".claude/settings.json");
+        stamp_project(&[], &project, &opts("0.19.0", false, 1)).unwrap();
+        assert_eq!(git_rules(&read_json(&path)), (template_git_rules(), false));
+
+        let config = project.join(".git/config");
+        let set = std::process::Command::new("git")
+            .args(["config", "--file"])
+            .arg(&config)
+            .args(["core.fsmonitor", "/bin/true"])
+            .status()
+            .unwrap();
+        assert!(set.success());
+        stamp_project(&[], &project, &opts("0.19.0", false, 2)).unwrap();
+        let settings = read_json(&path);
+        assert_eq!(git_rules(&settings), (Vec::new(), true));
+        let deny = settings["permissions"]["deny"].as_array().unwrap();
+        assert!(deny.len() > 1, "the credential rules stay beside it");
+        assert!(foreign_agent_files(&project).is_empty(), "the app's own git rules are never listed");
+        assert!(swept(&project, false).is_empty());
+
+        let unset = std::process::Command::new("git")
+            .args(["config", "--file"])
+            .arg(&config)
+            .args(["--unset", "core.fsmonitor"])
+            .status()
+            .unwrap();
+        assert!(unset.success());
+        stamp_project(&[], &project, &opts("0.19.0", false, 3)).unwrap();
+        assert_eq!(git_rules(&read_json(&path)), (template_git_rules(), false), "asked again at every stamp");
+        assert!(foreign_agent_files(&project).is_empty());
+        let _ = std::fs::remove_dir_all(project.parent().unwrap());
     }
 
     fn skill_source(dir: &Path) -> PathBuf {
@@ -2459,9 +2614,10 @@ mod tests {
 
     #[test]
     fn settings_json_keeps_only_the_allowed_top_level_keys() {
-        let (next, removed) = plan_settings(Some(
-            r#"{"model":"m","statusLine":{"command":"evil"},"enableAllProjectMcpServers":true}"#,
-        ));
+        let (next, removed) = plan_settings(
+            Some(r#"{"model":"m","statusLine":{"command":"evil"},"enableAllProjectMcpServers":true}"#),
+            true,
+        );
         let next: Value = serde_json::from_str(&next.unwrap()).unwrap();
         assert_eq!(next["model"], "m");
         assert!(next.get("statusLine").is_none());
@@ -2708,7 +2864,7 @@ mod tests {
         tampered["permissions"]["deny"].as_array_mut().unwrap().push(json!("Read(!.env)"));
         write(&path, &serde_json::to_string_pretty(&tampered).unwrap());
         assert_eq!(
-            plan_settings(Some(&std::fs::read_to_string(&path).unwrap())).1,
+            plan_settings(Some(&std::fs::read_to_string(&path).unwrap()), true).1,
             vec!["permissions.deny: Read(!.env)"]
         );
         stamp_project(&[(SKILL_NAME, &src)], &project, &opts("0.19.0", false, 2)).unwrap();
@@ -2724,9 +2880,10 @@ mod tests {
 
     #[test]
     fn the_stamp_keeps_the_managed_ask_and_deny_and_drops_a_folders_own() {
-        let (next, removed) = plan_settings(Some(
-            r#"{"permissions":{"ask":["WebFetch","Bash(rm *)"],"deny":["Read(x)"]}}"#,
-        ));
+        let (next, removed) = plan_settings(
+            Some(r#"{"permissions":{"ask":["WebFetch","Bash(rm *)"],"deny":["Read(x)"]}}"#),
+            true,
+        );
         let next: Value = serde_json::from_str(&next.unwrap()).unwrap();
         assert_eq!(next["permissions"]["ask"], json!(["WebFetch", "WebSearch"]));
         assert_eq!(next["permissions"]["deny"], managed_settings()["permissions"]["deny"]);
@@ -2756,6 +2913,16 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(project.join(".claude/settings.json")).unwrap(),
             settings
+        );
+        crate::history::init_repo(&project, "chore: create project").unwrap();
+        plant_hook(&project, "pre-commit");
+        stamp_project(&[(SKILL_NAME, &src)], &project, &opts("0.19.0", false, 3)).unwrap();
+        let withheld = std::fs::read_to_string(project.join(".claude/settings.json")).unwrap();
+        assert_ne!(withheld, settings);
+        stamp_project(&[(SKILL_NAME, &src)], &project, &opts("0.19.0", false, 4)).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(project.join(".claude/settings.json")).unwrap(),
+            withheld
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
