@@ -188,8 +188,14 @@ scene's; blur can animate, the family cannot swap mid-flight.
   (ease it in or out); `range` is ignored. The CoC caps at 5% of image
   height. It gathers at half resolution on a Vogel disc (up to 128 taps),
   depth-ordered so a blurred background never smears over a sharp subject
-  while a blurred foreground does, then composites at full resolution:
-  anything under half a pixel of CoC keeps its rendered pixels exactly.
+  while a blurred foreground does. Each tap reads the mip as wide as its
+  share of the disc, so sparks (dust, a rim highlight) blur into smooth discs
+  rather than a swirl with a dot at the centre. It composites at full
+  resolution: anything under half a pixel of CoC keeps its rendered pixels
+  exactly, and discs under 4 pixels blur at full resolution under the same
+  depth rule, so a highlight just off focus stays a soft line, not half-res
+  blocks. Under supersampling each sample turns the disc pattern, so the
+  samples average it away.
   Display-referred input (the dof-only lane) is decoded and
   highlight-expanded first, so bokeh stays bright there too. `focus`, its
   auto rule and `squeeze` work as in depth mode; f-stops and focal lengths
