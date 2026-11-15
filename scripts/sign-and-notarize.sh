@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Signs, notarises and staples the app and the DMG, then builds the updater archive.
+# Signs, notarises and staples the app, the DMG and the pkg, then builds the updater archive.
 #
 # Takes a prebuilt, unsigned .app (the release workflow's sign job) or builds one first
 # (a local run). Signs inside-out itself: the two sidecars, then the bundle, hardened runtime
@@ -10,18 +10,19 @@
 #
 #   sign-and-notarize.sh [--app <unsigned.app>] [--adhoc] [--plain-dmg]
 #     --app        sign this bundle instead of running `pnpm tauri build` first
-#     --adhoc      ad-hoc signature, no notarisation, throwaway updater key: a rehearsal
+#     --adhoc      ad-hoc signature, no notarisation, unsigned pkg, throwaway updater key: a rehearsal
 #     --plain-dmg  hdiutil-only DMG (headless runners); the default is the styled Finder DMG
 #
 #   KOOKABURRA_SIGNING_IDENTITY   "Developer ID Application: Name (TEAMID)" or its SHA-1
-#   KOOKABURRA_TEAM_ID            when set, the signature's TeamIdentifier must match it
+#   KOOKABURRA_INSTALLER_IDENTITY "Developer ID Installer: Name (TEAMID)" or its SHA-1, for the pkg
+#   KOOKABURRA_TEAM_ID            when set, every signature's team must match it
 #   KOOKABURRA_NOTARY_PROFILE     notarytool keychain profile (xcrun notarytool store-credentials), or
 #   KOOKABURRA_NOTARY_KEY_PATH + KOOKABURRA_NOTARY_KEY_ID + KOOKABURRA_NOTARY_ISSUER_ID
 #                                 an App Store Connect API key (the CI path)
 #   TAURI_SIGNING_PRIVATE_KEY / _PATH (+ _PASSWORD)   the updater key; --adhoc makes a throwaway one
 #   TAURI_CLI                     the tauri CLI command (default "pnpm tauri"; CI passes a pinned cargo-tauri)
 #
-# Output in release/: Kookaburra Cut.app, KookaburraCut-<v>.dmg, KookaburraCut-<v>.zip,
+# Output in release/: Kookaburra Cut.app, KookaburraCut-<v>.dmg, KookaburraCut-<v>.pkg, KookaburraCut-<v>.zip,
 #   KookaburraCut-<v>-updater.app.tar.gz (+ .sig, bound to the version) and latest.json;
 #   --adhoc adds updater-adhoc.pub, the throwaway key verify-release.sh checks against.
 #
@@ -38,16 +39,19 @@ while [[ $# -gt 0 ]]; do
     --app) APP_IN="${2:?--app needs a path}"; shift 2 ;;
     --adhoc) ADHOC=1; shift ;;
     --plain-dmg) PLAIN_DMG=1; shift ;;
-    --help | -h) sed -n '2,26p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    --help | -h) sed -n '2,27p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "ERROR: unknown argument '$1'" >&2; exit 2 ;;
   esac
 done
 
 VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+BUNDLE_ID=$(node -p "require('./src-tauri/tauri.conf.json').identifier")
+MIN_OS=$(node -p "require('./src-tauri/tauri.conf.json').bundle.macOS.minimumSystemVersion")
 APP_NAME="Kookaburra Cut"
 OUT="$ROOT/release"
 APP_BUNDLE="$OUT/$APP_NAME.app"
 DMG="$OUT/KookaburraCut-${VERSION}.dmg"
+PKG="$OUT/KookaburraCut-${VERSION}.pkg"
 ZIP="$OUT/KookaburraCut-${VERSION}.zip"
 UPDATER_TAR="$OUT/KookaburraCut-${VERSION}-updater.app.tar.gz"
 LATEST_JSON="$OUT/latest.json"
@@ -70,6 +74,7 @@ if [[ "$ADHOC" == 1 ]]; then
   SIGN_FLAGS=(--timestamp=none)
 else
   [[ -n "${KOOKABURRA_SIGNING_IDENTITY:-}" ]] || die "KOOKABURRA_SIGNING_IDENTITY is not set (security find-identity -p codesigning -v lists candidates)."
+  [[ -n "${KOOKABURRA_INSTALLER_IDENTITY:-}" ]] || die "KOOKABURRA_INSTALLER_IDENTITY is not set (a Developer ID Installer identity; security find-identity -v lists candidates)."
   SIGN_ID="$KOOKABURRA_SIGNING_IDENTITY"
   SIGN_FLAGS=(--timestamp)
   if [[ -n "${KOOKABURRA_NOTARY_PROFILE:-}" ]]; then
@@ -94,6 +99,8 @@ fi
 
 # ── the unsigned bundle ──────────────────────────────────────────────────────
 if [[ -z "$APP_IN" ]]; then
+  log "Writing the licence notices"
+  node "$ROOT/scripts/licence-notices.mjs"
   log "Building the app bundle (unsigned)"
   "${TAURI[@]}" build --ci --no-sign
   APP_IN="$ROOT/src-tauri/target/release/bundle/macos/$APP_NAME.app"
@@ -116,7 +123,7 @@ done
 log "Sidecars are self-contained (system libraries only)"
 
 mkdir -p "$OUT"
-rm -rf "$APP_BUNDLE" "$DMG" "$ZIP" "$UPDATER_TAR" "$UPDATER_TAR.sig" "$LATEST_JSON" "$OUT/updater-adhoc.pub"
+rm -rf "$APP_BUNDLE" "$DMG" "$PKG" "$ZIP" "$UPDATER_TAR" "$UPDATER_TAR.sig" "$LATEST_JSON" "$OUT/updater-adhoc.pub"
 ditto --norsrc --noextattr --noqtn "$APP_IN" "$APP_BUNDLE"
 find "$APP_BUNDLE" \( -name '._*' -o -name '.DS_Store' \) -delete
 xattr -cr "$APP_BUNDLE"
@@ -209,6 +216,58 @@ if [[ "$ADHOC" == 0 ]]; then
   spctl -a -t open --context context:primary-signature -vv "$DMG"
 fi
 
+# ── the pkg, for MDM installs, from the stapled app ──────────────────────────
+log "Building the installer package"
+mkdir -p "$TEMP_DIR/pkg"
+# --component, not --root: a --root payload sets /Applications itself to the staging folder's mode and owner.
+pkgbuild --quiet --component "$APP_BUNDLE" --ownership recommended \
+  --identifier "$BUNDLE_ID" --version "$VERSION" --install-location /Applications "$TEMP_DIR/component.pkg"
+pkgutil --expand "$TEMP_DIR/component.pkg" "$TEMP_DIR/component"
+# Relocatable (pkgbuild's default before macOS 27) would let Installer update a stray copy instead of /Applications.
+/usr/bin/perl -0pi -e 's#<relocate>.*?</relocate>#<relocate/>#s' "$TEMP_DIR/component/PackageInfo"
+[[ "$(xmllint --xpath 'count(/pkg-info/relocate/bundle)' "$TEMP_DIR/component/PackageInfo")" == 0 ]] \
+  || die "the pkg's bundle is still relocatable"
+pkgutil --flatten "$TEMP_DIR/component" "$TEMP_DIR/pkg/KookaburraCut.pkg"
+cat >"$TEMP_DIR/distribution.xml" <<XML
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>${APP_NAME}</title>
+    <options customize="never" require-scripts="false" hostArchitectures="arm64"/>
+    <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
+    <volume-check>
+        <allowed-os-versions>
+            <os-version min="${MIN_OS}"/>
+        </allowed-os-versions>
+    </volume-check>
+    <choices-outline>
+        <line choice="${BUNDLE_ID}"/>
+    </choices-outline>
+    <choice id="${BUNDLE_ID}" visible="false">
+        <pkg-ref id="${BUNDLE_ID}"/>
+    </choice>
+    <pkg-ref id="${BUNDLE_ID}" version="${VERSION}" onConclusion="none">KookaburraCut.pkg</pkg-ref>
+</installer-gui-script>
+XML
+if [[ "$ADHOC" == 1 ]]; then
+  productbuild --quiet --distribution "$TEMP_DIR/distribution.xml" --package-path "$TEMP_DIR/pkg" "$PKG"
+  echo "    unsigned: a pkg signature needs a Developer ID Installer certificate, so a rehearsal skips it"
+else
+  productbuild --quiet --distribution "$TEMP_DIR/distribution.xml" --package-path "$TEMP_DIR/pkg" \
+    --sign "$KOOKABURRA_INSTALLER_IDENTITY" --timestamp "$PKG"
+  pkgsig=$(pkgutil --check-signature "$PKG") || die "pkgutil cannot read the pkg's signature"
+  grep -Eq '^ +1\. Developer ID Installer: ' <<<"$pkgsig" || die "the pkg is not signed by a Developer ID Installer certificate"
+  if [[ -n "${KOOKABURRA_TEAM_ID:-}" ]]; then
+    grep -Eq "^ +1\. Developer ID Installer: .*\(${KOOKABURRA_TEAM_ID}\)" <<<"$pkgsig" || die "the pkg is not signed by team $KOOKABURRA_TEAM_ID"
+  fi
+  notarize "$PKG"
+  log "Stapling the pkg ticket"
+  xcrun stapler staple "$PKG"
+  xcrun stapler validate "$PKG"
+  log "Gatekeeper assessment (pkg)"
+  spctl -a -t install -vv "$PKG"
+fi
+[[ -f "$PKG" ]] || die "expected pkg missing at $PKG"
+
 # ── zip and updater archive ──────────────────────────────────────────────────
 log "Zipping the app"
 /usr/bin/ditto --norsrc -c -k --keepParent "$APP_BUNDLE" "$ZIP"
@@ -252,7 +311,7 @@ JSON
 
 echo
 if [[ "$ADHOC" == 1 ]]; then
-  echo "Done (ad-hoc rehearsal, not notarised, throwaway updater key): $APP_BUNDLE, $DMG, $ZIP, $UPDATER_TAR"
+  echo "Done (ad-hoc rehearsal, not notarised, unsigned pkg, throwaway updater key): $APP_BUNDLE, $DMG, $PKG, $ZIP, $UPDATER_TAR"
 else
-  echo "Done: $APP_BUNDLE, $DMG and $UPDATER_TAR are signed; the app and the DMG are notarised and stapled."
+  echo "Done: $APP_BUNDLE, $DMG, $PKG and $UPDATER_TAR are signed; the app, the DMG and the pkg are notarised and stapled."
 fi

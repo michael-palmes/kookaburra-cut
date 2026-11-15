@@ -122,7 +122,8 @@
           "forget_publisher",
           "forget_allowed_project",
           "clear_app_data",
-          "reveal_app_logs"
+          "reveal_app_logs",
+          "reveal_licences"
         ]
       }
     },

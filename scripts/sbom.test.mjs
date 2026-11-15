@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { buildSbom, render } from "./sbom.mjs";
+import { assetComponents, buildSbom, render } from "./sbom.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
@@ -98,6 +98,7 @@ const fixtures = () => ({
     "X264_COMMIT=b35605ace3ddf7c1a5d67a2eb553f034aef41d55",
     "X264_URL=https://code.videolan.org/videolan/x264.git",
     "X264_SEI=x264 - core 165 r3222 b35605a",
+    "X264_SOURCE_SHA256=ee55",
     "X265_VERSION=4.3",
     "X265_SHA256=bb22",
     "X265_URL=https://github.com/Multicorewareinc/x265/releases/download/4.3/x265_4.3.tar.gz",
@@ -109,6 +110,16 @@ const fixtures = () => ({
     "MODEL=mel_spectrogram.onnx|dd44|270742",
     "",
   ].join("\n"),
+  assets: [
+    {
+      type: "file",
+      "bom-ref": "file:src/assets/hdri/studio.hdr",
+      name: "src/assets/hdri/studio.hdr",
+      scope: "required",
+      hashes: [{ alg: "SHA-256", content: "ff66" }],
+      licenses: [{ license: { id: "CC0-1.0" } }],
+    },
+  ],
 });
 
 const byRef = (sbom, ref) => sbom.components.find((c) => c["bom-ref"] === ref);
@@ -169,7 +180,20 @@ describe("the release SBOM", () => {
     const x264 = byRef(sbom, "pkg:generic/x264@b35605ace3ddf7c1a5d67a2eb553f034aef41d55");
     assert.deepEqual(x264.properties, [
       { name: "kookaburra-cut:x264-sei", value: "x264 - core 165 r3222 b35605a" },
+      {
+        name: "kookaburra-cut:source-archive",
+        value: "git archive of b35605ace3ddf7c1a5d67a2eb553f034aef41d55",
+      },
     ]);
+    assert.deepEqual(x264.hashes, [{ alg: "SHA-256", content: "ee55" }]);
+    const releaseAsset = (c) =>
+      c.externalReferences.find((r) => r.type === "source-distribution")?.url;
+    assert.equal(
+      releaseAsset(x264),
+      `https://github.com/michael-palmes/kookaburra-cut/releases/download/v${fixtures().version}/x264-b35605ace3ddf7c1a5d67a2eb553f034aef41d55.tar`,
+    );
+    assert.match(releaseAsset(ffmpeg), /\/ffmpeg-8\.1\.tar\.xz$/);
+    assert.match(releaseAsset(byRef(sbom, "pkg:generic/x265@4.3")), /\/x265_4\.3\.tar\.gz$/);
     assert.deepEqual(byRef(sbom, "pkg:generic/x265@4.3").hashes, [
       { alg: "SHA-256", content: "bb22" },
     ]);
@@ -200,6 +224,102 @@ describe("the release SBOM", () => {
     delete unlicensed.pnpmLicenses["SEE LICENSE IN LICENSE"];
     assert.throws(() => buildSbom(unlicensed), /no licence listed for gamma@0\.1\.0/);
     assert.throws(() => buildSbom({ ...fixtures(), commit: "abc" }), /not a commit/);
+    assert.throws(() => buildSbom({ ...fixtures(), assets: [] }), /needs the bundled assets/);
+  });
+
+  describe("the bundled assets", () => {
+    let repo;
+    const put = (rel, body = rel) => {
+      mkdirSync(dirname(join(repo, rel)), { recursive: true });
+      writeFileSync(join(repo, rel), body);
+    };
+    before(() => {
+      repo = mkdtempSync(join(tmpdir(), "kookaburra-assets-"));
+      put("src/assets/fonts/LICENSES.md", "| Inter | Inter-Regular.*, Inter-SemiBold.woff | © |");
+      put("src/assets/fonts/OFL.txt");
+      put("src/assets/fonts/Inter-Regular.woff");
+      put("src/assets/hdri/studio.hdr");
+      put("src/assets/hdri/README.md");
+      put("src/assets/models/licensed.sha256", "ab12  phone.glb\n");
+      put(
+        "src/toolkit/stage/shaders/NOTICE.md",
+        "`meshGradient.ts`, `simplexNoise.ts`, `swirl.ts`, `neuroNoise.ts`, `warp.ts`, `smokeRing.ts`",
+      );
+      for (const f of ["meshGradient", "simplexNoise", "swirl", "neuroNoise", "warp", "smokeRing"])
+        put(`src/toolkit/stage/shaders/${f}.ts`);
+      put("kit/scripts/kb.py");
+      put("kit/scripts/notes.md");
+      put("kit/scripts/kblib/cli.py");
+      put("kit/scripts/kblib/__pycache__/cli.pyc");
+      put(
+        "src-tauri/tauri.conf.json",
+        JSON.stringify({
+          bundle: {
+            resources: {
+              "../kit/scripts/*.py": "skills/scripts/",
+              "../kit/scripts/kblib": "skills/scripts/kblib",
+              "../kit/README.md": "skills/README.md",
+            },
+          },
+        }),
+      );
+    });
+    after(() => rmSync(repo, { recursive: true, force: true }));
+
+    test("lists each by hash and licence, the device models as opaque pinned files", () => {
+      const assets = assetComponents(repo);
+      const by = Object.fromEntries(assets.map((a) => [a.name, a]));
+      assert.deepEqual(Object.keys(by).sort(), [
+        "kit/scripts/kb.py",
+        "kit/scripts/kblib/cli.py",
+        "src/assets/fonts/Inter-Regular.woff",
+        "src/assets/hdri/studio.hdr",
+        "src/assets/models/licensed/phone.glb",
+        "src/toolkit/stage/shaders/meshGradient.ts",
+        "src/toolkit/stage/shaders/neuroNoise.ts",
+        "src/toolkit/stage/shaders/simplexNoise.ts",
+        "src/toolkit/stage/shaders/smokeRing.ts",
+        "src/toolkit/stage/shaders/swirl.ts",
+        "src/toolkit/stage/shaders/warp.ts",
+      ]);
+      assert.deepEqual(by["src/assets/fonts/Inter-Regular.woff"].licenses, [
+        { license: { id: "OFL-1.1" } },
+      ]);
+      assert.deepEqual(by["src/assets/hdri/studio.hdr"].licenses, [{ license: { id: "CC0-1.0" } }]);
+      const model = by["src/assets/models/licensed/phone.glb"];
+      assert.deepEqual(model.hashes, [{ alg: "SHA-256", content: "ab12" }]);
+      assert.match(
+        model.licenses[0].license.name,
+        /^Proprietary: .*may not be extracted or redistributed/,
+      );
+      assert.deepEqual(by["src/toolkit/stage/shaders/warp.ts"].licenses, [
+        { license: { id: "Apache-2.0" } },
+      ]);
+      assert.deepEqual(by["kit/scripts/kb.py"].licenses, [{ expression: "MIT OR Apache-2.0" }]);
+      assert.match(by["kit/scripts/kb.py"].hashes[0].content, /^[0-9a-f]{64}$/);
+    });
+
+    test("refuses a font without a licence row", () => {
+      put("src/assets/fonts/Mystery-Bold.woff");
+      try {
+        assert.throws(() => assetComponents(repo), /Mystery-Bold\.woff has no row/);
+      } finally {
+        rmSync(join(repo, "src/assets/fonts/Mystery-Bold.woff"));
+      }
+    });
+
+    test("covers this checkout's licensed models, every font and the kit", () => {
+      const assets = assetComponents(ROOT);
+      const pinned = readFileSync(join(ROOT, "src/assets/models/licensed.sha256"), "utf8")
+        .trim()
+        .split("\n");
+      assert.equal(
+        assets.filter((a) => a.name.startsWith("src/assets/models/licensed/")).length,
+        pinned.length,
+      );
+      assert.ok(assets.some((a) => a.name.endsWith("/scripts/kb.py")));
+      assert.ok(assets.some((a) => a.name === "src/assets/fonts/KookaburraFallback.otf"));
+    });
   });
 
   describe("from the command line", () => {
@@ -243,8 +363,12 @@ describe("the release SBOM", () => {
       assert.equal(b.status, 0, b.stderr);
       const text = readFileSync(join(dir, "a.cdx.json"), "utf8");
       assert.equal(text, readFileSync(join(dir, "b.cdx.json"), "utf8"));
-      assert.equal(text, render(buildSbom(fixtures())));
-      assert.match(a.stdout, /11 components for Kookaburra Cut 1\.2\.3/);
+      const expected = buildSbom({ ...fixtures(), assets: assetComponents(ROOT) });
+      assert.equal(text, render(expected));
+      assert.match(
+        a.stdout,
+        new RegExp(`${expected.components.length} components for Kookaburra Cut 1\\.2\\.3`),
+      );
     });
   });
 });

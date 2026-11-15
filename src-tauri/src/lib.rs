@@ -1627,6 +1627,7 @@ macro_rules! kookaburra_handler {
             settings_win::forget_allowed_project,
             settings_win::clear_app_data,
             settings_win::reveal_app_logs,
+            settings_win::reveal_licences,
             updater::check_for_update,
             updater::set_update_consent,
             updater::install_update_and_relaunch,

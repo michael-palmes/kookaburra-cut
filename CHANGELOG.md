@@ -28,6 +28,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   folder your organisation's log collector reads, and Settings says so. A
   folder the app can't use means no copy, never a failed launch, and the log
   on the Mac carries on. See `docs/mdm.md`.
+- A `.pkg` installer beside the DMG, for managed Macs: Jamf, Kandji, Mosyle or
+  Intune install it with no prompts. It is signed with a Developer ID
+  Installer certificate, notarised and covered by the release's checksums and
+  provenance. See `docs/mdm.md`, "Installing with the pkg".
+- Every release attaches the exact ffmpeg, x264 and x265 source archives its
+  ffmpeg sidecar was built from, listed in the release's checksums and
+  provenance, so anyone can rebuild it. See `NOTICE.md`.
+- The app now carries the licences of everything inside it: the GPL texts of
+  ffmpeg, x264 and x265, and the licence of every npm package and Rust crate.
+  Settings ▸ About ▸ Acknowledgements shows them in Finder.
 
 ### Changed
 

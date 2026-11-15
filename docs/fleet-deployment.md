@@ -30,7 +30,7 @@ recipes has run on a live tenant yet ([Not yet](#not-yet)).
 
 ## 1. Install the app
 
-### Today: the DMG
+### The DMG
 
 The release ships a drag-and-drop DMG, `KookaburraCut-<version>.dmg`.
 [`install-kookaburra-cut.sh`](../packaging/mdm/install-kookaburra-cut.sh)
@@ -119,21 +119,31 @@ check "$APP"
 say "installed $VERSION"
 ```
 
-### From the release after 0.23.0: the pkg
+### From 0.23.0: the pkg
 
-`KookaburraCut-<version>.pkg` ships beside the DMG from the release after
-0.23.0: the same app, installed into `/Applications` with no prompts, signed
-with a Developer ID Installer certificate of the same team, notarised and
-stapled (`scripts/sign-and-notarize.sh` once that work lands). Check it before
-you upload it:
+`KookaburraCut-<version>.pkg` ships beside the DMG from 0.23.0: the same app,
+installed into `/Applications` owned by root with no prompts and no install
+scripts, signed with a Developer ID Installer certificate of the same team,
+notarised and stapled (`scripts/sign-and-notarize.sh`). It is in the release's
+`SHA256SUMS`, its build provenance and its SBOM attestation. Check it before
+you upload it; `scripts/verify-install.sh` runs all of this when the pkg is in
+its folder:
 
 ```bash
+shasum -a 256 -c SHA256SUMS --ignore-missing
+gh attestation verify KookaburraCut-<version>.pkg --repo michael-palmes/kookaburra-cut \
+  --signer-workflow michael-palmes/kookaburra-cut/.github/workflows/release.yml \
+  --source-ref refs/tags/v<version> --deny-self-hosted-runners
 pkgutil --check-signature KookaburraCut-<version>.pkg   # Developer ID Installer: ... (Q4B8N8ZKA2)
 spctl -a -vv -t install KookaburraCut-<version>.pkg     # accepted, source=Notarized Developer ID
 ```
 
 Its receipt is `com.mpalmes.kookaburracut`, the bundle identifier
-(`identifier` in `src-tauri/tauri.conf.json`).
+(`identifier` in `src-tauri/tauri.conf.json`): `pkgutil --pkg-info
+com.mpalmes.kookaburracut` names the version it installed. A pkg older than
+the installed app leaves it alone, and the uninstall script
+([Remove it](#5-remove-it)) forgets the receipt. What it installs and how it
+upgrades is in [mdm.md, "Installing with the pkg"](./mdm.md#installing-with-the-pkg).
 
 ### Jamf Pro
 
@@ -382,8 +392,8 @@ Settings row a key governs shows a lock and "Managed by your organisation"
 ### Through your MDM
 
 Recommended in [fleet.md](./fleet.md#updates-in-app-or-mdm-delivery): force
-`DisableUpdateCheck`, verify each release, and push it with the same recipe
-and a new version and hash. A Homebrew cask is staged in
+`DisableUpdateCheck`, verify each release, and push it with the same recipe:
+the next pkg, or the install script with a new version and hash. A Homebrew cask is staged in
 [`packaging/homebrew/`](../packaging/homebrew/README.md) for fleets that
 install with Homebrew; it is not published until its tap exists
 ([Not yet](#not-yet)).
@@ -512,8 +522,8 @@ paths, for the account that runs it only.
 
 ## Not yet
 
-- The pkg ships from the release after 0.23.0; until then, the DMG and the
-  install script.
+- The pkg ships from 0.23.0; for 0.22.4 and earlier, the DMG and the install
+  script.
 - The Homebrew tap `michael-palmes/homebrew-kookaburra-cut` does not exist yet;
   the cask is staged in `packaging/homebrew/` with its audit record.
 - None of these recipes has run on a live Jamf Pro, Iru, Mosyle or Intune

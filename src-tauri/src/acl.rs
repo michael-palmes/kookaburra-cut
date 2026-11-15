@@ -272,6 +272,7 @@ fn only_the_main_window_reaches_trust_and_the_rest_of_the_studio() {
             "forget_allowed_project",
             "clear_app_data",
             "reveal_app_logs",
+            "reveal_licences",
         ] {
             assert!(
                 !allowed(label).contains(denied),
@@ -340,6 +341,7 @@ fn the_main_window_keeps_the_studio() {
             "render_take_thumb_job",
             "reset_edit",
             "reveal_app_logs",
+            "reveal_licences",
             "reveal_pack",
             "rotate_publisher_key",
             "save_bridge_screenshot",
@@ -503,6 +505,7 @@ fn the_settings_window_owns_caches_the_workspace_location_updates_and_the_publis
             "pick_folder",
             "reveal_app_logs",
             "reveal_in_finder",
+            "reveal_licences",
             "rotate_publisher_key",
             "set_claude_preferences",
             "set_clip_cache_cap",

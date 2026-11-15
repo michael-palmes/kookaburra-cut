@@ -5,8 +5,9 @@
 # build provenance from the release workflow on the tag; the DMG against its SBOM attestation; the
 # SBOM against the commit build-info.txt records, and that commit against the tag; every signature
 # in the app and its sidecars (Developer ID, the Team ID below, hardened runtime, secure timestamp,
-# no entitlements); notarisation and Gatekeeper; the version. It downloads no release file (gh asks
-# GitHub for the tag and, without a bundle, the attestations): fetch the release's files first.
+# no entitlements); notarisation and Gatekeeper; the version. With the pkg in the folder, the same
+# for it, plus its Developer ID Installer signature. It downloads no release file (gh asks GitHub for
+# the tag and, without a bundle, the attestations): fetch the release's files first.
 #
 #   gh release download v<version> --repo michael-palmes/kookaburra-cut --dir <dir>
 #   verify-install.sh --version <version> --dir <dir> [--app <path>] [--bundle <file>] [--previous <version>]
@@ -41,7 +42,7 @@ while [[ $# -gt 0 ]]; do
     --app) APP="${2:?--app needs a path}"; shift 2 ;;
     --bundle) BUNDLE="${2:?--bundle needs a file}"; shift 2 ;;
     --previous) PREVIOUS="${2:?--previous needs a version}"; shift 2 ;;
-    --help | -h) sed -n '2,21p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    --help | -h) sed -n '2,22p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) die "unknown argument '$1' (--help)" ;;
   esac
 done
@@ -52,6 +53,8 @@ TAG="v$VERSION"
 [[ -d "$DIR" ]] || die "no folder $DIR"
 DIR=$(cd "$DIR" && pwd)
 DMG="$DIR/KookaburraCut-$VERSION.dmg"
+PKG="$DIR/KookaburraCut-$VERSION.pkg"
+[[ -f "$PKG" ]] || PKG=""
 SBOM="$DIR/KookaburraCut-$VERSION.cdx.json"
 INFO="$DIR/build-info.txt"
 SUMS="$DIR/SHA256SUMS"
@@ -76,7 +79,7 @@ trap cleanup EXIT
 
 # ── the files, against the checksums the publish job wrote ───────────────────
 log "SHA256SUMS"
-for f in "$DMG" "$INFO" "$SBOM" "$SECURITY"; do
+for f in "$DMG" ${PKG:+"$PKG"} "$INFO" "$SBOM" "$SECURITY"; do
   grep -Fq "  $(basename "$f")" "$SUMS" || die "SHA256SUMS does not list $(basename "$f")"
 done
 (cd "$DIR" && shasum -a 256 -c SHA256SUMS --ignore-missing)
@@ -94,6 +97,11 @@ attest "$INFO" ${bundle_args[@]+"${bundle_args[@]}"}
 attest "$SBOM" ${bundle_args[@]+"${bundle_args[@]}"}
 log "SBOM attestation on the DMG"
 attest "$DMG" --predicate-type https://cyclonedx.org/bom
+if [[ -n "$PKG" ]]; then
+  log "Build provenance and SBOM attestation: the pkg"
+  attest "$PKG" ${bundle_args[@]+"${bundle_args[@]}"}
+  attest "$PKG" --predicate-type https://cyclonedx.org/bom
+fi
 
 # ── the record: build-info.txt's commit is the tag's, and the SBOM is for it ─
 commit=$(sed -n 's/^commit=//p' "$INFO")
@@ -119,6 +127,18 @@ if [[ -z "$APP" ]]; then
   MOUNT=$(awk -F'\t' 'END { print $NF }' <<<"$attach")
   [[ -n "$MOUNT" && -d "$MOUNT/$APP_NAME.app" ]] || die "the DMG does not hold $APP_NAME.app"
   APP="$MOUNT/$APP_NAME.app"
+fi
+
+# ── the pkg, what an MDM installs ────────────────────────────────────────────
+if [[ -n "$PKG" ]]; then
+  log "Installer signature and Gatekeeper: $PKG"
+  pkgutil --check-signature "$PKG" | tee "$WORK/pkgsig.txt" || die "$PKG is not signed"
+  grep -Eq "^ +1\. Developer ID Installer: .*\($TEAM_ID\)" "$WORK/pkgsig.txt" || die "$PKG is not signed by a Developer ID Installer certificate of team $TEAM_ID"
+  grep -Eq '^ +2\. Developer ID Certification Authority' "$WORK/pkgsig.txt" || die "$PKG's chain is not Apple's Developer ID CA"
+  grep -Fq "Notarization: trusted by the Apple notary service" "$WORK/pkgsig.txt" || die "$PKG is not notarised"
+  spctl -a -t install -vv "$PKG" 2>&1 | tee "$WORK/spctl-pkg.txt"
+  grep -q "accepted" "$WORK/spctl-pkg.txt" || die "Gatekeeper did not accept $PKG"
+  grep -q "Notarized Developer ID" "$WORK/spctl-pkg.txt" || die "Gatekeeper source is not Notarized Developer ID for $PKG"
 fi
 
 # ── the app: one code object at a time ───────────────────────────────────────
@@ -164,4 +184,4 @@ if [[ -n "$PREVIOUS" ]]; then
 fi
 
 echo
-echo "Verified: $APP_NAME $VERSION at ${commit:0:12}, signed by Team ID $TEAM_ID, notarised, with its provenance and SBOM"
+echo "Verified: $APP_NAME $VERSION at ${commit:0:12}, signed by Team ID $TEAM_ID, notarised, with its provenance and SBOM${PKG:+, and its pkg}"
