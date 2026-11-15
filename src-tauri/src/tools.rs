@@ -108,16 +108,27 @@ pub(crate) fn account() -> Option<Account> {
     })
 }
 
-/// A bundled sidecar's path, resolved like tauri-plugin-shell's `relative_command_path`: beside the running executable (packaged `Contents/MacOS/ffmpeg`, dev `target/debug/ffmpeg`), stepping out of `deps/` when a test binary runs.
+/// A bundled sidecar's path, resolved like tauri-plugin-shell's `relative_command_path`: beside the running executable (packaged `Contents/MacOS/ffmpeg`, dev `target/debug/ffmpeg`), stepping out to the profile folder when a test binary runs from `deps/` or, from Cargo 1.100, `build/<package>/<hash>/out/`.
 pub(crate) fn sidecar_path(name: &str) -> Result<PathBuf, String> {
     let exe = current_exe().map_err(|e| format!("cannot locate the app binary: {e}"))?;
     let dir = exe.parent().ok_or("the app binary has no parent folder")?;
-    let base = if dir.ends_with("deps") {
-        dir.parent().unwrap_or(dir)
-    } else {
-        dir
-    };
-    Ok(base.join(name))
+    Ok(profile_dir(dir).join(name))
+}
+
+fn profile_dir(dir: &Path) -> &Path {
+    if dir.ends_with("deps") {
+        return dir.parent().unwrap_or(dir);
+    }
+    let mut up = dir.ancestors();
+    match (up.next(), up.nth(2), up.next()) {
+        (Some(out), Some(build), Some(profile))
+            if out.file_name() == Some("out".as_ref())
+                && build.file_name() == Some("build".as_ref()) =>
+        {
+            profile
+        }
+        _ => dir,
+    }
 }
 
 fn current_exe() -> std::io::Result<PathBuf> {
@@ -270,11 +281,33 @@ mod tests {
     fn sidecars_resolve_beside_the_binary_outside_deps() {
         let path = sidecar_path("ffmpeg").unwrap();
         assert_eq!(path.file_name().and_then(|n| n.to_str()), Some("ffmpeg"));
+        let dir = path.parent().unwrap();
         assert!(
-            !path.parent().unwrap().ends_with("deps"),
+            !dir.ends_with("deps") && !dir.ends_with("out"),
             "{}",
             path.display()
         );
+    }
+
+    #[test]
+    fn test_binaries_step_out_to_the_profile_folder() {
+        for (exe_dir, profile) in [
+            ("/t/debug/deps", "/t/debug"),
+            (
+                "/t/debug/build/kookaburra-cut/62d0f61c050abae2/out",
+                "/t/debug",
+            ),
+            ("/t/debug", "/t/debug"),
+            ("/App.app/Contents/MacOS", "/App.app/Contents/MacOS"),
+            ("/x/out", "/x/out"),
+            ("/x/notbuild/p/h/out", "/x/notbuild/p/h/out"),
+        ] {
+            assert_eq!(
+                profile_dir(Path::new(exe_dir)),
+                Path::new(profile),
+                "{exe_dir}"
+            );
+        }
     }
 
     #[test]
@@ -284,9 +317,13 @@ mod tests {
             .iter()
             .map(|(k, _)| k.to_string_lossy().into_owned())
             .collect();
-        assert!(keys.iter().all(|k| SIDECAR_ENV.contains(&k.as_str()) || k.starts_with("LC_")));
+        assert!(keys
+            .iter()
+            .all(|k| SIDECAR_ENV.contains(&k.as_str()) || k.starts_with("LC_")));
         assert!(keys.contains(&"PATH".to_owned()) || std::env::var_os("PATH").is_none());
-        assert!(!keys.iter().any(|k| k.starts_with("CARGO") || k.starts_with("RUST")));
+        assert!(!keys
+            .iter()
+            .any(|k| k.starts_with("CARGO") || k.starts_with("RUST")));
     }
 
     #[test]

@@ -44,7 +44,7 @@ Nothing leaves the Mac unless a person starts it
 | Update check | At launch and then hourly while the app is open, at most once every 20 hours, only with the first-run consent on; or Check for Updates by hand | `github.com`, which redirects to `release-assets.githubusercontent.com` | One GET for `latest.json`; no identifiers, no version in the URL | The first-run switch or Settings ▸ Updates; `DisableUpdateCheck` for a fleet, or `UpdateEndpoint` to point it at your own server. `src-tauri/src/updater.rs`, `src/engine/updates.ts` |
 | Update install | Install and relaunch on the update dialog | The host `latest.json` names (GitHub's release assets, or your mirror) | The signed updater archive, checked against the ed25519 key built into the app and bound to the announced version before anything is written | Later; `DisableUpdateCheck`. `updater.rs` (`download_and_install`) |
 | Edit with Claude | Pressing Edit with Claude, with the Claude desktop app installed | The Claude desktop app on this Mac, which talks to Anthropic under the person's own account | The project folder's path and a starter prompt, typed into that app and never sent until the person presses Enter there | Not pressing it; `DisableClaude` removes the buttons, `DisableAgentKit` removes everything the app lays out for an agent. `src-tauri/src/claude_app.rs` |
-| Live scene websites | Allow for that origin in the paused editor; Present reloads an allowed origin on each hold | The approved origin, with the reach of a browser tab | Whatever the page loads; cookies and storage in a profile separate from Safari | Revoke in the inspector; Settings ▸ Website data; `DisableLiveWebsites`. `src-tauri/src/website.rs` |
+| Live scene websites | Allow for that origin in the paused editor; Present reloads an allowed origin on each hold | The approved origin, with the reach of a browser tab | Whatever the page loads; cookies and storage in a profile separate from Safari | Revoke in the inspector; Settings ▸ Website data; `DisableLiveWebsites` or `AllowedWebsiteOrigins`. `src-tauri/src/website.rs` |
 
 Two buttons open a fixed page in the default browser: Get Claude
 (`claude.ai/download`) and What leaves your Mac (this repository's
@@ -52,8 +52,8 @@ Two buttons open a fixed page in the default browser: Get Claude
 nothing is appended to it (`claude_app.rs`, `open_claude_download`,
 `open_privacy_page`).
 
-No Rust code links an HTTP client of its own (`src-tauri/Cargo.toml`: reqwest
-arrives only through Tauri and the updater plugin); the window's content
+No Rust code links an HTTP client of its own (reqwest arrives only through the
+updater plugin, and `src-tauri/deny.toml` bans every other way in); the window's content
 security policy allows `connect-src` only to itself, `blob:`, `data:`, `ipc:`
 and `asset:` (`src-tauri/tauri.conf.json`, `security.csp`); and the release
 ffmpeg is built `--disable-network` (`scripts/build-ffmpeg-sidecar.sh`).
@@ -218,7 +218,8 @@ Each line is one job or control in
    pinned by SHA-256; `build-info.txt` records the runner image, Xcode, commit
    and pins, the binary carries its own Rust dependency list (`cargo auditable`)
    and the job writes the SBOM (`scripts/sbom.mjs`).
-3. **Sign, in the protected `release` environment** behind a required reviewer:
+3. **Sign, in the protected `release` environment** behind a required reviewer
+   who did not start the run:
    Developer ID, hardened runtime, no entitlements, notarised and stapled; the
    updater archive signed with ed25519 and bound to the version
    (`scripts/sign-and-notarize.sh`).
@@ -239,8 +240,8 @@ Each line is one job or control in
    (`.github/workflows/`).
 
 Two caveats, stated so they are not implied away: one maintainer holds admin
-rights and is the only reviewer on the `release` environment, so the pipeline
-rests on one account; and no build is claimed reproducible (the runner image
+rights, and though a release run needs a second reviewer's approval, an admin
+can change that rule, so the pipeline rests on one account; and no build is claimed reproducible (the runner image
 and Xcode float and are recorded), though the exported film is, and the
 packaged-parity gate proves that each release
 ([determinism.md](./determinism.md)).
@@ -249,7 +250,7 @@ packaged-parity gate proves that each release
 
 A configuration profile forces keys in the domain `com.mpalmes.kookaburracut`;
 the app honours a key only while macOS reports it forced, a user's own
-`defaults write` grants nothing, and a malformed key fails closed. The nine
+`defaults write` grants nothing, and a malformed key fails closed. The eleven
 keys, each with a row, a guard and a test in [mdm.md](./mdm.md):
 
 - `DisableClaude`: removes every Edit with Claude entry point and the Claude
@@ -258,6 +259,8 @@ keys, each with a row, a guard and a test in [mdm.md](./mdm.md):
   stamped into a project, no bridge folder, no handoff.
 - `DisableLiveWebsites`: no live website ever opens in a scene; captured images
   still render.
+- `AllowedWebsiteOrigins`: live websites only from these exact origins, and a
+  grant made before the profile stops working; an empty list means none.
 - `AllowedPublisherKeyIds`: pack imports limited to these publishers' keys; an
   empty list means no imports at all.
 - `DisablePackExport`: no Share as pack, and no signing key is ever minted.
@@ -266,10 +269,12 @@ keys, each with a row, a guard and a test in [mdm.md](./mdm.md):
   archive must still carry this project's signature.
 - `ExportsInProject`: renders land beside their project, never in `~/Downloads`.
 - `WorkspaceRoot`: where projects are kept, fixed.
+- `AuditLogPath`: a copy of the app log in a folder your collector reads.
 
 `DisableAgentKit`, `DisablePackExport`, `ExportsInProject` and `UpdateEndpoint`
 are honoured from 0.22.3; an older build ignores them, so deploy 0.22.3 or
-later before relying on them.
+later before relying on them. `AuditLogPath` and `AllowedWebsiteOrigins` need
+0.23.0.
 
 The settings the app writes into a project for Claude Code cover only projects
 the app has opened; Claude Code's own managed settings sit on top of them.
@@ -318,7 +323,7 @@ place to check.
 | Business continuity | One maintainer. The code is MIT or Apache-2.0 and every dependency, tool and source is pinned and recorded, so a fork can build and ship it ([How releases are built](#how-releases-are-built)). |
 | Licence | MIT OR Apache-2.0 for the code; bundled assets keep their own terms; the ffmpeg sidecar is a GPL build run as a separate process ([NOTICE.md](../NOTICE.md)). |
 | Egress hosts | `github.com` and `release-assets.githubusercontent.com` (updates, or your `UpdateEndpoint` instead); `claude.ai`, a fixed page a person opens in their browser; the origins a person allows in a scene. Nothing else ([What leaves the Mac](#what-leaves-the-mac)). |
-| Fleet controls | Nine managed keys through a configuration profile ([mdm.md](./mdm.md)); verified builds delivered by MDM; Claude Code's own managed settings ([fleet.md](./fleet.md)). |
+| Fleet controls | Eleven managed keys through a configuration profile ([mdm.md](./mdm.md)); verified builds delivered by MDM; Claude Code's own managed settings ([fleet.md](./fleet.md)). |
 
 ## Not yet
 
@@ -349,6 +354,6 @@ word:
   its own tools and ask a person; a script a misled agent runs can still read a
   file.
 - The still checks on app icons: `import_app_icon` takes only the extension list.
-- A second reviewer on the `release` environment, a review on `main` the admin
-  cannot bypass, and a pinned runner image and Xcode (`build-info.txt` records
-  both).
+- `release` environment rules and a review on `main` that the admin cannot
+  change or bypass, and a pinned runner image and Xcode (`build-info.txt`
+  records both).

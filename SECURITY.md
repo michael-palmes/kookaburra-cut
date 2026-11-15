@@ -124,8 +124,9 @@ security policy (`src-tauri/tauri.conf.json`, `security.csp`), which the stage
 worker inherits (Tauri sets the header on HTML only, so the worker starts from a
 `blob:` URL: `src/stage/stageClient.ts`), allows `connect-src` only to itself,
 `blob:`, `data:`, `ipc:` and `asset:`; no Rust code links
-an HTTP client of its own (`src-tauri/Cargo.toml`: reqwest arrives only through
-Tauri and the updater plugin); the bridge is a file queue, not a socket
+an HTTP client of its own (reqwest arrives only through the updater plugin, and
+`src-tauri/deny.toml` bans it and the common HTTP client crates anywhere else);
+the bridge is a file queue, not a socket
 (`src-tauri/src/bridge.rs`); the release ffmpeg is built `--disable-network`
 (`scripts/build-ffmpeg-sidecar.sh`). Opening a project, importing a pack,
 exporting and presenting make no request, and allowed scene code can't make one:
@@ -164,9 +165,12 @@ unless written through `privacy::atomic_write_private` (0600 from the first byte
 every launch re-seals the trees to 0700/0600 in the background and logs one `[privacy]`
 line when it had to correct anything, and `cache/`, `logs/`, `_bridge/` and
 `_autorun/` carry `.metadata_never_index` (`src-tauri/src/privacy.rs`, `audit.rs`;
-`scripts/kookaburra-run.sh` seals the queue it creates). Projects and the
-workspace folders are the user's documents and take the umask default; pack
-extraction forces 0644/0755 on what it lands. `cache/clips` and
+`scripts/kookaburra-run.sh` seals the queue it creates). A workspace folder
+the app creates itself is 0700, so other accounts on the Mac can't list or read
+its projects; a folder that already exists keeps its mode and is never changed
+(`workspace::ensure_root`). Inside it, projects and the workspace folders are
+the user's documents and take the umask default; pack extraction forces
+0644/0755 on what it lands. `cache/clips` and
 `cache/media` carry Time Machine's per-item exclusion attribute
 (`com.apple.metadata:com_apple_backup_excludeItem`, set at every launch by
 `privacy::exclude_from_backup`), so what those two caches hold never reaches a
@@ -306,7 +310,10 @@ backup. Everything else is backed up like any document: projects with their own
   moved or stripped and where the agent's git is off (`[kit]`), footage trims
   (`[history]`), Allow given, declined, asked again and forgotten (`[trust]`), website
   origins allowed, declined and removed (`[website]`), pack imports with the
-  publisher's key id, verdict, item counts and outcome (`[pack]`), update checks
+  publisher's key id, verdict, item counts and outcome, and each pack export
+  with its item count, key id and file (`[pack]`), each Edit with Claude
+  handoff with the project's folder (`[claude]`), each finished video or stills
+  export with its kind, aspect, format and file (`[export]`), update checks
   and installs (`[update]`), workspace moves and project deletes
   (`[workspace]`), Clear all app data (`[settings]`), managed keys and each key's first refusal a launch (`[managed]`) and what the startup
   seal corrected (`[privacy]`). Lines hold paths, slugs, origins, key ids,
@@ -439,7 +446,8 @@ stamped before the profile stays in its folder, and its kb still runs.
   reports a handler; the prompt is typed into the app, not sent, until the
   person presses Enter there. The kit is stamped first, and if the stamp moved
   files aside a native sheet lists them before the handoff
-  (`review_agent_files_for`). The launcher's copy says "Claude Code sends this
+  (`review_agent_files_for`); then the project's git history is checked too
+  (`review_committed_agent_files`, below). The launcher's copy says "Claude Code sends this
   project's files to Anthropic under your own account and settings."
   (`CLAUDE_DISCLOSURE`, `ClaudeLauncher.tsx`). Claude Code's permission mode is
   the person's: the app sets none.
@@ -480,13 +488,42 @@ stamped before the profile stays in its folder, and its kb still runs.
   variant (`AGENTſ.md`) counts. A `.claude/worktrees/*` that isn't a checkout this
   repository registered moves aside, and folders a stamp moved aside are swept
   too. A root `CLAUDE.md` that isn't a shipped default moves on the first open
-  of a folder; after that it is the person's. The record sits in `settings.json`,
-  outside the folder, so a folder can't mark itself reviewed.
+  of a folder; after that it is the person's, and when it changes outside the
+  app the review sheet says so before Claude starts again (its SHA-256 is
+  recorded at each stamp). A first open is a folder the app has no record for,
+  or one made at another moment than the recorded folder at that path (its
+  creation time is recorded too), so a folder replaced in Finder is swept as
+  new. Forgetting a folder's Allow, deleting it or a pack landing in it drops
+  its record. The record sits in `settings.json`, outside the folder, so a
+  folder can't mark itself reviewed.
 - **The review before Claude** (`workspace.rs`, `review_agent_files_for`): a native
   sheet shows what moved, and Return is Not now. Edit with Claude refuses the
   handoff, by the folder alone and whatever the webview says, until the sweep has
   finished, the person has seen it and no such file is present. Typing `claude`
   in a shell of their own is outside this gate.
+- **The project's git history** (`history::committed_agent_files`,
+  `review_committed_agent_files`): a Claude worktree or a checkout brings back
+  what `HEAD` and the index hold, not what the sweep left. Before each handoff
+  the app's guarded git lists every agent file there (names folded as above:
+  anything under a `.claude`, the names the sweep moves to `NOTES.md`, the root
+  `kb`) and compares each with the swept folder byte for byte. The app's own
+  updates resolve without asking: after each stamp it records a key (SHA-256
+  over the path and bytes, `kit::stamp_key`) for every file it wrote at a path
+  it owns (the shipped skills, `.claude/settings.json`, its `kb`, a default root
+  `CLAUDE.md`) in `settings.json`, outside the folder, keeping earlier stamps'
+  keys too, capped. A difference at an app-owned path whose committed copy has
+  a recorded key and whose folder copy is the latest stamp (or gone because the
+  new kit dropped it) is committed in one commit, logged `[kit]`. Anything else,
+  a link, a conflict, or a file the folder lacks or holds differently, is listed
+  on a native sheet and Claude stays off; Save and Start Claude commits the
+  folder's copies of those paths alone (one commit, the person's other staged
+  work left staged), checks again and only then hands over. A project from
+  before this record shows the sheet once, saying it is a one-off after
+  updating. A root `CLAUDE.md` still at a
+  shipped default and a gitlink, which checks out empty, don't count. A
+  `.git/config` the app refuses, or a history git can't read, refuses the
+  handoff. Logged `[kit]`. Branches other than the checked-out one are not
+  read.
 - **Send-off asks** (`kblib/hookfast.py`, `send_off_reason`): the `bash-pre` hook
   asks a person before `curl`, `wget`, `nc` and `socat` to anything but loopback,
   `scp`, `sftp`, `ftp`, `ssh`, `rsync` to a host, `git push`, `gh`, cloud CLIs, mail,
@@ -617,6 +654,11 @@ stay unsigned: they only move a progress bar.
   `delete_project`, `website_grant_origin` or `init_default_workspace`, and on
   any window but settings reaching `init_workspace`, `move_workspace`,
   `forget_allowed_project`, `clear_app_data` or `reveal_app_logs`.
+  Tauri's own core permissions are named one by one, never `core:default`:
+  every window may listen for events, and each gets only what its code calls
+  (emitting events, the app version, the resource folder, its own drag,
+  title, close and fullscreen). No window holds the menu, tray, image or
+  webview commands, and the same test fails if one does.
   A live website's child webview carries Tauri's IPC runtime like any webview:
   Tauri refuses its commands because no capability names its remote origin, and
   `website::guard_invoke` refuses every app command from a label outside the
@@ -755,11 +797,14 @@ printed by the app or written to its logs.
 
 ## Managed preferences
 
-Ten keys in the domain `com.mpalmes.kookaburracut`, honoured only when a
+Eleven keys in the domain `com.mpalmes.kookaburracut`, honoured only when a
 configuration profile forces them (`src-tauri/src/managed.rs`): `DisableClaude`,
-`DisableLiveWebsites`, `AllowedPublisherKeyIds`, `DisableUpdateCheck`,
-`WorkspaceRoot`, `DisableAgentKit`, `DisablePackExport`, `ExportsInProject`,
-`UpdateEndpoint` and `AuditLogPath`. A malformed key fails closed: a boolean of
+`DisableLiveWebsites`, `AllowedWebsiteOrigins`, `AllowedPublisherKeyIds`,
+`DisableUpdateCheck`, `WorkspaceRoot`, `DisableAgentKit`, `DisablePackExport`,
+`ExportsInProject`, `UpdateEndpoint` and `AuditLogPath`.
+`AllowedWebsiteOrigins` is checked in Rust each time a website opens, navigates,
+asks for a grant or resumes, on the exact origin, so a grant made before the
+profile stops working. A malformed key fails closed: a boolean of
 the wrong type reads as `true`, an unusable `UpdateEndpoint` means no update
 check at all, and an unusable `AuditLogPath` means no copy of the log while the
 local one carries on (`audit::mirror_at_launch`).
@@ -805,7 +850,8 @@ builds it in separate jobs, each on a fresh runner.
   bundle file as its own artefact, whose combined digest is a job output the
   sign job never touches.
 - **Sign, in the protected `release` environment.** Behind a required reviewer
-  (one, the maintainer, who can approve their own run) and limited to `v*` tags,
+  who did not start the run (two are named, self-review is prevented and admins
+  cannot bypass) and limited to `v*` tags,
   the sign job checks the payload's digest against the
   build job, imports the Developer ID certificate into a temporary keychain,
   signs the two sidecars and then the bundle (`scripts/sign-and-notarize.sh`:
@@ -899,14 +945,20 @@ builds it in separate jobs, each on a fresh runner.
   Scorecard's Code-Review score counts only the reviewed share.
   `CODEOWNERS` names the maintainer everywhere and a second reviewer
   (`@FromeCloned`) on the surfaces this file is about: the pack reader, the
-  asset server, the updater, managed preferences, the capabilities, the
-  workflows and the release scripts. `audit.yml` runs, on every pull request
+  asset server, the updater, managed preferences, the trust gate and its
+  terminal check, the agent kit and kb's scripts, git history, the Claude
+  handoff, the bridge, live websites, the log and its copy, the privacy
+  page, the per-window ACL (its test, permission sets and capabilities), the
+  stage worker and its Vite build, the dependency policy, the workflows and
+  the release scripts. `audit.yml` runs, on every pull request
   and weekly, `pnpm audit --prod` at moderate for what ships and `pnpm audit`
   at high for the dev tree, and `cargo deny check advisories licenses bans
   sources` against `src-tauri/deny.toml`: an allow list of permissive licences
   (MIT, Apache-2.0 with or without the LLVM exception, BSD-2-Clause,
   BSD-3-Clause, ISC, Zlib, MPL-2.0, Unicode-3.0, 0BSD, CC0-1.0, MIT-0,
-  Unlicense), no wildcard versions, crates.io as the only source.
+  Unlicense), no wildcard versions, crates.io as the only source, and no HTTP
+  client crate (reqwest, hyper, ureq, isahc, curl and the like) but reqwest
+  under the updater plugin. The fuzz harness's graph passes the same policy.
   `dependency-review.yml` fails a pull request that adds a dependency with a
   moderate advisory or a licence outside that list (plus OFL-1.1 for fonts),
   and comments on the pull request only then. Every workflow but `scorecard.yml` starts from `permissions: {}` or
@@ -948,13 +1000,14 @@ builds it in separate jobs, each on a fresh runner.
   spctl -a -t exec -vv "/Applications/Kookaburra Cut.app" # source=Notarized Developer ID
   ```
 
-One maintainer holds admin rights on the repository and is the only reviewer on
-the `release` environment, so this pipeline rests on one account. A passkey on
+One maintainer holds admin rights on the repository. A release run needs a
+second reviewer's approval, but an admin can change the `release` environment's
+rules, so this pipeline still rests on one account. A passkey on
 the account makes a takeover harder, and a Touch ID tag key in
 the Mac's Secure Enclave can't be copied off the Mac, while the promptless commit
 key, which agents use, can't tag. Neither stops an account that has been taken
 over: the list the tag key is checked against lives in the repository, and an
-admin can change it and approve the run.
+admin can change it and the environment's reviewers.
 
 Reproducible builds are not claimed. Tauri does not promise one and this
 pipeline does not either: the runner image, macOS, Xcode and the SDK float
@@ -1025,13 +1078,12 @@ Deliberately deferred, recorded so nobody mistakes them for done:
 - One stage worker per project: a worker lives per window role, so the editor
   switching projects, and the render window's captures, reuse one realm. Its
   store writes are limited, but code from one project can still see the next.
-- Agent configuration committed in a project's git history: the sweep clears
-  the working tree, but a Claude worktree or a checkout of `HEAD` brings back
-  what was committed. Fixing it needs a design call (check `HEAD`'s tree,
-  commit the sweep, or hand over without worktree isolation).
+- Agent configuration on another branch: Edit with Claude checks `HEAD` and the
+  index, so a branch the person checks out later in a session can still bring
+  agent files back.
 - A sandbox for the agent. Its allow and deny rules, hooks and reach checks bound
   its own tools and ask a person; a script a misled agent runs can still read a
   file.
-- A second reviewer on the `release` environment, a review on `main` the admin
-  cannot bypass, and a pinned runner image and Xcode (`build-info.txt` records
-  both).
+- `release` environment rules and a review on `main` that the admin cannot
+  change or bypass, and a pinned runner image and Xcode (`build-info.txt`
+  records both).

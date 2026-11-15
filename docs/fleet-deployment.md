@@ -235,6 +235,7 @@ domain `com.mpalmes.kookaburracut` (`DOMAIN` in `managed.rs`).
 | `ExportsInProject` | 0.22.3 | `true` | `true` | `true` |
 | `UpdateEndpoint` | 0.22.3 | your mirror | your mirror | not forced |
 | `AuditLogPath` | 0.23.0 | `/Library/Logs/Kookaburra Cut` | not forced | not forced |
+| `AllowedWebsiteOrigins` | 0.23.0 | `[]`: no live websites | not forced | not forced |
 
 The files: [`kookaburra-cut-locked-down.mobileconfig`](../packaging/mdm/kookaburra-cut-locked-down.mobileconfig),
 [`kookaburra-cut-agents-mirrored.mobileconfig`](../packaging/mdm/kookaburra-cut-agents-mirrored.mobileconfig)
@@ -242,9 +243,9 @@ and [`kookaburra-cut-open.mobileconfig`](../packaging/mdm/kookaburra-cut-open.mo
 The From column is the first release whose `Key::ALL` in `managed.rs` holds the
 key, and an older build ignores it: deploy 0.22.3 or later, since on 0.22.2 the
 open profile changes nothing and the mirrored one leaves checks on GitHub.
-`AuditLogPath` needs 0.23.0.
+`AuditLogPath` and `AllowedWebsiteOrigins` need 0.23.0.
 
-- **Locked down** forces all ten. Its `AuditLogPath` copies the app log for
+- **Locked down** forces all eleven. Its `AuditLogPath` copies the app log for
   your collector; on a Mac with more than one account, create the folder first
   ([mdm.md, "A copy for your collector"](./mdm.md#a-copy-for-your-collector)).
   `UpdateEndpoint` does nothing while
@@ -257,7 +258,9 @@ open profile changes nothing and the mirrored one leaves checks on GitHub.
   ([fleet.md](./fleet.md#claude-codes-own-managed-settings-on-top)), and update
   checks go to your mirror ([Updates](#4-updates)). Replace
   `a1b2c3d4e5f60718`, the sample id [mdm.md](./mdm.md) uses, with your approved
-  publishers' key ids, or leave the array empty for no imports.
+  publishers' key ids, or leave the array empty for no imports. To let a team
+  open your own site live, replace `DisableLiveWebsites` with
+  `AllowedWebsiteOrigins` and its exact origins ([mdm.md](./mdm.md)).
 - **Open** leaves every feature to the person and forces only
   `ExportsInProject`, the one key all three share. fleet.md recommends more for
   unreleased work.
@@ -315,6 +318,8 @@ The locked-down profile in full:
                 <true/>
                 <key>DisableLiveWebsites</key>
                 <true/>
+                <key>AllowedWebsiteOrigins</key>
+                <array/>
                 <key>AllowedPublisherKeyIds</key>
                 <array/>
                 <key>DisablePackExport</key>

@@ -160,6 +160,8 @@ pub(crate) struct StillsJob {
     finishing: bool,
     cancelled: Arc<AtomicBool>,
     published: bool,
+    /// The project and aspect, for the log line once the file is in place.
+    pub(crate) landed: (String, String),
 }
 
 impl StillsJob {
@@ -187,6 +189,7 @@ impl StillsJob {
             finishing: false,
             cancelled: Arc::new(AtomicBool::new(false)),
             published: false,
+            landed: (String::new(), String::new()),
         }
     }
 }
@@ -217,6 +220,7 @@ pub(crate) struct FinishPlan {
     pub(crate) pages: u32,
     pub(crate) page_sha256: Vec<String>,
     pub(crate) cancelled: Arc<AtomicBool>,
+    pub(crate) landed: (String, String),
 }
 
 /// The stills half of `ExportState`; video's push, finish and cancel never reach it.
@@ -381,6 +385,7 @@ impl StillsSlot {
             pages: job.written,
             page_sha256: job.page_sha256.clone(),
             cancelled: job.cancelled.clone(),
+            landed: job.landed.clone(),
         })
     }
 

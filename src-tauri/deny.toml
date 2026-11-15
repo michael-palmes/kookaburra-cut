@@ -11,6 +11,8 @@ version = 2
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 yanked = "deny"
+# The default reports an unsound crate only when the app depends on it directly.
+unsound = "all"
 ignore = []
 
 [licenses]
@@ -31,11 +33,29 @@ allow = [
   "Unlicense",
 ]
 confidence-threshold = 0.8
+# The fuzz harness (fuzz/Cargo.toml, never shipped) links libFuzzer, under the permissive NCSA licence.
+exceptions = [{ allow = ["NCSA"], crate = "libfuzzer-sys" }]
 unused-allowed-license = "allow"
 
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+allow-wildcard-paths = true
+# No HTTP client of the app's own (SECURITY.md, "What leaves the Mac"): the updater plugin is the one way in.
+deny = [
+  { crate = "reqwest", wrappers = ["tauri-plugin-updater"], reason = "only the updater fetches over HTTP" },
+  { crate = "hyper-rustls", wrappers = ["reqwest"], reason = "reqwest's TLS connector only" },
+  { crate = "hyper-util", wrappers = ["reqwest", "hyper-rustls"], reason = "reqwest's client only" },
+  { crate = "hyper", wrappers = ["reqwest", "hyper-util", "hyper-rustls"], reason = "reqwest's client only" },
+  { crate = "ureq", reason = "no HTTP client of the app's own" },
+  { crate = "isahc", reason = "no HTTP client of the app's own" },
+  { crate = "curl", reason = "no HTTP client of the app's own" },
+  { crate = "attohttpc", reason = "no HTTP client of the app's own" },
+  { crate = "minreq", reason = "no HTTP client of the app's own" },
+  { crate = "surf", reason = "no HTTP client of the app's own" },
+  { crate = "awc", reason = "no HTTP client of the app's own" },
+  { crate = "http-req", reason = "no HTTP client of the app's own" },
+]
 
 [sources]
 unknown-registry = "deny"

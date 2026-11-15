@@ -17,6 +17,7 @@ const SHAPES = {
   "an absolute path": "path",
   "an absolute folder path": "folder",
   "an https URL": "url",
+  "an array of origins": "origins",
 };
 const shapeOf = (key) => {
   const found = MANAGED.match(new RegExp(`Key::${key} => "(${Object.keys(SHAPES).join("|")})"`));
@@ -62,6 +63,16 @@ function assertShape(key, raw, file) {
           id.replaceAll(" ", ""),
           /^[0-9a-fA-F]{16}$/,
           `${where} holds ${id}, not a key id`,
+        );
+      }
+      break;
+    case "origins":
+      assert.match(raw, /^<array(\/>|>[\s\S]*<\/array>)$/, `${where} must be an array`);
+      for (const [, origin] of raw.matchAll(/<string>([^<]*)<\/string>/g)) {
+        assert.match(
+          origin,
+          /^(https:\/\/[a-z0-9.-]+(:\d+)?|http:\/\/(localhost|127\.0\.0\.1|\[::1\]):\d+)$/,
+          `${where} holds ${origin}, not a bare origin`,
         );
       }
       break;

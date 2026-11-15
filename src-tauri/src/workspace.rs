@@ -172,6 +172,43 @@ pub struct AgentFilesRecord {
     /// Moved and not yet shown; the embedded session stays off until the person has seen them.
     #[serde(default)]
     pub unreviewed: Vec<String>,
+    /// SHA-256 of the root `CLAUDE.md` after the last stamp, so a change outside the app is reviewed again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_md: Option<String>,
+    /// The folder's creation time at the last stamp: a folder made at another moment is another folder at this path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder_created_ns: Option<u64>,
+    /// `kit::stamp_key` of each app-owned file as the last stamp left it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stamp: Vec<String>,
+    /// Keys of earlier stamps, oldest first and capped: committed copies the app wrote before.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stamped_before: Vec<String>,
+    /// The project's history has matched a stamp the app recorded.
+    #[serde(default)]
+    pub history_synced: bool,
+    /// The app began recording stamps in a folder it had already checked, so its history's first difference is the one-off after updating.
+    #[serde(default)]
+    pub stamps_late: bool,
+}
+
+/// Earlier stamp keys a record keeps: a few releases of the kit.
+const STAMPED_BEFORE_CAP: usize = 512;
+
+impl AgentFilesRecord {
+    /// Take `stamp` as the latest, keeping the one it replaces as earlier.
+    fn note_stamp(&mut self, stamp: Vec<String>) {
+        if self.stamp == stamp {
+            return;
+        }
+        for key in std::mem::replace(&mut self.stamp, stamp) {
+            if !self.stamp.contains(&key) && !self.stamped_before.contains(&key) {
+                self.stamped_before.push(key);
+            }
+        }
+        let over = self.stamped_before.len().saturating_sub(STAMPED_BEFORE_CAP);
+        self.stamped_before.drain(..over);
+    }
 }
 
 /// Managed settings cache. `None` = not yet loaded from disk.
@@ -279,8 +316,27 @@ pub(crate) fn reset_settings(
     })
 }
 
+/// The workspace folder, made owner-only when the app is the one making it; a folder already there keeps its mode.
+pub(crate) fn ensure_root(root: &Path) -> Result<(), String> {
+    use std::os::unix::fs::DirBuilderExt;
+    if std::fs::symlink_metadata(root).is_ok() {
+        return Ok(());
+    }
+    if let Some(parent) = root.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("creating {}: {e}", parent.display()))?;
+    }
+    match std::fs::DirBuilder::new().mode(0o700).create(root) {
+        Err(e) if e.kind() != std::io::ErrorKind::AlreadyExists => {
+            Err(format!("creating {}: {e}", root.display()))
+        }
+        _ => Ok(()),
+    }
+}
+
 /// Recreate the workspace skeleton idempotently; called by every command that touches the workspace, so a deleted subfolder heals on the next action.
 fn ensure_layout(root: &Path) -> Result<(), String> {
+    ensure_root(root)?;
     for dir in [
         root.to_path_buf(),
         root.join(STATE_DIR_NAME).join("snapshots"),
@@ -914,6 +970,11 @@ fn retarget_trust(settings: &mut AppSettings, from: &Path, to: &Path) {
     for path in moved {
         if let Some(record) = settings.agent_files.remove(&path) {
             let rest = &path[from_prefix.len()..];
+            // A move across volumes copies each folder, so its creation time is the app's doing.
+            let record = AgentFilesRecord {
+                folder_created_ns: None,
+                ..record
+            };
             settings.agent_files.insert(format!("{to_prefix}{rest}"), record);
         }
     }
@@ -1344,6 +1405,10 @@ pub fn duplicate_project(
     // A copy of a folder the app has seen keeps the person's own CLAUDE.md.
     update_settings(&app, &state, |settings| {
         if let Some(record) = settings.agent_files.get(&*src.to_string_lossy()).cloned() {
+            let record = AgentFilesRecord {
+                folder_created_ns: None,
+                ..record
+            };
             settings
                 .agent_files
                 .insert(dst.to_string_lossy().into_owned(), record);
@@ -1909,6 +1974,7 @@ pub(crate) fn stamp_claude_provisioning(app: &AppHandle, dir: &Path) -> Result<b
     for name in &missing {
         log::warn!("{name} skill not found at {}", root.join(name).display());
     }
+    let stamped: Vec<&str> = found.iter().map(|(name, _)| *name).collect();
     let skills: Vec<(&str, &Path)> = found
         .iter()
         .map(|(name, src)| (*name, src.as_path()))
@@ -1916,7 +1982,50 @@ pub(crate) fn stamp_claude_provisioning(app: &AppHandle, dir: &Path) -> Result<b
     let opts = crate::kit::StampOptions::for_app(app);
     sweep_agent_files_recorded(app, dir, &opts)?;
     crate::kit::stamp_project(&skills, dir, &opts)?;
+    let state = app.state::<SettingsState>();
+    let key = dir.to_string_lossy().into_owned();
+    update_settings(app, &state, |settings| {
+        if let Some(record) = settings.agent_files.get_mut(&key) {
+            record.claude_md = root_claude_md(dir).map(|(hash, _)| hash);
+            record.folder_created_ns = folder_created_ns(dir);
+            record.note_stamp(crate::kit::own_stamp(dir, &stamped));
+        }
+    })?;
     Ok(missing.is_empty())
+}
+
+/// The review line for a root `CLAUDE.md` changed outside the app since its last stamp; the file stays where it is.
+const CLAUDE_MD_CHANGED: &str = "CLAUDE.md changed since the last check";
+
+fn folder_created_ns(dir: &Path) -> Option<u64> {
+    let created = std::fs::symlink_metadata(dir).ok()?.created().ok()?;
+    u64::try_from(created.duration_since(UNIX_EPOCH).ok()?.as_nanos()).ok()
+}
+
+/// The root `CLAUDE.md`'s SHA-256 and whether it is still a shipped default, when it is a text file the sweep would read.
+fn root_claude_md(dir: &Path) -> Option<(String, bool)> {
+    let text = crate::kit::plain_text(&dir.join("CLAUDE.md"))?;
+    let hash = crate::hex_digest(Sha256::digest(text.as_bytes()).as_slice());
+    Some((hash, crate::kit::is_default_claude_md(&text)))
+}
+
+/// Whether this stamp is a first open, and whether a non-default root `CLAUDE.md` changed since the last one. A folder made at another moment than the one recorded is a new folder at an old path.
+fn agent_files_seen(
+    record: Option<&AgentFilesRecord>,
+    created_ns: Option<u64>,
+    claude_md: Option<&(String, bool)>,
+) -> (bool, bool) {
+    let Some(record) = record.filter(|record| record.swept) else {
+        return (true, false);
+    };
+    if record.folder_created_ns.is_some() && record.folder_created_ns != created_ns {
+        return (true, false);
+    }
+    let changed = match (record.claude_md.as_deref(), claude_md) {
+        (Some(before), Some((now, is_default))) => before != now && !is_default,
+        _ => false,
+    };
+    (false, changed)
 }
 
 fn sweep_agent_files_recorded(
@@ -1926,13 +2035,35 @@ fn sweep_agent_files_recorded(
 ) -> Result<(), String> {
     let state = app.state::<SettingsState>();
     let key = dir.to_string_lossy().into_owned();
-    let first_open = !load_settings(app, &state)?
-        .agent_files
-        .get(&key)
-        .is_some_and(|record| record.swept);
-    let sweep = crate::kit::sweep_agent_files(dir, first_open);
+    let record = load_settings(app, &state)?.agent_files.get(&key).cloned();
+    let (first_open, claude_md_changed) = agent_files_seen(
+        record.as_ref(),
+        folder_created_ns(dir),
+        root_claude_md(dir).as_ref(),
+    );
+    if first_open && record.as_ref().is_some_and(|record| record.swept) {
+        log::info!(
+            "[kit] {}: another folder now sits at this path, so it is checked as new",
+            crate::audit::path(dir)
+        );
+    }
+    let mut sweep = crate::kit::sweep_agent_files(dir, first_open);
+    if claude_md_changed {
+        log::info!(
+            "[kit] {}: CLAUDE.md changed outside the app",
+            crate::audit::path(dir)
+        );
+        sweep.moved.push(CLAUDE_MD_CHANGED.into());
+    }
+    let stamps_late = !first_open
+        && record
+            .as_ref()
+            .is_some_and(|record| record.stamp.is_empty());
     update_settings(app, &state, |settings| {
-        note_agent_sweep(settings, &key, &sweep, opts)
+        note_agent_sweep(settings, &key, &sweep, opts);
+        if let Some(record) = settings.agent_files.get_mut(&key) {
+            record.stamps_late |= stamps_late && !record.history_synced;
+        }
     })?;
     if let Some(error) = &sweep.error {
         log::warn!("[kit] {}: {error}", dir.display());
@@ -1981,15 +2112,41 @@ fn agent_files_block(record: Option<&AgentFilesRecord>, present: &[String]) -> O
 }
 
 fn agent_files_sheet_body(unreviewed: &[String], folder: &str) -> String {
-    let listed: Vec<String> = unreviewed.iter().take(12).map(|line| format!("• {line}")).collect();
-    let more = unreviewed.len() - listed.len();
-    let more = if more > 0 { format!("\nand {more} more, named in the log") } else { String::new() };
-    let mut body = format!(
-        "These could have steered Claude, so Kookaburra Cut moved them:\n\n{}{more}\n\nThe text is in NOTES.md, which Claude reads as notes, not instructions. If a CLAUDE.md was your own, copy back what you want.\n\nFolder: {folder}",
-        listed.join("\n")
-    );
-    if unreviewed.iter().any(|line| line.contains(crate::kit::HOOKS_ASIDE)) {
-        body.push_str(&format!("\n\nGit hooks are in {}: move one back into .git/hooks if it was yours.", crate::kit::HOOKS_ASIDE));
+    let moved: Vec<&String> = unreviewed
+        .iter()
+        .filter(|line| *line != CLAUDE_MD_CHANGED)
+        .collect();
+    let mut parts = Vec::new();
+    if !moved.is_empty() {
+        let listed: Vec<String> = moved
+            .iter()
+            .take(12)
+            .map(|line| format!("• {line}"))
+            .collect();
+        let more = moved.len() - listed.len();
+        let more = if more > 0 {
+            format!("\nand {more} more, named in the log")
+        } else {
+            String::new()
+        };
+        parts.push(format!(
+            "These could have steered Claude, so Kookaburra Cut moved them:\n\n{}{more}\n\nThe text is in NOTES.md, which Claude reads as notes, not instructions. If a CLAUDE.md was your own, copy back what you want.",
+            listed.join("\n")
+        ));
+    }
+    if moved.len() < unreviewed.len() {
+        parts.push("CLAUDE.md, the instructions Claude follows here, changed since Kookaburra Cut last checked this folder. Read it before you start Claude.".into());
+    }
+    parts.push(format!("Folder: {folder}"));
+    let mut body = parts.join("\n\n");
+    if unreviewed
+        .iter()
+        .any(|line| line.contains(crate::kit::HOOKS_ASIDE))
+    {
+        body.push_str(&format!(
+            "\n\nGit hooks are in {}: move one back into .git/hooks if it was yours.",
+            crate::kit::HOOKS_ASIDE
+        ));
     }
     body
 }
@@ -2004,7 +2161,10 @@ pub(crate) async fn review_agent_files_for(
     let present = crate::kit::foreign_agent_files(dir);
     let key = dir.to_string_lossy().into_owned();
     let record = load_settings(app, state)?.agent_files.get(&key).cloned();
-    let unreviewed = record.as_ref().map(|r| r.unreviewed.clone()).unwrap_or_default();
+    let unreviewed = record
+        .as_ref()
+        .map(|r| r.unreviewed.clone())
+        .unwrap_or_default();
     if unreviewed.is_empty() || !present.is_empty() {
         return match agent_files_block(record.as_ref(), &present) {
             Some(why) => Err(why),
@@ -2017,7 +2177,11 @@ pub(crate) async fn review_agent_files_for(
         app,
         "main",
         crate::native_alert::Prompt {
-            title: &format!("“{name}” came with agent files"),
+            title: &if unreviewed.iter().all(|line| line == CLAUDE_MD_CHANGED) {
+                format!("Claude's instructions in “{name}” changed")
+            } else {
+                format!("“{name}” came with agent files")
+            },
             body: &body,
             default_button: "Not now",
             other_button: "Start Claude",
@@ -2032,6 +2196,169 @@ pub(crate) async fn review_agent_files_for(
             record.unreviewed.retain(|line| !unreviewed.contains(line));
         }
     })?;
+    Ok(true)
+}
+
+fn committed_sheet_body(found: &[String], one_off: bool, folder: &str) -> String {
+    let listed: Vec<String> = found
+        .iter()
+        .take(12)
+        .map(|rel| format!("• {}", crate::clean_text::clean_name(rel)))
+        .collect();
+    let more = found.len() - listed.len();
+    let more = if more > 0 {
+        format!("\nand {more} more")
+    } else {
+        String::new()
+    };
+    let lead = if one_off {
+        "Kookaburra Cut updated its own Claude files here, and the project's saved history (git) still holds the older copies. This is a one-off after updating: later updates save them for you."
+    } else {
+        "This project's saved history (git) still holds these, and Claude could pick them up from there:"
+    };
+    format!(
+        "{lead}\n\n{}{more}\n\nSave the checked files to the history and Claude starts.\n\nFolder: {folder}",
+        listed.join("\n")
+    )
+}
+
+/// The project's stamp record, owned so the git work can run off the main thread.
+#[derive(Clone, Default)]
+struct RecordedStamps {
+    latest: HashSet<String>,
+    earlier: HashSet<String>,
+}
+
+impl RecordedStamps {
+    fn of(record: Option<&AgentFilesRecord>) -> Self {
+        record.map_or_else(Self::default, |record| RecordedStamps {
+            latest: record.stamp.iter().cloned().collect(),
+            earlier: record.stamped_before.iter().cloned().collect(),
+        })
+    }
+
+    fn view(&self) -> crate::history::Stamps<'_> {
+        crate::history::Stamps {
+            latest: &self.latest,
+            earlier: &self.earlier,
+        }
+    }
+}
+
+async fn history_check(
+    dir: &Path,
+    stamps: &RecordedStamps,
+) -> Result<crate::history::CommittedAgentFiles, String> {
+    let (dir, stamps) = (dir.to_path_buf(), stamps.clone());
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::history::committed_agent_files(&dir, &stamps.view())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+async fn history_save(
+    dir: &Path,
+    stamps: &RecordedStamps,
+    own_only: bool,
+) -> Result<usize, String> {
+    let (dir, stamps) = (dir.to_path_buf(), stamps.clone());
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::history::commit_agent_files(&dir, &stamps.view(), own_only)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn note_history_synced(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    key: &str,
+) -> Result<(), String> {
+    update_settings(app, state, |settings| {
+        if let Some(record) = settings.agent_files.get_mut(key) {
+            record.history_synced = true;
+            record.stamps_late = false;
+        }
+    })
+}
+
+/// Before the handoff, the project's git history as well as its folder: a Claude worktree or a checkout brings back what was committed. The app's own earlier stamps are saved without asking; anything else is listed on a sheet whose Save commits the checked files, and the handoff refuses until the history holds only those, or when it can't be read. `true` starts the session.
+pub(crate) async fn review_committed_agent_files(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    slug: &str,
+    dir: &Path,
+) -> Result<bool, String> {
+    let shown = crate::audit::field(slug);
+    let key = dir.to_string_lossy().into_owned();
+    let record = load_settings(app, state)?.agent_files.get(&key).cloned();
+    let synced = record.as_ref().is_some_and(|record| record.history_synced);
+    let late = record.as_ref().is_some_and(|record| record.stamps_late);
+    let stamps = RecordedStamps::of(record.as_ref());
+    let refused = |why: String| {
+        log::warn!(
+            "[kit] {shown}: Claude stays off, its git history can't be checked: {}",
+            crate::audit::field(&why)
+        );
+        format!(
+            "Claude stays off: Kookaburra Cut couldn't safely read this project's saved history (git), because {}. Remove that from the project's git setup, or start Claude from a terminal of your own.",
+            crate::clean_text::clean_name(&why)
+        )
+    };
+    let mut found = history_check(dir, &stamps).await.map_err(refused)?;
+    if found.listed().is_empty() && !found.own.is_empty() {
+        let saved = history_save(dir, &stamps, true).await.map_err(refused)?;
+        log::info!(
+            "[kit] {shown}: saved Kookaburra Cut's own updated files to its git history ({saved} changed)"
+        );
+        found = history_check(dir, &stamps).await.map_err(refused)?;
+    }
+    if found.is_clean() {
+        if !synced {
+            note_history_synced(app, state, &key)?;
+        }
+        return Ok(true);
+    }
+    let listed = found.listed();
+    let one_off = late && found.foreign.is_empty();
+    log::warn!(
+        "[kit] {shown}: Claude stays off, its git history holds agent files: {}",
+        crate::audit::field(&listed.join(", "))
+    );
+    let name = consent_project_name(dir, slug);
+    let declined = crate::native_alert::ask(
+        app,
+        "main",
+        crate::native_alert::Prompt {
+            title: &if one_off {
+                format!("Save “{name}”'s updated Claude files")
+            } else {
+                format!("“{name}” has other Claude files in its history")
+            },
+            body: &committed_sheet_body(&listed, one_off, &display_path(app, dir)),
+            default_button: "Not now",
+            other_button: "Save and Start Claude",
+        },
+    )
+    .await?;
+    if declined {
+        return Ok(false);
+    }
+    let saved = history_save(dir, &stamps, false).await.map_err(|e| {
+        format!("Claude stays off: Kookaburra Cut couldn't save the checked files to the history ({e}).")
+    })?;
+    let left = history_check(dir, &stamps).await.map_err(refused)?;
+    if !left.is_clean() {
+        let mut names = left.listed();
+        names.extend(left.own);
+        return Err(format!(
+            "Claude stays off: the history still holds {}.",
+            crate::clean_text::clean_name(&names.join(", "))
+        ));
+    }
+    note_history_synced(app, state, &key)?;
+    log::info!("[kit] {shown}: saved the checked agent files to its git history ({saved} changed)");
     Ok(true)
 }
 
@@ -2526,6 +2853,9 @@ fn forget_stored_at(settings: &mut AppSettings, landing: &Landing) -> Vec<String
     settings
         .trusted_projects
         .retain(|_, record| !landing.holds(Path::new(&record.path)));
+    settings
+        .agent_files
+        .retain(|key, _| !landing.holds(Path::new(key)));
     let mut dropped = Vec::new();
     settings.website_origin_grants.retain(|key, _| {
         let gone = landing.holds(Path::new(key));
@@ -3329,6 +3659,171 @@ mod tests {
         assert_eq!(blocked(&settings, &[]), None);
         let held = blocked(&settings, &[".mcp.json".to_owned()]).unwrap();
         assert!(held.contains(".mcp.json") && held.contains("Move or delete"), "{held}");
+    }
+
+    #[test]
+    fn a_folder_replaced_at_a_checked_path_is_checked_as_new() {
+        let dir = scratch_dir().join("product-tour");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("CLAUDE.md"), "# Mine\n\nKeep scenes short.\n").unwrap();
+        let mut record = AgentFilesRecord {
+            swept: true,
+            claude_md: root_claude_md(&dir).map(|(hash, _)| hash),
+            folder_created_ns: folder_created_ns(&dir),
+            ..AgentFilesRecord::default()
+        };
+        assert!(record.folder_created_ns.is_some());
+        let seen = |dir: &Path, record: &AgentFilesRecord| {
+            agent_files_seen(
+                Some(record),
+                folder_created_ns(dir),
+                root_claude_md(dir).as_ref(),
+            )
+        };
+        assert_eq!(
+            seen(&dir, &record),
+            (false, false),
+            "the same folder, unchanged"
+        );
+
+        std::fs::write(dir.join("CLAUDE.md"), "# Mine\n\nKeep scenes shorter.\n").unwrap();
+        assert_eq!(
+            seen(&dir, &record),
+            (false, true),
+            "an edit in place is shown again, not moved"
+        );
+        std::fs::write(
+            dir.join("CLAUDE.md"),
+            crate::kit::render_claude_md("Product tour"),
+        )
+        .unwrap();
+        assert_eq!(
+            seen(&dir, &record),
+            (false, false),
+            "a shipped default steers nothing"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("project.json"), "{}").unwrap();
+        std::fs::write(dir.join("CLAUDE.md"), "# Mine\n\nKeep scenes short.\n").unwrap();
+        assert_eq!(
+            seen(&dir, &record),
+            (true, false),
+            "same path and text, another folder"
+        );
+        crate::kit::sweep_agent_files(&dir, true);
+        assert!(std::fs::read_to_string(dir.join("NOTES.md"))
+            .unwrap()
+            .contains("Keep scenes short."));
+        assert!(!dir.join("CLAUDE.md").exists());
+
+        record.folder_created_ns = None;
+        assert!(
+            !seen(&dir, &record).0,
+            "a record from before this check adopts the folder"
+        );
+        assert_eq!(agent_files_seen(None, None, None), (true, false));
+    }
+
+    #[test]
+    fn a_changed_claude_md_reads_as_changed_on_the_review_sheet() {
+        let body = agent_files_sheet_body(&[CLAUDE_MD_CHANGED.into()], "~/w/p");
+        assert!(
+            body.contains("changed since Kookaburra Cut last checked"),
+            "{body}"
+        );
+        assert!(!body.contains("moved them"), "{body}");
+        let both = agent_files_sheet_body(
+            &["AGENTS.md → NOTES.md".into(), CLAUDE_MD_CHANGED.into()],
+            "~/w/p",
+        );
+        assert!(
+            both.contains("• AGENTS.md → NOTES.md") && both.contains("changed since"),
+            "{both}"
+        );
+        assert!(!both.contains(&format!("• {CLAUDE_MD_CHANGED}")), "{both}");
+    }
+
+    #[test]
+    fn the_history_sheet_names_each_file_and_the_one_next_step() {
+        let committed = committed_sheet_body(
+            &[".claude/settings.json".into(), "AGENTS.md".into()],
+            false,
+            "~/w/p",
+        );
+        assert!(
+            committed.contains("• .claude/settings.json\n• AGENTS.md"),
+            "{committed}"
+        );
+        assert!(
+            committed.contains("Save the checked files to the history"),
+            "{committed}"
+        );
+        assert!(!committed.contains("one-off"), "{committed}");
+        let after_update = committed_sheet_body(&[".claude/settings.json".into()], true, "~/w/p");
+        assert!(
+            after_update.contains("This is a one-off after updating"),
+            "{after_update}"
+        );
+    }
+
+    #[test]
+    fn a_new_stamp_keeps_the_one_it_replaces_as_earlier_and_stays_capped() {
+        let mut record = AgentFilesRecord::default();
+        record.note_stamp(vec!["a".into(), "b".into()]);
+        record.note_stamp(vec!["b".into(), "c".into()]);
+        assert_eq!(record.stamp, ["b", "c"]);
+        assert_eq!(record.stamped_before, ["a"]);
+        record.note_stamp(vec!["b".into(), "c".into()]);
+        assert_eq!(
+            record.stamped_before,
+            ["a"],
+            "an unchanged stamp adds nothing"
+        );
+        record.stamped_before = (0..STAMPED_BEFORE_CAP).map(|n| n.to_string()).collect();
+        record.note_stamp(vec!["d".into()]);
+        assert_eq!(record.stamped_before.len(), STAMPED_BEFORE_CAP);
+        assert_eq!(record.stamped_before.last().map(String::as_str), Some("c"));
+        assert_eq!(record.stamped_before.first().map(String::as_str), Some("2"));
+    }
+
+    #[test]
+    fn forgetting_a_folder_forgets_its_agent_file_record() {
+        let root = scratch_dir();
+        let mine = root.join("product-tour");
+        let other = root.join("other");
+        std::fs::create_dir_all(&mine).unwrap();
+        std::fs::create_dir_all(&other).unwrap();
+        let mut settings = AppSettings::default();
+        for dir in [&mine, &other] {
+            settings.agent_files.insert(
+                dir.to_string_lossy().into_owned(),
+                AgentFilesRecord {
+                    swept: true,
+                    ..Default::default()
+                },
+            );
+        }
+        forget_stored_at(&mut settings, &Landing::new(std::slice::from_ref(&mine)));
+        assert!(!settings.agent_files.contains_key(&*mine.to_string_lossy()));
+        assert!(settings.agent_files.contains_key(&*other.to_string_lossy()));
+    }
+
+    #[test]
+    fn a_new_workspace_folder_is_private_and_an_existing_one_keeps_its_mode() {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        let parent = scratch_dir();
+        let made = parent.join("nested").join("Kookaburra Cut");
+        ensure_layout(&made).unwrap();
+        assert_eq!(mode(&made), 0o700);
+        assert!(made.join(STATE_DIR_NAME).join("cache").is_dir());
+        let kept = parent.join("Existing");
+        std::fs::create_dir_all(&kept).unwrap();
+        std::fs::set_permissions(&kept, std::fs::Permissions::from_mode(0o755)).unwrap();
+        ensure_layout(&kept).unwrap();
+        assert_eq!(mode(&kept), 0o755);
     }
 
     #[test]

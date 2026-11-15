@@ -9,7 +9,7 @@ import math
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from . import lock as lockmod
 from . import music as musicmod
@@ -436,7 +436,7 @@ DOC_MAX_BYTES = 4 * 1024 * 1024
 MANIFEST_MAX_BYTES = 4 * 1024 * 1024
 CONFIRM_TIMEOUT_S = 300
 ABS_PATH = re.compile(r"^(?:~/|file:|/(?:Users|home|private|tmp|var|etc|Volumes|Applications|Library|System|opt|usr|bin)(?:/|$)|[A-Za-z]:[\\/])", re.I)
-REMOTE_SRC = re.compile(r"\b(?:src|href|url|map|texture|file|image|path)\s*[=:]\s*\{?\s*[\"'`]https?:", re.I)
+REMOTE_SRC = re.compile(r"\b(?:src|href|url|map|texture|file|image|path)\s*[=:]\s*(?:\{\s*)?[\"'`]https?:", re.I)
 REMOTE = re.compile(r"^https?:", re.I)
 HOST_REACH = re.compile(
     r"(?<![\w$.])(?:fetch|XMLHttpRequest|WebSocket|EventSource|importScripts|eval|Function|globalThis|window|document|self|navigator|localStorage|sessionStorage|indexedDB|postMessage|require)(?![\w$])"
@@ -536,15 +536,32 @@ def _walk_strings(value: Any, path: str = "") -> Any:
             yield from _walk_strings(item, f"{path}.{key}" if path else str(key))
 
 
+def quoted_runs(text: str) -> Iterator[str]:
+    r"""What `(["'`])((?:\\.|(?!\1).)*)\1` finds, in one pass: quotes close on their own line, and an escape never takes the line's last quote."""
+    for line in text.split("\n"):
+        last = {q: line.rfind(q) for q in "\"'`"}
+        i, n = 0, len(line)
+        while i < n:
+            q = line[i]
+            if q not in last or last[q] <= i:
+                i += 1
+                continue
+            j = i + 1
+            while line[j] != q:
+                j += 2 if line[j] == "\\" and j + 2 <= last[q] else 1
+            yield line[i + 1 : j]
+            i = j + 1
+
+
 def vet_tsx(rel: str, text: str) -> None:
     code = tsxmod.blank_comments_and_strings(text)
     hit = HOST_REACH.search(code)
     if hit:
         raise refused(f"{rel} line {tsxmod.line_of(code, hit.start())} uses {hit.group(0).strip()}, which reaches outside a scene; kb won't bring that in")
     bare = tsxmod.strip_comments(text)
-    for m in re.finditer(r"([\"'`])((?:\\.|(?!\1).)*)\1", bare):
-        if ABS_PATH.match(m.group(2)):
-            raise refused(f"{rel} names an absolute path ({m.group(2)[:80]}); assets belong in the project's assets/ folder")
+    for run in quoted_runs(bare):
+        if ABS_PATH.match(run):
+            raise refused(f"{rel} names an absolute path ({run[:80]}); assets belong in the project's assets/ folder")
     hit = REMOTE_SRC.search(bare)
     if hit:
         raise refused(f"{rel} loads something from the web ({hit.group(0)[:80]}); assets belong in the project's assets/ folder")

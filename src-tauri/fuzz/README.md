@@ -16,17 +16,23 @@ libFuzzer targets over the parsers that read untrusted bytes, reached through th
 
 Stable keeps the harness honest: `cargo test --manifest-path fuzz/Cargo.toml` (from `src-tauri`, with `CARGO_TARGET_DIR=target` to share the app's build) runs every body over its seeds and checks that `seeds/`, `fuzz_targets/` and the bodies agree. CI runs it on every rust job.
 
-Fuzzing needs nightly and cargo-fuzz (`rustup toolchain install nightly`, `cargo install --locked cargo-fuzz`), from `src-tauri`:
+Fuzzing needs the dated nightly in `nightly-toolchain` and cargo-fuzz, from `src-tauri`:
 
 ```bash
-export RUSTFLAGS='-Clink-arg=-Wl,-undefined,dynamic_lookup'
-cargo +nightly fuzz build -s none
-cargo +nightly fuzz run -s none edit_doc fuzz/corpus/edit_doc fuzz/seeds/edit_doc -- -max_total_time=60 -rss_limit_mb=2048 -max_len=65536
+export NIGHTLY="$(cat fuzz/nightly-toolchain)" RUSTFLAGS='-Clink-arg=-Wl,-undefined,dynamic_lookup'
+rustup toolchain install "$NIGHTLY" --profile minimal
+cargo install --locked cargo-fuzz@0.13.2
+cargo +"$NIGHTLY" fuzz build -s none
+cargo +"$NIGHTLY" fuzz run -s none edit_doc fuzz/corpus/edit_doc fuzz/seeds/edit_doc -- -max_total_time=60 -rss_limit_mb=2048 -max_len=65536
 ```
 
 The linker flag is for rten (via beat-this), which also declares a cdylib that cargo builds for a dependency and nothing links: under sancov that link misses a generic instance the fuzz binaries themselves carry, so undefined symbols are deferred rather than fatal.
 
 `.github/workflows/fuzz.yml` runs every target for a minute weekly, on demand, and on a PR touching the harness; a crash lands under `artifacts/` and fails the job.
+
+### Moving the nightly
+
+`nightly-toolchain` is the one place the date lives; the workflow reads it and refuses anything but `nightly-YYYY-MM-DD`. A floating nightly once broke the job with an internal compiler error, so move it on purpose: install a newer dated nightly, run the build above with `NIGHTLY` set to it, and if every target builds, write its name to the file. The pull request touches `fuzz/**`, so `fuzz.yml` runs on it with the new compiler. `nightly-2026-11-13` and later fail on `pathfinder_geometry` 0.5.1 under sancov; check that first.
 
 ## Seeds
 

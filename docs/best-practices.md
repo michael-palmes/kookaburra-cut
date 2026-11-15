@@ -1,10 +1,11 @@
 # OpenSSF Best Practices badge
 
-The answers behind the project's entry at
+The answers for the project's entry at
 [bestpractices.dev](https://www.bestpractices.dev/), one line per "passing"
 criterion, so the entry can be checked against the repository and refreshed
-when something changes. The entry is self-certified by the maintainer; this
-file is the record of what each answer rests on.
+when something changes. The entry is not registered yet, which is why the
+OpenSSF Scorecard reports no badge. Once it is, it is self-certified by the
+maintainer; this file is the record of what each answer rests on.
 
 Project page: the repository itself (README, docs, releases). Languages:
 TypeScript, Rust.
@@ -99,7 +100,7 @@ TypeScript, Rust.
 |---|---|---|
 | static_analysis | Met | CodeQL (JavaScript/TypeScript, Rust, Actions, Python), clippy, biome, OpenSSF Scorecard. |
 | static_analysis_common_vulnerabilities | Met | CodeQL's security queries. |
-| static_analysis_fixed | Met | Open Scorecard alerts are the checks this file's own pull requests close; the one CodeQL alert points inside Tauri's `generate_context!` expansion (a hard-coded value the macro emits, not an app key or nonce) and is dismissed as a false positive. |
+| static_analysis_fixed | Met | CodeQL findings are fixed in the next release or, when they do not hold, dismissed with the reason. The one that does not hold ties a hard-coded value to the `trust_project` command's `nonce` argument by its name alone; that nonce is 32 random bytes from the OS. The Scorecard's Branch-Protection and Code-Review checks stay below full because one maintainer merges through the admin bypass (`SECURITY.md`, "Release integrity"). |
 | static_analysis_often | Met | On every pull request and push, plus weekly. |
 | dynamic_analysis | Met | The determinism gate exports every gate project twice and compares bytes before a merge; cargo-fuzz runs weekly over the untrusted-input parsers. |
 | dynamic_analysis_unsafe | Unmet | The `unsafe` blocks (objc2 and libc bridges) are allow-listed, each with a SAFETY line (`docs/decisions.md`, "unsafe is an allow-list"), but none runs under a sanitiser. |

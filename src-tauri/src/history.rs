@@ -240,6 +240,375 @@ pub(crate) fn agent_git_verdict(dir: &Path) -> Result<(), String> {
     }
 }
 
+const AGENT_FILES_COMMIT: &str = "chore: keep the agent files Kookaburra Cut checked";
+const LITERAL_PATHS: [(&str, &str); 1] = [("GIT_LITERAL_PATHSPECS", "1")];
+
+/// Agent files a worktree or a checkout would bring back: `HEAD`'s and the index's, each set by path.
+#[derive(Default)]
+struct Differing {
+    head: std::collections::BTreeSet<String>,
+    index: std::collections::BTreeSet<String>,
+    /// Every agent entry read, as `(index, path, mode, object, stage)`.
+    entries: Vec<(bool, String, String, String, String)>,
+}
+
+/// What the history holds that the swept folder doesn't, by who wrote it.
+#[derive(Debug, Default, PartialEq)]
+pub(crate) struct CommittedAgentFiles {
+    /// The app's own earlier stamps, with the folder holding its latest: saved without asking.
+    pub own: Vec<String>,
+    /// App-owned paths whose committed copy the app has no record of writing.
+    pub unrecorded: Vec<String>,
+    pub foreign: Vec<String>,
+}
+
+impl CommittedAgentFiles {
+    /// What the person is shown: everything the app can't vouch for.
+    pub fn listed(&self) -> Vec<String> {
+        let mut listed: Vec<String> = self
+            .unrecorded
+            .iter()
+            .chain(&self.foreign)
+            .cloned()
+            .collect();
+        listed.sort();
+        listed
+    }
+
+    pub fn is_clean(&self) -> bool {
+        self.own.is_empty() && self.unrecorded.is_empty() && self.foreign.is_empty()
+    }
+}
+
+/// The app's record of what it stamped in a project, kept outside the folder (`kit::stamp_key` keys).
+pub(crate) struct Stamps<'a> {
+    pub latest: &'a std::collections::HashSet<String>,
+    pub earlier: &'a std::collections::HashSet<String>,
+}
+
+/// Whether the folder's copy at `rel` is the latest stamp, or gone because the new kit dropped it.
+fn folder_holds_latest(dir: &Path, rel: &str, latest: &std::collections::HashSet<String>) -> bool {
+    if !plain_file_in(dir, rel) {
+        return std::fs::symlink_metadata(dir.join(rel)).is_err()
+            && crate::kit::in_shipped_skill(rel);
+    }
+    let path = dir.join(rel);
+    std::fs::symlink_metadata(&path).is_ok_and(|meta| meta.len() <= crate::kit::STAMP_FILE_MAX)
+        && std::fs::read(&path)
+            .is_ok_and(|bytes| latest.contains(&crate::kit::stamp_key(rel, &bytes)))
+}
+
+/// Each object's bytes, in order, or `None` for one that isn't a blob of at most `kit::STAMP_FILE_MAX`; sizes are asked first so a huge object is never read.
+fn blob_contents(dir: &Path, oids: &[&str]) -> Result<Vec<Option<Vec<u8>>>, String> {
+    if oids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let ask = |args: &[&str], wanted: &[&str]| -> Result<Vec<u8>, String> {
+        let input: String = wanted.iter().map(|oid| format!("{oid}\n")).collect();
+        let out = git_output(dir, args, &[], Some(input.as_bytes()))?;
+        if out.status.success() {
+            Ok(out.stdout)
+        } else {
+            Err("git couldn't read the history's files".into())
+        }
+    };
+    let checked = ask(&["cat-file", "--batch-check"], oids)?;
+    let small: Vec<bool> = String::from_utf8_lossy(&checked)
+        .lines()
+        .map(|line| {
+            let mut parts = line.split(' ');
+            parts.nth(1) == Some("blob")
+                && parts
+                    .next()
+                    .and_then(|size| size.parse::<u64>().ok())
+                    .is_some_and(|size| size <= crate::kit::STAMP_FILE_MAX)
+        })
+        .collect();
+    if small.len() != oids.len() {
+        return Err("git's answer ended early".into());
+    }
+    let fetch: Vec<&str> = oids
+        .iter()
+        .zip(&small)
+        .filter_map(|(oid, small)| small.then_some(*oid))
+        .collect();
+    let mut rest: &[u8] = &if fetch.is_empty() {
+        Vec::new()
+    } else {
+        ask(&["cat-file", "--batch"], &fetch)?
+    };
+    let mut blobs = Vec::with_capacity(oids.len());
+    for small in small {
+        if !small {
+            blobs.push(None);
+            continue;
+        }
+        let end = rest
+            .iter()
+            .position(|b| *b == b'\n')
+            .ok_or("git's answer ended early")?;
+        let header = String::from_utf8_lossy(&rest[..end]).into_owned();
+        let size: usize = header
+            .split(' ')
+            .nth(2)
+            .and_then(|size| size.parse().ok())
+            .ok_or("git gave a size it can't have")?;
+        let body = rest
+            .get(end + 1..end + 1 + size)
+            .ok_or("git's answer ended early")?;
+        blobs.push(Some(body.to_vec()));
+        rest = rest.get(end + 2 + size..).unwrap_or_default();
+    }
+    Ok(blobs)
+}
+
+fn classify(dir: &Path, found: &Differing, stamps: &Stamps) -> Result<CommittedAgentFiles, String> {
+    let mut out = CommittedAgentFiles::default();
+    let mut candidates: Vec<(String, Vec<&str>)> = Vec::new();
+    for rel in found.head.union(&found.index) {
+        let entries: Vec<_> = found
+            .entries
+            .iter()
+            .filter(|(in_index, path, ..)| {
+                path == rel
+                    && if *in_index {
+                        found.index.contains(rel)
+                    } else {
+                        found.head.contains(rel)
+                    }
+            })
+            .collect();
+        let regular = entries.iter().all(|(_, _, mode, _, stage)| {
+            matches!(mode.as_str(), "100644" | "100755") && stage == "0"
+        });
+        if !crate::kit::app_owned(rel) || !regular || !folder_holds_latest(dir, rel, stamps.latest)
+        {
+            out.foreign.push(rel.clone());
+        } else {
+            candidates.push((
+                rel.clone(),
+                entries
+                    .iter()
+                    .map(|(_, _, _, oid, _)| oid.as_str())
+                    .collect(),
+            ));
+        }
+    }
+    let oids: Vec<&str> = candidates
+        .iter()
+        .flat_map(|(_, oids)| oids.iter().copied())
+        .collect();
+    let mut blobs = blob_contents(dir, &oids)?.into_iter();
+    for (rel, oids) in candidates {
+        let mine: Vec<Option<Vec<u8>>> = blobs.by_ref().take(oids.len()).collect();
+        let recorded = mine.len() == oids.len()
+            && mine.iter().all(|bytes| {
+                bytes.as_ref().is_some_and(|bytes| {
+                    let key = crate::kit::stamp_key(&rel, bytes);
+                    stamps.earlier.contains(&key) || stamps.latest.contains(&key)
+                })
+            });
+        if recorded {
+            out.own.push(rel);
+        } else {
+            out.unrecorded.push(rel);
+        }
+    }
+    Ok(out)
+}
+
+/// A regular file at `rel` reached through real folders only, as the sweep leaves them.
+fn plain_file_in(dir: &Path, rel: &str) -> bool {
+    let parts: Vec<&str> = rel.split('/').collect();
+    let mut at = dir.to_path_buf();
+    for (i, part) in parts.iter().enumerate() {
+        at.push(part);
+        let Ok(meta) = std::fs::symlink_metadata(&at) else {
+            return false;
+        };
+        let last = i + 1 == parts.len();
+        if (last && !meta.is_file()) || (!last && !meta.is_dir()) {
+            return false;
+        }
+    }
+    true
+}
+
+/// `(path, mode, object, stage)` for each agent file a `-z` listing names; `index` reads `ls-files -s`, otherwise `ls-tree`.
+fn agent_entries(listing: &str, index: bool) -> Vec<(String, String, String, String)> {
+    listing
+        .split('\0')
+        .filter_map(|record| {
+            let (meta, rel) = record.split_once('\t')?;
+            let mut meta = meta.split_whitespace();
+            let mode = meta.next()?.to_owned();
+            let (oid, stage) = if index {
+                (meta.next()?.to_owned(), meta.next()?.to_owned())
+            } else {
+                (meta.nth(1)?.to_owned(), "0".to_owned())
+            };
+            crate::kit::steers_agent(rel).then(|| (rel.to_owned(), mode, oid, stage))
+        })
+        .collect()
+}
+
+fn has_head(dir: &Path) -> Result<bool, String> {
+    let out = git_output(
+        dir,
+        &["rev-parse", "-q", "--verify", "HEAD^{commit}"],
+        &[],
+        None,
+    )?;
+    match out.status.code() {
+        Some(0) => Ok(true),
+        Some(1) if out.stdout.is_empty() => Ok(false),
+        _ => Err(format!(
+            "git couldn't read HEAD: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        )),
+    }
+}
+
+fn differing(dir: &Path) -> Result<Differing, String> {
+    let mut found = Differing::default();
+    if std::fs::symlink_metadata(dir.join(".git")).is_err() {
+        return Ok(found);
+    }
+    if !git_usable() {
+        return Err("git isn't set up on this Mac".into());
+    }
+    refuse_foreign(dir)?;
+    let head = if has_head(dir)? {
+        git(dir, &["ls-tree", "-r", "-z", "--full-tree", "HEAD"])?
+    } else {
+        String::new()
+    };
+    let index = git(dir, &["ls-files", "-s", "-z"])?;
+    let mut entries: Vec<(bool, String, String)> = Vec::new();
+    for (in_index, listing) in [(false, &head), (true, &index)] {
+        for (rel, mode, oid, stage) in agent_entries(listing, in_index) {
+            found.entries.push((
+                in_index,
+                rel.clone(),
+                mode.clone(),
+                oid.clone(),
+                stage.clone(),
+            ));
+            let into = if in_index {
+                &mut found.index
+            } else {
+                &mut found.head
+            };
+            match mode.as_str() {
+                // A gitlink checks out as an empty folder: nothing in it reaches the agent.
+                "160000" => {}
+                "120000" => {
+                    into.insert(rel);
+                }
+                _ if stage != "0" || rel.contains('\n') || !plain_file_in(dir, &rel) => {
+                    into.insert(rel);
+                }
+                _ => entries.push((in_index, rel, oid)),
+            }
+        }
+    }
+    entries.retain(|(in_index, rel, oid)| {
+        let kept_default = rel == "CLAUDE.md"
+            && blob_contents(dir, &[oid.as_str()]).is_ok_and(|blobs| {
+                blobs.into_iter().flatten().next().is_some_and(|bytes| {
+                    std::str::from_utf8(&bytes).is_ok_and(crate::kit::is_default_claude_md)
+                })
+            });
+        if kept_default {
+            return false;
+        }
+        let set = if *in_index { &found.index } else { &found.head };
+        !set.contains(rel)
+    });
+    if entries.is_empty() {
+        return Ok(found);
+    }
+    let paths: String = entries
+        .iter()
+        .map(|(_, rel, _)| format!("{rel}\n"))
+        .collect();
+    let hashed = git_env(
+        dir,
+        &["hash-object", "--stdin-paths"],
+        &[],
+        Some(paths.as_bytes()),
+    )?;
+    let hashed: Vec<&str> = hashed.lines().collect();
+    if hashed.len() != entries.len() {
+        return Err("git hashed a different number of files than it was given".into());
+    }
+    for ((in_index, rel, oid), now) in entries.into_iter().zip(hashed) {
+        if now.trim() != oid {
+            if in_index {
+                found.index.insert(rel);
+            } else {
+                found.head.insert(rel);
+            }
+        }
+    }
+    Ok(found)
+}
+
+/// Agent files the project's git holds that the swept folder doesn't, byte for byte: what a Claude worktree or a checkout would bring back, sorted by whether the app wrote them. A gitlink, and a root `CLAUDE.md` that is still a shipped default, don't count. `Err` when git can't be asked, which keeps Claude off.
+pub(crate) fn committed_agent_files(
+    dir: &Path,
+    stamps: &Stamps,
+) -> Result<CommittedAgentFiles, String> {
+    classify(dir, &differing(dir)?, stamps)
+}
+
+/// Save the folder's own copy of each file `HEAD` differs on (or its removal, where the sweep moved it) in one commit of those paths alone, and put back `HEAD`'s entry for each the index alone differs on; anything else staged stays staged. Returns how many `HEAD` paths changed.
+/// With `own_only`, refuses unless every difference is the app's own earlier stamp: the commit made without asking.
+pub(crate) fn commit_agent_files(
+    dir: &Path,
+    stamps: &Stamps,
+    own_only: bool,
+) -> Result<usize, String> {
+    let found = differing(dir)?;
+    let sorted = classify(dir, &found, stamps)?;
+    if own_only && !(sorted.unrecorded.is_empty() && sorted.foreign.is_empty()) {
+        return Err("the history holds files Kookaburra Cut didn't write".into());
+    }
+    let index_only: Vec<&str> = found
+        .index
+        .difference(&found.head)
+        .map(String::as_str)
+        .collect();
+    if !index_only.is_empty() {
+        let mut restore = if has_head(dir)? {
+            vec!["reset", "-q", "--"]
+        } else {
+            vec!["rm", "-q", "--cached", "--ignore-unmatch", "--"]
+        };
+        restore.extend(&index_only);
+        git_env(dir, &restore, &LITERAL_PATHS, None)?;
+    }
+    if found.head.is_empty() {
+        return Ok(0);
+    }
+    let mut add = vec!["add", "-A", "--"];
+    add.extend(found.head.iter().map(String::as_str));
+    git_env(dir, &add, &LITERAL_PATHS, None)?;
+    let mut commit: Vec<&str> = IDENTITY.to_vec();
+    commit.extend([
+        "commit",
+        "-q",
+        "--no-verify",
+        "--only",
+        "-m",
+        AGENT_FILES_COMMIT,
+        "--",
+    ]);
+    commit.extend(found.head.iter().map(String::as_str));
+    git_env(dir, &commit, &LITERAL_PATHS, None)?;
+    Ok(found.head.len())
+}
+
 fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
     git_env(dir, args, &[], None)
 }
@@ -250,6 +619,23 @@ fn git_env(
     env: &[(&str, &str)],
     stdin: Option<&[u8]>,
 ) -> Result<String, String> {
+    let out = git_output(dir, args, env, stdin)?;
+    if !out.status.success() {
+        return Err(format!(
+            "git {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+fn git_output(
+    dir: &Path,
+    args: &[&str],
+    env: &[(&str, &str)],
+    stdin: Option<&[u8]>,
+) -> Result<std::process::Output, String> {
     use std::io::Write;
     use std::process::Stdio;
     let mut command = isolated_git();
@@ -274,15 +660,7 @@ fn git_env(
     if let (Some(bytes), Some(mut pipe)) = (stdin, child.stdin.take()) {
         pipe.write_all(bytes).map_err(|e| e.to_string())?;
     }
-    let out = child.wait_with_output().map_err(|e| e.to_string())?;
-    if !out.status.success() {
-        return Err(format!(
-            "git {} failed: {}",
-            args.join(" "),
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
-    }
-    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    child.wait_with_output().map_err(|e| e.to_string())
 }
 
 /// `.git/info/exclude` carries the excluded folders (the kit's `kb` appends its own lines to the same file).
@@ -894,6 +1272,226 @@ mod tests {
         );
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::remove_dir_all(&nested);
+    }
+
+    fn commit_all(dir: &Path, message: &str) {
+        git(dir, &["add", "-A"]).unwrap();
+        let mut args: Vec<&str> = IDENTITY.to_vec();
+        args.extend(["commit", "-q", "--no-verify", "-m", message]);
+        git(dir, &args).unwrap();
+    }
+
+    #[test]
+    fn agent_files_only_the_history_still_holds_are_found_and_saved_clean() {
+        let dir = temp("committed-agent-files");
+        let none = std::collections::HashSet::new();
+        let stamps = Stamps {
+            latest: &none,
+            earlier: &none,
+        };
+        assert!(
+            committed_agent_files(&dir, &stamps).unwrap().is_clean(),
+            "no git, nothing committed"
+        );
+        let default_md = crate::kit::render_claude_md("Product tour");
+        std::fs::write(dir.join("CLAUDE.md"), &default_md).unwrap();
+        std::fs::create_dir_all(dir.join(".claude/skills/kookaburra-scene-authoring")).unwrap();
+        std::fs::write(dir.join(".claude/settings.json"), "{}\n").unwrap();
+        std::fs::write(
+            dir.join(".claude/skills/kookaburra-scene-authoring/kb.py"),
+            "ok\n",
+        )
+        .unwrap();
+        init_repo(&dir, "chore: create project").unwrap();
+        assert!(
+            committed_agent_files(&dir, &stamps).unwrap().is_clean(),
+            "the app's own first commit is clean"
+        );
+
+        std::fs::write(dir.join(".claude/settings.json"), "{\"hooks\":{\"x\":1}}\n").unwrap();
+        std::fs::write(dir.join("AGENTſ.md"), "steer\n").unwrap();
+        std::fs::create_dir_all(dir.join("scenes/.CLAUDE")).unwrap();
+        std::fs::write(dir.join("scenes/.CLAUDE/commands.md"), "steer\n").unwrap();
+        std::os::unix::fs::symlink("/etc/hosts", dir.join(".mcp.json")).unwrap();
+        commit_all(&dir, "shared");
+        std::fs::write(dir.join("CLAUDE.md"), "# Mine\n").unwrap();
+        commit_all(&dir, "my rules");
+        // The sweep and stamp put the folder back; the history keeps what came in.
+        std::fs::write(dir.join(".claude/settings.json"), "{}\n").unwrap();
+        std::fs::remove_file(dir.join("AGENTſ.md")).unwrap();
+        std::fs::remove_dir_all(dir.join("scenes/.CLAUDE")).unwrap();
+        std::fs::remove_file(dir.join(".mcp.json")).unwrap();
+        std::fs::write(dir.join("CLAUDE.md"), &default_md).unwrap();
+        std::fs::write(dir.join("scenes/intro.tsx"), "export default 2;\n").unwrap();
+        git(&dir, &["add", "scenes/intro.tsx"]).unwrap();
+        std::fs::write(dir.join("kb"), "#!/bin/sh\nplanted\n").unwrap();
+        git(&dir, &["add", "-f", "kb"]).unwrap();
+        std::fs::write(dir.join("kb"), "#!/bin/sh\n").unwrap();
+
+        let found = committed_agent_files(&dir, &stamps).unwrap().listed();
+        assert_eq!(
+            found,
+            [
+                ".claude/settings.json",
+                ".mcp.json",
+                "AGENTſ.md",
+                "CLAUDE.md",
+                "kb",
+                "scenes/.CLAUDE/commands.md"
+            ]
+        );
+        assert_eq!(commit_agent_files(&dir, &stamps, false).unwrap(), 5);
+        assert!(
+            committed_agent_files(&dir, &stamps).unwrap().is_clean(),
+            "{:?}",
+            committed_agent_files(&dir, &stamps)
+        );
+        let staged = git(&dir, &["diff", "--cached", "--name-only"]).unwrap();
+        assert_eq!(
+            staged.trim(),
+            "scenes/intro.tsx",
+            "other staged work stays staged"
+        );
+        let last = git(&dir, &["log", "-1", "--name-only", "--format=%s"]).unwrap();
+        assert!(last.starts_with(AGENT_FILES_COMMIT), "{last}");
+        assert!(!last.contains("intro.tsx"), "{last}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_apps_own_earlier_stamps_save_without_asking_and_nothing_else_does() {
+        let dir = temp("committed-own-stamps");
+        let skill = ".claude/skills/kookaburra-scene-authoring";
+        std::fs::create_dir_all(dir.join(skill)).unwrap();
+        std::fs::write(dir.join(skill).join("RULES.md"), "v1\n").unwrap();
+        std::fs::write(dir.join(skill).join("old.md"), "dropped later\n").unwrap();
+        std::fs::write(dir.join(".claude/settings.json"), "{}\n").unwrap();
+        init_repo(&dir, "chore: create project").unwrap();
+        let first: std::collections::HashSet<String> =
+            crate::kit::own_stamp(&dir, &crate::kit::SHIPPED_SKILLS)
+                .into_iter()
+                .collect();
+
+        // An update restamps the folder; the history still holds the first stamp.
+        std::fs::write(dir.join(skill).join("RULES.md"), "v2\n").unwrap();
+        std::fs::remove_file(dir.join(skill).join("old.md")).unwrap();
+        std::fs::write(dir.join(".claude/settings.json"), "{\"v\":2}\n").unwrap();
+        let latest: std::collections::HashSet<String> =
+            crate::kit::own_stamp(&dir, &crate::kit::SHIPPED_SKILLS)
+                .into_iter()
+                .collect();
+        let earlier: std::collections::HashSet<String> =
+            first.difference(&latest).cloned().collect();
+        let none = std::collections::HashSet::new();
+        let recorded = Stamps {
+            latest: &latest,
+            earlier: &earlier,
+        };
+        let unrecorded = Stamps {
+            latest: &latest,
+            earlier: &none,
+        };
+
+        let legacy = committed_agent_files(&dir, &unrecorded).unwrap();
+        assert!(
+            legacy.own.is_empty() && legacy.foreign.is_empty(),
+            "{legacy:?}"
+        );
+        assert_eq!(
+            legacy.unrecorded.len(),
+            3,
+            "no record of the first stamp: shown once"
+        );
+
+        let found = committed_agent_files(&dir, &recorded).unwrap();
+        assert_eq!(
+            found.own,
+            [
+                ".claude/settings.json".to_owned(),
+                format!("{skill}/RULES.md"),
+                format!("{skill}/old.md")
+            ]
+        );
+        assert!(found.listed().is_empty());
+        assert_eq!(commit_agent_files(&dir, &recorded, true).unwrap(), 3);
+        assert!(committed_agent_files(&dir, &recorded).unwrap().is_clean());
+
+        // A copy the app never wrote, at a path it owns or not, is never saved without asking.
+        std::fs::write(dir.join(skill).join("RULES.md"), "planted\n").unwrap();
+        std::fs::create_dir_all(dir.join(".claude/commands")).unwrap();
+        std::fs::write(dir.join(".claude/commands/go.md"), "steer\n").unwrap();
+        commit_all(&dir, "shared");
+        std::fs::write(dir.join(skill).join("RULES.md"), "v2\n").unwrap();
+        std::fs::remove_dir_all(dir.join(".claude/commands")).unwrap();
+        let found = committed_agent_files(&dir, &recorded).unwrap();
+        assert_eq!(found.unrecorded, [format!("{skill}/RULES.md")]);
+        assert_eq!(found.foreign, [".claude/commands/go.md"]);
+        assert!(commit_agent_files(&dir, &recorded, true).is_err());
+        assert!(git(&dir, &["log", "-1", "--format=%s"])
+            .unwrap()
+            .starts_with("shared"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn each_path_is_judged_by_its_own_copies_and_a_huge_one_is_never_read() {
+        let dir = temp("committed-alignment");
+        let skill = ".claude/skills/kookaburra-scene-authoring";
+        std::fs::create_dir_all(dir.join(skill)).unwrap();
+        for name in ["a.md", "b.md", "c.md"] {
+            std::fs::write(dir.join(skill).join(name), format!("{name} v1\n")).unwrap();
+        }
+        init_repo(&dir, "chore: create project").unwrap();
+        let stamp = |dir: &Path| -> std::collections::HashSet<String> {
+            crate::kit::own_stamp(dir, &crate::kit::SHIPPED_SKILLS)
+                .into_iter()
+                .collect()
+        };
+        let first = stamp(&dir);
+        // a.md: a planted copy in HEAD and another staged; b.md: the app's own earlier stamp; c.md: too big to read.
+        std::fs::write(dir.join(skill).join("a.md"), "planted\n").unwrap();
+        std::fs::write(
+            dir.join(skill).join("c.md"),
+            vec![b'x'; (crate::kit::STAMP_FILE_MAX + 1) as usize],
+        )
+        .unwrap();
+        commit_all(&dir, "shared");
+        std::fs::write(dir.join(skill).join("a.md"), "staged\n").unwrap();
+        git(&dir, &["add", "--", &format!("{skill}/a.md")]).unwrap();
+        for name in ["a.md", "b.md", "c.md"] {
+            std::fs::write(dir.join(skill).join(name), format!("{name} v2\n")).unwrap();
+        }
+        let latest = stamp(&dir);
+        let earlier: std::collections::HashSet<String> =
+            first.difference(&latest).cloned().collect();
+        let found = committed_agent_files(
+            &dir,
+            &Stamps {
+                latest: &latest,
+                earlier: &earlier,
+            },
+        )
+        .unwrap();
+        assert_eq!(found.own, [format!("{skill}/b.md")], "{found:?}");
+        assert_eq!(
+            found.unrecorded,
+            [format!("{skill}/a.md"), format!("{skill}/c.md")]
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_history_git_cant_be_trusted_with_is_never_passed_as_clean() {
+        let dir = temp("committed-agent-files-foreign");
+        init_repo(&dir, "chore: create project").unwrap();
+        git(&dir, &["config", "core.pager", "less"]).unwrap();
+        let none = std::collections::HashSet::new();
+        let stamps = Stamps {
+            latest: &none,
+            earlier: &none,
+        };
+        assert!(committed_agent_files(&dir, &stamps).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

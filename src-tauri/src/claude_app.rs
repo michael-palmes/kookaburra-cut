@@ -118,7 +118,12 @@ pub async fn open_in_claude(
     if !workspace::review_agent_files_for(&app, &state, &slug, &dir).await? {
         return Err("Claude stays off until you've looked at what moved. Open it again when you're ready; the text is in NOTES.md.".into());
     }
-    open_in_background(code_session_link(&dir, prompt.as_deref())).await
+    if !workspace::review_committed_agent_files(&app, &state, &slug, &dir).await? {
+        return Err("Claude stays off until the project's history holds only the checked files. Open it again when you're ready.".into());
+    }
+    open_in_background(code_session_link(&dir, prompt.as_deref())).await?;
+    log::info!("{}", crate::audit::handoff_line(&slug, &dir));
+    Ok(())
 }
 
 /// `open_target` off the main thread, which sync commands would otherwise hold while `open` runs.

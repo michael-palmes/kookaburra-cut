@@ -20,7 +20,7 @@ mechanism for a step yet, the step says so.
 | Developer ID certificate | The `release` environment (`DEVELOPER_ID_P12`) and an encrypted offline backup | Sign a Mac app as this project's Team ID |
 | Notary API key | The `release` environment (`NOTARY_KEY_P8`) | Notarise a build with Apple |
 | Updater key | The `release` environment (`TAURI_SIGNING_PRIVATE_KEY`) and an encrypted offline backup | Sign an update archive the app installs, checked against `plugins.updater.pubkey` in `src-tauri/tauri.conf.json` |
-| The GitHub account | The maintainer | Everything above: it administers the repository, edits the signer lists and approves the `release` environment ([SECURITY.md, "Release integrity"](../SECURITY.md#release-integrity)) |
+| The GitHub account | The maintainer | Everything above: it administers the repository, edits the signer lists and the `release` environment's reviewers ([SECURITY.md, "Release integrity"](../SECURITY.md#release-integrity)) |
 
 ## What the maintainer does
 

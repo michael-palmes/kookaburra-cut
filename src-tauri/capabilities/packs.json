@@ -4,8 +4,10 @@
   "description": "The packs window: export and import .kbpack files. Needs dialog for the Save and Open pickers; every filesystem touch goes through path-confined Rust commands, never an fs capability.",
   "windows": ["packs"],
   "permissions": [
-    "core:default",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
     "core:window:allow-start-dragging",
+    "core:window:allow-internal-toggle-maximize",
     "core:window:allow-close",
     "core:window:allow-destroy",
     "dialog:default",

@@ -72,6 +72,7 @@ describe("managed policy read", () => {
       true,
     );
     expect(policy.allowedPublisherKeyIds).toEqual([]);
+    expect(policy.allowedWebsiteOrigins).toEqual([]);
     expect(policy.disableAgentKit && policy.disablePackExport && policy.exportsInProject).toBe(
       true,
     );
@@ -119,5 +120,36 @@ describe("managed policy helpers", () => {
     expect(m.updateChecksLocked(broken)).toBe(true);
     expect(m.updateServerHost(broken)).toBeNull();
     expect(m.updateChecksLocked({ ...m.UNMANAGED, disableUpdateCheck: true })).toBe(true);
+  });
+
+  it("allows a scene's website only on an exact origin match", async () => {
+    const m = await fresh();
+    const listed = {
+      ...m.UNMANAGED,
+      allowedWebsiteOrigins: ["https://product.example.com", "http://localhost:5173"],
+    };
+    expect(m.websiteOriginAllowed(listed, "https://product.example.com/launch?x=1")).toBe(true);
+    expect(m.websiteOriginAllowed(listed, "https://PRODUCT.example.com:443/")).toBe(true);
+    expect(m.websiteOriginAllowed(listed, "http://localhost:5173/demo")).toBe(true);
+    for (const url of [
+      "https://www.product.example.com",
+      "https://product.example.com.evil.test",
+      "http://product.example.com",
+      "https://product.example.com:8443",
+      "http://127.0.0.1:5173",
+      "not a url",
+    ]) {
+      expect(m.websiteOriginAllowed(listed, url), url).toBe(false);
+    }
+    expect(m.websiteOriginAllowed({ ...listed, allowedWebsiteOrigins: [] }, "https://a.test")).toBe(
+      false,
+    );
+    expect(
+      m.websiteOriginAllowed(
+        { ...listed, disableLiveWebsites: true },
+        listed.allowedWebsiteOrigins[0],
+      ),
+    ).toBe(false);
+    expect(m.websiteOriginAllowed(m.UNMANAGED, "https://anything.example.com")).toBe(true);
   });
 });

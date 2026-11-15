@@ -176,10 +176,11 @@ def line_of(src: str, index: int) -> int:
 
 
 IMPORT_RE = re.compile(
-    r"(?m)^[ \t]*import\s+(type\s+)?((?:[\w$]+\s*,?\s*)?(?:\{[^}]*\})?\s*(?:\*\s*as\s+[\w$]+)?)\s*from\s*([\"'])([^\"']+)\3"
+    r"(?m)^[ \t]*import\s+(type\s+)?((?:[\w$]+\s*(?:,\s*)?)?(?:\{[^}]*\}\s*)?(?:\*\s*as\s+[\w$]+\s*)?)from\s*([\"'])([^\"']+)\3"
 )
 BARE_IMPORT_RE = re.compile(r"(?m)^[ \t]*import\s*([\"'])([^\"']+)\1")
 DYNAMIC_IMPORT_RE = re.compile(r"\b(import|require)\s*\(")
+TOOLKIT_BRACES = re.compile(r"import\s*\{([^}]*)(\}\s*from\s*[\"']@kookaburra/toolkit[\"'])?")
 EXPORT_FROM_RE = re.compile(r"(?m)^[ \t]*export\s+(?:\*|\{[^}]*\})\s*from\s*([\"'])([^\"']+)\1")
 
 
@@ -219,7 +220,9 @@ def local_bindings(src: str) -> Set[str]:
     for imp in parse_imports(src):
         if imp.specifier == TOOLKIT:
             names.update(imp.names)
-    for m in re.finditer(r"import\s*\{([^}]*)\}\s*from\s*[\"']@kookaburra/toolkit[\"']", src):
+    for m in TOOLKIT_BRACES.finditer(src):
+        if not m.group(2):
+            continue
         for part in m.group(1).split(","):
             part = part.strip()
             if " as " in part:
@@ -385,7 +388,7 @@ def scene_ids_in(texts: Dict[str, str]) -> Dict[str, List[str]]:
     return owners
 
 
-_DEFINED_DURATION = re.compile(r"defineScene\(\s*\{[^}]*?\bdurationMs\s*:\s*([0-9]+(?:\.[0-9]+)?)")
+_DEFINED_DURATION = re.compile(r"defineScene\(\s*\{(?:(?!defineScene\(\s*\{)[^}])*?\bdurationMs\s*:\s*([0-9]+(?:\.[0-9]+)?)")
 
 
 def defined_duration(text: str) -> Optional[float]:

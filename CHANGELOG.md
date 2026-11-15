@@ -38,6 +38,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The app now carries the licences of everything inside it: the GPL texts of
   ffmpeg, x264 and x265, and the licence of every npm package and Rust crate.
   Settings ▸ About ▸ Acknowledgements shows them in Finder.
+- An eleventh managed preference, `AllowedWebsiteOrigins`, lets live websites
+  open only from the sites your organisation lists, matched exactly. A site off
+  the list never asks, a site allowed before the profile stops working, and
+  Settings ▸ Website data shows the list with a lock. See `docs/mdm.md`.
 
 ### Changed
 
@@ -47,6 +51,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- Each window now holds only the Tauri permissions its own code uses, never
+  the default set: no window can reach the menu or tray, and only the windows
+  that announce changes can send events to the others.
+- A pull request that adds an HTTP client crate now fails the dependency
+  policy: the updater is the only code that fetches over HTTP.
+- A second reviewer is now asked to review every file where a trust decision
+  lives: the Allow gate, the agent kit, git history, the Claude handoff, the
+  bridge, live websites, the log, the window permissions and the stage worker.
 - A shared folder's git can no longer run a program through Claude's own git
   commands. Hooks a folder arrives with move into `.git` on its first open and
   are listed before Claude starts. Where a folder's git settings name a program,
@@ -112,6 +124,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A new app icon is checked like any dropped image: only a workspace file, its
   real format read from its bytes, capped in size, and decoded before it lands as
   a plain PNG. A file that fails keeps the old icon.
+- Edit with Claude now checks the project's saved history (git) as well as its
+  folder, since Claude can pick files up from there. While the history holds
+  Claude settings, instructions or tools that differ from the ones the app
+  checked, Claude stays off and a sheet lists them; Save and Start Claude saves
+  the checked files to the history first. Kookaburra Cut's own updated files are
+  saved without asking; projects from earlier versions ask once after updating.
+- A project folder replaced in Finder is checked as a new folder, so its
+  `CLAUDE.md` and git hooks are reviewed again, and a `CLAUDE.md` changed
+  outside the app is shown before Claude starts. A project you forget in
+  Settings is checked as new on its next open.
+- A workspace folder the app creates is now readable by your account alone.
+  One that already exists keeps its permissions.
+- The log now records each Edit with Claude handoff, each finished video or
+  stills export, each pack export and where each one went, by name and path
+  only.
+- `rustix` moves to 1.1.6 (RUSTSEC-2026-0486), a dependency of the updater
+  whose affected calls the app never makes, and the dependency audit now fails
+  on an unsound crate anywhere in the graph, not only a direct one.
+- kb checks an imported scene or a shell command in one pass, so text crafted
+  to stall a check can no longer hold up an agent's work.
 
 ## [0.22.4] - 2026-11-10
 

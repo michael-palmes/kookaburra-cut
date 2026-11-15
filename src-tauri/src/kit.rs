@@ -697,7 +697,7 @@ pub(crate) struct AgentSweep {
     pub error: Option<String>,
 }
 
-fn plain_text(path: &Path) -> Option<String> {
+pub(crate) fn plain_text(path: &Path) -> Option<String> {
     let meta = std::fs::symlink_metadata(path).ok()?;
     if !meta.is_file() || meta.len() > MAX_NOTE_BYTES {
         return None;
@@ -1002,6 +1002,103 @@ fn settings_removals(dir: &Path) -> Vec<String> {
         }
     }
     out
+}
+
+/// A name folded as APFS opens it: case and the letters that fold onto ASCII (`ſ`, the Kelvin sign).
+fn fold_name(name: &str) -> String {
+    name.chars()
+        .flat_map(char::to_uppercase)
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+/// Whether a path a git tree names (`/`-separated, from the project root) is one an agent reads as its own: anything under a `.claude`, a name the sweep moves to `NOTES.md` and the root `kb`.
+pub(crate) fn steers_agent(rel: &str) -> bool {
+    let parts: Vec<String> = rel.split('/').map(fold_name).collect();
+    let Some(last) = parts.last() else {
+        return false;
+    };
+    parts.iter().any(|part| part == CLAUDE_DIR)
+        || NOTE_FILES.contains(&last.as_str())
+        || (parts.len() == 1 && last == SHIM_NAME)
+}
+
+/// A path the stamp writes, spelt exactly as it writes it.
+pub(crate) fn app_owned(rel: &str) -> bool {
+    matches!(rel, "kb" | ".claude/settings.json" | "CLAUDE.md") || in_shipped_skill(rel)
+}
+
+/// A path inside one of the shipped skills' folders.
+pub(crate) fn in_shipped_skill(rel: &str) -> bool {
+    rel.strip_prefix(".claude/skills/").is_some_and(|inner| {
+        SHIPPED_SKILLS.iter().any(|skill| {
+            inner
+                .strip_prefix(skill)
+                .is_some_and(|rest| rest.starts_with('/'))
+        })
+    })
+}
+
+/// One file the app wrote, bound to its path: the first 128 bits of SHA-256 over the path, a NUL and the bytes.
+pub(crate) fn stamp_key(rel: &str, bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(rel.as_bytes());
+    hasher.update([0]);
+    hasher.update(bytes);
+    crate::hex_digest(&hasher.finalize()[..16])
+}
+
+/// Largest file a stamp key is taken of; the kit's own files are far smaller.
+pub(crate) const STAMP_FILE_MAX: u64 = 4 << 20;
+
+/// The stamp keys of every app-owned file as the stamp left the folder: the `skills` it stamped, `.claude/settings.json`, the app's `kb` and a default root `CLAUDE.md`. Links and oversized files are left out.
+pub(crate) fn own_stamp(dir: &Path, skills: &[&str]) -> Vec<String> {
+    let key_of = |rel: &str| {
+        let path = dir.join(rel);
+        let meta = std::fs::symlink_metadata(&path).ok()?;
+        (meta.is_file() && meta.len() <= STAMP_FILE_MAX)
+            .then(|| std::fs::read(&path).ok())
+            .flatten()
+            .map(|bytes| stamp_key(rel, &bytes))
+    };
+    let mut keys: Vec<String> = Vec::new();
+    for skill in skills {
+        let mut stack = vec![format!(".claude/skills/{skill}")];
+        while let Some(rel) = stack.pop() {
+            if !is_real_dir(&dir.join(&rel)) {
+                continue;
+            }
+            for entry in std::fs::read_dir(dir.join(&rel))
+                .into_iter()
+                .flatten()
+                .flatten()
+            {
+                if skipped(&entry.file_name()) {
+                    continue;
+                }
+                let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+                    continue;
+                };
+                let child = format!("{rel}/{name}");
+                match entry.file_type() {
+                    Ok(kind) if kind.is_dir() => stack.push(child),
+                    Ok(kind) if kind.is_file() => keys.extend(key_of(&child)),
+                    _ => {}
+                }
+            }
+        }
+    }
+    keys.extend(key_of(".claude/settings.json"));
+    if shim_is_ours(dir) {
+        keys.extend(key_of(SHIM_NAME));
+    }
+    if plain_text(&dir.join(ROOT_CLAUDE_MD)).is_some_and(|text| is_default_claude_md(&text)) {
+        keys.extend(key_of(ROOT_CLAUDE_MD));
+    }
+    keys.sort();
+    keys.dedup();
+    keys
 }
 
 /// Files that must not be in the folder when a session starts, by name: the gate behind `sweep_agent_files`, for anything that landed after the stamp or that it could not move. Read-only.
@@ -1607,6 +1704,45 @@ mod tests {
     }
 
     // Changing the default template? Add the old one to templates/claude-md-history first, so projects still on it migrate.
+    #[test]
+    fn the_stamp_record_holds_only_what_the_app_wrote() {
+        let dir = std::env::temp_dir().join(format!("kc-own-stamp-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let skill = dir.join(".claude/skills").join(SKILL_NAME);
+        std::fs::create_dir_all(skill.join("scripts/__pycache__")).unwrap();
+        std::fs::write(skill.join("RULES.md"), "rules\n").unwrap();
+        std::fs::write(skill.join("scripts/__pycache__/kb.pyc"), "cache").unwrap();
+        std::fs::write(skill.join(".DS_Store"), "finder").unwrap();
+        std::fs::create_dir_all(dir.join(".claude/skills/someone-else")).unwrap();
+        std::fs::write(dir.join(".claude/skills/someone-else/SKILL.md"), "x").unwrap();
+        std::fs::write(dir.join(".claude/settings.json"), "{}\n").unwrap();
+        std::fs::write(dir.join("kb"), "#!/bin/sh\n").unwrap();
+        std::fs::write(dir.join("CLAUDE.md"), "# Mine\n").unwrap();
+        let rules = format!(".claude/skills/{SKILL_NAME}/RULES.md");
+        let mut expected = vec![
+            stamp_key(&rules, b"rules\n"),
+            stamp_key(".claude/settings.json", b"{}\n"),
+        ];
+        expected.sort();
+        assert_eq!(own_stamp(&dir, &SHIPPED_SKILLS), expected);
+        assert_eq!(
+            own_stamp(&dir, &[]).len(),
+            1,
+            "a skill the stamp skipped is not the app's"
+        );
+        assert_ne!(
+            stamp_key(&rules, b"rules\n"),
+            stamp_key("RULES.md", b"rules\n"),
+            "bound to its path"
+        );
+        assert!(app_owned(&rules) && app_owned("kb") && app_owned(".claude/settings.json"));
+        assert!(
+            !app_owned(".claude/skills/someone-else/SKILL.md")
+                && !app_owned(".claude/commands/x.md")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn current_template_is_pinned_until_its_predecessor_is_archived() {
         let digest = Sha256::digest(normalise(CLAUDE_MD_TEMPLATE).as_bytes());

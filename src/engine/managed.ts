@@ -26,6 +26,8 @@ export interface ManagedPolicy {
   updateEndpointLocked: boolean;
   /** The folder a copy of the app log goes to (AuditLogPath), when the profile's value was usable; the local log stays either way. */
   auditLogPath: string | null;
+  /** Origins a live website may open (AllowedWebsiteOrigins); null when unmanaged, an empty list means none. */
+  allowedWebsiteOrigins: string[] | null;
   forcedKeys: string[];
 }
 
@@ -43,6 +45,7 @@ export const UNMANAGED: ManagedPolicy = {
   updateEndpoint: null,
   updateEndpointLocked: false,
   auditLogPath: null,
+  allowedWebsiteOrigins: null,
   forcedKeys: [],
 };
 
@@ -61,6 +64,7 @@ export const LOCKED_DOWN: ManagedPolicy = {
   updateEndpoint: null,
   updateEndpointLocked: true,
   auditLogPath: null,
+  allowedWebsiteOrigins: [],
   forcedKeys: [],
 };
 
@@ -85,6 +89,17 @@ export function updateServerHost(policy: ManagedPolicy): string | null {
     return new URL(policy.updateEndpoint).host;
   } catch {
     return null;
+  }
+}
+
+/** Whether a scene's website may go live: a hint for the panel, matched on the exact origin as `deny_website_origin` in Rust, which decides. */
+export function websiteOriginAllowed(policy: ManagedPolicy, url: string): boolean {
+  if (policy.disableLiveWebsites) return false;
+  if (policy.allowedWebsiteOrigins === null) return true;
+  try {
+    return policy.allowedWebsiteOrigins.includes(new URL(url).origin);
+  } catch {
+    return false;
   }
 }
 
