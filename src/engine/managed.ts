@@ -24,6 +24,8 @@ export interface ManagedPolicy {
   updateEndpoint: string | null;
   /** True whenever UpdateEndpoint is forced, usable or not: an unusable one means no update check at all. */
   updateEndpointLocked: boolean;
+  /** The folder a copy of the app log goes to (AuditLogPath), when the profile's value was usable; the local log stays either way. */
+  auditLogPath: string | null;
   forcedKeys: string[];
 }
 
@@ -40,6 +42,7 @@ export const UNMANAGED: ManagedPolicy = {
   exportsInProject: false,
   updateEndpoint: null,
   updateEndpointLocked: false,
+  auditLogPath: null,
   forcedKeys: [],
 };
 
@@ -57,6 +60,7 @@ export const LOCKED_DOWN: ManagedPolicy = {
   exportsInProject: true,
   updateEndpoint: null,
   updateEndpointLocked: true,
+  auditLogPath: null,
   forcedKeys: [],
 };
 

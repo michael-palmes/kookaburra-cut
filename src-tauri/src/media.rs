@@ -559,7 +559,7 @@ fn first_audio_stream(probe: &serde_json::Value) -> Option<&serde_json::Value> {
         .find(|s| s["codec_type"].as_str() == Some("audio"))
 }
 
-/// Set the project's app icon: the picked image lands as `assets/app-icon.png`, the canonical path every icon reference uses (BrandLockup's default, hand-authored ImageCards). PNG sources byte-copy; other image types convert via the ffmpeg sidecar. Both write a temp file then rename, so a failed convert never truncates the icon.
+/// Set the project's app icon: the picked image lands as `assets/app-icon.png`, the canonical path every icon reference uses (BrandLockup's default, hand-authored ImageCards). The source is confined to the workspace, then checked like any dropped still.
 #[tauri::command]
 pub async fn import_app_icon(
     app: AppHandle,
@@ -568,41 +568,38 @@ pub async fn import_app_icon(
     source_path: String,
 ) -> Result<String, String> {
     let project = workspace::project_dir_mut(&app, &state, &slug)?;
-    let src = std::path::PathBuf::from(&source_path);
+    let src = workspace::confine_readable(&app, &state, &source_path)?;
     let ext = extension_of(&src);
-    // gif rides along since the media grid lists it as an image; ffmpeg takes frame one.
+    // gif rides along since the media grid lists it as an image; only its first frame lands.
     if !workspace::IMAGE_EXTENSIONS.contains(&ext.as_str()) && ext != "gif" {
         return Err(format!("unsupported image type .{ext}"));
     }
-    if !src.is_absolute() || !src.is_file() {
-        return Err(format!("image not found: {source_path}"));
-    }
     let assets = project.join("assets");
     std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || land_app_icon(&assets, &src))
+        .await
+        .map_err(|e| format!("the icon check stopped: {e}"))?
+}
+
+/// Parks a capped copy, checks the copy (never the source, which could change underneath) and lands it over `app-icon.png`; a refused file leaves the old icon where it was.
+fn land_app_icon(assets: &Path, src: &Path) -> Result<String, String> {
+    let shown = src
+        .file_name()
+        .map_or_else(|| "the image".into(), |n| n.to_string_lossy().into_owned());
+    let incoming = Incoming::Path(src.to_path_buf());
+    crate::imagefile::check_size(incoming.size(&shown)?, &shown).map_err(|r| r.message)?;
+    let parked = crate::edit::Staging::create(assets, "app-icon.incoming")?;
+    incoming
+        .park_at(&parked.file)
+        .map_err(|e| format!("{shown}: {e}"))?;
+    let converted = crate::imagefile::check_icon(&parked.file, &shown).map_err(|r| r.message)?;
+    let from = converted.as_ref().map_or(&parked.file, |c| &c.0);
     let dest = assets.join("app-icon.png");
-    let tmp = assets.join("app-icon.tmp.png");
-    if ext == "png" {
-        std::fs::copy(&src, &tmp).map_err(|e| format!("copying icon: {e}"))?;
-    } else {
-        let mut args: Vec<String> = vec![
-            "-y".into(),
-            "-nostdin".into(),
-            "-loglevel".into(),
-            "error".into(),
-        ];
-        args.extend(crate::media_input::untrusted_input(Path::new(&src)));
-        args.extend([
-            "-frames:v".into(),
-            "1".into(),
-            tmp.to_string_lossy().into_owned(),
-        ]);
-        run_sidecar(&app, "ffmpeg", args, SidecarPriority::Foreground).await?;
-    }
     // The old icon rides to the Trash (best-effort), so a replacement is recoverable.
     if dest.is_file() {
         let _ = workspace::trash_path(&dest);
     }
-    std::fs::rename(&tmp, &dest).map_err(|e| format!("replacing icon: {e}"))?;
+    std::fs::rename(from, &dest).map_err(|e| format!("replacing icon: {e}"))?;
     // A replaced icon is a user action, so it surfaces like any fresh import.
     workspace::touch_now(&dest);
     Ok("assets/app-icon.png".into())
@@ -3579,6 +3576,42 @@ mod tests {
             not_a_file.refused
         );
         assert_eq!(assets_listing(&project), Vec::<String>::new());
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn an_app_icon_lands_as_a_png_and_a_refused_one_keeps_the_old() {
+        let project = scratch_assets("app-icon");
+        let assets = project.join("assets");
+        let source = project.join("icon.jpg");
+        std::fs::write(&source, checker_png()).unwrap();
+        assert_eq!(
+            land_app_icon(&assets, &source).unwrap(),
+            "assets/app-icon.png"
+        );
+        assert_eq!(
+            std::fs::read(assets.join("app-icon.png")).unwrap(),
+            checker_png()
+        );
+        std::fs::write(assets.join("app-icon.png"), b"the old icon").unwrap();
+        let hostile = project.join("hostile.png");
+        for bytes in [&b"<html></html>"[..], b"%PDF-1.7", b""] {
+            std::fs::write(&hostile, bytes).unwrap();
+            let refused = land_app_icon(&assets, &hostile).err().unwrap();
+            assert!(refused.starts_with("hostile.png"), "{refused}");
+        }
+        let huge = project.join("huge.png");
+        std::fs::File::create(&huge)
+            .unwrap()
+            .set_len(crate::imagefile::MAX_BYTES + 1)
+            .unwrap();
+        let refused = land_app_icon(&assets, &huge).err().unwrap();
+        assert!(refused.contains("MB an image may be"), "{refused}");
+        assert_eq!(
+            std::fs::read(assets.join("app-icon.png")).unwrap(),
+            b"the old icon"
+        );
+        assert_eq!(assets_listing(&project), ["app-icon.png"]);
         let _ = std::fs::remove_dir_all(&project);
     }
 

@@ -5,6 +5,7 @@ mod acl;
 mod asset_meta;
 mod asset_reach;
 mod audit;
+mod audit_mirror;
 mod brands;
 mod bridge;
 mod bridge_auth;
@@ -1594,6 +1595,7 @@ macro_rules! kookaburra_handler {
             claude_app::open_claude_download,
             claude_app::open_privacy_page,
             managed::managed_policy,
+            audit::export_app_log,
             media::import_media,
             media::import_media_bytes,
             media::list_conform_jobs,
@@ -1680,6 +1682,7 @@ macro_rules! kookaburra_handler {
             website::website_import_image,
             website::website_list_data,
             website::website_clear_data,
+            website::website_clear_project_data,
             website::website_hide,
             website::website_close,
             $($dev,)*
@@ -1761,7 +1764,14 @@ pub fn run() {
                 }
             }
             let app_data = app.path().app_data_dir().ok();
-            if let Err(e) = app.handle().plugin(audit::builder(app_data.as_deref()).build()) {
+            let mirror = audit::mirror_at_launch();
+            let copy = mirror
+                .as_ref()
+                .and_then(|opened| opened.as_ref().ok().cloned());
+            if let Err(e) = app
+                .handle()
+                .plugin(audit::builder(app_data.as_deref(), copy).build())
+            {
                 eprintln!("[audit] the app log could not start: {e}");
             }
             // Confidential work on disk is the user's alone: the app's own folders go owner-only before anything writes.
@@ -1777,6 +1787,8 @@ pub fn run() {
                 privacy::seal_at_startup(app_data, sinks);
             }
             managed::log_at_boot();
+            audit::log_mirror_at_boot(&mirror);
+            website::retire_shared_store(app.handle());
             asset_reach::init(app.handle());
             bridge::init(app.handle());
             bridge::spawn_heartbeat(app.handle().clone());

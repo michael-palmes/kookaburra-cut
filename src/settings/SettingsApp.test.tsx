@@ -94,4 +94,29 @@ describe("Settings rows a profile governs", () => {
     }
     expect(html).not.toContain('aria-label="Publisher name"');
   });
+
+  it("offers Export log on every Mac, managed or not", async () => {
+    for (const forced of [
+      { managed: false },
+      { disableClaude: true, forcedKeys: ["DisableClaude"] },
+    ]) {
+      const exportRow = row(await render(forced), "Export log");
+      expect(exportRow).toContain("Export…");
+      expect(exportRow).toContain("never what is in your files");
+      expect(exportRow).not.toContain(LOCK);
+      expect(exportRow).not.toContain("AuditLogPath");
+    }
+  });
+
+  it("tells the person their organisation keeps a copy under AuditLogPath", async () => {
+    const html = await render({
+      auditLogPath: "/Library/Logs/Kookaburra Cut",
+      forcedKeys: ["AuditLogPath"],
+    });
+    const exportRow = row(html, "Export log");
+    expect(exportRow).toContain(
+      "Your organisation&#x27;s profile asks for a copy of this log (AuditLogPath).",
+    );
+    expect(exportRow).toContain("Export…");
+  });
 });

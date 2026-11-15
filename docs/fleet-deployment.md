@@ -224,15 +224,20 @@ domain `com.mpalmes.kookaburracut` (`DOMAIN` in `managed.rs`).
 | `DisablePackExport` | 0.22.3 | `true` | not forced | not forced |
 | `ExportsInProject` | 0.22.3 | `true` | `true` | `true` |
 | `UpdateEndpoint` | 0.22.3 | your mirror | your mirror | not forced |
+| `AuditLogPath` | 0.23.0 | `/Library/Logs/Kookaburra Cut` | not forced | not forced |
 
 The files: [`kookaburra-cut-locked-down.mobileconfig`](../packaging/mdm/kookaburra-cut-locked-down.mobileconfig),
 [`kookaburra-cut-agents-mirrored.mobileconfig`](../packaging/mdm/kookaburra-cut-agents-mirrored.mobileconfig)
 and [`kookaburra-cut-open.mobileconfig`](../packaging/mdm/kookaburra-cut-open.mobileconfig).
 The From column is the first release whose `Key::ALL` in `managed.rs` holds the
-key; 0.22.2 ignores the other four, so deploy 0.22.3 or later: on 0.22.2 the
+key, and an older build ignores it: deploy 0.22.3 or later, since on 0.22.2 the
 open profile changes nothing and the mirrored one leaves checks on GitHub.
+`AuditLogPath` needs 0.23.0.
 
-- **Locked down** forces all nine. `UpdateEndpoint` does nothing while
+- **Locked down** forces all ten. Its `AuditLogPath` copies the app log for
+  your collector; on a Mac with more than one account, create the folder first
+  ([mdm.md, "A copy for your collector"](./mdm.md#a-copy-for-your-collector)).
+  `UpdateEndpoint` does nothing while
   `DisableUpdateCheck` is forced, since that key wins ([mdm.md](./mdm.md)); it is
   there so that lifting `DisableUpdateCheck` later sends checks to your server,
   never GitHub.
@@ -312,6 +317,8 @@ The locked-down profile in full:
                 <true/>
                 <key>UpdateEndpoint</key>
                 <string>https://updates.example.com/kookaburra-cut/latest.json</string>
+                <key>AuditLogPath</key>
+                <string>/Library/Logs/Kookaburra Cut</string>
               </dict>
             </dict>
           </array>
@@ -322,7 +329,7 @@ The locked-down profile in full:
   <key>PayloadDisplayName</key>
   <string>Kookaburra Cut: locked down</string>
   <key>PayloadDescription</key>
-  <string>No Claude, agent kit, live websites, pack import or export, or update checks. Video and stills exports stay in each project, and projects stay in ~/Kookaburra Cut.</string>
+  <string>No Claude, agent kit, live websites, pack import or export, or update checks. Video and stills exports stay in each project, projects stay in ~/Kookaburra Cut, and the app log is copied to /Library/Logs/Kookaburra Cut.</string>
   <key>PayloadIdentifier</key>
   <string>com.example.kookaburracut.locked-down</string>
   <key>PayloadScope</key>

@@ -966,6 +966,7 @@ pub async fn apply_import(
     settings: State<'_, SettingsState>,
     state: State<'_, PackState>,
     trust: State<'_, TrustState>,
+    websites: State<'_, crate::website::WebsiteState>,
     resolutions: std::collections::HashMap<String, Resolution>,
     on_progress: Channel<PackProgress>,
 ) -> Result<super::apply::ImportOutcome, String> {
@@ -983,10 +984,19 @@ pub async fn apply_import(
     let key_id = key::key_id_of(&publisher_block.public_key).unwrap_or_else(|| "unreadable".into());
     // Consent goes before the first move, so an open project's reload never meets the pack's code under the old grant.
     let landing = trust_landing_folders(&root, &staged.manifest, &resolutions);
-    if let Err(e) = workspace::forget_trust_at(&app, &settings, &trust, &landing) {
+    let website_keys = match workspace::forget_trust_at(&app, &settings, &trust, &landing) {
+        Ok(keys) => keys,
+        Err(e) => {
+            log::warn!("[pack] key {key_id}: import refused: {e}");
+            return Err(format!(
+                "Couldn't clear the old Allow before importing: {e}"
+            ));
+        }
+    };
+    if let Err(e) = crate::website::clear_project_stores(&app, &websites, &website_keys).await {
         log::warn!("[pack] key {key_id}: import refused: {e}");
         return Err(format!(
-            "Couldn't clear the old Allow before importing: {e}"
+            "Couldn't sign the old websites out before importing: {e}"
         ));
     }
     let applied = super::apply::apply_import(&root, staged, &resolutions, |done, total, label| {
@@ -1033,8 +1043,13 @@ pub async fn apply_import(
                 .map(|target| target.path)
         })
         .collect();
-    if let Err(e) = workspace::forget_trust_at(&app, &settings, &trust, &landed) {
-        log::warn!("[pack] forgetting trust after the import failed: {e}");
+    match workspace::forget_trust_at(&app, &settings, &trust, &landed) {
+        Ok(keys) => {
+            if let Err(e) = crate::website::clear_project_stores(&app, &websites, &keys).await {
+                log::warn!("[pack] signing websites out after the import failed: {e}");
+            }
+        }
+        Err(e) => log::warn!("[pack] forgetting trust after the import failed: {e}"),
     }
 
     // Trust on first use is recorded only after something actually landed.

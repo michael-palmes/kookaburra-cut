@@ -107,6 +107,7 @@ import {
 } from "../../engine/sceneWebsite";
 import {
   captureWebsite,
+  clearProjectWebsiteData,
   closeWebsite,
   importWebsiteImage,
   listWebsiteGrants,
@@ -610,7 +611,24 @@ function TerminalTranscriptIcon() {
   );
 }
 
-function WebsiteActionIcon({ kind }: { kind: "open" | "capture" | "image" | "remove" }) {
+function WebsiteActionIcon({
+  kind,
+}: {
+  kind: "open" | "capture" | "image" | "remove" | "signOut";
+}) {
+  if (kind === "signOut") {
+    return (
+      <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <path
+          d="M8.5 4H5.5A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16h3M12.5 7l3 3-3 3M15.5 10H8"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
   if (kind === "capture") {
     return (
       <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -7185,6 +7203,34 @@ export function SceneTab({
         setWebsiteGrantBusy(null);
       }
     };
+    const signProjectOut = async () => {
+      const projectPath = workspaceProjectPath(slug);
+      if (!projectPath) return;
+      const accepted = await ask(
+        "Clear this project's Website data? Its pages sign out and lose their cookies and storage. Approved origins and other projects stay as they are.",
+        {
+          title: "Sign this project out?",
+          kind: "warning",
+          okLabel: "Clear data",
+          cancelLabel: "Cancel",
+        },
+      );
+      if (!accepted) return;
+      setWebsiteGrantBusy("sign-out");
+      setError(null);
+      try {
+        await clearProjectWebsiteData(projectPath);
+        const sessions = useSceneWebsiteSessionStore.getState();
+        const prefix = sceneWebsiteKey(project.id, "");
+        for (const key of Object.keys(sessions.sessions)) {
+          if (key.startsWith(prefix)) sessions.clear(key);
+        }
+      } catch (clearError) {
+        setError(`Clearing Website data failed: ${String(clearError)}`);
+      } finally {
+        setWebsiteGrantBusy(null);
+      }
+    };
     const liveReady = websiteSession?.active && websiteSession.state === "ready";
     const captureValue = website?.capture
       ? website.captureStale
@@ -7518,6 +7564,22 @@ export function SceneTab({
                       onClick={() => void removeWebsiteGrant(origin)}
                     />
                   ))}
+                </DrillGroup>
+              )}
+              {workspaceProjectPath(slug) && (
+                <DrillGroup
+                  label="Sign-ins"
+                  hint="This project's pages keep their own cookies and storage; no other project sees them."
+                >
+                  <ActionRow
+                    icon={<WebsiteActionIcon kind="signOut" />}
+                    label="Sign this project out"
+                    value={websiteGrantBusy === "sign-out" ? "Clearing…" : "Clear"}
+                    chevron={false}
+                    danger
+                    disabled={websiteGrantBusy !== null}
+                    onClick={() => void signProjectOut()}
+                  />
                 </DrillGroup>
               )}
             </>

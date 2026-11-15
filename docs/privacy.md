@@ -105,8 +105,9 @@ imported never travel.
   (`src-tauri/src/audit.rs`): which projects you allowed or declined, which
   websites, packs and updates, what moved out of a shared folder, and what your
   organisation's profile refused. It names folders, projects, websites and key
-  ids, never what is in a file, keeps at most three files of 1 MiB, and never
-  leaves the Mac.
+  ids, never what is in a file, and keeps at most three files of 1 MiB. The app
+  never sends it anywhere; Settings ▸ About ▸ Export log saves a copy where you
+  choose, for support or your IT team (`audit::export_app_log`).
 - **Website data**: cookies and site storage for websites you allowed, in a
   profile separate from Safari. Settings ▸ Website data clears one site or all.
 - **Agent files**: the Claude Code skills and settings the app writes inside
@@ -168,7 +169,10 @@ folder, live websites, pack export, the update check, the publishers whose
 packs may be imported, and the workspace location. A profile can also keep
 exports in each project instead of Downloads, and point the update check at
 your own server instead of GitHub; a malformed server address means no check
-at all. The keys and a sample profile are in [docs/mdm.md](./mdm.md).
+at all. A profile can also keep a copy of the app log in a folder on the Mac
+that your own log collector reads (`AuditLogPath`), and Settings ▸ About tells
+the person when it does. The keys and a sample profile are in
+[docs/mdm.md](./mdm.md).
 
 Report a security problem privately through the repository's Security tab, as
 [SECURITY.md](../SECURITY.md) describes.

@@ -17,18 +17,22 @@ contract and the threat model for the native child WKWebView boundary.
 | Export truth | A manually captured viewport PNG; an imported image is the fallback | Export remains a pure function of project bytes |
 | URL policy | HTTPS, plus opt-in HTTP on exact loopback hosts with an explicit port | Remote cleartext transport is never needed; local development remains practical |
 | Consent | Every top-level origin needs a local project-and-origin grant before its first request, asked on a native sheet (`website_grant_origin`, Return declines) once per origin per project folder path, and only for a request the scene raised this session | Opening, importing and selecting a project must remain offline, and a webview must not be able to answer for the person |
-| Browser profile | One app-wide persistent Website profile, separate from Safari and the app webview | Logins work across projects without giving packs cookies or grants |
+| Browser profile | One persistent Website profile per project, separate from Safari, the app webview and every other project (reopened 2026-11-09; it was one app-wide profile) | A login made for one project's scene never appears in another's, and packs still carry no cookies or grants |
 | Focus | Click to focus; Shift+Esc or the first outside click releases | Input stays with the panel without stealing deck navigation |
 | Permissions | Deny device access, uploads, downloads and autofill | A presentation is not a general-purpose browser |
 | Popup handling | Navigate the same panel through the same origin gate | Prevents unowned native windows and keeps the trust display authoritative |
 | View lifetime | Lazy views, eight process-wide, inactive least-recently-used eviction | Bounds WebContent memory while preserving active state where possible |
 | Uncaptured export | Warn and render the themed empty browser frame | Missing capture is visible but does not block a legitimate export |
 
-The application minimum is macOS 26. Website views share one named persistent
-WebKit data store. Origin grants remain keyed to the canonical project path and
-go wherever the project's Allow goes (deleting it, or a pack landing in its
-folder), so copying or importing a project never inherits approval; a folder
-renamed or replaced in Finder leaves them to whatever next lands at that path.
+The application minimum is macOS 26. A project's website views, in the editor
+and in Present, share one persistent WebKit data store of their own, its UUID
+derived from the canonical project path (`store_identifier` in `website.rs`).
+Origin grants are keyed to the same path, and both go wherever the project's
+Allow goes (deleting it, Forget in Settings, or a pack landing in its folder),
+so copying, moving or importing a project never inherits approval or
+sign-ins. A folder renamed or replaced in Finder leaves both to whatever next
+takes that path: a rename opens an empty store under the new path, and the old
+one stays listed in Settings until it is cleared.
 
 ## The block
 
@@ -192,9 +196,15 @@ one is not shown but still loads on APFS) and calls out loopback requests before
 Continue, read from the pack's sidecars and checked against the signed hash
 (`src/packs/packReview.ts`), so the review is done before anything lands.
 
-Settings lists the dedicated Website store's WebKit site records and can clear
-one record or all Website data. Clearing data signs sites out but does not edit
-project origin requests.
+Settings lists the sites held in every project's store and clears one site in
+every project, or all Website data (`website_list_data`, `website_clear_data`).
+The website drill-in's Sign this project out clears that project's store alone,
+after closing its live views (`website_clear_project_data`); deleting the
+project, forgetting it in Settings and a pack landing in its folder do the same
+(`clear_project_stores`). Clearing signs
+sites out but does not edit origin approvals. The one store every project shared
+before 0.23 is deleted at launch while it exists (`retire_shared_store`), so no
+sign-in made under it carries over.
 
 ## Packaged acceptance gate
 
@@ -210,8 +220,10 @@ macOS 26 app must prove:
    are denied without private WebKit APIs.
 5. Origin consent happens before the first request; editor approval and Present
    denial behave as documented.
-6. App-wide cookies persist separately from Safari, project grants remain
-   separate, loopback grants expire on restart and per-site clearing works.
+6. Each project's cookies persist separately from Safari and from every other
+   project, Present opens the editor's store for the same project, project
+   grants remain separate, loopback grants expire on restart, and per-site and
+   per-project clearing work.
 7. Capture, failure fallback, modal occlusion, view cleanup and inactive LRU
    eviction work.
 8. Public HTTPS, a controlled multi-origin authenticated SPA and an HTTP
@@ -224,15 +236,6 @@ the feature does not ship with a weaker substitute.
 
 - Approved pages and their subresources have browser-equivalent network reach,
   including DNS-based access to local services.
-- Separately approved projects share same-origin login state through the
-  app-wide Website profile (F-033). Assessed 2026-10-28: a per-project
-  `WKWebsiteDataStore` is one identifier derived from the project key at view
-  creation, but it reverses the locked "Browser profile" decision above (logins
-  shared across projects by design), needs `allDataStoreIdentifiers` and
-  `removeDataStoreForIdentifier` bindings for Settings to list and clear
-  stores it no longer knows by name, and re-runs acceptance item 6. It stays a
-  residual until that decision is reopened; the mitigation today is Settings'
-  per-site clearing.
 - Captured pixels and authored query strings may contain secrets and may be
   committed or packed.
 - WebKit vulnerabilities remain possible.

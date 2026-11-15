@@ -62,7 +62,23 @@ pub(crate) fn home_dir() -> Result<PathBuf, String> {
     passwd_home().ok_or_else(|| "cannot find the home folder: HOME is not set".to_string())
 }
 
+/// This process's user id.
+pub(crate) fn current_uid() -> u32 {
+    // SAFETY: getuid has no preconditions and cannot fail.
+    unsafe { libc::getuid() }
+}
+
 fn passwd_home() -> Option<PathBuf> {
+    account().map(|account| account.home)
+}
+
+/// This process's account in the password database, never `$USER` or `$HOME`.
+pub(crate) struct Account {
+    pub(crate) name: String,
+    pub(crate) home: PathBuf,
+}
+
+pub(crate) fn account() -> Option<Account> {
     use std::ffi::CStr;
     use std::os::unix::ffi::OsStrExt;
     let mut buf = vec![0 as libc::c_char; 4096];
@@ -79,12 +95,17 @@ fn passwd_home() -> Option<PathBuf> {
             &mut result,
         )
     };
-    if rc != 0 || result.is_null() || pwd.pw_dir.is_null() {
+    if rc != 0 || result.is_null() || pwd.pw_dir.is_null() || pwd.pw_name.is_null() {
         return None;
     }
     // SAFETY: getpwuid_r succeeded, so pw_dir is a NUL-terminated string inside buf, which outlives dir.
     let dir = unsafe { CStr::from_ptr(pwd.pw_dir) };
-    (!dir.to_bytes().is_empty()).then(|| PathBuf::from(std::ffi::OsStr::from_bytes(dir.to_bytes())))
+    // SAFETY: likewise for pw_name.
+    let name = unsafe { CStr::from_ptr(pwd.pw_name) };
+    (!dir.to_bytes().is_empty()).then(|| Account {
+        name: name.to_string_lossy().into_owned(),
+        home: PathBuf::from(std::ffi::OsStr::from_bytes(dir.to_bytes())),
+    })
 }
 
 /// A bundled sidecar's path, resolved like tauri-plugin-shell's `relative_command_path`: beside the running executable (packaged `Contents/MacOS/ffmpeg`, dev `target/debug/ffmpeg`), stepping out of `deps/` when a test binary runs.

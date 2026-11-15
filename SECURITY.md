@@ -143,7 +143,7 @@ checkout only (`vite.config.ts`, `server.fs.allow`), never the home folder.
 | Update check | At launch and hourly while the main window is open, at most every 20 h, only with the consent on and never during an export; or Check for Updates (menu, ⌘K, Settings), which runs without consent and stores nothing | `github.com/michael-palmes/kookaburra-cut/releases/latest/download/latest.json`, or the https URL a profile forces as `UpdateEndpoint` | One GET; no identifiers, no version in the URL; the plugin's user agent only | First-run welcome switch (on by default, Escape saves off); Settings ▸ Updates. `update_check_consent` in `$APPDATA/settings.json` | `src-tauri/src/updater.rs`, `src/engine/updates.ts`; `KOOKABURRA_UPDATE_ENDPOINT` is honoured only in debug builds; `managed::usable_endpoint` refuses an `UpdateEndpoint` with a query, fragment, login or `{{…}}` template, and an unusable one means no check, never GitHub |
 | Update install | Install and relaunch on the update dialog | The release asset `latest.json` names | The signed updater archive | Later hides the offer until the next check | `updater.rs` (`download_and_install`); the ed25519 signature is checked against `plugins.updater.pubkey` before anything is written |
 | Edit with Claude (`claude://` handoff) | Edit with Claude, with the Claude desktop app installed | The Claude desktop app on this Mac, which talks to Anthropic under the user's account | The project folder path and a starter prompt, typed in, never sent | Not pressing it; `DisableClaude` turns it off for a fleet | `src-tauri/src/claude_app.rs` (`code_session_link`, `open_in_claude`) |
-| Live scene websites | Open live website in the paused editor after Allow for that origin; Present reloads an allowed origin on each hold | The approved origin, with the reach of a browser tab (subresources, subframes and scripts are not filtered) | Whatever the page loads; cookies and storage in a profile separate from Safari | Allow per origin per project (main window only); revoke in the inspector; Settings ▸ Website data clears storage | `src-tauri/src/website.rs` (`website_open` refuses without a grant, HTTPS or loopback only, downloads and new windows denied, no Tauri capability for the child) |
+| Live scene websites | Open live website in the paused editor after Allow for that origin; Present reloads an allowed origin on each hold | The approved origin, with the reach of a browser tab (subresources, subframes and scripts are not filtered) | Whatever the page loads; cookies and storage in a profile separate from Safari | Allow per origin per project (main window only); revoke in the inspector; each project keeps its own store, cleared per project in the inspector or all at once in Settings ▸ Website data | `src-tauri/src/website.rs` (`website_open` refuses without a grant, HTTPS or loopback only, downloads and new windows denied, no Tauri capability for the child) |
 | Fixed pages in the browser | Get Claude, or What leaves your Mac | `claude.ai/download`; `github.com/.../docs/privacy.md` at the installed version's tag (`main` in a dev build) | The constant URL, nothing appended | Not pressing it | `claude_app.rs` (`open_claude_download`, `open_privacy_page`, `privacy_url`) |
 
 Dev-time only, never in the app: `pnpm setup:models` downloads the beat model
@@ -151,8 +151,10 @@ from a pinned commit and checks its SHA-256 (`scripts/setup-models.sh`);
 `pnpm setup:ffmpeg:release` fetches the ffmpeg, x264 and x265 sources against their pins (`scripts/build-ffmpeg-sidecar.sh`).
 
 A configuration profile can force the update check, the Claude launchers, the
-agent kit and live websites off, and point the update check at the
-organisation's own server (see "Managed preferences").
+agent kit and live websites off, point the update check at the
+organisation's own server, and keep a copy of the app log in a folder on the
+Mac that the organisation's own collector reads (`AuditLogPath`; see "Managed
+preferences").
 
 ## On the Mac
 
@@ -247,9 +249,9 @@ backup. Everything else is backed up like any document: projects with their own
   `agentFiles` (per folder, what a stamp moved and whether a person has seen it),
   the publisher profile and the Claude preferences; per-project entries other
   than the trust grant and `agentFiles` outlive a project delete. Settings ▸ Allowed projects
-  lists `trustedProjects` and forgets one grant, stored and session alike
-  (`forget_allowed_project` in `settings_win.rs`, settings window only, through
-  `forget_project_trust`). Written through a temporary file that is 0600 from its first byte, then
+  lists `trustedProjects` and forgets one grant, stored and session alike,
+  with its website origin grants and Website data (`forget_allowed_project` in `settings_win.rs`,
+  settings window only, through `forget_project_trust`). Written through a temporary file that is 0600 from its first byte, then
   a rename, under one lock. Control: `workspace.rs` (`AppSettings`,
   `settings_path`), `privacy::atomic_write_private`.
 - **The pack signing key**: 32 raw bytes created on the first pack export, a
@@ -309,18 +311,40 @@ backup. Everything else is backed up like any document: projects with their own
   (`[workspace]`), Clear all app data (`[settings]`), managed keys and each key's first refusal a launch (`[managed]`) and what the startup
   seal corrected (`[privacy]`). Lines hold paths, slugs, origins, key ids,
   versions and counts, never a file's contents or a secret, and a name a pack or
-  page chose is escaped onto one line (`audit::field`). Only the app's own lines
+  page chose is escaped onto one line (`audit::field`). Each line is
+  `[<ISO 8601 UTC time>][<module>][<LEVEL>] <message>`, and the formatter
+  escapes every control character in the whole message, so no file or folder
+  name can start a line of its own (`audit::line`). Only the app's own lines
   reach it, never the webview's or a library's (`own_target`). A file rotates
   at 1 MiB and three are kept, at most 3 MiB (`ROTATED_KEPT`); the folder is
   made 0700 with `.metadata_never_index` before the first line (`log_dir`), a
   file opens at the umask inside it, and every launch re-seals the files to 0600
-  (`privacy::seal_at_startup`). Nothing in it leaves the Mac, and no managed key
-  turns it off (`docs/decisions.md`, "Release builds keep a log"). The headless
-  CLI kb runs never starts it and writes to stderr (`src-tauri/src/main.rs`).
-- **The Website data store**: one WebKit data store for every approved live
-  website, identified by a fixed UUID, separate from Safari and from the app's
-  own store; Settings ▸ Website data lists and clears its records. Control:
-  `website.rs` (`WEBSITE_DATA_STORE`, `website_list_data`, `website_clear_data`).
+  (`privacy::seal_at_startup`). The app never sends it anywhere, and no managed
+  key turns it off (`docs/decisions.md`, "Release builds keep a log"). Settings ▸
+  About ▸ Export log writes the files end to end, oldest first, as one 0600
+  `.log` where the person chooses in a Save panel Rust opens itself, never
+  through a link and never inside `$APPDATA` (`audit::export_app_log`). Under
+  `AuditLogPath` every line also goes to `<folder>/<login>.log` for the
+  organisation's collector (`src-tauri/src/audit_mirror.rs`): the folder must be
+  absolute and outside every home folder, the file opens without following a
+  link or blocking on a FIFO and is used only when this account owns it alone
+  with one link, held 0600 and rotated like `app.log`, and anything wrong stops
+  the copy, never the app or the local log. The headless CLI kb runs never
+  starts it and writes to stderr (`src-tauri/src/main.rs`).
+- **The Website data stores**: one WebKit data store per project, its UUID
+  derived from the project's canonical path (the key its origin grants use), so
+  a sign-in made for one project never appears in another, and the editor and
+  Present open the same store; separate from Safari and from the app's own
+  store. Settings ▸ Website data lists every store's sites and clears one site or
+  all of them; the website drill-in's Sign this project out clears one project's
+  store, and so do deleting the project, Forget in Settings ▸ Allowed projects
+  and a pack landing in its folder. A folder renamed or moved in Finder opens a
+  new, empty store and leaves the old one, still listed and cleared in
+  Settings, for whatever folder next takes that path; a folder replaced in
+  Finder at the same path keeps the store, as it keeps its origin grants. The
+  store every project shared before 0.23 is deleted at launch. Control:
+  `website.rs` (`store_identifier`, `website_list_data`, `website_clear_data`,
+  `website_clear_project_data`, `clear_project_stores`, `retire_shared_store`).
 - **Exports**: `~/Downloads/<project>-<aspect>.<ext>` by default, never
   overwriting, or the project's `exports/` folder (Settings ▸ Video, "Save
   exports to Downloads"; terminal and bridge runs always use the project
@@ -350,7 +374,7 @@ Deletions go to the Trash through `workspace::trash_path` (NSFileManager):
 projects, scene files, media and their originals, themes, gradients, export
 presets, screenshots, user templates and scene presets. Import backups after
 24 h (both import screens say so) and cache clears delete in place. A project
-delete removes its trust grant, its website origin grants and its clip and media cache entries (the media is hashed before
+delete removes its trust grant, its website origin grants, its Website data store's records and its clip and media cache entries (the media is hashed before
 the folder moves, from the library's stamps where it has them), and nothing
 from the snapshots or thumbs.
 
@@ -557,7 +581,7 @@ stay unsigned: they only move a progress bar.
   build that grant lasts for the launch and never reaches `trustedProjects`. All three commands
   are in the `trust` set, main window only. Deleting a project removes its
   grant. Settings ▸ Allowed projects forgets one grant, stored and session
-  alike, and Clear all app data forgets every one (`forget_allowed_project`,
+  alike, with its website origin grants and Website data, and Clear all app data forgets every one (`forget_allowed_project`,
   `clear_app_data` in `settings_win.rs`, settings window only); either only
   narrows what runs, and the next open asks. Declining stamps nothing. `copy_scene_to_project` (main and render
   windows) refuses a workspace project, user template or user preset as its
@@ -570,9 +594,10 @@ stay unsigned: they only move a progress bar.
   is Don't allow. Only a request `website_open` or a blocked navigation raised
   this session can reach it, and any answer spends that request. A grant is once
   per origin per project folder path; an origin already granted asks nothing. A
-  project's origin grants go wherever its Allow goes: deleting it, or a pack
-  landing in its folder; a folder renamed or replaced in Finder leaves them at
-  that path. The Allow
+  project's origin grants and its own Website data store go wherever its Allow
+  goes: deleting it, Forget in Settings ▸ Allowed projects, or a pack landing in
+  its folder, each matched on disk by folder; a folder renamed or replaced in
+  Finder leaves both at that path. The Allow
   gate, moving the workspace, bridge confirmations and these grants are all
   answered natively, so a compromised webview can show the question but never
   press the button.
@@ -611,7 +636,9 @@ stay unsigned: they only move a progress bar.
   `kblib/svgsafe.py`): an imported still is untrusted. Its header is read with no
   decoder and capped first (256 MB, 16384 px a side, 100 MP), and its first bytes,
   not its name, decide the format. An SVG is rewritten from an allow-list of drawing
-  elements before it is rasterised.
+  elements before it is rasterised. A project's app icon takes the same checks on a
+  capped copy of a workspace file and always lands as a plain sRGB PNG the stage
+  decodes (`import_app_icon` in `src-tauri/src/media.rs`, `check_icon`).
 - **Scene terminals and websites**: a scene's terminal block is text and a baked
   PNG; no process ever runs for it, and its transcript parser drops every escape
   sequence but colours (`sceneTerminalTranscript.ts`). A scene's website block loads
@@ -679,7 +706,7 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
   `src/packs/packReview.ts`), so nothing is reviewed after the files land. A
   project, template or preset a pack adds or replaces loses every F-001 grant,
   session allow and website origin grant held for its folder, whatever the slug's
-  case, before the first file moves and again once all have landed
+  case, and its Website data store's records, before the first file moves and again once all have landed
   (`workspace::forget_trust_at`), so the next open asks again; the allow goes
   first, so a failed settings write still asks, and a failure before the move
   refuses the import.
@@ -723,18 +750,22 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
 The app keeps one secret: the pack signing key, in the login Keychain and
 never synchronised, with the 0600 file fallback described above. Everything else is the
 user's: Claude Code's login lives in `~/.claude`, which the app never touches;
-website logins live in the Website data store. No password, token or key is
+website logins live in each project's Website data store. No password, token or key is
 printed by the app or written to its logs.
 
 ## Managed preferences
 
-Nine keys in the domain `com.mpalmes.kookaburracut`, honoured only when a
+Ten keys in the domain `com.mpalmes.kookaburracut`, honoured only when a
 configuration profile forces them (`src-tauri/src/managed.rs`): `DisableClaude`,
 `DisableLiveWebsites`, `AllowedPublisherKeyIds`, `DisableUpdateCheck`,
-`WorkspaceRoot`, `DisableAgentKit`, `DisablePackExport`, `ExportsInProject` and
-`UpdateEndpoint`. A malformed key fails closed: a boolean of the wrong type reads
-as `true`, and an unusable `UpdateEndpoint` means no update check at all.
-Settings marks each affected row "Managed by your organisation".
+`WorkspaceRoot`, `DisableAgentKit`, `DisablePackExport`, `ExportsInProject`,
+`UpdateEndpoint` and `AuditLogPath`. A malformed key fails closed: a boolean of
+the wrong type reads as `true`, an unusable `UpdateEndpoint` means no update
+check at all, and an unusable `AuditLogPath` means no copy of the log while the
+local one carries on (`audit::mirror_at_launch`).
+Settings marks each affected row "Managed by your organisation", and under
+`AuditLogPath` the Export log row says the organisation's profile asks for a copy
+(`src/settings/SettingsApp.tsx`).
 The key table and a sample profile are in `docs/mdm.md`.
 
 ## Release integrity
@@ -937,8 +968,6 @@ Deliberately deferred, recorded so nobody mistakes them for done:
   root would need a dialog (`docs/decisions.md`, "No App Sandbox").
 - A published Homebrew tap: the cask is staged in `packaging/homebrew/` until
   the tap repository `michael-palmes/homebrew-kookaburra-cut` exists.
-- A per-project website data store: approved projects share one login profile
-  today (`docs/scene-website.md`, "Accepted residual risk").
 - Bridge signing against same-user processes. Since 0.23.0 every request and
   answer is signed under the serving instance's key ("What reaches your
   agent"), which closes a writer that can drop files in
@@ -971,7 +1000,6 @@ Deliberately deferred, recorded so nobody mistakes them for done:
 - A sandbox for the agent. Its allow and deny rules, hooks and reach checks bound
   its own tools and ask a person; a script a misled agent runs can still read a
   file.
-- The still checks on app icons: `import_app_icon` takes only the extension list.
 - A second reviewer on the `release` environment, a review on `main` the admin
   cannot bypass, and a pinned runner image and Xcode (`build-info.txt` records
   both).

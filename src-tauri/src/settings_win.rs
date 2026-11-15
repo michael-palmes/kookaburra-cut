@@ -125,13 +125,14 @@ pub fn set_clip_cache_cap(
     Ok(())
 }
 
-/// Settings ▸ Allowed projects: forget one Allow (a workspace slug, `ws-template:` or `ws-preset:` id), stored and session alike, so the next open asks again. It only narrows what runs, so no sheet confirms it.
+/// Settings ▸ Allowed projects: forget one Allow (a workspace slug, `ws-template:` or `ws-preset:` id), stored and session alike, with its website grants and sign-ins, so the next open asks again. It only narrows what runs, so no sheet confirms it.
 #[tauri::command]
-pub fn forget_allowed_project(
+pub async fn forget_allowed_project(
     app: AppHandle,
     window: tauri::Window,
     state: State<'_, workspace::SettingsState>,
     trust: State<'_, workspace::TrustState>,
+    websites: State<'_, website::WebsiteState>,
     slug: String,
 ) -> Result<(), String> {
     workspace::require_window(&window, "settings")?;
@@ -139,12 +140,14 @@ pub fn forget_allowed_project(
     if open.as_deref() == Some(main_window_id(&slug).as_str()) {
         return Err("that project is open: close it in Kookaburra Cut first".into());
     }
-    workspace::forget_project_trust(&app, &state, &trust, &slug)?;
+    let website_keys = workspace::forget_project_trust(&app, &state, &trust, &slug)?;
     log::info!(
         "[trust] {}: forgotten in Settings",
         crate::audit::field(&slug)
     );
-    Ok(())
+    website::clear_project_stores(&app, &websites, &website_keys)
+        .await
+        .map_err(|e| format!("Forgotten, but its websites are still signed in: {e}"))
 }
 
 /// A grant's key as the main window names the project: workspace slugs carry `ws:`, library ids already have their scope.

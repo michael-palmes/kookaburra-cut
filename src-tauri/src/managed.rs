@@ -57,10 +57,11 @@ pub enum Key {
     DisablePackExport,
     ExportsInProject,
     UpdateEndpoint,
+    AuditLogPath,
 }
 
 impl Key {
-    pub const ALL: [Key; 9] = [
+    pub const ALL: [Key; 10] = [
         Key::DisableClaude,
         Key::DisableLiveWebsites,
         Key::AllowedPublisherKeyIds,
@@ -70,6 +71,7 @@ impl Key {
         Key::DisablePackExport,
         Key::ExportsInProject,
         Key::UpdateEndpoint,
+        Key::AuditLogPath,
     ];
 
     pub fn name(self) -> &'static str {
@@ -83,6 +85,7 @@ impl Key {
             Key::DisablePackExport => "DisablePackExport",
             Key::ExportsInProject => "ExportsInProject",
             Key::UpdateEndpoint => "UpdateEndpoint",
+            Key::AuditLogPath => "AuditLogPath",
         }
     }
 
@@ -100,6 +103,7 @@ impl Key {
             Key::DisablePackExport => "Pack export is turned off by your organisation",
             Key::ExportsInProject => "Your organisation keeps exports in the project folder",
             Key::UpdateEndpoint => "Your organisation's update server address can't be used",
+            Key::AuditLogPath => "Your organisation keeps a copy of the app log",
         }
     }
 
@@ -108,6 +112,7 @@ impl Key {
             Key::AllowedPublisherKeyIds => "an array of strings",
             Key::WorkspaceRoot => "an absolute path",
             Key::UpdateEndpoint => "an https URL",
+            Key::AuditLogPath => "an absolute folder path",
             _ => "a boolean",
         }
     }
@@ -136,6 +141,8 @@ pub struct ManagedPolicy {
     pub update_endpoint: Option<String>,
     /// True whenever UpdateEndpoint is forced, usable or not: an unusable one means no check at all.
     pub update_endpoint_locked: bool,
+    /// The folder a copy of the app log goes to when the forced value was usable; the local log stays either way.
+    pub audit_log_path: Option<String>,
     /// The forced keys by name, for the lock rows and the log.
     pub forced_keys: Vec<String>,
     /// What was wrong with a forced key, one line each; logged, never shown.
@@ -180,6 +187,9 @@ impl ManagedPolicy {
                 Key::UpdateEndpoint => {
                     policy.update_endpoint_locked = true;
                     policy.update_endpoint = policy.endpoint_or_closed(&value);
+                }
+                Key::AuditLogPath => {
+                    policy.audit_log_path = policy.audit_dir_or_none(&value, &homes());
                 }
             }
         }
@@ -277,6 +287,39 @@ impl ManagedPolicy {
         }
         usable
     }
+
+    /// The forced folder when `usable_audit_dir` accepts it; anything else means no copy, and the local log carries on.
+    fn audit_dir_or_none(&mut self, value: &PrefValue, homes: &[PathBuf]) -> Option<String> {
+        let PrefValue::String(raw) = value else {
+            self.note(Key::AuditLogPath, value, "keeping no copy of the app log");
+            return None;
+        };
+        let usable = usable_audit_dir(raw, homes);
+        if usable.is_none() {
+            self.issues.push(format!(
+                "AuditLogPath {} is not an absolute folder outside the home folder; keeping no copy of the app log",
+                crate::audit::field(raw)
+            ));
+        }
+        usable.map(|dir| dir.to_string_lossy().into_owned())
+    }
+}
+
+/// Absolute, free of `.` and `..`, not the root and not inside a home folder (the local log already lives there, and a home folder can sync off the Mac). Compared without case, as APFS does by default; `audit_mirror` checks the real folder again once it exists.
+fn usable_audit_dir(raw: &str, homes: &[PathBuf]) -> Option<PathBuf> {
+    let raw = raw.trim();
+    let path = PathBuf::from(raw);
+    let plain = raw.split('/').all(|part| part != "." && part != "..");
+    if !(raw.starts_with('/') && plain && path.file_name().is_some()) {
+        return None;
+    }
+    let lower = raw.to_lowercase();
+    let inside = homes.iter().any(|home| {
+        let home = home.to_string_lossy().to_lowercase();
+        let home = home.trim_end_matches('/');
+        !home.is_empty() && (lower == home || lower.starts_with(&format!("{home}/")))
+    });
+    (!inside).then_some(path)
 }
 
 /// `https`, a host, and nothing that could carry more than the address: no login, query, fragment or `{{…}}` template (the updater expands `{{current_version}}`, which would put the version in the request).
@@ -326,6 +369,17 @@ fn home_dir() -> Option<PathBuf> {
     std::env::var_os("HOME")
         .filter(|home| !home.is_empty())
         .map(PathBuf::from)
+}
+
+/// `$HOME` and the account's own home folder, which differ when the app is launched with another `HOME`.
+pub(crate) fn homes() -> Vec<PathBuf> {
+    let mut homes: Vec<PathBuf> = home_dir().into_iter().collect();
+    if let Some(account) = crate::tools::account().map(|account| account.home) {
+        if !homes.contains(&account) {
+            homes.push(account);
+        }
+    }
+    homes
 }
 
 // ── The process-wide policy ─────────────────────────────────────────
@@ -475,6 +529,15 @@ pub fn managed_update_endpoint() -> Result<Option<String>, String> {
     managed_update_endpoint_in(policy())
 }
 
+/// The folder a profile asks the app log to be copied to; `None` keeps only the local log.
+pub fn audit_log_dir_in(policy: &ManagedPolicy) -> Option<PathBuf> {
+    policy.audit_log_path.as_deref().map(PathBuf::from)
+}
+
+pub fn audit_log_dir() -> Option<PathBuf> {
+    audit_log_dir_in(policy())
+}
+
 /// Whether an app-triggered export must stay in the project, whatever the Downloads switch says.
 pub fn exports_in_project() -> bool {
     policy().exports_in_project
@@ -559,6 +622,7 @@ mod tests {
         assert!(deny_workspace_change_in(&policy).is_ok());
         assert!(deny_publisher_in(&policy, Some("a1b2c3d4e5f60718")).is_ok());
         assert!(deny_publisher_in(&policy, None).is_ok());
+        assert!(audit_log_dir_in(&policy).is_none());
         assert!(deny_agent_kit_in(&policy).is_ok());
         assert!(deny_pack_export_in(&policy).is_ok());
         assert_eq!(managed_update_endpoint_in(&policy), Ok(None));
@@ -777,6 +841,62 @@ mod tests {
     }
 
     #[test]
+    fn audit_log_path_takes_an_absolute_folder_outside_the_home_folder() {
+        let policy = forced(&[(
+            "AuditLogPath",
+            PrefValue::String(" /Library/Logs/Kookaburra Cut ".into()),
+        )]);
+        assert_eq!(
+            audit_log_dir_in(&policy),
+            Some(PathBuf::from("/Library/Logs/Kookaburra Cut"))
+        );
+        assert!(policy.issues.is_empty());
+        assert_eq!(policy.forced_keys, ["AuditLogPath"]);
+
+        let homes = [PathBuf::from("/Users/x")];
+        for refused in [
+            "logs",
+            "Library/Logs",
+            "~/Library/Logs",
+            "~",
+            "/",
+            "",
+            "/Library/Logs/../../Users/x",
+            "/Library/./Logs",
+            "/Users/x",
+            "/Users/x/",
+            "/Users/x/Library/Logs/KC",
+            "/users/X/Library/Logs",
+        ] {
+            assert_eq!(usable_audit_dir(refused, &homes), None, "{refused:?}");
+        }
+        for usable in [
+            "/Library/Logs/Kookaburra Cut",
+            "/Users/x-logs",
+            "/var/log/kookaburra-cut",
+        ] {
+            assert_eq!(
+                usable_audit_dir(usable, &homes),
+                Some(PathBuf::from(usable)),
+                "{usable:?}"
+            );
+        }
+
+        for value in [
+            PrefValue::String("relative/logs".into()),
+            PrefValue::Bool(true),
+            strings(&["/Library/Logs"]),
+        ] {
+            let policy = forced(&[("AuditLogPath", value)]);
+            assert!(policy.managed);
+            assert!(audit_log_dir_in(&policy).is_none());
+            assert_eq!(policy.issues.len(), 1, "{:?}", policy.issues);
+            assert!(policy.issues[0].starts_with("AuditLogPath"));
+            assert!(policy.issues[0].ends_with("keeping no copy of the app log"));
+        }
+    }
+
+    #[test]
     fn tilde_roots_expand_against_the_home_folder_only() {
         let mut policy = ManagedPolicy::default();
         let home = Path::new("/Users/x");
@@ -988,6 +1108,12 @@ mod tests {
                 "set_update_consent",
                 "managed_update_endpoint",
             ),
+            (
+                include_str!("audit.rs"),
+                "mirror_at_launch",
+                "audit_log_dir",
+            ),
+            (include_str!("lib.rs"), "run", "audit::mirror_at_launch"),
         ];
         for (src, command, guard) in guarded {
             assert!(
@@ -1022,6 +1148,7 @@ mod tests {
         assert_eq!(json["exportsInProject"], false);
         assert_eq!(json["updateEndpoint"], serde_json::Value::Null);
         assert_eq!(json["updateEndpointLocked"], false);
+        assert_eq!(json["auditLogPath"], serde_json::Value::Null);
         assert_eq!(
             json["forcedKeys"],
             serde_json::json!(["DisableClaude", "AllowedPublisherKeyIds"])
