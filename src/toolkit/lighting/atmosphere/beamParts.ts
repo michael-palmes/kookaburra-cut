@@ -10,6 +10,7 @@ import {
   Vector3,
 } from "three";
 import { createSeededRandom } from "../../../engine/rng";
+import { supersampleSeed } from "../../../engine/supersample";
 import { BEAM_FRAGMENT, BEAM_VERTEX } from "./beamShader";
 import { DUST_FRAGMENT, DUST_VERTEX } from "./dustShader";
 
@@ -39,6 +40,7 @@ export function createBeamMaterial(flags: BeamFlags): ShaderMaterial {
     side: BackSide,
     blending: AdditiveBlending,
     uniforms: {
+      uSampleSeed: supersampleSeed,
       uApex: { value: new Vector3() },
       uAxis: { value: new Vector3(0, -1, 0) },
       uCosOuter: { value: 0.9 },

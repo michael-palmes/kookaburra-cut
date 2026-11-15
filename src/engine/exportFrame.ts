@@ -41,7 +41,7 @@ import {
   type ShutterPlan,
 } from "./shutterPlan";
 import type { snapshotSceneStageFloors } from "./stageRegistry";
-import { supersampleOffset } from "./supersample";
+import { beginSupersample, endSupersample } from "./supersample";
 import { textDerivedPendingCount } from "./textDerivedState";
 
 /** The per-frame body the deterministic loops share (video export and stills): barriers, camera/state/lighting/compare plans, `renderComposited`, readback. Moved verbatim out of exporter.ts, so the video loop's GL call sequence is unchanged. See docs/determinism.md. */
@@ -358,12 +358,11 @@ export async function drawPlannedFrame(
     else if (supersample > 1 && cam.isPerspectiveCamera) {
       try {
         accumulateFrame(gl, width, height, supersample, (k) => {
-          const [dx, dy] = supersampleOffset(k, supersample);
-          cam.setViewOffset(width, height, dx, dy, width, height);
+          beginSupersample(cam, width, height, k, supersample);
           renderWith(plan);
         });
       } finally {
-        cam.clearViewOffset();
+        endSupersample(cam);
       }
     } else renderWith(plan);
   }

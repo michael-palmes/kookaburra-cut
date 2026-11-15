@@ -26235,7 +26235,7 @@
         "bpm": 128
       },
       "looks": ["kookaburra-obsidian-stage", "kookaburra-daylight", "kookaburra-ink"],
-      "sceneCount": 18,
+      "sceneCount": 16,
       "durationMs": 59983,
       "aspects": ["16:9"],
       "themeId": "kookaburra-obsidian-stage",
@@ -26244,34 +26244,9 @@
           "file": "scenes/01-edge.tsx",
           "durationMs": 1858,
           "transition": null,
-          "blocks": ["background", "cameraMode", "cameraRig", "deviceTrack", "devices", "lighting"]
-        },
-        {
-          "file": "scenes/02-glass.tsx",
-          "durationMs": 1875,
-          "transition": null,
-          "blocks": ["background", "cameraMode", "cameraRig", "deviceTrack", "devices", "lighting"]
-        },
-        {
-          "file": "scenes/03-glimpses.tsx",
-          "durationMs": 7500,
-          "transition": null,
-          "blocks": ["background", "cameraMode", "cameraRig", "devices", "lighting"]
-        },
-        {
-          "file": "scenes/04-question.tsx",
-          "durationMs": 3750,
-          "transition": null,
-          "blocks": ["background", "camera", "cameraKicks", "text", "textAnimation"]
-        },
-        {
-          "file": "scenes/05-reveal.tsx",
-          "durationMs": 3750,
-          "transition": null,
           "blocks": [
             "backdrop",
             "background",
-            "cameraKicks",
             "cameraMode",
             "cameraRig",
             "deviceTrack",
@@ -26280,8 +26255,36 @@
           ]
         },
         {
-          "file": "scenes/06-name.tsx",
-          "durationMs": 3750,
+          "file": "scenes/02-glass.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "deviceTrack",
+            "devices",
+            "lighting"
+          ]
+        },
+        {
+          "file": "scenes/03-glimpses.tsx",
+          "durationMs": 7500,
+          "transition": null,
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "deviceTrack",
+            "devices",
+            "lighting"
+          ]
+        },
+        {
+          "file": "scenes/05-reveal.tsx",
+          "durationMs": 11250,
           "transition": null,
           "blocks": [
             "backdrop",
@@ -26292,8 +26295,10 @@
             "deviceTrack",
             "devices",
             "lighting",
+            "motionBlur",
             "text",
             "textAnimation",
+            "textAnimationOverrides",
             "textStyle"
           ]
         },

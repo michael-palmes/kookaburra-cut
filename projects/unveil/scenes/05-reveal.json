@@ -60,26 +60,50 @@
         "tMs": 0,
         "pose": {
           "hero": {
-            "screenPower": 0
+            "screenPower": 0,
+            "rotationDeg": [0, 0, 0]
           }
         }
       },
       {
         "id": "d2",
-        "tMs": 1875,
+        "tMs": 5625,
         "at": "bar:10",
         "pose": {
           "hero": {
-            "screenPower": 0
+            "screenPower": 0,
+            "rotationDeg": [0, 0, 0]
           }
         }
       },
       {
         "id": "d3",
-        "tMs": 2250,
+        "tMs": 6000,
         "pose": {
           "hero": {
-            "screenPower": 1
+            "screenPower": 1,
+            "rotationDeg": [0, 0, 0]
+          }
+        }
+      },
+      {
+        "id": "d4",
+        "tMs": 9375,
+        "at": "bar:12",
+        "pose": {
+          "hero": {
+            "screenPower": 1,
+            "rotationDeg": [0, 0, 0]
+          }
+        }
+      },
+      {
+        "id": "d5",
+        "tMs": 11250,
+        "pose": {
+          "hero": {
+            "screenPower": 1,
+            "rotationDeg": [0, -6, 0]
           }
         }
       }
@@ -94,6 +118,16 @@
         "from": "d2",
         "to": "d3",
         "ease": "outQuad"
+      },
+      {
+        "from": "d3",
+        "to": "d4",
+        "ease": "jump"
+      },
+      {
+        "from": "d4",
+        "to": "d5",
+        "ease": "inOutSine"
       }
     ]
   },
@@ -101,20 +135,50 @@
   "cameraRig": {
     "keys": [
       {
-        "id": "k1",
+        "id": "q1",
         "tMs": 0,
+        "at": "bar:7",
+        "pose": {
+          "position": [-0.1114, -1.3309, 13.1144],
+          "aim": {
+            "mode": "point",
+            "at": [-1.9, 0.1, -0.3]
+          },
+          "fov": 18,
+          "shutterDeg": 0
+        }
+      },
+      {
+        "id": "q2",
+        "tMs": 3281,
+        "at": "cue:full-stop",
+        "pose": {
+          "position": [-0.1574, -1.2941, 12.7694],
+          "aim": {
+            "mode": "point",
+            "at": [-1.9, 0.1, -0.3]
+          },
+          "fov": 18,
+          "shutterDeg": 240
+        }
+      },
+      {
+        "id": "k1",
+        "tMs": 3750,
         "pose": {
           "position": [-0.9, -0.7, 7.2],
           "aim": {
             "mode": "point",
             "at": [-1.9, 0.1, -0.3]
           },
-          "fov": 21
-        }
+          "fov": 21,
+          "shutterDeg": 0
+        },
+        "at": "bar:9"
       },
       {
         "id": "k2",
-        "tMs": 1875,
+        "tMs": 5625,
         "at": "bar:10",
         "pose": {
           "position": [-0.86, -0.72, 6.9],
@@ -127,9 +191,22 @@
       },
       {
         "id": "k3",
-        "tMs": 3750,
+        "tMs": 7500,
         "pose": {
           "position": [0, -0.985, 11.488],
+          "aim": {
+            "mode": "point",
+            "at": [0, -0.1, 0]
+          },
+          "fov": 21
+        },
+        "at": "bar:11"
+      },
+      {
+        "id": "k4",
+        "tMs": 11250,
+        "pose": {
+          "position": [0.15, -0.95, 11.1],
           "aim": {
             "mode": "point",
             "at": [0, -0.1, 0]
@@ -140,6 +217,18 @@
     ],
     "segments": [
       {
+        "from": "q1",
+        "to": "q2",
+        "ease": "linear",
+        "easeLens": "inExpo"
+      },
+      {
+        "from": "q2",
+        "to": "k1",
+        "ease": "inOutCubic",
+        "easeLens": "inCubic"
+      },
+      {
         "from": "k1",
         "to": "k2",
         "ease": "linear"
@@ -148,6 +237,11 @@
         "from": "k2",
         "to": "k3",
         "ease": "inOutCubic"
+      },
+      {
+        "from": "k3",
+        "to": "k4",
+        "ease": "inOutSine"
       }
     ]
   },
@@ -194,17 +288,6 @@
           "intensity": 200,
           "feather": 0.6,
           "falloff": 0.5
-        },
-        {
-          "azimuthDeg": -152.32,
-          "elevationDeg": 20.4,
-          "rollDeg": 0,
-          "lengthDeg": 7.63,
-          "widthDeg": 7.63,
-          "color": "#ffd2a0",
-          "intensity": 1583,
-          "feather": 0.3,
-          "falloff": 0.3
         },
         {
           "azimuthDeg": -79.81,
@@ -319,14 +402,21 @@
     ],
     "keys": [
       {
-        "id": "l0",
+        "id": "m0",
         "tMs": 0,
         "pose": {
           "lights": {
             "key": {
-              "intensity": 0
+              "intensity": 150,
+              "placement": {
+                "mode": "point",
+                "position": [-9.5, 4.85, -6.2]
+              }
             },
             "fill": {
+              "intensity": 8
+            },
+            "rake": {
               "intensity": 0
             }
           },
@@ -335,12 +425,64 @@
         }
       },
       {
-        "id": "l1",
-        "tMs": 500,
+        "id": "mf",
+        "tMs": 3281,
         "pose": {
           "lights": {
             "key": {
-              "intensity": 520
+              "intensity": 220,
+              "placement": {
+                "mode": "point",
+                "position": [-7.375, 4.85, -7.39]
+              }
+            },
+            "fill": {
+              "intensity": 12
+            },
+            "rake": {
+              "intensity": 0
+            }
+          },
+          "environmentIntensity": 0,
+          "environmentRotationDeg": -48
+        },
+        "at": "cue:full-stop"
+      },
+      {
+        "id": "m1",
+        "tMs": 3750,
+        "pose": {
+          "lights": {
+            "key": {
+              "intensity": 110,
+              "placement": {
+                "mode": "point",
+                "position": [-7, 4.85, -7.6]
+              }
+            },
+            "fill": {
+              "intensity": 6
+            },
+            "rake": {
+              "intensity": 0
+            }
+          },
+          "environmentIntensity": 0,
+          "environmentRotationDeg": -48
+        },
+        "at": "bar:9"
+      },
+      {
+        "id": "l1",
+        "tMs": 4250,
+        "pose": {
+          "lights": {
+            "key": {
+              "intensity": 520,
+              "placement": {
+                "mode": "point",
+                "position": [-7, 4.85, -7.6]
+              }
             },
             "fill": {
               "intensity": 30
@@ -359,7 +501,7 @@
       },
       {
         "id": "l2",
-        "tMs": 937,
+        "tMs": 4687,
         "at": "bar:9.3",
         "pose": {
           "lights": {
@@ -376,7 +518,7 @@
       },
       {
         "id": "l3",
-        "tMs": 1700,
+        "tMs": 5450,
         "pose": {
           "lights": {
             "rake": {
@@ -392,15 +534,51 @@
       },
       {
         "id": "l4",
-        "tMs": 2400,
+        "tMs": 6150,
         "pose": {
           "environmentRotationDeg": 0
+        }
+      },
+      {
+        "id": "l5",
+        "tMs": 7500,
+        "at": "bar:11",
+        "pose": {
+          "lights": {
+            "key": {
+              "intensity": 520
+            }
+          },
+          "environmentIntensity": 1
+        }
+      },
+      {
+        "id": "l6",
+        "tMs": 8437,
+        "at": "bar:11.3",
+        "pose": {
+          "lights": {
+            "key": {
+              "intensity": 640
+            }
+          },
+          "environmentIntensity": 1.2
         }
       }
     ],
     "segments": [
       {
-        "from": "l0",
+        "from": "m0",
+        "to": "mf",
+        "ease": "inOutSine"
+      },
+      {
+        "from": "mf",
+        "to": "m1",
+        "ease": "inOutSine"
+      },
+      {
+        "from": "m1",
         "to": "l1",
         "ease": "outExpo"
       },
@@ -418,6 +596,16 @@
         "from": "l3",
         "to": "l4",
         "ease": "outCubic"
+      },
+      {
+        "from": "l4",
+        "to": "l5",
+        "ease": "linear"
+      },
+      {
+        "from": "l5",
+        "to": "l6",
+        "ease": "inOutSine"
       }
     ],
     "shadow": {
@@ -468,5 +656,35 @@
         "intensity": 0.1
       }
     ]
+  },
+  "text": {
+    "question": "Your week, planned for you.",
+    "title": "Meet Fairywren."
+  },
+  "textAnimation": {
+    "in": "stamp",
+    "out": "static",
+    "staggerMs": 0,
+    "staggerExact": true,
+    "durationMs": 938
+  },
+  "textStyle": {
+    "titleFont": "Inter Tight@900",
+    "titleColor": "#fffaf0",
+    "titleSize": 0.9,
+    "titleOffsetX": -0.3,
+    "questionColor": "#fffaf0"
+  },
+  "textAnimationOverrides": {
+    "question": {
+      "in": "build",
+      "out": "static"
+    }
+  },
+  "motionBlur": {
+    "enabled": true,
+    "shutterDeg": 180,
+    "camera": true,
+    "objects": false
   }
 }

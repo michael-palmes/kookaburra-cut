@@ -1,15 +1,6 @@
 {
   "version": 1,
   "name": "Glimpses",
-  "background": {
-    "type": "gradient",
-    "spec": {
-      "type": "linear",
-      "angleDeg": 135,
-      "stops": [["#140c07", 0], ["#060504", 0.3], ["#030303", 1]],
-      "space": "oklch"
-    }
-  },
   "devices": [
     {
       "id": "planned",
@@ -22,9 +13,10 @@
         "speed": 1.2
       },
       "placement": {
-        "position": [0, 0, 0],
-        "rotationDeg": [-6, 14, -3],
-        "scale": 1
+        "position": [-2.05, 0.079, -0.318],
+        "rotationDeg": [0, 42, 0],
+        "scale": 1.39,
+        "ground": true
       },
       "motion": {
         "preset": "none"
@@ -70,14 +62,15 @@
         "src": "assets/fairywren-quickadd-dark-phone.mp4",
         "kind": "video",
         "startMs": 1875,
-        "at": "bar:4",
         "inMs": 350,
-        "speed": 1.3
+        "speed": 1.3,
+        "at": "bar:4"
       },
       "placement": {
-        "position": [25, 0, 0],
-        "rotationDeg": [-8, -14, 3],
-        "scale": 1
+        "position": [-2.05, 0.079, -0.318],
+        "rotationDeg": [0, 42, 0],
+        "scale": 1.39,
+        "ground": true
       },
       "motion": {
         "preset": "none"
@@ -123,13 +116,14 @@
         "src": "assets/fairywren-reschedule-dark-phone.mp4",
         "kind": "video",
         "startMs": 3750,
-        "at": "bar:5",
-        "inMs": 700
+        "inMs": 700,
+        "at": "bar:5"
       },
       "placement": {
-        "position": [50, 0, 0],
-        "rotationDeg": [-5, 14, 3],
-        "scale": 1
+        "position": [-2.05, 0.079, -0.318],
+        "rotationDeg": [0, 42, 0],
+        "scale": 1.39,
+        "ground": true
       },
       "motion": {
         "preset": "none"
@@ -175,13 +169,15 @@
         "src": "assets/fairywren-share-dark-phone.mp4",
         "kind": "video",
         "startMs": 5625,
-        "at": "bar:6",
-        "inMs": 1500
+        "inMs": 1800,
+        "speed": 1.15,
+        "at": "bar:6"
       },
       "placement": {
-        "position": [75, 0, 0],
-        "rotationDeg": [-9, -14, -4],
-        "scale": 1
+        "position": [-2.05, 0.079, -0.318],
+        "rotationDeg": [0, 42, 0],
+        "scale": 1.39,
+        "ground": true
       },
       "motion": {
         "preset": "none"
@@ -220,6 +216,102 @@
       }
     }
   ],
+  "deviceTrack": {
+    "keys": [
+      {
+        "id": "d1",
+        "tMs": 0,
+        "pose": {
+          "planned": {
+            "offset": [0, 0, 0]
+          },
+          "typed": {
+            "offset": [0, 0, 400]
+          },
+          "moved": {
+            "offset": [0, 0, 400]
+          },
+          "shared": {
+            "offset": [0, 0, 400]
+          }
+        }
+      },
+      {
+        "id": "d2",
+        "tMs": 1875,
+        "pose": {
+          "planned": {
+            "offset": [0, 0, 400]
+          },
+          "typed": {
+            "offset": [0, 0, 0]
+          },
+          "moved": {
+            "offset": [0, 0, 400]
+          },
+          "shared": {
+            "offset": [0, 0, 400]
+          }
+        },
+        "at": "bar:4"
+      },
+      {
+        "id": "d3",
+        "tMs": 3750,
+        "pose": {
+          "planned": {
+            "offset": [0, 0, 400]
+          },
+          "typed": {
+            "offset": [0, 0, 400]
+          },
+          "moved": {
+            "offset": [0, 0, 0]
+          },
+          "shared": {
+            "offset": [0, 0, 400]
+          }
+        },
+        "at": "bar:5"
+      },
+      {
+        "id": "d4",
+        "tMs": 5625,
+        "pose": {
+          "planned": {
+            "offset": [0, 0, 400]
+          },
+          "typed": {
+            "offset": [0, 0, 400]
+          },
+          "moved": {
+            "offset": [0, 0, 400]
+          },
+          "shared": {
+            "offset": [0, 0, 0]
+          }
+        },
+        "at": "bar:6"
+      }
+    ],
+    "segments": [
+      {
+        "from": "d1",
+        "to": "d2",
+        "ease": "jump"
+      },
+      {
+        "from": "d2",
+        "to": "d3",
+        "ease": "jump"
+      },
+      {
+        "from": "d3",
+        "to": "d4",
+        "ease": "jump"
+      }
+    ]
+  },
   "cameraMode": "rig",
   "cameraRig": {
     "keys": [
@@ -227,15 +319,15 @@
         "id": "g1a",
         "tMs": 0,
         "pose": {
-          "position": [-0.1355, 0.4881, 2.3371],
+          "position": [1.3045, 0.3607, 5.0018],
           "aim": {
             "mode": "point",
-            "at": [0.0282, 0.3651, -0.004]
+            "at": [-1.9509, 0.3607, -0.208]
           },
-          "fov": 28,
+          "fov": 18,
           "dof": {
             "mode": "lens",
-            "fStop": 64,
+            "fStop": 16,
             "focus": "auto"
           }
         }
@@ -244,15 +336,15 @@
         "id": "g1b",
         "tMs": 1874,
         "pose": {
-          "position": [-0.0617, 0.4776, 2.1412],
+          "position": [1.1418, 0.3607, 4.7413],
           "aim": {
             "mode": "point",
-            "at": [0.0282, 0.3651, -0.004]
+            "at": [-1.9509, 0.3607, -0.208]
           },
-          "fov": 28,
+          "fov": 18,
           "dof": {
             "mode": "lens",
-            "fStop": 64,
+            "fStop": 16,
             "focus": "auto"
           }
         }
@@ -261,15 +353,15 @@
         "id": "g2a",
         "tMs": 1875,
         "pose": {
-          "position": [25.1414, 0.5007, 1.9211],
+          "position": [0.3744, 0.4858, 3.5133],
           "aim": {
             "mode": "point",
-            "at": [24.9718, 0.3647, -0.0167]
+            "at": [-1.9509, 0.4858, -0.208]
           },
-          "fov": 28,
+          "fov": 18,
           "dof": {
             "mode": "lens",
-            "fStop": 64,
+            "fStop": 16,
             "focus": "auto"
           }
         },
@@ -279,15 +371,15 @@
         "id": "g2b",
         "tMs": 3749,
         "pose": {
-          "position": [25.0648, 0.4889, 1.7565],
+          "position": [0.2582, 0.4858, 3.3272],
           "aim": {
             "mode": "point",
-            "at": [24.9718, 0.3647, -0.0167]
+            "at": [-1.9509, 0.4858, -0.208]
           },
-          "fov": 28,
+          "fov": 18,
           "dof": {
             "mode": "lens",
-            "fStop": 64,
+            "fStop": 16,
             "focus": "auto"
           }
         }
@@ -296,15 +388,15 @@
         "id": "g3a",
         "tMs": 3750,
         "pose": {
-          "position": [49.8033, 0.3283, 2.2616],
+          "position": [0.6069, 0.18, 3.8854],
           "aim": {
             "mode": "point",
-            "at": [49.9991, 0.2105, 0.0232]
+            "at": [-1.9509, 0.18, -0.208]
           },
-          "fov": 28,
+          "fov": 18,
           "dof": {
             "mode": "lens",
-            "fStop": 64,
+            "fStop": 16,
             "focus": "auto"
           }
         },
@@ -314,15 +406,15 @@
         "id": "g3b",
         "tMs": 5624,
         "pose": {
-          "position": [49.892, 0.3178, 2.0676],
+          "position": [0.4791, 0.18, 3.6807],
           "aim": {
             "mode": "point",
-            "at": [49.9991, 0.2105, 0.0232]
+            "at": [-1.9509, 0.18, -0.208]
           },
-          "fov": 28,
+          "fov": 18,
           "dof": {
             "mode": "lens",
-            "fStop": 64,
+            "fStop": 16,
             "focus": "auto"
           }
         }
@@ -331,15 +423,15 @@
         "id": "g4a",
         "tMs": 5625,
         "pose": {
-          "position": [75.1335, -0.686, 2.3871],
+          "position": [0.8395, -1.1683, 4.2575],
           "aim": {
             "mode": "point",
-            "at": [74.9375, -0.7645, 0.1471]
+            "at": [-1.9509, -1.1683, -0.208]
           },
-          "fov": 28,
+          "fov": 18,
           "dof": {
             "mode": "lens",
-            "fStop": 64,
+            "fStop": 16,
             "focus": "auto"
           }
         },
@@ -349,15 +441,15 @@
         "id": "g4b",
         "tMs": 7500,
         "pose": {
-          "position": [75.0448, -0.693, 2.193],
+          "position": [0.7, -1.1683, 4.0343],
           "aim": {
             "mode": "point",
-            "at": [74.9375, -0.7645, 0.1471]
+            "at": [-1.9509, -1.1683, -0.208]
           },
-          "fov": 28,
+          "fov": 18,
           "dof": {
             "mode": "lens",
-            "fStop": 64,
+            "fStop": 16,
             "focus": "auto"
           }
         }
@@ -402,9 +494,18 @@
     ]
   },
   "lighting": {
+    "ambient": 0,
+    "fills": [],
+    "sun": {
+      "azimuthDeg": -55,
+      "elevationDeg": 32,
+      "intensity": 0,
+      "color": "#ffc888",
+      "castShadow": false
+    },
     "environment": {
       "source": "kookaburra:strips",
-      "intensity": 0.8,
+      "intensity": 1.0,
       "rotationDeg": 0,
       "strips": [
         {
@@ -430,17 +531,6 @@
           "falloff": 0.5
         },
         {
-          "azimuthDeg": -152.32,
-          "elevationDeg": 20.4,
-          "rollDeg": 0,
-          "lengthDeg": 7.63,
-          "widthDeg": 7.63,
-          "color": "#ffd2a0",
-          "intensity": 1583,
-          "feather": 0.3,
-          "falloff": 0.3
-        },
-        {
           "azimuthDeg": -79.81,
           "elevationDeg": 49.47,
           "rollDeg": 0,
@@ -461,18 +551,131 @@
           "intensity": 12,
           "feather": 1,
           "falloff": 0.4
+        },
+        {
+          "rollDeg": 0,
+          "lengthDeg": 50,
+          "widthDeg": 9,
+          "color": "#fff0e0",
+          "intensity": 2,
+          "feather": 1,
+          "falloff": 0.4,
+          "azimuthDeg": 107.9,
+          "elevationDeg": 7.6
         }
       ]
     },
-    "sun": {
-      "azimuthDeg": -55,
-      "elevationDeg": 32,
-      "intensity": 0,
-      "enabled": false,
-      "color": "#ffc888",
-      "castShadow": false
+    "lights": [
+      {
+        "id": "key",
+        "type": "spot",
+        "intensity": 360,
+        "placement": {
+          "mode": "point",
+          "position": [-7, 4.85, -7.6]
+        },
+        "target": [-2.15, -0.4, -0.3],
+        "angleDeg": 38,
+        "penumbra": 1,
+        "color": "#ffc79a",
+        "decay": 2,
+        "castShadow": true,
+        "volumetric": {
+          "box": {
+            "min": [-14, -1.905, -30],
+            "max": [8, 9, -0.8]
+          },
+          "haze": {
+            "density": 0.028,
+            "anisotropy": 0.65,
+            "strength": 1,
+            "heightFalloff": 0,
+            "groundFade": 1.5
+          },
+          "extinction": true,
+          "shadowMapSize": 2048,
+          "smoke": {
+            "scale": 0.4,
+            "warp": 1.6,
+            "contrast": [0.4, 0.6],
+            "floor": 0.15,
+            "drift": [0.12, 0.08, 0],
+            "evolve": 0.08
+          },
+          "dust": {
+            "count": 280,
+            "min": [-6.5, 0.3, -7],
+            "max": [-1.9, 3.6, -0.9],
+            "radius": [0.006, 0.012],
+            "gain": 0.26,
+            "drift": [0.05, 0.06, 0]
+          }
+        }
+      },
+      {
+        "id": "fill",
+        "type": "spot",
+        "intensity": 30,
+        "placement": {
+          "mode": "point",
+          "position": [-4.5, 0.5, -1]
+        },
+        "target": [-3, -1.9, 0.2],
+        "angleDeg": 50,
+        "penumbra": 1,
+        "color": "#ffb880",
+        "decay": 2
+      }
+    ],
+    "keys": [],
+    "segments": [],
+    "shadow": {
+      "technique": "map",
+      "softness": 0.375,
+      "opacity": 0.85,
+      "mapSize": 2048,
+      "bias": -0.0005
+    }
+  },
+  "background": {
+    "type": "gradient",
+    "spec": {
+      "type": "linear",
+      "angleDeg": 135,
+      "stops": [["#140c07", 0], ["#060504", 0.3], ["#030303", 1]],
+      "space": "oklch"
+    }
+  },
+  "backdrop": {
+    "type": "satin",
+    "color": "#22201e",
+    "roughness": 0.35,
+    "specular": 0.3,
+    "centre": [-2.2, 0.3],
+    "fade": [1.2, 5.5],
+    "reflection": {
+      "strength": 1.3,
+      "blur": 24,
+      "heightBlur": 0.9,
+      "contact": 0.75
     },
-    "ambient": 0,
-    "fills": []
+    "glitter": {
+      "scale": 90,
+      "density": 0,
+      "roughness": 0.15,
+      "tilt": 0.5,
+      "weight": 0,
+      "grain": 0.5,
+      "seed": 5
+    },
+    "pools": [
+      {
+        "at": [-2.4, 0.5],
+        "radius": [1.3, 0.5],
+        "angleDeg": -10,
+        "color": "#ffb070",
+        "intensity": 0.1
+      }
+    ]
   }
 }
