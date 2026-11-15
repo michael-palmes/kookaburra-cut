@@ -577,6 +577,9 @@ class Txn:
     def move(self, rel: str, dest: str, *, base: Optional[str] = None, dest_base: str = ABSENT) -> None:
         """Move rel to dest at commit: dest gets rel's bytes (a hard link, else a copy) while dest still hashes to
         dest_base ("absent": a new name), and rel goes once every write landed, unless another op writes rel."""
+        for name in (rel, dest):
+            if ".." in Path(name).parts:
+                raise KbError(f"{name} leaves its folder, so it isn't moved", EXIT_PROBLEMS, kind="invalid")
         b = base if base is not None else self.hash(rel)
         if b == ABSENT:
             raise KbError(f"{rel} does not exist, so it can't be moved", EXIT_PROBLEMS, kind="invalid")

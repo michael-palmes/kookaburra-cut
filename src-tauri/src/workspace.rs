@@ -414,8 +414,8 @@ pub(crate) fn slugify(name: &str) -> String {
     slug
 }
 
-/// Workspace folders owned by the app rather than by projects; a project taking one of these names would shadow a library, so creation and duplication both refuse them.
-const RESERVED_SLUGS: [&str; 9] = [
+/// Workspace folders owned by the app rather than by projects; a project taking one of these names would shadow a library or the bridge, so creation, duplication and pack import all refuse them.
+const RESERVED_SLUGS: [&str; 11] = [
     "themes",
     crate::brands::BRANDS_DIR_NAME,
     "fonts",
@@ -425,10 +425,19 @@ const RESERVED_SLUGS: [&str; 9] = [
     "screenshots",
     crate::library::TEMPLATES_DIR_NAME,
     crate::library::PRESETS_DIR_NAME,
+    "_bridge",
+    "_autorun",
 ];
 
+/// Matched as the volume matches names: slugs are ASCII, so APFS folds them as ASCII case.
+pub(crate) fn is_reserved_slug(slug: &str) -> bool {
+    RESERVED_SLUGS
+        .iter()
+        .any(|reserved| reserved.eq_ignore_ascii_case(slug))
+}
+
 fn reject_reserved_slug(slug: &str) -> Result<(), String> {
-    if RESERVED_SLUGS.contains(&slug) {
+    if is_reserved_slug(slug) {
         return Err(format!(
             "\"{slug}\" is a reserved folder name: pick another"
         ));
@@ -1356,6 +1365,7 @@ fn duplicate_skips(name: &std::ffi::OsStr) -> bool {
 pub async fn delete_project(
     app: AppHandle,
     state: State<'_, SettingsState>,
+    trust: State<'_, TrustState>,
     slug: String,
 ) -> Result<(), String> {
     validate_slug(&slug)?;
@@ -1372,6 +1382,7 @@ pub async fn delete_project(
             .await
             .map_err(|e| e.to_string())?
     };
+    forget_trust_at(&app, &state, &trust, std::slice::from_ref(&dir))?;
     trash_path(&dir).map_err(|e| format!("couldn't move the project to the Trash: {e}"))?;
     log::info!(
         "[workspace] {slug}: moved to the Trash ({})",
@@ -2390,7 +2401,7 @@ fn copy_source_needs_grant(scope: &ProjectScope) -> bool {
     )
 }
 
-/// Forget every grant for a project, user template or user preset, so the person meets the Allow sheet again on the next open: one a pack import just wrote (a publisher's content, whoever that publisher is), or one forgotten in Settings.
+/// Forget one project's grant, so it asks again on its next open: Settings ▸ Allowed projects ▸ Forget.
 pub(crate) fn forget_project_trust(
     app: &AppHandle,
     state: &State<'_, SettingsState>,
@@ -2403,6 +2414,40 @@ pub(crate) fn forget_project_trust(
             settings.trusted_projects.remove(id);
         })
     })
+}
+
+/// Forget every grant held for these folders: a pack is landing in them, so the person meets the Allow sheet again on the next open. Keyed by the folder on disk, not the id, so a slug spelt in another case is forgotten too; website origins go with the grant.
+pub(crate) fn forget_trust_at(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    trust: &TrustState,
+    folders: &[PathBuf],
+) -> Result<(), String> {
+    if folders.is_empty() {
+        return Ok(());
+    }
+    let landing = Landing::new(folders);
+    let ids: Vec<String> = trust
+        .session
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .iter()
+        .cloned()
+        .collect();
+    let dirs: HashMap<String, PathBuf> = ids
+        .into_iter()
+        .filter_map(|id| project_dir(app, state, &id).ok().map(|dir| (id, dir)))
+        .collect();
+    forget_session_at(
+        &mut trust
+            .session
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner),
+        &landing,
+        |id| dirs.get(id).cloned(),
+    );
+    crate::website::forget_loopback_grants_at(app, |key| landing.holds(Path::new(key)));
+    update_settings(app, state, |settings| forget_stored_at(settings, &landing))
 }
 
 /// Settings ▸ Clear all app data: every session allow and unredeemed Allow goes, so no project passes on this launch's word.
@@ -2432,6 +2477,64 @@ fn drop_session_then(
     drop_stored()
 }
 
+fn forget_session_at(
+    session: &mut HashSet<String>,
+    landing: &Landing,
+    dir_of: impl Fn(&str) -> Option<PathBuf>,
+) {
+    session.retain(|id| dir_of(id).is_some_and(|dir| !landing.holds(&dir)));
+}
+
+fn forget_stored_at(settings: &mut AppSettings, landing: &Landing) {
+    settings
+        .trusted_projects
+        .retain(|_, record| !landing.holds(Path::new(&record.path)));
+    settings
+        .website_origin_grants
+        .retain(|key, _| !landing.holds(Path::new(key)));
+}
+
+/// The folders a pack or a delete is about to change, each read from disk once: by inode where it exists, else by its path in any case (the side that forgets more).
+struct Landing {
+    inodes: HashSet<(u64, u64)>,
+    absent: HashSet<String>,
+    spelt: HashSet<String>,
+}
+
+impl Landing {
+    fn new(folders: &[PathBuf]) -> Self {
+        let mut landing = Landing {
+            inodes: HashSet::new(),
+            absent: HashSet::new(),
+            spelt: HashSet::new(),
+        };
+        for folder in folders {
+            let name = folder.to_string_lossy().to_lowercase();
+            match folder_inode(folder) {
+                Some(inode) => landing.inodes.insert(inode),
+                None => landing.absent.insert(name.clone()),
+            };
+            landing.spelt.insert(name);
+        }
+        landing
+    }
+
+    fn holds(&self, path: &Path) -> bool {
+        let name = path.to_string_lossy().to_lowercase();
+        match folder_inode(path) {
+            Some(inode) => self.inodes.contains(&inode) || self.absent.contains(&name),
+            None => self.spelt.contains(&name),
+        }
+    }
+}
+
+fn folder_inode(path: &Path) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    std::fs::metadata(path)
+        .ok()
+        .map(|meta| (meta.dev(), meta.ino()))
+}
+
 /// One consent the native sheet (or an autorun launch) issued and `trust_project` has not consumed yet.
 struct PendingTrust {
     slug: String,
@@ -2439,11 +2542,43 @@ struct PendingTrust {
     issued: Instant,
 }
 
-/// Trust state that lives only as long as this app process: the consent nonces `request_project_trust` issued and `trust_project` has not consumed (nothing else writes there, so a call without one of them has nothing to redeem), and the slugs this session has allowed, whose live edits re-stamp without asking.
+/// Trust state that lives only as long as this app process: the consent nonces `request_project_trust` issued and `trust_project` has not consumed (nothing else writes there, so a call without one of them has nothing to redeem), the slugs this session has allowed while they stay open, whose live edits re-stamp without asking, and the project the main window has open.
 #[derive(Default)]
 pub struct TrustState {
     nonces: Mutex<HashMap<String, PendingTrust>>,
     session: Mutex<HashSet<String>>,
+    open: Mutex<Option<String>>,
+}
+
+impl TrustState {
+    /// The main window now shows `id`, or the welcome screen for None.
+    pub(crate) fn main_window_shows(&self, id: Option<&str>) {
+        let mut open = self
+            .open
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut session = self
+            .session
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        leave_open_project(&mut open, &mut session, id);
+    }
+}
+
+/// A project the main window leaves or enters keeps no session allow, so content replaced while it was closed asks again.
+fn leave_open_project(
+    open: &mut Option<String>,
+    session: &mut HashSet<String>,
+    next: Option<&str>,
+) {
+    if open.as_deref() == next {
+        return;
+    }
+    // Entering a project starts clean too: its allow is earned while it is open, never carried in.
+    for slug in open.iter().map(String::as_str).chain(next) {
+        session.remove(slug);
+    }
+    *open = next.map(str::to_owned);
 }
 
 /// What the main window's gate check decides for a project.
@@ -2749,11 +2884,15 @@ pub fn read_project_manifest(
     window: tauri::Window,
     app: AppHandle,
     state: State<'_, SettingsState>,
+    trust: State<'_, TrustState>,
     slug: String,
 ) -> Result<String, String> {
     let (scope, item) = parse_project_id(&slug)?;
     let dir = project_dir(&app, &state, &slug)?;
     let text = project_manifest_for_loading(&dir, scope)?;
+    if window.label() == "main" {
+        trust.main_window_shows(Some(&slug));
+    }
     let readable = match scope {
         ProjectScope::BundledTemplate => bundled_assets_in_dev(&templates_root(&app), item)?,
         ProjectScope::BundledPreset => bundled_assets_in_dev(&presets_root(&app), item)?,
@@ -2776,8 +2915,11 @@ fn bundled_assets_in_dev(root: &Path, item: &str) -> Result<Option<PathBuf>, Str
 
 /// The calling window reads no project any more: the main window back on the welcome screen.
 #[tauri::command]
-pub fn release_project(window: tauri::Window, app: AppHandle) {
+pub fn release_project(window: tauri::Window, app: AppHandle, trust: State<'_, TrustState>) {
     crate::asset_reach::close_project(&app, window.label());
+    if window.label() == "main" {
+        trust.main_window_shows(None);
+    }
 }
 
 fn bundled_project_assets_path(root: &Path, slug: &str) -> Result<PathBuf, String> {
@@ -3493,6 +3635,9 @@ mod tests {
         ] {
             assert!(reject_reserved_slug(name).is_err(), "{name} was allowed");
         }
+        for name in ["Themes", "PRESETS", "_bridge", "_Autorun"] {
+            assert!(reject_reserved_slug(name).is_err(), "{name} was allowed");
+        }
         assert!(reject_reserved_slug("my-video").is_ok());
         // The library dirs are the pair that must never drift out of the guard.
         assert!(RESERVED_SLUGS.contains(&crate::library::TEMPLATES_DIR_NAME));
@@ -4126,6 +4271,111 @@ mod tests {
     }
 
     #[test]
+    fn a_folder_replaced_while_closed_asks_again_in_the_same_launch() {
+        let dir = PathBuf::from("/ws/demo");
+        let record = TrustRecord {
+            scenes_fingerprint: "fp-allowed".into(),
+            path: dir.to_string_lossy().into_owned(),
+            allowed_at_ms: 0,
+        };
+        let (mut open, mut session) = (None, HashSet::new());
+        leave_open_project(&mut open, &mut session, Some("demo"));
+        assert_eq!(
+            session_trust_decision(Some(&record), &dir, "fp-allowed", &mut session, "demo"),
+            SessionTrust::Pass
+        );
+        leave_open_project(&mut open, &mut session, Some("demo"));
+        assert_eq!(
+            session_trust_decision(Some(&record), &dir, "fp-edited", &mut session, "demo"),
+            SessionTrust::Restamp
+        );
+        leave_open_project(&mut open, &mut session, None);
+        assert_eq!(
+            session_trust_decision(
+                Some(&record),
+                &dir,
+                "fp-someone-elses",
+                &mut session,
+                "demo"
+            ),
+            SessionTrust::Ask
+        );
+        leave_open_project(&mut open, &mut session, Some("demo"));
+        assert_eq!(
+            session_trust_decision(Some(&record), &dir, "fp-allowed", &mut session, "demo"),
+            SessionTrust::Pass
+        );
+        leave_open_project(&mut open, &mut session, Some("other"));
+        assert_eq!(
+            session_trust_decision(
+                Some(&record),
+                &dir,
+                "fp-someone-elses",
+                &mut session,
+                "demo"
+            ),
+            SessionTrust::Ask
+        );
+        // An allow given while another project was open (a scene copied from it) is not carried in.
+        session.insert("demo".into());
+        leave_open_project(&mut open, &mut session, Some("demo"));
+        assert_eq!(
+            session_trust_decision(
+                Some(&record),
+                &dir,
+                "fp-someone-elses",
+                &mut session,
+                "demo"
+            ),
+            SessionTrust::Ask
+        );
+    }
+
+    #[test]
+    fn a_landing_folder_forgets_its_grants_under_any_spelling() {
+        let root = scratch_dir();
+        let mine = root.join("product-tour");
+        let other = root.join("other");
+        std::fs::create_dir_all(&mine).unwrap();
+        std::fs::create_dir_all(&other).unwrap();
+        let record = |dir: &Path| TrustRecord {
+            scenes_fingerprint: "fp".into(),
+            path: dir.to_string_lossy().into_owned(),
+            allowed_at_ms: 0,
+        };
+        let mut settings = AppSettings::default();
+        settings
+            .trusted_projects
+            .insert("product-tour".into(), record(&mine));
+        settings
+            .trusted_projects
+            .insert("other".into(), record(&other));
+        let key = |dir: &Path| dir.canonicalize().unwrap().to_string_lossy().into_owned();
+        settings
+            .website_origin_grants
+            .insert(key(&mine), vec!["https://example.com".into()]);
+        settings
+            .website_origin_grants
+            .insert(key(&other), vec!["https://example.com".into()]);
+        let mut session = HashSet::from(["product-tour".to_owned(), "other".to_owned()]);
+
+        let landing = Landing::new(&[root.join("Product-Tour")]);
+        forget_session_at(&mut session, &landing, |id| Some(root.join(id)));
+        forget_stored_at(&mut settings, &landing);
+
+        assert_eq!(session, HashSet::from(["other".to_owned()]));
+        assert_eq!(
+            settings.trusted_projects.keys().collect::<Vec<_>>(),
+            vec!["other"]
+        );
+        assert_eq!(
+            settings.website_origin_grants.keys().collect::<Vec<_>>(),
+            vec![&key(&other)]
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn a_pack_landing_asks_even_when_its_stored_grant_survives() {
         let dir = Path::new("/Users/x/Kookaburra Cut/demo");
         let stale = TrustRecord {
@@ -4133,14 +4383,29 @@ mod tests {
             path: dir.to_string_lossy().into_owned(),
             allowed_at_ms: 1,
         };
-        let shared = Mutex::new(HashSet::from(["demo".to_owned(), "other".to_owned()]));
-        let failed = drop_session_then(&shared, "demo", || Err("disk full".to_owned()));
-        assert_eq!(failed, Err("disk full".to_owned()));
-        let mut session = shared.into_inner().unwrap();
+        let mut session = HashSet::from(["demo".to_owned(), "other".to_owned()]);
+        // The session allow goes first; the settings write that follows may fail.
+        forget_session_at(&mut session, &Landing::new(&[dir.to_path_buf()]), |id| {
+            Some(dir.with_file_name(id))
+        });
         assert_eq!(
             session_trust_decision(Some(&stale), dir, "fp-2", &mut session, "demo"),
             SessionTrust::Ask
         );
+        assert_eq!(
+            session_trust_decision(None, dir, "fp-2", &mut session, "demo"),
+            SessionTrust::Ask
+        );
+        assert_eq!(session, ["other".to_owned()].into());
+    }
+
+    #[test]
+    fn forget_in_settings_drops_the_session_allow_even_when_the_write_fails() {
+        let dir = Path::new("/Users/x/Kookaburra Cut/demo");
+        let shared = Mutex::new(HashSet::from(["demo".to_owned(), "other".to_owned()]));
+        let failed = drop_session_then(&shared, "demo", || Err("disk full".to_owned()));
+        assert_eq!(failed, Err("disk full".to_owned()));
+        let mut session = shared.into_inner().unwrap();
         assert_eq!(
             session_trust_decision(None, dir, "fp-2", &mut session, "demo"),
             SessionTrust::Ask

@@ -106,12 +106,15 @@ pub async fn open_in_claude(
         let stamped = workspace::restamping_trust(&stamp_app, &state, &stamp_slug, || {
             workspace::stamp_claude_provisioning(&stamp_app, &stamp_dir)
         });
-        if let Err(e) = stamped {
+        stamped.map_err(|e| {
             log::warn!("kit stamp before opening Claude failed: {e}");
-        }
+            format!(
+                "Claude stays off: Kookaburra Cut couldn't set up its tools in this folder ({e})."
+            )
+        })
     })
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| e.to_string())??;
     if !workspace::review_agent_files_for(&app, &state, &slug, &dir).await? {
         return Err("Claude stays off until you've looked at what moved. Open it again when you're ready; the text is in NOTES.md.".into());
     }

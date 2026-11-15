@@ -606,12 +606,25 @@ def session_marker(root: str, session: str) -> str:
     return os.path.join(root, ".git", "kb", "sessions", SAFE_SESSION.sub("_", session)[:80] or "unknown")
 
 
+def names_bridge_keys(command: str) -> bool:
+    """The command names the bridge keys or a glob matching them, quotes and escapes aside (best effort)."""
+    import fnmatch
+    import unicodedata
+
+    plain = re.sub(r"/(\./)+", "/", re.sub(r"/+", "/", re.sub(r"[\"'\\]", "", command)))
+    folded = unicodedata.normalize("NFD", unicodedata.normalize("NFD", plain).casefold())
+    return any(fnmatch.fnmatchcase("keys", part) for part in re.findall(r"_bridge/([^/\s;|&<>()]+)", folded))
+
+
 def bash_pre(payload: Dict[str, Any]) -> Tuple[int, str, str]:
     root = project_root(payload)
     ti = tool_input(payload)
     command = ti.get("command")
     if root is None or not isinstance(command, str) or not command.strip():
         return 0, "", ""
+    if names_bridge_keys(command):
+        return deny("~/Kookaburra Cut/_bridge/keys holds the app's bridge keys, which sign kb's requests and the app's answers. "
+                    "kb denied this command: ./kb talks to the app, nothing else needs the keys.")
     if runs_git(command):
         withheld = git_withheld(root)
         if withheld:

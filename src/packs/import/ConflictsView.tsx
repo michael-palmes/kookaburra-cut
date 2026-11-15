@@ -31,7 +31,7 @@ function options(kind: ItemKind): Resolution[] {
 function consequence(item: ItemPlan, resolution: Resolution): string | null {
   if (resolution !== "replace") return null;
   if (item.kind === "font") return "Replacing changes how your existing projects render.";
-  return `Your ${KIND_LABELS[item.kind].one.toLowerCase()} is moved to a backup first.`;
+  return `Your ${KIND_LABELS[item.kind].one.toLowerCase()} moves to a backup first, kept for a day.`;
 }
 
 /** Screen 3. Smart defaults, per-item override, per-category apply-to-all. Nothing hidden. */

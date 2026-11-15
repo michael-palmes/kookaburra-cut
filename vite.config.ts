@@ -1,5 +1,4 @@
 /// <reference types="vitest/config" />
-import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
@@ -74,9 +73,8 @@ export default defineConfig({
         ? { protocol: "ws", host, port: 1421 }
         : undefined,
     fs: {
-      // Dev-only: lets the dev server serve workspace projects (user-chosen at runtime,
-      // so scoped to the home dir) through /@fs/ imports, alongside the repo itself.
-      allow: [fileURLToPath(new URL(".", import.meta.url)), homedir()],
+      // The checkout only: workspace projects compile at runtime and load over asset://, so scene code never reads the home folder through the dev server.
+      allow: [fileURLToPath(new URL(".", import.meta.url))],
     },
     watch: {
       // Rust source changes shouldn't trigger a frontend reload.

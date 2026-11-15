@@ -3,6 +3,7 @@
 use super::error::PackError;
 use super::limits::{MAX_PATH_BYTES, MAX_PATH_DEPTH, PAYLOAD_PREFIX};
 use super::model::ItemKind;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// Per-subtree allowlist. Anything not listed refuses with the path named.
@@ -144,6 +145,40 @@ fn check_extension(raw: &str) -> Result<(), PackError> {
         .unwrap_or_default();
     if ext.is_empty() || !allowed_extensions(kind).contains(&ext.as_str()) {
         return Err(PackError::ExtensionNotAllowed(raw.to_string()));
+    }
+    Ok(())
+}
+
+/// A name as APFS compares it: canonical decomposition and full case folding.
+pub fn folded(name: &str) -> String {
+    let nfd = icu_normalizer::DecomposingNormalizerBorrowed::new_nfd();
+    let upper = nfd.normalize(name).to_uppercase();
+    nfd.normalize(&upper.to_lowercase()).into_owned()
+}
+
+/// Refuse two archive paths, or two spellings of one folder, that a Mac would store as one: the trust screen would describe one while the other lands.
+pub fn refuse_folded_collisions<'a>(
+    paths: impl IntoIterator<Item = &'a str>,
+) -> Result<(), PackError> {
+    let mut seen: HashMap<String, &str> = HashMap::new();
+    for path in paths {
+        let mut key = String::new();
+        let mut end = 0;
+        for component in path.split('/') {
+            end += component.len();
+            let spelt = &path[..end];
+            if !key.is_empty() {
+                key.push('/');
+            }
+            key.push_str(&folded(component));
+            match seen.insert(key.clone(), spelt) {
+                Some(earlier) if earlier != spelt || end == path.len() => {
+                    return Err(PackError::PathCollision(path.to_string()))
+                }
+                _ => {}
+            }
+            end += 1;
+        }
     }
     Ok(())
 }

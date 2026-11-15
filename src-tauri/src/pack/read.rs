@@ -23,7 +23,7 @@ pub struct PackInspection {
     pub scene_sources: Vec<SceneSource>,
 }
 
-/// One `scenes/**/*.tsx` a project, template or preset carries. `file` is item-relative, as `project.json` records it.
+/// One `*.tsx` a project, template or preset carries. `file` is item-relative, as `project.json` records it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SceneSource {
@@ -189,6 +189,7 @@ pub fn inspect(archive: &Path) -> Result<PackInspection, PackError> {
         return Err(PackError::KeyIdMismatch(manifest.publisher.key_id.clone()));
     }
     validate_contents_paths(&manifest)?;
+    super::paths::refuse_folded_collisions(manifest.files.iter().map(|f| f.path.as_str()))?;
     let scene_sources = staged_scene_sources(&manifest)?;
 
     Ok(PackInspection {
@@ -200,14 +201,14 @@ pub fn inspect(archive: &Path) -> Result<PackInspection, PackError> {
     })
 }
 
-fn is_scene_source(item_rel: &str) -> bool {
-    item_rel.starts_with("scenes/")
-        && item_rel
-            .rsplit_once('.')
-            .is_some_and(|(_, ext)| ext.eq_ignore_ascii_case("tsx"))
+/// Scene code wherever it sits in an item: a Mac loads `Scenes/` or a Unicode look-alike as `scenes/`, so the folder name decides nothing.
+pub(super) fn is_scene_source(item_rel: &str) -> bool {
+    item_rel
+        .rsplit_once('.')
+        .is_some_and(|(_, ext)| ext.eq_ignore_ascii_case("tsx"))
 }
 
-/// The scene code each project-shaped item would stage: every `scenes/**/*.tsx` under its root in `files`. The
+/// The scene code each project-shaped item would stage: every `*.tsx` under its root in `files`. The
 /// manifest's `sceneFiles` must be exactly that set, so the code screen and the trust screen count what lands, never
 /// what the author wrote down. The root must be the folder apply lands for that kind and slug, once per item, or the
 /// screens would describe one folder while apply moved another. Items keep `sceneFiles` order, which is the film's order.
@@ -224,7 +225,7 @@ fn staged_scene_sources(manifest: &PackManifest) -> Result<Vec<SceneSource>, Pac
     for (kind, item) in items {
         let root = item.root.trim_end_matches('/');
         let expected = format!("{PAYLOAD_PREFIX}{}/{}", kind.payload_dir(), item.base.slug);
-        if root != expected || !roots.insert(expected) {
+        if root != expected || !roots.insert(super::paths::folded(&expected)) {
             return Err(PackError::ItemRootMismatch(item.root.clone()));
         }
         let prefix = format!("{root}/");

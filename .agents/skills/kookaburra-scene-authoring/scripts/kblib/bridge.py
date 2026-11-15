@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from . import bridgeauth
 from .project import MANIFEST, Project, find_root
 from .util import EXIT_ENV, EXIT_PROBLEMS, EXIT_TRANSIENT, KbError, bridge_dir, now_ms
 
@@ -110,6 +111,14 @@ class Instance:
         self.build = hb.get("build")
         started = hb.get("startedAtMs")
         self.started_at_ms: Optional[int] = started if isinstance(started, int) and not isinstance(started, bool) else None
+        # A key file on disk counts too, so a heartbeat rewritten without `auth` can't switch signing off.
+        self.signs = not self.legacy and self.pid > 0 and (
+            (hb.get("auth") == 1 and not isinstance(hb.get("auth"), bool))
+            or os.path.lexists(str(bridge_dir() / "keys" / f"{self.pid}.key")))
+
+    def key(self) -> Optional[bytes]:
+        """This instance's bridge key when it signs (kb then signs requests and refuses unsigned answers), else None."""
+        return bridgeauth.read_key(self.pid) if self.signs else None
 
     def on_root(self, root: Optional[Path]) -> bool:
         return root is None or (self.root is not None and same_dir(self.root, root))
@@ -302,19 +311,29 @@ def new_id() -> str:
     return f"{now_ms():016d}-{os.getpid()}-{secrets.token_hex(3)}"
 
 
-def write_request(body: Dict[str, Any]) -> str:
+def write_request(body: Dict[str, Any], key: Optional[bytes] = None) -> str:
+    """Write one request; signed with `key` when the addressed instance signs."""
     rid = new_id()
-    payload = dict(body)
+    payload = {k: v for k, v in body.items() if k != "auth"}
     payload["version"] = 2
     payload["id"] = rid
     payload["requestedAtMs"] = now_ms()
+    text = bridgeauth.sign_payload(key, payload) if key is not None else json.dumps(payload, ensure_ascii=False)
     requests = bridge_dir() / "requests"
     requests.mkdir(parents=True, exist_ok=True)
     tmp = requests / f".{rid}.tmp"
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False)
+        f.write(text)
     os.replace(tmp, requests / f"{rid}.json")
     return rid
+
+
+def read_answer(path: Path, key: Optional[bytes]) -> Optional[Dict[str, Any]]:
+    """An answer file, None while missing; with a key, verified or refused (exit 2 `bad-signature`) and without `auth`."""
+    resp = bridgeauth.read_answer(path, key)
+    if resp is not None and key is not None:
+        resp.pop("auth", None)
+    return resp
 
 
 def address(body: Dict[str, Any], inst: Instance, project: Optional[Project], client: Optional[str] = None) -> Dict[str, Any]:
@@ -381,7 +400,8 @@ def request(kind: str, body: Dict[str, Any], timeout: float, action: str, client
     deadline = time.monotonic() + timeout
     policy = queue.Policy(kind, inst.hb, timeout, client)
     payload = policy.payload(address(dict(body, kind=kind), inst, project, policy.client))
-    rid = write_request(payload)
+    key = inst.key()
+    rid = write_request(payload, key)
     sent = time.monotonic()
     checked = sent
     claimed = False
@@ -390,18 +410,25 @@ def request(kind: str, body: Dict[str, Any], timeout: float, action: str, client
     while time.monotonic() < deadline:
         path = responses / f"{rid}.json"
         if path.is_file():
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    resp = json.load(f)
-            except (OSError, ValueError):
-                time.sleep(POLL_S)
-                continue
-            if not isinstance(resp, dict):
-                raise KbError(f"the app answered {kind} with something that is not a JSON object", EXIT_PROBLEMS)
+            if key is not None:
+                answer = read_answer(path, key)
+                if answer is None:
+                    time.sleep(POLL_S)
+                    continue
+                resp = answer
+            else:
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        resp = json.load(f)
+                except (OSError, ValueError):
+                    time.sleep(POLL_S)
+                    continue
+                if not isinstance(resp, dict):
+                    raise KbError(f"the app answered {kind} with something that is not a JSON object", EXIT_PROBLEMS)
             check_served_by(resp, kind, project)
             again = policy.after_response(resp, rid, payload)
             if again is not None:
-                rid = write_request(again)
+                rid = write_request(again, key)
                 sent = time.monotonic()
                 claimed = False
                 continue
@@ -410,7 +437,7 @@ def request(kind: str, body: Dict[str, Any], timeout: float, action: str, client
                 time.sleep(BUSY_RETRY_S)
                 if not pid_alive(inst.pid):
                     raise _quit_error(inst, kind)
-                rid = write_request(payload)
+                rid = write_request(payload, key)
                 sent = time.monotonic()
                 claimed = False
                 continue

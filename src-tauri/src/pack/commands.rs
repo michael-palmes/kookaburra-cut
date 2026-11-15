@@ -981,6 +981,14 @@ pub async fn apply_import(
     let pack_name = staged.manifest.pack.name.clone();
 
     let key_id = key::key_id_of(&publisher_block.public_key).unwrap_or_else(|| "unreadable".into());
+    // Consent goes before the first move, so an open project's reload never meets the pack's code under the old grant.
+    let landing = trust_landing_folders(&root, &staged.manifest, &resolutions);
+    if let Err(e) = workspace::forget_trust_at(&app, &settings, &trust, &landing) {
+        log::warn!("[pack] key {key_id}: import refused: {e}");
+        return Err(format!(
+            "Couldn't clear the old Allow before importing: {e}"
+        ));
+    }
     let applied = super::apply::apply_import(&root, staged, &resolutions, |done, total, label| {
         let _ = on_progress.send(PackProgress {
             file: done,
@@ -1007,23 +1015,26 @@ pub async fn apply_import(
         outcome_counts(&outcome)
     );
 
-    // A slug a pack wrote now holds a publisher's content, so its consent is gone; keep-both lands under a fresh slug.
-    for result in &outcome.results {
-        if !matches!(
-            result.outcome,
-            super::apply::ItemOutcome::Added | super::apply::ItemOutcome::Replaced
-        ) {
-            continue;
-        }
-        let id = match result.kind {
-            ItemKind::Project => result.slug.clone(),
-            ItemKind::Template => format!("ws-template:{}", result.slug),
-            ItemKind::Preset => format!("ws-preset:{}", result.slug),
-            _ => continue,
-        };
-        if let Err(e) = workspace::forget_project_trust(&app, &settings, &trust, &id) {
-            log::warn!("[pack] forgetting trust for {id} failed: {e}");
-        }
+    // Again once everything has landed, for a keep-both slug and anything allowed while the import ran.
+    let landed: Vec<PathBuf> = outcome
+        .results
+        .iter()
+        .filter(|result| {
+            matches!(
+                result.outcome,
+                super::apply::ItemOutcome::Added
+                    | super::apply::ItemOutcome::Replaced
+                    | super::apply::ItemOutcome::KeptBoth
+            ) && is_project_shaped(result.kind)
+        })
+        .filter_map(|result| {
+            super::conflicts::workspace_target(&root, result.kind, &result.slug)
+                .ok()
+                .map(|target| target.path)
+        })
+        .collect();
+    if let Err(e) = workspace::forget_trust_at(&app, &settings, &trust, &landed) {
+        log::warn!("[pack] forgetting trust after the import failed: {e}");
     }
 
     // Trust on first use is recorded only after something actually landed.
@@ -1045,6 +1056,35 @@ pub async fn apply_import(
     use tauri::Emitter;
     let _ = app.emit("kookaburra://workspace-changed", ());
     Ok(outcome)
+}
+
+fn is_project_shaped(kind: ItemKind) -> bool {
+    matches!(
+        kind,
+        ItemKind::Project | ItemKind::Template | ItemKind::Preset
+    )
+}
+
+/// The folders a selected project, template or preset lands in under its own slug; keep-both lands beside them, never in them.
+fn trust_landing_folders(
+    root: &Path,
+    manifest: &PackManifest,
+    resolutions: &std::collections::HashMap<String, Resolution>,
+) -> Vec<PathBuf> {
+    super::apply::flatten(manifest)
+        .into_iter()
+        .filter(|(kind, slug, _)| {
+            is_project_shaped(*kind)
+                && resolutions
+                    .get(&deps::item_key(*kind, slug))
+                    .is_some_and(|resolution| *resolution == Resolution::Replace)
+        })
+        .filter_map(|(kind, slug, _)| {
+            super::conflicts::workspace_target(root, kind, &slug)
+                .ok()
+                .map(|target| target.path)
+        })
+        .collect()
 }
 
 fn outcome_counts(outcome: &super::apply::ImportOutcome) -> String {

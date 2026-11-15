@@ -60,15 +60,61 @@ fn app_window_only(label: &str, shown: &Path) -> Result<(), String> {
     }
 }
 
+/// The root a request names: the first of `roots` its path enters, read as written where it can be, else folder by folder from the top. A link further in never changes it.
+fn named_root(shown: &Path, roots: &[PathBuf]) -> Option<PathBuf> {
+    let refs: Vec<&PathBuf> = roots.iter().collect();
+    if let Some(root) = written_root(shown, &refs) {
+        return Some(root.clone());
+    }
+    let mut ancestors: Vec<&Path> = shown.ancestors().skip(1).collect();
+    ancestors.reverse();
+    ancestors.into_iter().find_map(|folder| {
+        let real = folder.canonicalize().ok()?;
+        roots.contains(&real).then_some(real)
+    })
+}
+
+/// The root a request's path names as written, the shallowest when roots nest.
+fn written_root<'a>(shown: &Path, roots: &[&'a PathBuf]) -> Option<&'a PathBuf> {
+    roots
+        .iter()
+        .copied()
+        .filter(|root| shown.starts_with(root))
+        .min_by_key(|root| root.components().count())
+}
+
 impl Reach {
     /// The real file behind `path` when `label`'s window may read it (`check` over the canonical path).
     #[cfg(test)]
     fn resolve(&self, label: &str, path: &Path) -> Result<PathBuf, String> {
-        self.check(label, &canonical(path)?, path)
+        let roots: Vec<PathBuf> = self.roots(label).into_iter().cloned().collect();
+        let named = named_root(path, &roots);
+        self.check(label, &canonical(path)?, path, named.as_deref())
     }
 
-    /// Whether `label`'s window may read `real` (already canonical; `shown` is the path as requested, for the message): an app window only, inside one of its roots with no hidden folder below the root (the Tauri rule `requireLiteralLeadingDot`, kept here), or a file allowed by name.
-    fn check(&self, label: &str, real: &Path, shown: &Path) -> Result<PathBuf, String> {
+    /// The folders `label`'s window may read below.
+    fn roots(&self, label: &str) -> Vec<&PathBuf> {
+        let main_only: &[PathBuf] = if label == "main" {
+            &self.main_only
+        } else {
+            &[]
+        };
+        self.caches
+            .iter()
+            .chain(&self.library)
+            .chain(main_only)
+            .chain(self.projects.get(label))
+            .collect()
+    }
+
+    /// Whether `label`'s window may read `real` (already canonical; `shown` is the path as requested, for the message; `named` is the root it names): an app window only, inside the root its path names with no hidden folder below it (the Tauri rule `requireLiteralLeadingDot`, kept here), or a file allowed by name.
+    fn check(
+        &self,
+        label: &str,
+        real: &Path,
+        shown: &Path,
+        named: Option<&Path>,
+    ) -> Result<PathBuf, String> {
         let path = shown;
         let real = real.to_path_buf();
         app_window_only(label, path)?;
@@ -76,20 +122,13 @@ impl Reach {
             return Ok(real);
         }
         let project = self.projects.get(label);
-        let main_only: &[PathBuf] = if label == "main" {
-            &self.main_only
-        } else {
-            &[]
-        };
-        let roots = self
-            .caches
-            .iter()
-            .chain(&self.library)
-            .chain(main_only)
-            .chain(project);
-        for root in roots {
+        let roots = self.roots(label);
+        if let Some(root) = roots.into_iter().find(|root| Some(root.as_path()) == named) {
             let Ok(below) = real.strip_prefix(root) else {
-                continue;
+                return Err(format!(
+                    "a link leads outside the folder it sits in: {}",
+                    path.display()
+                ));
             };
             let hidden = below.components().any(|part| match part {
                 Component::Normal(name) => name.to_string_lossy().starts_with('.'),
@@ -198,11 +237,18 @@ pub(crate) fn handler(
         let allow = |path: &Path| {
             app_window_only(&label, path)?;
             let real = canonical(path)?;
-            app.state::<AssetReach>()
-                .0
-                .lock()
-                .unwrap()
-                .check(&label, &real, path)
+            let reach = app.state::<AssetReach>();
+            let roots = {
+                let held = reach.0.lock().unwrap();
+                let roots = held.roots(&label);
+                if let Some(root) = written_root(path, &roots) {
+                    return held.check(&label, &real, path, Some(root));
+                }
+                roots.into_iter().cloned().collect::<Vec<_>>()
+            };
+            let named = named_root(path, &roots);
+            let held = reach.0.lock().unwrap();
+            held.check(&label, &real, path, named.as_deref())
         };
         match get_response(&allow, request, &origin, &label).await {
             Ok(response) => responder.respond(response),
@@ -611,6 +657,38 @@ mod tests {
             .resolve("main", &root.join("alpha/assets/missing.png"))
             .unwrap_err();
         assert!(err.contains("missing.png"), "{err}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_link_into_another_readable_folder_is_refused() {
+        let (base, reach) = studio();
+        let root = base.join("Kookaburra Cut");
+        let link = |target: PathBuf, name: &str| {
+            std::os::unix::fs::symlink(target, root.join("alpha/assets").join(name)).unwrap();
+        };
+        link(root.join(".kookaburra/scene-thumbs"), "thumbs");
+        link(base.join("cache/media"), "media");
+        link(root.join("brands/acme"), "brand");
+        for path in [
+            root.join("alpha/assets/thumbs/alpha/one.png"),
+            root.join("alpha/assets/media/abc/poster.jpg"),
+            root.join("alpha/assets/brand/logo.png"),
+        ] {
+            let err = reach.resolve("main", &path).unwrap_err();
+            assert!(err.contains("outside"), "{err}");
+        }
+        let aliased = base.join("alias");
+        std::os::unix::fs::symlink(&root, &aliased).unwrap();
+        assert_eq!(
+            reach
+                .resolve("main", &aliased.join("alpha/assets/hero.png"))
+                .unwrap(),
+            root.join("alpha/assets/hero.png")
+        );
+        assert!(reach
+            .resolve("main", &aliased.join("alpha/assets/thumbs/alpha/one.png"))
+            .is_err());
         let _ = std::fs::remove_dir_all(&base);
     }
 

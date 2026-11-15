@@ -227,6 +227,18 @@ impl WebsiteRegistry {
 #[derive(Default)]
 pub struct WebsiteState(Mutex<WebsiteRegistry>);
 
+/// Drop this launch's loopback grants for the projects `forget` names, as their stored grants go.
+pub(crate) fn forget_loopback_grants_at(app: &AppHandle, forget: impl Fn(&str) -> bool) {
+    if let Some(state) = app.try_state::<WebsiteState>() {
+        let mut registry = state
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        registry.loopback_grants.retain(|(key, _)| !forget(key));
+        registry.grant_requests.retain(|(key, _)| !forget(key));
+    }
+}
+
 pub fn trusted_invoke_label(label: &str) -> bool {
     matches!(
         label,

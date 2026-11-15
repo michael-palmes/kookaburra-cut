@@ -1161,16 +1161,11 @@ fn accept(path: &str, warnings: &mut Vec<ClosureWarning>) -> bool {
     }
 }
 
-/// Every `scenes/**/*.tsx` the item packs, in `project.json` order first (the film's order) and then any file the
+/// Every `*.tsx` the item packs, in `project.json` order first (the film's order) and then any file the
 /// manifest does not list, sorted. Export and import build this set the same way (`read::staged_scene_sources`).
 fn scene_files_of<'a>(doc: &Value, packed: impl Iterator<Item = &'a str>) -> Vec<String> {
     let packed: BTreeSet<&str> = packed
-        .filter(|rel| {
-            rel.starts_with("scenes/")
-                && rel
-                    .rsplit_once('.')
-                    .is_some_and(|(_, ext)| ext.eq_ignore_ascii_case("tsx"))
-        })
+        .filter(|rel| super::read::is_scene_source(rel))
         .collect();
     let mut out: Vec<String> = Vec::new();
     for file in doc

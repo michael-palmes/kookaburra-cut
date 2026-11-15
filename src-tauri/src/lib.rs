@@ -7,6 +7,7 @@ mod asset_reach;
 mod audit;
 mod brands;
 mod bridge;
+mod bridge_auth;
 mod bridge_export;
 mod bridge_health;
 mod bridge_range;

@@ -743,12 +743,10 @@ fn take_agent_files(
     had_root_file: &mut bool,
 ) -> Result<(), PackError> {
     for name in AGENT_FILES {
-        let path = dir.join(name);
-        let meta = match std::fs::symlink_metadata(&path) {
-            Ok(meta) => meta,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(error) => return Err(error.into()),
+        let Some((on_disk, meta)) = crate::kit::entry_opened_as(dir, name)? else {
+            continue;
         };
+        let path = dir.join(&on_disk);
         let rel = format!("{prefix}{name}");
         *had_root_file |= prefix.is_empty() && name == ROOT_AGENT_FILE;
         if meta.is_dir() {
@@ -1081,6 +1079,7 @@ fn apply_one(
     }
     // The destination is resolved before the source is read, so a hostile slug never reaches the filesystem at all.
     let target = workspace_target(root, item.kind, &item.target_slug)?;
+    target.occupied_by_other()?;
     let source = staged_source(staging, item.kind, &item.slug);
     if !source.exists() {
         return Err(PackError::ManifestEntryMissing(

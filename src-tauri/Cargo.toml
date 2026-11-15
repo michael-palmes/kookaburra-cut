@@ -49,6 +49,8 @@ getrandom = "0.4"
 base64 = { version = "0.23", default-features = false, features = ["std"] }
 # Naming the type of `RunEvent::Opened { urls }` (Open With); already in the lock via tauri.
 url = "2"
+# Pack names fold the way APFS does (NFD); already in the lock via url.
+icu_normalizer = { version = "2.2", default-features = false, features = ["compiled_data"] }
 png = "=0.18.1"
 # Song analysis: beat and downbeat tracking with the bundled beat-this small model (pure-Rust rten runtime; we decode with the ffmpeg sidecar, so no symphonia).
 beat-this = { version = "=1.1.0", default-features = false }

@@ -8,16 +8,18 @@ only in a folder the app's own file dialog returned this session (the heartbeat'
 from __future__ import annotations
 
 import os
+import unicodedata
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .util import EXIT_ENV, WORKSPACE_DIR_NAME, KbError, emit_err, home
+from .util import EXIT_ENV, WORKSPACE_DIR_NAME, KbError, bridge_dir, emit_err, home
 
 # Folders under the home directory that hold keys and credentials.
-DENIED_DIRS = (".ssh", ".aws", ".config", ".gnupg", "Library/Keychains", ".docker", ".kube", ".azure", ".claude")
+DENIED_DIRS = (".ssh", ".aws", ".config", ".gnupg", "Library/Keychains", ".docker", ".kube", ".azure", ".claude",
+               "Library/Application Support/Claude")
 DENIED_NAMES = (".netrc", ".bash_history", ".zsh_history", ".zhistory", ".sh_history", ".history",
                 ".python_history", ".node_repl_history", ".lesshst", "fish_history",
-                ".git-credentials", ".npmrc", ".pypirc")
+                ".git-credentials", ".npmrc", ".pypirc", ".claude.json")
 DENIED_PREFIXES = (".env", "id_rsa", "id_ed25519", "id_ecdsa", "id_dsa")
 DENIED_SUFFIXES = (".pem", ".p12", ".key", ".jks", ".keystore", ".tfstate")
 
@@ -35,6 +37,16 @@ def _inside(path: Path, root: Path) -> bool:
         return False
 
 
+def _fold(text: str) -> str:
+    """A name as APFS compares it: case and Unicode folded, so `~/.AWS` and `~/.aws` are one folder."""
+    return unicodedata.normalize("NFD", unicodedata.normalize("NFD", text).casefold())
+
+
+def _under_folded(path: Path, root: Path) -> bool:
+    parts, prefix = [_fold(p) for p in path.parts], [_fold(p) for p in root.parts]
+    return parts[:len(prefix)] == prefix
+
+
 def workspace_roots(project_root: Path) -> List[Path]:
     """The project, its workspace and the home workspace: reads here are routine and writes here are always allowed."""
     root = resolve(str(project_root))
@@ -46,21 +58,32 @@ def workspace_roots(project_root: Path) -> List[Path]:
     return out
 
 
+def bridge_keys_reason(path: Path) -> Optional[str]:
+    """The app's bridge keys are never read or written for the agent: they sign its requests and answers."""
+    for keys in (bridge_dir() / "keys", home() / WORKSPACE_DIR_NAME / "_bridge" / "keys"):
+        if _under_folded(path, resolve(str(keys))):
+            return "~/Kookaburra Cut/_bridge/keys holds the app's bridge keys"
+    return None
+
+
 def denied_reason(path: Path) -> Optional[str]:
-    """Why a path is never read: a credential folder, a secret file or a shell history."""
+    """Why a path is never read: the bridge keys, a credential folder, a secret file or a shell history."""
+    keys = bridge_keys_reason(path)
+    if keys:
+        return keys
     user_home = resolve(str(home()))
     for rel in DENIED_DIRS:
-        if _inside(path, user_home / rel):
+        if _under_folded(path, user_home / rel):
             return f"~/{rel} holds keys and credentials"
-    name = path.name
+    name = _fold(path.name)
     if name in DENIED_NAMES:
-        return f"{name} is a credential or history file"
+        return f"{path.name} is a credential or history file"
     if any(name == p or name.startswith(p + ".") for p in DENIED_PREFIXES):
-        return f"{name} is an environment or key file (secrets)"
+        return f"{path.name} is an environment or key file (secrets)"
     if any(name.endswith(s) for s in DENIED_SUFFIXES):
-        return f"{name} is a key or certificate"
+        return f"{path.name} is a key or certificate"
     if name.startswith("credentials") and name.endswith(".json"):
-        return f"{name} is a credential file"
+        return f"{path.name} is a credential file"
     return None
 
 
@@ -110,6 +133,9 @@ def guard_write(project: Any, raw: str, what: str = "--out") -> Path:
     """A folder or file kb is about to write on the agent's behalf: inside the project, the workspace, or a folder the
     person picked in the app this session, else exit 2 naming the allowed roots."""
     path = resolve(raw)
+    keys = bridge_keys_reason(path)
+    if keys:
+        raise KbError(f"{what} {raw} is not written: {keys}", EXIT_ENV, kind="usage", hint="save under the project instead")
     workspace, picked = allowed_write_roots(project)
     roots = workspace + picked
     if any(path == root or _inside(path, root) for root in roots):

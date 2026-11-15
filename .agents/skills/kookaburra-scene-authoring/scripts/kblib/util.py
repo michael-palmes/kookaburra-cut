@@ -113,6 +113,7 @@ DEFAULT_HINTS: Dict[str, str] = {
     "no-grid": "./kb song analyse, then ./kb beats set-grid --from-analysis",
     "not-a-folder": "it came with the folder: move it aside with mv, then rerun",
     "git-config": "it may have come with the folder and could run a program, so don't run git here: tell the person, who removes it, then rerun",
+    "bad-signature": "rerun once; if it repeats, ask the user to restart Kookaburra Cut",
     "transient": "rerun in a moment",
 }
 

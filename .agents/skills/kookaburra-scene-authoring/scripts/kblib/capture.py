@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from . import bridge
+from . import bridge, bridgeauth
 from . import catalog as catmod
 from . import music, queue, reach
 from .film import timeline as tl
@@ -368,6 +368,9 @@ def copy_captures(resp: Dict[str, Any], folder: Path) -> Dict[str, Any]:
         used.add(final)
         dest = folder / final
         shutil.copyfile(src, dest)
+        if not bridgeauth.copy_matches(src, dest):
+            dest.unlink()
+            raise bridgeauth.bad(f"{os.path.basename(src)} changed after the app signed it")
         copies[src] = str(dest)
         return str(dest)
 

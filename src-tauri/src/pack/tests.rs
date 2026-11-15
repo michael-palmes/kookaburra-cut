@@ -674,6 +674,79 @@ fn inspect_lists_the_staged_scene_code() {
     );
 }
 
+/// Scene code outside a folder spelt exactly `scenes/` still counts: a Mac loads `Scenes/` or a look-alike as `scenes/`.
+#[test]
+fn scene_code_in_a_folder_spelt_another_way_is_still_listed() {
+    for (tag, file) in [
+        ("upper", "Scenes/evil.tsx"),
+        ("long-s", "\u{17F}cenes/evil.tsx"),
+    ] {
+        let hidden = |listed: &[&str]| {
+            let mut contents = PackContents::default();
+            contents
+                .projects
+                .push(project_item("payload/projects/acme", listed));
+            Fixture::valid()
+                .entry(Entry::new(&format!("payload/projects/acme/{file}"), b"x"))
+                .contents(contents)
+        };
+        assert_refused(&format!("folded-{tag}"), hidden(&[]), "sceneFilesMismatch");
+        let source = TempDir::new(&format!("folded-listed-{tag}"));
+        let archive = hidden(&[file]).build(source.path());
+        let inspection = inspect(&archive).expect("listed scene code is accepted");
+        assert_eq!(inspection.scene_sources.len(), 1);
+        assert_eq!(inspection.scene_sources[0].file, file);
+    }
+}
+
+/// Two names a Mac stores as one (case, or another Unicode form) are refused before anything stages.
+#[test]
+fn names_that_land_as_one_on_a_mac_are_refused() {
+    let tsx = b"export default defineScene({});\n";
+    let both = |a: &str, b: &str| {
+        let mut contents = PackContents::default();
+        contents.projects.push(project_item(
+            "payload/projects/acme",
+            &[a, b]
+                .iter()
+                .copied()
+                .filter(|f| f.ends_with(".tsx"))
+                .collect::<Vec<_>>(),
+        ));
+        Fixture::valid()
+            .entry(Entry::new(&format!("payload/projects/acme/{a}"), tsx))
+            .entry(Entry::new(&format!("payload/projects/acme/{b}"), tsx))
+            .contents(contents)
+    };
+    assert_refused(
+        "collide-case",
+        both("scenes/01.tsx", "Scenes/01.tsx"),
+        "pathCollision",
+    );
+    assert_refused(
+        "collide-folder",
+        both("scenes/01.tsx", "SCENES/02.tsx"),
+        "pathCollision",
+    );
+    assert_refused(
+        "collide-nfd",
+        both("assets/caf\u{e9}.png", "assets/cafe\u{301}.png"),
+        "pathCollision",
+    );
+
+    let mut contents = PackContents::default();
+    contents
+        .projects
+        .push(project_item("payload/projects/acme", &[]));
+    contents
+        .projects
+        .push(project_item("payload/projects/ACME", &[]));
+    let roots = Fixture::valid()
+        .entry(Entry::new("payload/projects/ACME/project.json", b"{}"))
+        .contents(contents);
+    assert_refused("collide-roots", roots, "pathCollision");
+}
+
 /// A declared `keyId` that is not the hash of the public key beside it is refused, however good the signature is.
 #[test]
 fn refuses_a_key_id_the_public_key_does_not_derive() {

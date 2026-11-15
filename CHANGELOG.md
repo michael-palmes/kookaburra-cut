@@ -47,6 +47,38 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   dependency that would run an install script until someone reviews it.
 - `SECURITY.md` records why the app isn't App Sandboxed, and `docs/decisions.md`
   what would change that.
+- Opening a shared project can no longer reach outside it. Its git history is
+  left alone when `.git` holds a link, and trimming old footage no longer
+  touches worktree records. Claude stays off when the app can't put its own
+  `./kb` in place. `./kb assets restore` puts back only files in `assets/`
+  from that batch's archive.
+- A pack can no longer replace a library or the bridge folder with a project
+  named `Themes`, `Templates`, `_bridge` or another workspace folder in any
+  case, or replace a folder that isn't a project.
+- In dev builds and terminal runs, scene code can no longer read files in your
+  home folder through the dev server.
+- Claude's requests to the app and the app's answers are now signed with a key
+  only Kookaburra Cut and its `./kb` read, so a misled agent's file tools can no
+  longer forge a capture, a check result or an export request, or replay an old
+  one. A project whose tools predate this gets a one-line answer: open it in
+  Kookaburra Cut once to update them.
+- Agent files a shared folder hides under another spelling of their name, in a
+  worktree folder git never made, or inside a folder moved aside earlier are
+  now moved out before Claude starts. `./kb` refuses credential paths in any
+  case, and Claude's own settings and the Claude app's folder too.
+- A project replaced while closed asks for Allow again, even in the same launch.
+- A pack's trust screen lists every scene file it carries, whatever its folder
+  is called, and a pack with two names a Mac would store as one is refused.
+- Importing a pack over a project clears its Allow and website approvals before
+  anything moves, whatever case the pack spells it in, so an open project never
+  runs the pack's code unasked. Deleting a project clears its website approvals
+  too.
+- The import screens say backups are kept for a day, and a pack dated in the
+  future no longer makes Replace the default.
+- Scene code can no longer switch the editor's project, change the app's
+  settings or hold Present's focus, and a gizmo commits only to the selected
+  item.
+- A link inside a project can no longer reach another folder the app can read.
 
 ## [0.22.4] - 2026-11-10
 

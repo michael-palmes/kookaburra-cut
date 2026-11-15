@@ -69,6 +69,7 @@ APP_CODES: Dict[str, Tuple[int, str]] = {
     "interrupted": (EXIT_ENV, "app-reloaded"),
     "acceptTimeout": (EXIT_TRANSIENT, "bridge-timeout"),
     "verifyMismatch": (EXIT_PROBLEMS, "verify-mismatch"),
+    "kit-outdated": (EXIT_ENV, "kit-outdated"),
     "failed": (EXIT_PROBLEMS, "failed"),
 }
 
@@ -331,14 +332,15 @@ def request_body(project: Project, a: argparse.Namespace) -> Dict[str, Any]:
 
 def cancel_and_wait(inst: bridge.Instance, project: Project, rid: str, client: Optional[str]) -> Optional[Dict[str, Any]]:
     """Asks the app to cancel `rid`, then waits up to 15 s for the export's own answer."""
+    key = inst.key()
     try:
-        bridge.write_request(bridge.address({"kind": "cancelExport", "project": project.project_id, "target": rid}, inst, project, client))
+        bridge.write_request(bridge.address({"kind": "cancelExport", "project": project.project_id, "target": rid}, inst, project, client), key)
     except OSError:
         return None
     path = bridge_dir() / "responses" / f"{rid}.json"
     deadline = time.monotonic() + CANCEL_WAIT_S
     while time.monotonic() < deadline:
-        resp = read_json(path)
+        resp = bridge.read_answer(path, key)
         if resp is not None:
             return resp
         if not bridge.pid_alive(inst.pid):
@@ -351,7 +353,8 @@ def wait_for_export(inst: bridge.Instance, project: Project, payload: Dict[str, 
                     client: Optional[str]) -> Dict[str, Any]:
     """Sends the export and waits for its answer, printing progress; busy answers retry for up to 30 s."""
     deadline = time.monotonic() + timeout
-    rid = bridge.write_request(payload)
+    key = inst.key()
+    rid = bridge.write_request(payload, key)
     sent = checked = time.monotonic()
     claimed = False
     first_busy: Optional[float] = None
@@ -360,7 +363,7 @@ def wait_for_export(inst: bridge.Instance, project: Project, payload: Dict[str, 
     try:
         while True:
             now = time.monotonic()
-            resp = read_json(responses / f"{rid}.json")
+            resp = bridge.read_answer(responses / f"{rid}.json", key)
             if resp is not None:
                 bridge.check_served_by(resp, "export", project)
                 if resp.get("busy"):
@@ -373,7 +376,7 @@ def wait_for_export(inst: bridge.Instance, project: Project, payload: Dict[str, 
                     time.sleep(bridge.BUSY_RETRY_S)
                     if not bridge.pid_alive(inst.pid):
                         raise bridge._quit_error(inst, "export")
-                    rid = bridge.write_request(payload)
+                    rid = bridge.write_request(payload, key)
                     sent, claimed = time.monotonic(), False
                     continue
                 return resp
