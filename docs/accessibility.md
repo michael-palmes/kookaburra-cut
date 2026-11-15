@@ -162,7 +162,7 @@ run was inconclusive).
 | 3.1.2 Language of Parts | Supports | The chrome is English throughout; authors' copy is their content |
 | 3.2.3 Consistent Navigation | Not Applicable | WCAG2ICT applies this to sets of software. The titlebar and inspector keep one order in every view |
 | 3.2.4 Consistent Identification | Not Applicable | As 3.2.3. The same function keeps the same icon and name across windows |
-| 3.3.3 Error Suggestion | Partially Supports | Name clashes and failed imports say what to change (C). Fixed in 0.23.0: the inspector's scene length and the transition length say why a typed value reverted, beside the field ("Use m:ss, like 0:04"). Scene lengths typed in the playback bar or Project › Scenes still revert without a word (finding L2) |
+| 3.3.3 Error Suggestion | Partially Supports | Name clashes and failed imports say what to change (C). Fixed in 0.23.0: the transition length says why a typed value reverted, beside the field ("Use 0.1 to 2 seconds"). A scene length that does not parse reverts to the last valid length on Return or blur, with no visible message by the maintainer's choice; the field's tooltip gives the format, and in the inspector a screen reader hears the kept length ("Duration kept at 0:04"). In the playback bar and Project › Scenes the revert is silent (finding L2) |
 | 3.3.4 Error Prevention (Legal, Financial, Data) | Supports | No legal or financial transactions. Deleting scenes takes two steps and is recoverable from the Trash; edits have Undo (C) |
 | 3.3.8 Accessible Authentication (Minimum) | Not Applicable | There is no sign-in |
 | 4.1.3 Status Messages | Supports | Toasts, project loading, Claude activity and New project results use status or polite live regions; errors use alerts (C, A). Fixed in 0.23.0: an always-present polite region speaks export, stills and Verify progress every 10%, each encoding pass, and how the run ended (C). Not yet heard end to end with VoiceOver |
@@ -182,7 +182,7 @@ needs the maintainer's call.
 | ID | Severity | Criteria | Finding | Proposed approach | Decision |
 | --- | --- | --- | --- | --- | --- |
 | H2 | High | 2.1.1, 2.5.7, 4.1.2 | Timeline and reorder edits need a pointer (the 2.1.1 list) | Short term: Move up and Move down in the scene, theme and library menus (a click alternative and a keyboard one). Then a keyboard model for the animation lane and the video editor timeline: roving focus over keys and segments, arrows to move, ⇧F10 for the menu | Yes, for the lane model |
-| L2 | Low | 3.3.3 | A scene length typed in the playback bar or Project › Scenes reverts without a word | Show `SCENE_LENGTH_HINT` beside those fields, as the inspector does (after the H2 work in those files lands) | No |
+| L2 | Low | 3.3.3 | A scene length typed in the playback bar or Project › Scenes reverts silently, even to a screen reader | Give those fields the inspector's polite "Duration kept at" note (after the H2 work in those files lands); no visible message, by the maintainer's choice | No |
 | L5 | Low | 1.4.12 | Text spacing unverified; ellipsis labels truncate | Run the spacing override across every surface; allow two lines where a label truncates | No |
 
 ### Closed in 0.23.0
@@ -197,7 +197,7 @@ needs the maintainer's call.
 | M4 | 2.2.2 | A selected option preview plays once and holds; hover or focus plays it again; the transition preview has a pause |
 | M5 | 4.1.3 | A polite live region speaks export progress every 10% and the outcome |
 | L1 | 1.4.3 | Tertiary hints lift to secondary inside hovered and selected rows |
-| L2 (part) | 3.3.3 | The inspector's scene length and the transition length say why an entry reverted |
+| L2 (part) | 3.3.3 | The transition length says why an entry reverted; the inspector's scene length tells a screen reader the length it kept |
 | L3 | 1.1.1 | The stage is named with the scene on screen and the time |
 | L6 | 1.3.1 | The stage is the `main` landmark; the content picker's `aria-controls` exists only while it is open |
 

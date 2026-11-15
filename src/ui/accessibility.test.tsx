@@ -217,14 +217,15 @@ describe("option card clips (2.2.2, 2.3.3)", () => {
 });
 
 describe("error suggestion (3.3.3)", () => {
-  it("says why a typed scene length reverted, beside the field", () => {
+  it("reverts a typed scene length quietly, telling only a screen reader the kept value", () => {
     const row = read("./inspector/SceneTab.tsx");
     const body = row.slice(row.indexOf("function DurationRow("), row.indexOf("function HingeRow("));
-    expect(body).toContain("setInvalid(ms === null);");
-    expect(body).toMatch(/onCommit: \(seconds\) => \{\s*setInvalid\(false\);/);
-    expect(body).toContain("aria-describedby={invalid ? hintId : undefined}");
-    expect(body).toMatch(/role="alert">\s*\{SCENE_LENGTH_HINT\}/);
-    expect(read("./durationText.ts")).toContain('SCENE_LENGTH_HINT = "Use m:ss, like 0:04"');
+    expect(body).not.toMatch(/field-error|role="alert"|aria-invalid/);
+    expect(body).toMatch(
+      /if \(ms === null\) \{\s*setText\(formatSceneLengthMs\(durationMs\)\);\s*setKept\(`Duration kept at \$\{formatSceneLengthMs\(durationMs\)\}`\);/,
+    );
+    expect(body).toMatch(/<span className="visually-hidden" aria-live="polite">\s*\{kept\}/);
+    expect(body).toMatch(/setText\(e\.target\.value\);\s*setKept\(""\);/);
   });
 
   it("says why a transition length reverted", () => {
