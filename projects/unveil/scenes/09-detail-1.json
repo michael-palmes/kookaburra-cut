@@ -156,17 +156,6 @@
           "falloff": 0.5
         },
         {
-          "azimuthDeg": -152.32,
-          "elevationDeg": 20.4,
-          "rollDeg": 0,
-          "lengthDeg": 7.63,
-          "widthDeg": 7.63,
-          "color": "#ffd2a0",
-          "intensity": 450,
-          "feather": 0.3,
-          "falloff": 0.3
-        },
-        {
           "azimuthDeg": -79.81,
           "elevationDeg": 49.47,
           "rollDeg": 0,
@@ -185,6 +174,17 @@
           "widthDeg": 12,
           "color": "#e9efff",
           "intensity": 12,
+          "feather": 1,
+          "falloff": 0.4
+        },
+        {
+          "azimuthDeg": 110,
+          "elevationDeg": 5,
+          "rollDeg": 0,
+          "lengthDeg": 50,
+          "widthDeg": 9,
+          "color": "#fff0e0",
+          "intensity": 4,
           "feather": 1,
           "falloff": 0.4
         }
@@ -250,6 +250,20 @@
         "penumbra": 1,
         "color": "#ffb880",
         "decay": 2
+      },
+      {
+        "id": "rake",
+        "type": "spot",
+        "intensity": 0,
+        "color": "#ffd9b8",
+        "angleDeg": 18,
+        "penumbra": 0.4,
+        "castShadow": false,
+        "placement": {
+          "mode": "point",
+          "position": [-5.5, 3.2, 2.6]
+        },
+        "target": [-2.0, 0.3, -0.3]
       }
     ],
     "shadow": {
