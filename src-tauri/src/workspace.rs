@@ -1,3 +1,4 @@
+#![allow(unsafe_code)]
 //! The user workspace: a folder of self-contained projects, chosen at first run (default `~/Kookaburra Cut`, moved out of ~/Documents for TCC) and remembered in `$APPDATA/settings.json`; commands are custom `#[tauri::command]`s that bypass the webview fs ACL, each re-asserting the on-disk layout first (`ensure_layout`) so a user deleting or rearranging folders mid-session degrades gracefully instead of crashing.
 
 use std::collections::{HashMap, HashSet};
@@ -260,6 +261,24 @@ fn update_settings_at<T>(
     Ok(out)
 }
 
+/// What Settings ▸ Clear all app data keeps: where the workspace is and the answer to the update question. Every grant, record and preference goes.
+fn cleared_settings(settings: &AppSettings) -> AppSettings {
+    AppSettings {
+        workspace_root: settings.workspace_root.clone(),
+        update_check_consent: settings.update_check_consent,
+        ..AppSettings::default()
+    }
+}
+
+pub(crate) fn reset_settings(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+) -> Result<(), String> {
+    update_settings(app, state, |settings| {
+        *settings = cleared_settings(settings)
+    })
+}
+
 /// Recreate the workspace skeleton idempotently; called by every command that touches the workspace, so a deleted subfolder heals on the next action.
 fn ensure_layout(root: &Path) -> Result<(), String> {
     for dir in [
@@ -285,9 +304,11 @@ fn stamp_crtime(path: &Path, at: std::time::SystemTime) {
         tv_sec: dur.as_secs() as libc::time_t,
         tv_nsec: dur.subsec_nanos() as _,
     };
+    // SAFETY: attrlist is plain C data, so all zeroes is a valid value.
     let mut attrs: libc::attrlist = unsafe { std::mem::zeroed() };
     attrs.bitmapcount = libc::ATTR_BIT_MAP_COUNT;
     attrs.commonattr = libc::ATTR_CMN_CRTIME;
+    // SAFETY: cpath is NUL-terminated, and attrs asks for the creation time alone, which ts holds.
     unsafe {
         libc::setattrlist(
             cpath.as_ptr(),
@@ -2369,7 +2390,7 @@ fn copy_source_needs_grant(scope: &ProjectScope) -> bool {
     )
 }
 
-/// Forget every grant for a project, user template or user preset a pack import just wrote. The pack is a publisher's content, whoever that publisher is, so the person meets the Allow sheet again on the next open.
+/// Forget every grant for a project, user template or user preset, so the person meets the Allow sheet again on the next open: one a pack import just wrote (a publisher's content, whoever that publisher is), or one forgotten in Settings.
 pub(crate) fn forget_project_trust(
     app: &AppHandle,
     state: &State<'_, SettingsState>,
@@ -2382,6 +2403,20 @@ pub(crate) fn forget_project_trust(
             settings.trusted_projects.remove(id);
         })
     })
+}
+
+/// Settings ▸ Clear all app data: every session allow and unredeemed Allow goes, so no project passes on this launch's word.
+pub(crate) fn forget_session_trust(trust: &TrustState) {
+    trust
+        .nonces
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clear();
+    trust
+        .session
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clear();
 }
 
 /// The session allow goes before the stored grant, so a failed settings write still leaves the next open asking.
@@ -3043,6 +3078,48 @@ mod tests {
             dev: false,
             now_ms: 7,
         }
+    }
+
+    #[test]
+    fn a_reset_keeps_the_workspace_and_the_update_answer_only() {
+        let mut settings = AppSettings {
+            workspace_root: Some("/Users/x/Kookaburra Cut".into()),
+            update_check_consent: Some(false),
+            last_project: Some("ws:product-tour".into()),
+            last_update_check_ms: Some(9),
+            disable_hardware_video: true,
+            clip_cache_cap_gb: Some(5),
+            publisher: Some(PublisherProfile {
+                name: "Someone".into(),
+                ..Default::default()
+            }),
+            ..AppSettings::default()
+        };
+        settings.last_opened.insert("product-tour".into(), 1);
+        settings.trusted_projects.insert(
+            "product-tour".into(),
+            TrustRecord {
+                scenes_fingerprint: "f".into(),
+                path: "/w/product-tour".into(),
+                allowed_at_ms: 1,
+            },
+        );
+        settings
+            .agent_files
+            .insert("/w/product-tour".into(), AgentFilesRecord::default());
+        settings
+            .website_origin_grants
+            .insert("/w/product-tour".into(), vec!["https://example.com".into()]);
+        let fresh = serde_json::to_value(AppSettings {
+            workspace_root: settings.workspace_root.clone(),
+            update_check_consent: Some(false),
+            ..AppSettings::default()
+        })
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(cleared_settings(&settings)).unwrap(),
+            fresh
+        );
     }
 
     #[test]

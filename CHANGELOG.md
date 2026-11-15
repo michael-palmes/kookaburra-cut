@@ -6,6 +6,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Settings ▸ Allowed projects lists the projects you allowed to run, and Forget
+  makes one ask again on its next open.
+- Settings ▸ Storage ▸ Clear all app data empties every cache and the Website
+  data and forgets what you allowed, your recent projects and your preferences.
+  Your projects, workspace and pack signing key stay.
+- Settings ▸ About ▸ Activity log shows the app's log in Finder, and
+  `docs/privacy.md` now says how to uninstall the app completely.
+- A security overview and a fleet guide for the teams approving and deploying
+  the app on managed Macs (`docs/security-overview.md`, `docs/fleet.md`).
+
+### Changed
+
+- What leaves your Mac opens the privacy page for the installed version, so
+  the words match the build.
+- Vulnerability reports are acknowledged within 14 days (`SECURITY.md`).
+
 ### Security
 
 - A shared folder's git can no longer run a program through Claude's own git
@@ -17,6 +35,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   which projects and websites you allowed, packs imported, updates, and what
   your organisation's profile refused. It holds names and paths, never what is
   in your files, keeps three files of 1 MiB at most and never leaves your Mac.
+- Each release now ships a software bill of materials
+  (`KookaburraCut-<version>.cdx.json`): every npm package and Rust crate built
+  into the app, the sidecar's pinned sources and the beat model, attested on
+  the DMG, and the app binary carries its own Rust dependency list for
+  `cargo audit bin`. Dependency licences and sources are now checked by policy
+  in CI, and the release page carries this changelog's section for the version.
+- `unsafe` Rust is denied except where a file or function allows it, and every
+  unsafe block says why it is sound.
+- CodeQL now scans the Python kit and scripts too, and `pnpm install` refuses a
+  dependency that would run an install script until someone reviews it.
+- `SECURITY.md` records why the app isn't App Sandboxed, and `docs/decisions.md`
+  what would change that.
 
 ## [0.22.4] - 2026-11-10
 

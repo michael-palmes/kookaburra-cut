@@ -1,3 +1,4 @@
+#![allow(unsafe_code)]
 //! App-free paths shared by the Tauri commands and the headless `edit` CLI: the app data folder, the bundled ffmpeg/ffprobe sidecars and the hardware-video setting, all resolved without an `AppHandle` so both entry points reach the same files.
 
 use std::path::{Path, PathBuf};
@@ -65,8 +66,10 @@ fn passwd_home() -> Option<PathBuf> {
     use std::ffi::CStr;
     use std::os::unix::ffi::OsStrExt;
     let mut buf = vec![0 as libc::c_char; 4096];
+    // SAFETY: passwd is plain C data, so all zeroes is a valid value.
     let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
     let mut result: *mut libc::passwd = std::ptr::null_mut();
+    // SAFETY: every pointer is live for the call, and buf's length is passed beside it.
     let rc = unsafe {
         libc::getpwuid_r(
             libc::getuid(),
@@ -79,6 +82,7 @@ fn passwd_home() -> Option<PathBuf> {
     if rc != 0 || result.is_null() || pwd.pw_dir.is_null() {
         return None;
     }
+    // SAFETY: getpwuid_r succeeded, so pw_dir is a NUL-terminated string inside buf, which outlives dir.
     let dir = unsafe { CStr::from_ptr(pwd.pw_dir) };
     (!dir.to_bytes().is_empty()).then(|| PathBuf::from(std::ffi::OsStr::from_bytes(dir.to_bytes())))
 }

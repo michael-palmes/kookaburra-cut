@@ -1,3 +1,4 @@
+#![allow(unsafe_code)]
 //! Managed preferences: what an administrator's configuration profile forces on the app's preference domain, read once per process and honoured only while macOS reports the key as forced (`CFPreferencesAppValueIsForced`), so a plain `defaults write` changes nothing. A forced key of the wrong shape fails closed: the feature it governs is treated as turned off, and a `[managed]` log line names the key. The key table and a sample profile live in docs/mdm.md.
 
 use std::collections::HashMap;

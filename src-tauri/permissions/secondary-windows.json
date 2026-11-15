@@ -92,7 +92,7 @@
     },
     {
       "identifier": "settings-window",
-      "description": "Settings: caches, the hardware video switch, conform, the workspace location, website data and the pack publisher.",
+      "description": "Settings: caches, the hardware video switch, conform, the workspace location, website data, the pack publisher, forgetting an Allow, clearing all app data and the log folder.",
       "commands": {
         "allow": [
           "get_settings",
@@ -118,7 +118,10 @@
           "set_publisher_profile",
           "rotate_publisher_key",
           "list_known_publishers",
-          "forget_publisher"
+          "forget_publisher",
+          "forget_allowed_project",
+          "clear_app_data",
+          "reveal_app_logs"
         ]
       }
     },

@@ -151,6 +151,14 @@ wry = "=0.57.1"
 [dev-dependencies]
 walkdir = "2"
 
+# Unsafe is an allow-list: each file or function that needs it says so, and every block carries a SAFETY line (docs/decisions.md).
+[lints.rust]
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+undocumented_unsafe_blocks = "deny"
+
 # Inference at opt-level 0 is far too slow for the dev app and tests, so dev builds optimise the beat-this stack.
 [profile.dev.package.beat-this]
 opt-level = 3

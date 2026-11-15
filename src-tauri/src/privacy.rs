@@ -1,3 +1,4 @@
+#![allow(unsafe_code)]
 //! Confidential work at rest belongs to its user alone. The app data folder (`settings.json`, `cache/`, `pack-key/`) and
 //! the workspace sinks the app owns (`_bridge/`, `_autorun/`) are held at 0700 for directories and 0600 for files,
 //! checked and corrected once at startup, and carry a `.metadata_never_index` marker so Spotlight never indexes a frame of
@@ -64,6 +65,7 @@ pub(crate) fn exclude_from_backup(dir: &Path) -> std::io::Result<bool> {
     let path = std::ffi::CString::new(dir.as_os_str().as_bytes())
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
     let mut current = [0u8; 64];
+    // SAFETY: the path and name are NUL-terminated, and current's length is passed beside it.
     let read = unsafe {
         libc::getxattr(
             path.as_ptr(),
@@ -77,6 +79,7 @@ pub(crate) fn exclude_from_backup(dir: &Path) -> std::io::Result<bool> {
     if read >= 0 && &current[..read as usize] == BACKUP_EXCLUDE_VALUE {
         return Ok(false);
     }
+    // SAFETY: the path and name are NUL-terminated, and the value's length is passed beside it.
     let wrote = unsafe {
         libc::setxattr(
             path.as_ptr(),
@@ -155,13 +158,12 @@ pub(crate) fn seal_tree(root: &Path) -> Sealed {
     sealed
 }
 
-/// The startup check: the roots are created and sealed at once, the decoded-footage caches leave Time Machine, then the
-/// whole trees in the background (a clip cache holds hundreds of thousands of frames). One log line names what had to be corrected.
-pub(crate) fn seal_at_startup(app_data: PathBuf, sinks: Vec<PathBuf>) {
+/// `$APPDATA`, `cache/`, `cache/clips` and `cache/media` made private, the cache unindexed and the decoded-footage caches out of Time Machine; at startup and after Settings clears the caches.
+pub(crate) fn seal_cache_roots(app_data: &Path) {
     let cache = app_data.join("cache");
     let clips = cache.join("clips");
     let media = cache.join("media");
-    for dir in [&app_data, &cache, &clips, &media] {
+    for dir in [app_data, &cache, &clips, &media] {
         if let Err(e) = private_dir(dir) {
             log::warn!("[privacy] could not seal {}: {e}", dir.display());
         }
@@ -177,6 +179,12 @@ pub(crate) fn seal_at_startup(app_data: PathBuf, sinks: Vec<PathBuf>) {
             ),
         }
     }
+}
+
+/// The startup check: the roots are created and sealed at once, the decoded-footage caches leave Time Machine, then the
+/// whole trees in the background (a clip cache holds hundreds of thousands of frames). One log line names what had to be corrected.
+pub(crate) fn seal_at_startup(app_data: PathBuf, sinks: Vec<PathBuf>) {
+    seal_cache_roots(&app_data);
     for sink in &sinks {
         if sink.is_dir() {
             let _ = set_mode(sink, DIR_MODE);

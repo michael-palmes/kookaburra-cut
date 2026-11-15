@@ -387,9 +387,11 @@ mod tests {
     }
 
     #[test]
+    #[allow(unsafe_code)]
     fn a_pipe_in_scenes_is_never_opened() {
         let dir = scratch("fifo");
         let pipe = std::ffi::CString::new(dir.join("scenes/x.tsx").to_str().unwrap()).unwrap();
+        // SAFETY: pipe is a NUL-terminated path that outlives the call.
         assert_eq!(unsafe { libc::mkfifo(pipe.as_ptr(), 0o644) }, 0);
         assert!(!snapshot(&dir).contains_key("scenes/x.tsx"));
         let _ = std::fs::remove_dir_all(&dir);

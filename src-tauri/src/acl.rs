@@ -245,6 +245,26 @@ fn only_the_main_window_reaches_trust_and_the_rest_of_the_studio() {
     }
     assert!(!allowed("packs").contains("move_workspace"));
     assert!(!allowed("settings").contains("apply_import"));
+    // Forgetting an Allow and the full reset are the settings window's alone.
+    for label in [
+        "main",
+        "present",
+        "render",
+        "packs",
+        "theme-editor",
+        "editor",
+    ] {
+        for denied in [
+            "forget_allowed_project",
+            "clear_app_data",
+            "reveal_app_logs",
+        ] {
+            assert!(
+                !allowed(label).contains(denied),
+                "{label} must not reach {denied}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -267,10 +287,12 @@ fn the_main_window_keeps_the_studio() {
             "build_pack",
             "cache_stats",
             "cancel_pack_build",
+            "clear_app_data",
             "clear_clips_cache",
             "clear_media_cache",
             "discard_staged_pack",
             "font_embedding_for",
+            "forget_allowed_project",
             "forget_publisher",
             "get_editor_context",
             "get_editor_target",
@@ -302,6 +324,7 @@ fn the_main_window_keeps_the_studio() {
             "render_take_preset_poster",
             "render_take_thumb_job",
             "reset_edit",
+            "reveal_app_logs",
             "reveal_pack",
             "rotate_publisher_key",
             "save_bridge_screenshot",
@@ -443,9 +466,11 @@ fn the_settings_window_owns_caches_the_workspace_location_updates_and_the_publis
             "cache_stats",
             "check_for_update",
             "claude_app_status",
+            "clear_app_data",
             "clear_clips_cache",
             "clear_media_cache",
             "default_workspace_root",
+            "forget_allowed_project",
             "forget_publisher",
             "get_publisher_profile",
             "get_settings",
@@ -460,6 +485,7 @@ fn the_settings_window_owns_caches_the_workspace_location_updates_and_the_publis
             "open_privacy_page",
             "open_project_folder",
             "pick_folder",
+            "reveal_app_logs",
             "reveal_in_finder",
             "rotate_publisher_key",
             "set_claude_preferences",

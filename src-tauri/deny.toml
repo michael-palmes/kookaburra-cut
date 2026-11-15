@@ -1,6 +1,8 @@
-# cargo deny: advisories only (the Audit workflow). Licences and sources are reviewed by hand.
-# The app ships for one target, so the graph is that target's: Windows-only and Linux-only
-# crates (the updater's zip, the GTK stack) never compile into the binary.
+# cargo deny, run by the Audit workflow on every pull request and weekly: advisories against the
+# RustSec database, licences against the allow list below, duplicate and wildcard versions, and
+# the source of every crate. The GPL ffmpeg sidecar is a separate process, not a crate, so it is
+# not in this graph (NOTICE.md). The app ships for one target, so the graph is that target's:
+# Windows-only and Linux-only crates (the updater's zip, the GTK stack) never compile into the binary.
 [graph]
 targets = ["aarch64-apple-darwin"]
 
@@ -10,3 +12,33 @@ db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 yanked = "deny"
 ignore = []
+
+[licenses]
+version = 2
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "MPL-2.0",
+  "Unicode-3.0",
+  "0BSD",
+  "CC0-1.0",
+  "MIT-0",
+  "Unlicense",
+]
+confidence-threshold = 0.8
+unused-allowed-license = "allow"
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

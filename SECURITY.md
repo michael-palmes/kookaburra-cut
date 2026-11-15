@@ -32,8 +32,9 @@ details stay private until a fix ships. Please do not open a public issue for
 anything that looks like a security problem.
 
 Include the app version (Settings ▸ About), your macOS version and steps to
-reproduce. You will get an acknowledgement as soon as practical, and a fix or
-mitigation plan once the report is confirmed.
+reproduce. You will get an acknowledgement within 14 days, usually sooner, and
+a fix or mitigation plan once the report is confirmed. Each fix is listed
+under `### Security` in `CHANGELOG.md` and in the release notes built from it.
 
 ## Supported versions
 
@@ -85,9 +86,9 @@ It is built for these risks:
 - **An agent that reaches too far.** The app starts no Claude Code, and no
   shell but the updater's administrator install ("On the Mac"): a session
   begins in the Claude app or the person's own terminal. kb
-  writes only inside the project, the workspace or a folder a person picked in the app this
-  session, and refuses credential folders; other projects need an in-app
-  confirmation; commands that look like sending work off the Mac ask a person
+  writes only inside the project (any folder with a `project.json`, through `-C`), the workspace or a folder a person picked in the app this
+  session, and refuses the credential folders it names, by exact case; the whole workspace is routine to it, and only
+  bridge captures, frame ranges, checks, preset inserts and `openEdit` for another project ask in the app; commands that look like sending work off the Mac ask a person
   first. None of this is a sandbox (see "Not yet").
 - **Confidential work on disk.** Projects, caches and exports stay in the
   user's home folder; nothing is uploaded or synchronised by the app. The
@@ -131,7 +132,7 @@ and refuses every nested worker.
 | Update install | Install and relaunch on the update dialog | The release asset `latest.json` names | The signed updater archive | Later hides the offer until the next check | `updater.rs` (`download_and_install`); the ed25519 signature is checked against `plugins.updater.pubkey` before anything is written |
 | Edit with Claude (`claude://` handoff) | Edit with Claude, with the Claude desktop app installed | The Claude desktop app on this Mac, which talks to Anthropic under the user's account | The project folder path and a starter prompt, typed in, never sent | Not pressing it; `DisableClaude` turns it off for a fleet | `src-tauri/src/claude_app.rs` (`code_session_link`, `open_in_claude`) |
 | Live scene websites | Open live website in the paused editor after Allow for that origin; Present reloads an allowed origin on each hold | The approved origin, with the reach of a browser tab (subresources, subframes and scripts are not filtered) | Whatever the page loads; cookies and storage in a profile separate from Safari | Allow per origin per project (main window only); revoke in the inspector; Settings ▸ Website data clears storage | `src-tauri/src/website.rs` (`website_open` refuses without a grant, HTTPS or loopback only, downloads and new windows denied, no Tauri capability for the child) |
-| Fixed pages in the browser | Get Claude, or What leaves your Mac | `claude.ai/download`; `github.com/.../docs/privacy.md` | The constant URL, nothing appended | Not pressing it | `claude_app.rs` (`open_claude_download`, `open_privacy_page`) |
+| Fixed pages in the browser | Get Claude, or What leaves your Mac | `claude.ai/download`; `github.com/.../docs/privacy.md` at the installed version's tag (`main` in a dev build) | The constant URL, nothing appended | Not pressing it | `claude_app.rs` (`open_claude_download`, `open_privacy_page`, `privacy_url`) |
 
 Dev-time only, never in the app: `pnpm setup:models` downloads the beat model
 from a pinned commit and checks its SHA-256 (`scripts/setup-models.sh`);
@@ -144,8 +145,9 @@ organisation's own server (see "Managed preferences").
 ## On the Mac
 
 Every location the app writes, with its mode. `$APPDATA`, everything under
-it, `_bridge` and `_autorun` are created 0700 (folders) and 0600 (files),
-every launch re-seals the trees in the background and logs one `[privacy]`
+it, `_bridge` and `_autorun` are created 0700 (folders); files open inside them at the umask
+unless written through `privacy::atomic_write_private` (0600 from the first byte),
+every launch re-seals the trees to 0700/0600 in the background and logs one `[privacy]`
 line when it had to correct anything, and `cache/`, `logs/`, `_bridge/` and
 `_autorun/` carry `.metadata_never_index` (`src-tauri/src/privacy.rs`, `audit.rs`;
 `scripts/kookaburra-run.sh` seals the queue it creates). Projects and the
@@ -196,9 +198,10 @@ backup. Everything else is backed up like any document: projects with their own
   (`release_project`) or when the window closes; only the main window also reads
   `templates/`, `presets/`, `brands/`, `screenshots/` and the snapshots and scene
   thumbs under `.kookaburra/`; a child webview (a live website) is served
-  nothing. The stage worker holds a narrower list still: see `realmGuard.ts`. Paths are
+  nothing. The stage worker holds a narrower list still, checked only in its own JavaScript
+  (`realmGuard.ts`); Rust enforces the window's list. Paths are
   canonicalised before the check, so a link inside a project that leads out of
-  it is refused, and no hidden folder below a root is served (`.emoji-cache`
+  it is served only when it lands under another root that window may read, and no hidden folder below a root is served (`.emoji-cache`
   reads through a command). Native reads of a project asset go through
   `media::resolve_asset_in`, which refuses the same links by name, and
   `copy_dir_recursive` refuses to copy a link at all.
@@ -208,7 +211,12 @@ backup. Everything else is backed up like any document: projects with their own
   progress for up to an hour and 2 GiB in all; `requests/.claimed/` the claimed
   requests; `apps/<pid>.json` and `app.json` heartbeats carry the executable
   path, workspace root, open project, playhead and the folders picked this
-  session; `cli.json` the headless CLI's location. The app never creates it
+  session; `cli.json` the headless CLI's location. kb also writes there:
+  `exports/<slug>/` (one record per finished `kb export`, the newest 50 kept),
+  `film/<slug>/` (frames and sheets of its film runs, the newest 12 kept),
+  `video/<slug>/` (`kb video` scratch, pruned to three drafts per edit, 24 h and
+  1 GB) and `font-verdicts.json` (the app's font verdicts, cached); see
+  `docs/agent-kit.md`. The app never creates it
   under `DisableAgentKit` (`bridge_root` refuses first), though kb in a kit
   stamped earlier can still write requests nobody answers. Control: `bridge.rs`
   (`bridge_root`, the caps at its head, `prune`).
@@ -221,7 +229,10 @@ backup. Everything else is backed up like any document: projects with their own
   `knownPublishers` (the TOFU store), `websiteOriginGrants` per project path,
   `agentFiles` (per folder, what a stamp moved and whether a person has seen it),
   the publisher profile and the Claude preferences; per-project entries other
-  than the trust grant outlive a project delete. Written through a temporary file that is 0600 from its first byte, then
+  than the trust grant and `agentFiles` outlive a project delete. Settings ▸ Allowed projects
+  lists `trustedProjects` and forgets one grant, stored and session alike
+  (`forget_allowed_project` in `settings_win.rs`, settings window only, through
+  `forget_project_trust`). Written through a temporary file that is 0600 from its first byte, then
   a rename, under one lock. Control: `workspace.rs` (`AppSettings`,
   `settings_path`), `privacy::atomic_write_private`.
 - **The pack signing key**: 32 raw bytes created on the first pack export, a
@@ -252,20 +263,33 @@ backup. Everything else is backed up like any document: projects with their own
   or asset delete drops its entries and path stamps),
   `theme-previews/`, `beats/` (song analysis, which can include a track's lyric
   tags), `loudness/`, `font-embedding.json`, `tapdot/` and `export-mezz/` (the
-  two-pass mezzanine, removed when the export ends). The last six have no
-  Settings clear. Control: `src-tauri/src/clip_cache.rs`, `media.rs`,
+  two-pass mezzanine, removed when the export ends). Settings ▸ Storage ▸
+  Clear all app data (`clear_app_data` in `settings_win.rs`, settings window
+  only) asks on a native sheet whose Return is Cancel and is refused while an
+  export, a pack import, an editor render or another terminal run is going.
+  It clears `clips/` and `media/` through their own clears, every other entry
+  of `cache/` but its Spotlight marker, the Website data store's records,
+  `_bridge/responses`, `requests` and `apps`, `_autorun/runs` and
+  `.window-state.json`; drops every session grant (Allow, loopback websites,
+  bridge projects); resets `settings.json` to the workspace location and
+  `updateCheckConsent` (`reset_settings` in `workspace.rs`); and re-seals the
+  cache roots (`privacy::seal_cache_roots`). `pack-key/`, `pack-key-dev/`, the
+  Keychain item, `logs/`, the projects and the workspace stay. Control:
+  `src-tauri/src/clip_cache.rs`, `media.rs`,
   `theme.rs`, `song/mod.rs`, `loudness.rs`, `fonts.rs`, `edit.rs`, `lib.rs`.
-- **`$APPDATA/.window-state.json`**: window positions (`tauri-plugin-window-state`).
+- **`$APPDATA/.window-state.json`**: window positions (`tauri-plugin-window-state`),
+  written again at quit, so a clear resets them only for that launch's windows.
   The webview's `localStorage` holds font, colour and icon recents and UI
-  toggles, nothing from a project's content.
+  toggles, nothing from a project's content; the settings window empties it
+  when Clear all app data finishes (`src/settings/SettingsApp.tsx`).
 - **`$APPDATA/logs/`**: `app.log`, the app's own record, kept by release and
   dev builds alike (`src-tauri/src/audit.rs`, `audit::builder`): what a stamp
   moved or stripped and where the agent's git is off (`[kit]`), footage trims
-  (`[history]`), Allow given, declined and asked again (`[trust]`), website
+  (`[history]`), Allow given, declined, asked again and forgotten (`[trust]`), website
   origins allowed, declined and removed (`[website]`), pack imports with the
   publisher's key id, verdict, item counts and outcome (`[pack]`), update checks
   and installs (`[update]`), workspace moves and project deletes
-  (`[workspace]`), managed keys and each key's first refusal a launch (`[managed]`) and what the startup
+  (`[workspace]`), Clear all app data (`[settings]`), managed keys and each key's first refusal a launch (`[managed]`) and what the startup
   seal corrected (`[privacy]`). Lines hold paths, slugs, origins, key ids,
   versions and counts, never a file's contents or a secret, and a name a pack or
   page chose is escaped onto one line (`audit::field`). Only the app's own lines
@@ -286,7 +310,11 @@ backup. Everything else is backed up like any document: projects with their own
   folder, and so does every export under `ExportsInProject`, which routes a
   Downloads request to the project in `export_dir_kind`). Video and stills
   follow the same rule. ffmpeg writes a hidden `.part` sibling and renames it
-  on success. `.kbpack` files go where the Save
+  on success. A video export that fails leaves `<export>.health.json` where
+  the film would land in the project's `exports/`: the reason and error, the
+  frame and scenes it reached, its render rate and the app's memory samples
+  (`export_health.rs`, `health_path`); the next start of that export, or its
+  success, removes it. `.kbpack` files go where the Save
   dialog `build_pack` runs from Rust points, never a webview path
   (`pack::commands::validate_destination` refuses system folders, `$APPDATA`
   and the app bundle). Control: `resolve_export_output` in `lib.rs`.
@@ -440,7 +468,8 @@ stamped before the profile stays in its folder, and its kb still runs.
   `~/.gnupg`, `~/Library/Keychains`, `~/.docker`, `~/.kube`, `~/.azure`,
   `~/.claude`, `.env*`, `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`, private
   keys by name, `credentials*.json`, `*.pem`, `*.p12`, `*.key`, `*.jks`,
-  `*.keystore`, `*.tfstate` and shell histories (`kit.rs` `CREDENTIAL_*` is the
+  `*.keystore`, `*.tfstate` and shell histories, matched by exact case (so `~/.AWS`
+  passes on APFS; `~/.claude.json` is not listed) (`kit.rs` `CREDENTIAL_*` is the
   same list, and a test holds them together). The kit denies the agent's own Read
   tool the credential paths kb refuses (of `~/.claude`, only the secrets), which
   binds Claude Code's file tools and not a script the agent runs. Bridge captures,
@@ -481,12 +510,16 @@ drop a request, which is the out-of-scope case above.
   grant is path and hash bound (`trustedProjects` in `settings.json`): the app's
   own writers re-stamp inside `restamping_trust`, an edit landing while the
   project is open and allowed this session re-stamps from the hash Rust
-  computes, and content changed while the project was closed re-asks. Present
+  computes, as does any change to a project allowed this launch (released or not), so
+  content changed while the project was closed re-asks only at the next launch. Present
   and `KOOKABURRA_TRUST=stored-only` loads never re-stamp; an autorun
   (`KOOKABURRA_ACTION` set) mints its nonce without a sheet, and in a release
   build that grant lasts for the launch and never reaches `trustedProjects`. All three commands
   are in the `trust` set, main window only. Deleting a project removes its
-  grant. Declining stamps nothing. `copy_scene_to_project` (main and render
+  grant. Settings ▸ Allowed projects forgets one grant, stored and session
+  alike, and Clear all app data forgets every one (`forget_allowed_project`,
+  `clear_app_data` in `settings_win.rs`, settings window only); either only
+  narrows what runs, and the next open asks. Declining stamps nothing. `copy_scene_to_project` (main and render
   windows) refuses a workspace project, user template or user preset as its
   source unless that source's grant matches its content or this session
   allowed it (`require_source_allowed`); bundled templates and presets ship
@@ -496,7 +529,8 @@ drop a request, which is the out-of-scope case above.
   `NSAlert` sheet names the origin and the project; the default button, Return,
   is Don't allow. Only a request `website_open` or a blocked navigation raised
   this session can reach it, and any answer spends that request. A grant is once
-  per origin per project; an origin already granted asks nothing. The Allow
+  per origin per project folder path, kept through a delete, rename or pack replace at that
+  path; an origin already granted asks nothing. The Allow
   gate, moving the workspace, bridge confirmations and these grants are all
   answered natively, so a compromised webview can show the question but never
   press the button.
@@ -504,23 +538,26 @@ drop a request, which is the out-of-scope case above.
   every `#[tauri::command]` belongs to exactly one permission set, and each
   window gets only its sets. Main: project read, render and write, trust, media
   library, library, export, capture host, studio, Claude launcher, updater,
-  website editor. Present: project read, render, its own window and
+  website editor, managed preferences. Present: project read, render, its own window and
   website show. Render: project read, render, bridge serving. Settings: its
-  caches, the workspace location, updater and publisher. Packs: pack commands
-  and the dialog. Editor and theme editor: theirs. Dev-only commands are
+  caches, the workspace location, Claude launcher, updater, managed preferences, publisher, forgetting an Allow,
+  clearing all app data and showing the log folder. Packs: pack commands,
+  managed preferences and the dialog. Editor and theme editor: theirs. Dev-only commands are
   `cfg(debug_assertions)` and granted only by `capabilities/dev/`, which
   `build.rs` includes in debug builds alone. `src-tauri/src/acl.rs` lists each
   window's commands and fails on a new command until it is placed, on any
   window but main reaching the trust commands, `start_export`,
   `delete_project`, `website_grant_origin` or `init_default_workspace`, and on
-  any window but settings reaching `init_workspace` or `move_workspace`.
+  any window but settings reaching `init_workspace`, `move_workspace`,
+  `forget_allowed_project`, `clear_app_data` or `reveal_app_logs`.
   `website::guard_invoke` is the second layer: any label outside the seven app
-  windows gets no command at all.
+  windows gets none of the app's own commands (it wraps `generate_handler!`); plugin
+  commands rely on Tauri refusing remote origins.
 - **Worker isolation** (`src/stage/`): every scene tree runs in a Web Worker on
   an OffscreenCanvas with no `window`, `document` or `__TAURI_INTERNALS__`, so
   scene code can't reach IPC even from the main window, and the network is shut
   ("What leaves the Mac"); its native port refuses any project the window did not
-  hand it (`stageClient.ts`). Over `asset://` the guard admits its project, pinned
+  hand it (`stageClient.ts`). Over `asset://` the guard, in the worker's JavaScript, admits its project, pinned
   fonts and the objects it read, and it refuses nested workers, which would start
   without it.
 - **Stills on the way in** (`src-tauri/src/imagefile.rs`, `kblib/imagefile.py`,
@@ -534,7 +571,15 @@ drop a request, which is the out-of-scope case above.
   nothing until the person grants its origin in the editor; the child
   WKWebView has no Tauri capability, no file, media or sensor access, no
   downloads and no new windows; an approved origin reloads in Present on each
-  hold without a further click (`src/present/PresentWebsiteOverlay.tsx`).
+  hold without a further click (`src/present/PresentWebsiteOverlay.tsx`). Its
+  one way to the app is the `kookaburraWebsiteFocus` script message handler
+  (`website.rs`, `WebsiteMessageHandler`): a page, or the init script on
+  pointer down, focus and Shift-Escape, may post the string `acquire` or
+  `release`, and anything else is ignored. Either becomes a
+  `kookaburra://website-focus` event carrying the app's own view id and a
+  focused flag, broadcast to the app's windows, and `release` returns keyboard
+  focus to the window that owns the view; nothing from the page is read or
+  passed on.
 
 ## Packs
 
@@ -559,7 +604,7 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
   builds that item's staged scene set (`scenes/**/*.tsx` in the signed file
   list) and refuses the pack when its `sceneFiles` is not exactly that set
   (`SceneFilesMismatch`), so the scene counts, the code viewer and the review
-  list what would land.
+  list what would land under `scenes/`, matched by exact case.
 - **TOFU and its limits.** The key id is `hex(sha256(pubkey)[0..8])`; the store
   (`known_publishers` in `settings.json`) is keyed by the id recomputed from
   the public key, never the declared one (a store an older build keyed by the
@@ -576,7 +621,8 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
   under this key; a first-time, renamed or re-keyed publisher gets Cancel as
   the primary button.
 - **Review before Continue.** The trust screen lists every requested Website
-  origin a pack carries, read from its scene sidecars and hash-checked (`read_pack_scene_docs`,
+  origin a pack carries under a lower-case `scenes/` folder (a `Scenes/` one is not shown but
+  still loads on APFS), read from its scene sidecars and hash-checked (`read_pack_scene_docs`,
   `src/packs/packReview.ts`), so nothing is reviewed after the files land. A
   project, template or preset a pack adds or replaces loses that slug's F-001
   grant and its place in this session's allow set
@@ -597,7 +643,7 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
   may hold anything. Import writes files and never
   compiles: the first open hits the Allow gate.
 - **Caps and paths** (`pack/limits.rs`, `pack/paths.rs`): 50,000 entries, 8 GiB
-  total, 4 GiB per entry, a 200:1 ratio per entry, path depth 16, path length
+  total, 4 GiB per entry, a 200:1 ratio per entry (over the sizes its zip header declares), path depth 16, path length
   512 bytes, manifest 8 MiB; a structural path validator refuses control, bidi
   and zero-width characters, absolute paths, `..`, dotted folders and files,
   drive letters and extensions outside each kind's allow-list; symlinks and any
@@ -611,7 +657,8 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
   `object.json` `glb` or `thumbnail` path must sit beside the manifest
   (`objects::validate_object_rel`, `isObjectRel`).
 - **Review before apply.** The trust screen shows the scene code and website
-  origins (loopback flagged as session-only), read from the pack's signed
+  origins (`localhost`, `127.0.0.1` and `[::1]` flagged as session-only; other local spellings
+  such as `app.localhost` or `0.0.0.0` are not, and get lasting grants), read from the pack's signed
   sidecars, never the manifest; the summary shows the author's notes.
 
 ## Saved secrets
@@ -640,21 +687,34 @@ builds it in separate jobs, each on a fresh runner.
 
 - **Build, with no signing secret in reach.** The build job checks that the tag
   is signed by a key in `main`'s `.github/allowed_tag_signers` (read from `main`,
-  never from the tagged tree) and sits on `main`. Before any dependency or
+  never from the tagged tree) and sits on `main`, and that `CHANGELOG.md` holds
+  the version's section (`scripts/changelog-section.sh`), since the release
+  body is built from it. Before any dependency or
   repository script runs, it unpacks the licensed device models from a private
   repository's `age`-encrypted archive. It then refuses any glb that does not match
   `src/assets/models/licensed.sha256`, builds the ffmpeg sidecar from sources
   pinned by SHA-256 and commit (`scripts/build-ffmpeg-sidecar.sh`), fetches the
-  beat model against its pins, runs `pnpm tauri build --no-sign` and uploads the
-  unsigned app with its SHA-256.
+  beat model against its pins, runs `pnpm tauri build --no-sign` through
+  `cargo auditable`, so the binary carries its own crate list in a `.dep-v0`
+  section (`rust-audit-info` must read it back before packing, and `cargo audit
+  bin` reads it on any Mac), and uploads the unsigned app with its SHA-256.
   Its only secrets are the read-only token for that private repository and the
   archive's decryption key; neither can sign anything. The toolchain is pinned:
   `rust-toolchain.toml`, an exact Node in `engines`, pnpm through corepack
-  against the hash in `packageManager`, and cmake, nasm and pkgconf from SHA-256
-  pinned releases (`scripts/install-build-tools.sh`). The runner image and its
-  default Xcode still float, so `build-info.txt` records them. The job uploads that
-  file and a digest of every bundle file as its own artefact, which the sign
-  job never touches.
+  against the hash in `packageManager`, cmake, nasm and pkgconf from SHA-256
+  pinned releases (`scripts/install-build-tools.sh`), and `cargo-cyclonedx`,
+  `cargo-auditable` and `rust-audit-info` built from crates.io at the versions
+  `release.yml` names. The runner image and its
+  default Xcode still float, so `build-info.txt` records them, with every tool
+  version and pin. The job also writes the release's SBOM,
+  `KookaburraCut-<version>.cdx.json` (`scripts/sbom.mjs`: CycloneDX 1.5, one
+  component per npm package from `pnpm ls --prod` with its licence, every crate
+  `cargo cyclonedx` resolves for the shipped target, the sidecar's pinned
+  sources and the beat model's pinned files; the timestamp is the commit's and
+  the serial number derives from it, so two builds of one commit write the
+  same bytes). It uploads `build-info.txt`, the SBOM and a digest of every
+  bundle file as its own artefact, whose combined digest is a job output the
+  sign job never touches.
 - **Sign, in the protected `release` environment.** Behind a required reviewer
   (one, the maintainer, who can approve their own run) and limited to `v*` tags,
   the sign job checks the payload's digest against the
@@ -676,15 +736,21 @@ builds it in separate jobs, each on a fresh runner.
   before that binary runs, every file in the zip's app and the updater tar's
   app equals the build job's record with signatures stripped, file list
   included, so a file the sign job adds or changes fails it. Only the seal and
-  the notarisation ticket that signing adds are left out.
+  the notarisation ticket that signing adds are left out. The job also checks
+  that this file names the Team ID the signatures carry: the `TeamIdentifier=`
+  under "Verify an install" must equal the `APPLE_TEAM_ID` variable.
 - **Publish.** `SHA256SUMS` over the DMG, the zip, the updater tar and its
-  `.sig`, `latest.json`, `build-info.txt` and a copy of this file as it stood
-  at the tag; a GitHub build provenance attestation over the DMG, zip, tar and
-  `build-info.txt`, kept by GitHub and uploaded beside them as
+  `.sig`, `latest.json`, `build-info.txt`, the SBOM and a copy of this file as
+  it stood at the tag (`scripts/release-sums.sh`, which a branch rehearsal also
+  runs, so a file missing from the set fails a dry run); a GitHub build
+  provenance attestation over the DMG, zip, tar, `build-info.txt` and the SBOM,
+  kept by GitHub and uploaded beside them as
   `KookaburraCut-<version>.intoto.jsonl`, with the updater's `.sig` as its own
-  asset; a static notes body naming the Team ID; a draft release a
-  person publishes. The in-app updater sees a release only once it is
-  published.
+  asset; an SBOM attestation on the DMG (`actions/attest` with `sbom-path`,
+  predicate `https://cyclonedx.org/bom`); a release body that opens with the
+  version's `CHANGELOG.md` section, then how to install and verify, naming the
+  Team ID; a draft release a person publishes, with the SBOM among its assets.
+  The in-app updater sees a release only once it is published.
 - **Updater.** `plugins.updater.requireSignedVersion` is on: the app refuses a
   signature whose trusted comment does not bind the announced version, so a
   manifest re-pointed at an older signed archive cannot roll an install back.
@@ -715,15 +781,35 @@ builds it in separate jobs, each on a fresh runner.
   `CODEOWNERS` names the maintainer everywhere and a second reviewer
   (`@FromeCloned`) on the surfaces this file is about: the pack reader, the
   asset server, the updater, managed preferences, the capabilities, the
-  workflows and the release scripts. `audit.yml` runs
-  `pnpm audit` and `cargo deny check advisories` on every pull request
-  and weekly. Every workflow but `scorecard.yml` starts from `permissions: {}` or
+  workflows and the release scripts. `audit.yml` runs, on every pull request
+  and weekly, `pnpm audit --prod` at moderate for what ships and `pnpm audit`
+  at high for the dev tree, and `cargo deny check advisories licenses bans
+  sources` against `src-tauri/deny.toml`: an allow list of permissive licences
+  (MIT, Apache-2.0 with or without the LLVM exception, BSD-2-Clause,
+  BSD-3-Clause, ISC, Zlib, MPL-2.0, Unicode-3.0, 0BSD, CC0-1.0, MIT-0,
+  Unlicense), no wildcard versions, crates.io as the only source.
+  `dependency-review.yml` fails a pull request that adds a dependency with a
+  moderate advisory or a licence outside that list (plus OFL-1.1 for fonts),
+  and comments on the pull request only then. Every workflow but `scorecard.yml` starts from `permissions: {}` or
   `contents: read` (`scorecard.yml` starts from `read-all`, and its one job
   narrows to `security-events` and `id-token`). Every workflow
   pins actions to a commit SHA and sets `persist-credentials: false`.
-- **Verify an install.** On the release page's files:
+  `codeql.yml` scans JavaScript/TypeScript, Rust, Actions and Python. `unsafe`
+  is denied crate-wide and allowed only per file or function, every block with a
+  one-line SAFETY comment (`[lints]` in `src-tauri/Cargo.toml`: every cargo
+  build refuses an unallowed block, and CI's clippy one without its comment).
+  pnpm runs no dependency's install script (`allowBuilds: {}` in
+  `pnpm-workspace.yaml`), and with `strictDepBuilds` a lock that adds one fails
+  `pnpm install --frozen-lockfile` until someone reviews it; no dependency has
+  one today, so the empty list changes nothing yet.
+- **Verify an install.** On the release page's files. `scripts/verify-install.sh`
+  runs all of this on a downloaded release, plus the sidecars' signatures and a
+  diff of this file against the previous release's, from 0.23.0 on. It downloads no release
+  files, but reads the tag, the SBOM attestation (and the provenance unless its bundle is in the
+  folder) and, with `--previous`, SECURITY.md at each tag from GitHub through `gh`:
 
   ```bash
+  gh release download v<version> --repo michael-palmes/kookaburra-cut --dir <dir>
   shasum -a 256 -c SHA256SUMS --ignore-missing
   for f in KookaburraCut-<version>.dmg build-info.txt; do
     gh attestation verify "$f" --repo michael-palmes/kookaburra-cut \
@@ -732,9 +818,13 @@ builds it in separate jobs, each on a fresh runner.
   done
   # offline, from the release's own copy of the attestation:
   #   add --bundle KookaburraCut-<version>.intoto.jsonl to either command
+  gh attestation verify KookaburraCut-<version>.dmg --repo michael-palmes/kookaburra-cut \
+    --signer-workflow michael-palmes/kookaburra-cut/.github/workflows/release.yml \
+    --source-ref refs/tags/v<version> --deny-self-hosted-runners \
+    --predicate-type https://cyclonedx.org/bom           # the SBOM, KookaburraCut-<version>.cdx.json
   grep '^commit=' build-info.txt                          # the same commit as the next line
   git ls-remote https://github.com/michael-palmes/kookaburra-cut 'refs/tags/v<version>^{}'
-  codesign -dvv "/Applications/Kookaburra Cut.app"       # flags=0x10000(runtime), Authority=Developer ID Application
+  codesign -dvv "/Applications/Kookaburra Cut.app"       # flags=0x10000(runtime), Authority=Developer ID Application, TeamIdentifier=Q4B8N8ZKA2
   spctl -a -t exec -vv "/Applications/Kookaburra Cut.app" # source=Notarized Developer ID
   ```
 
@@ -746,6 +836,21 @@ key, which agents use, can't tag. Neither stops an account that has been taken
 over: the list the tag key is checked against lives in the repository, and an
 admin can change it and approve the run.
 
+Reproducible builds are not claimed. Tauri does not promise one and this
+pipeline does not either: the runner image, macOS, Xcode and the SDK float
+between runs, and `build-info.txt` records which ones a build used. What is
+reproducible is the exported film: the sidecar is built from pinned sources
+with every configure flag in `scripts/build-ffmpeg-sidecar.sh`, its x264
+version string is part of every H.264 export's bytes, and the packaged-parity
+gate (`docs/determinism.md`) proves each published DMG renders the gate
+projects to the recorded hashes. The sidecar's own bytes, the frontend bundle
+and the Rust binary are not claimed reproducible. In place of a rebuild, a
+reviewer has the build record (`build-info.txt`, `bundle-digests.txt`,
+`sidecar-digests.txt` and the SBOM, chained by one digest from the keyless
+build job), the provenance attestation that ties the DMG to this workflow and
+the tag, the SBOM attestation on the DMG, and the crate list embedded in the
+binary (`cargo audit bin`).
+
 ## Process
 
 - `pnpm ready` runs the workspace-name check on every branch
@@ -756,6 +861,10 @@ admin can change it and approve the run.
   every pull request (`.github/workflows/ci.yml`, "Workspace names").
 - Every PR runs `/code-review high` and `pnpm ready`; a render-path change
   gates through `docs/determinism.md`.
+- Every security fix is a `### Security` entry in `CHANGELOG.md` with one line
+  on what it meant for a user and a link to the GHSA advisory when one exists
+  (`CONTRIBUTING.md`, "Changelog"); the release body is built from that
+  section, and a tag without one is refused.
 
 ## Not yet
 
@@ -766,8 +875,9 @@ Deliberately deferred, recorded so nobody mistakes them for done:
   faces, the mp4 `moov` reader, PNG decode): `allsorts` shaping, glTF inputs,
   the image facts readers and the `.kbpack` archive reader as a whole are
   bounded and tested on hostile fixtures, not fuzzed.
-- A strict pass over every `unsafe` block (the objc2 bridges in `native_alert.rs`,
-  `website.rs` and the AVFoundation conform path).
+- An App Sandbox for the app itself: kb's headless CLI is the same binary, the
+  updater swaps the bundle in place, and each workspace or linked `assets/`
+  root would need a dialog (`docs/decisions.md`, "No App Sandbox").
 - A Homebrew cask, so MDM fleets can install and pin versions without the DMG.
 - A per-project website data store: approved projects share one login profile
   today (`docs/scene-website.md`, "Accepted residual risk").

@@ -1,3 +1,4 @@
+#![allow(unsafe_code)]
 //! The capture bridge: a file-drop queue at `~/Kookaburra Cut/_bridge/` that lets Claude Code ask the RUNNING app (dev or packaged) to capture, check, vet fonts, insert presets, refresh changed media or open the video editor (docs/agent-kit.md, "The bridge (v2)"; v1 `capture.py` requests carry no `kind` and still work). Clients write `requests/<id>.json`; the hidden render window claims one per tick via `bridge_claim_request`, serves it through the export path and answers via `bridge_write_response` + the bridge screenshot pair. The native kinds (`NATIVE_KINDS`) never reach the render window: `spawn_native_bridge` claims and serves them from Rust. Several app instances can share the queue: `init` decides once whether this one serves (`bridge_role`), every claim and the pending count go through `claimable`, and every answer carries `servedBy`. The editor's one-second tick also writes this instance's `apps/<pid>.json` heartbeat (plus `app.json` when it is the elected primary). Deliberately separate from the autorun screenshot commands (env-gated, cold-boot, single-instance): neither surface may regress the other.
 
 use std::cell::OnceCell;
@@ -503,6 +504,16 @@ pub struct BridgeGrants {
 }
 
 const DECLINE_HOLD: Duration = Duration::from_secs(60);
+
+/// Settings ▸ Clear all app data: the next cross-project request asks again.
+pub(crate) fn forget_session_grants(app: &AppHandle) {
+    let grants = app.state::<BridgeGrants>();
+    grants
+        .allowed
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clear();
+}
 
 fn access_verb(kind: &str) -> &'static str {
     match kind {

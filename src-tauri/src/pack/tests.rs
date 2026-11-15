@@ -1826,6 +1826,7 @@ fn stage_removes_its_tree_when_hashing_fails() {
 }
 
 #[cfg(unix)]
+#[allow(unsafe_code)]
 fn set_mtime_secs_ago(path: &Path, secs: i64) {
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
@@ -1839,6 +1840,7 @@ fn set_mtime_secs_ago(path: &Path, secs: i64) {
     };
     let times = [stamp, stamp];
     let raw = CString::new(path.as_os_str().as_bytes()).expect("path");
+    // SAFETY: raw is a NUL-terminated path, and times is the two timevals utimes reads.
     assert_eq!(unsafe { libc::utimes(raw.as_ptr(), times.as_ptr()) }, 0);
 }
 

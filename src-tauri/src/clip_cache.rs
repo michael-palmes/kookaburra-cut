@@ -1,3 +1,4 @@
+#![allow(unsafe_code)]
 //! The clip extraction cache: every embedded video is decoded by the ffmpeg sidecar into a constant 60 fps PNG sequence under `$APPDATA/cache/clips/<sha>-60fps[-hw]/frame-%05d.png`, the export's only clip input. Entries fill in 120-frame chunks, each extracted with no seek and trimmed by frame number, so a chunk's PNGs are byte-identical to whole-clip extraction (the `#[ignore]` barcode test below proves it on both decode lanes) and today's whole-clip entries stay valid hits. A decode-only pass writes `count.json` (the exact frame count and size) before any frame exists; `.chunk-<first frame>` marks a finished chunk and `.done` a whole entry. Total size is capped (Settings, default 20 GB) by evicting whole chunks least recently used first, never the ones a window has pinned (its open project, a running export).
 
 use std::collections::{HashMap, HashSet};
@@ -1092,6 +1093,7 @@ pub(crate) fn cap_bytes(app: &AppHandle) -> u64 {
 
 /// Signal 0 probes a pid without touching it; EPERM still means it runs (under another user).
 fn process_alive(pid: i32) -> bool {
+    // SAFETY: signal 0 only checks that the process exists.
     let alive = unsafe { libc::kill(pid, 0) } == 0;
     alive || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
 }

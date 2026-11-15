@@ -107,6 +107,27 @@ describe("gate plan", () => {
     assert.equal(classify("src-tauri/Cargo.lock", closure).kind, "render");
   });
 
+  test("git history, the Claude handoff and fleet packaging never gate", () => {
+    for (const path of [
+      "src-tauri/src/history.rs",
+      "src-tauri/src/claude_app.rs",
+      "packaging/mdm/install.sh",
+    ]) {
+      assert.equal(classify(path, closure).kind, "none", path);
+    }
+    assert.equal(classify("src-tauri/src/workspace.rs", closure).kind, "render");
+    assert.equal(classify("src-tauri/src/lib.rs", closure).kind, "render");
+  });
+
+  test("a pack change runs the round trip, not gate:merge", () => {
+    const p = plan(["src-tauri/src/pack/apply.rs"], closure);
+    assert.deepEqual(legsOf(p), []);
+    assert.deepEqual(
+      p.actions.map((a) => `${a.action} ${a.project}`),
+      ["packroundtrip ws:launch-2026"],
+    );
+  });
+
   test("unlisted paths and the app shell are gated", () => {
     for (const path of [
       "src/App.tsx",

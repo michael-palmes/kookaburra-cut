@@ -2,10 +2,13 @@
 
 Kookaburra Cut's own code is licensed **MIT OR Apache-2.0** (your choice).
 Copyright © Michael Palmes. See [`LICENSE-MIT`](LICENSE-MIT) and
-[`LICENSE-APACHE`](LICENSE-APACHE) for the full texts. JS/TS and Rust
-dependencies are listed via `pnpm licenses list` / `cargo-license`; the tree
-is permissive throughout (MIT/Apache-2.0/BSD-3-Clause/ISC/Zlib, plus a small
-MPL-2.0 transitive cluster, all unmodified; no propagation to this project).
+[`LICENSE-APACHE`](LICENSE-APACHE) for the full texts. Every release's
+`KookaburraCut-<version>.cdx.json` (a CycloneDX SBOM on the release page,
+written by `scripts/sbom.mjs`) lists each JS/TS package and Rust crate built
+into the app with its licence; the tree is permissive throughout
+(MIT/Apache-2.0/BSD/ISC/Zlib, plus a small MPL-2.0 transitive cluster, all
+unmodified; no propagation to this project), and `src-tauri/deny.toml` and
+`.github/workflows/dependency-review.yml` hold that allow list in CI.
 
 This file covers bundled non-code assets and the ffmpeg sidecar, which keep
 their own terms regardless of the licence on the app's own code.

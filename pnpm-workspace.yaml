@@ -1,3 +1,6 @@
+allowBuilds: {}
+strictDepBuilds: true
+
 overrides:
   "@react-three/drei>troika-three-text": 0.53.1
 patchedDependencies:

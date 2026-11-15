@@ -1,3 +1,4 @@
+#![allow(unsafe_code)]
 //! Words on screen through Vision's text recogniser, which runs on this Mac and never touches the network: `<exe> media ocr` over frames kb has already decoded, so Vision only ever parses our own stills, never an untrusted film.
 
 use std::path::{Path, PathBuf};

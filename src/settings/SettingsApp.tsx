@@ -18,6 +18,13 @@ import {
   sidecarVersions,
 } from "../engine/appCache";
 import {
+  type AllowedProjectRow,
+  allowedProjectRows,
+  clearAppData,
+  forgetAllowedProject,
+  revealAppLogs,
+} from "../engine/appData";
+import {
   claudeAppInstalled,
   openClaudeDownload,
   openPrivacyPage,
@@ -176,6 +183,96 @@ function ConformIcon() {
   );
 }
 
+function AllowedIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M8 1.5 3 3.5v4c0 3 2.2 5.4 5 6.5 2.8-1.1 5-3.5 5-6.5v-4L8 1.5ZM5.8 8l1.6 1.6 3-3.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ForgetIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M8 1.5 3 3.5v4c0 3 2.2 5.4 5 6.5 2.8-1.1 5-3.5 5-6.5v-4L8 1.5ZM6 6l4 4m0-4-4 4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function OpenNowIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M2.5 3.5h11v9h-11zM2.5 6h11M6.5 8l2.5 1.5-2.5 1.5z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ResetAllIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M3 8a5 5 0 1 0 1.5-3.6M3 2.5v2.4h2.4M6.5 6.5l3 3m0-3-3 3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ActivityLogIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M3.5 1.5h6l3 3v10h-9zM9.5 1.5v3h3M5.5 7.5h5M5.5 10h5M5.5 12.5h3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function FinderIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M1.5 4.5v8h13v-6.5H7.5L6 4.5zM1.5 4.5V3h4l1 1.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /** The Settings window: native titlebar, opened via the app menu (⌘,). Cache management (media previews + clip extractions), the workspace location (the only place it can be changed, since first run no longer asks), the opt-in update lane (toggle + Check now), and read-only info (sidecar versions, app version). */
 
 export function SettingsApp() {
@@ -203,6 +300,10 @@ export function SettingsApp() {
   const [websiteData, setWebsiteData] = useState<WebsiteDataRecord[] | null>(null);
   const [websiteDataBusy, setWebsiteDataBusy] = useState<string | null>(null);
   const [clipsClearDeferred, setClipsClearDeferred] = useState(false);
+  const [allowed, setAllowed] = useState<AllowedProjectRow[] | null>(null);
+  const [forgetting, setForgetting] = useState<string | null>(null);
+  const [clearingAll, setClearingAll] = useState(false);
+  const [publisherEpoch, setPublisherEpoch] = useState(0);
 
   const refreshStats = useCallback(() => {
     cacheStats()
@@ -219,12 +320,7 @@ export function SettingsApp() {
       });
   }, []);
 
-  useEffect(() => {
-    refreshStats();
-    refreshWebsiteData();
-    sidecarVersions()
-      .then(setVersions)
-      .catch(() => setVersions(null));
+  const loadSettings = useCallback(() => {
     getSettings()
       .then((s) => {
         setWorkspace(s.workspaceRoot ?? null);
@@ -235,6 +331,30 @@ export function SettingsApp() {
         setClaudeFirstOpen(!s.disableClaudeFirstOpen);
       })
       .catch(() => setWorkspace(null));
+  }, []);
+
+  // Re-read on focus too: the main window opens and closes projects while this one waits.
+  const refreshAllowed = useCallback(() => {
+    getSettings()
+      .then((s) =>
+        setAllowed(allowedProjectRows(s.trustedProjects, s.lastProject, home, Date.now())),
+      )
+      .catch(() => setAllowed([]));
+  }, [home]);
+
+  useEffect(() => {
+    refreshAllowed();
+    window.addEventListener("focus", refreshAllowed);
+    return () => window.removeEventListener("focus", refreshAllowed);
+  }, [refreshAllowed]);
+
+  useEffect(() => {
+    refreshStats();
+    refreshWebsiteData();
+    sidecarVersions()
+      .then(setVersions)
+      .catch(() => setVersions(null));
+    loadSettings();
     defaultWorkspaceRoot()
       .then(setDefaultRoot)
       .catch(() => setDefaultRoot(null));
@@ -247,7 +367,45 @@ export function SettingsApp() {
     getVersion()
       .then(setAppVersion)
       .catch(() => setAppVersion(""));
-  }, [refreshStats, refreshWebsiteData]);
+  }, [refreshStats, refreshWebsiteData, loadSettings]);
+
+  // Every window's localStorage is this one origin's, so one clear here covers them all.
+  useEffect(() => {
+    const unlisten = listen("kookaburra://app-data-cleared", () => {
+      try {
+        localStorage.clear();
+      } catch {}
+      loadSettings();
+      refreshAllowed();
+      refreshStats();
+      refreshWebsiteData();
+      setClipsClearDeferred(false);
+      setPublisherEpoch((n) => n + 1);
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [loadSettings, refreshAllowed, refreshStats, refreshWebsiteData]);
+
+  const forget = useCallback(
+    (key: string) => {
+      setForgetting(key);
+      setError(null);
+      forgetAllowedProject(key)
+        .then(refreshAllowed)
+        .catch((e) => setError(String(e)))
+        .finally(() => setForgetting(null));
+    },
+    [refreshAllowed],
+  );
+
+  const clearAll = useCallback(() => {
+    setClearingAll(true);
+    setError(null);
+    clearAppData()
+      .catch((e) => setError(String(e)))
+      .finally(() => setClearingAll(false));
+  }, []);
 
   const toggleHardware = useCallback((enabled: boolean) => {
     setHwEnabled(enabled);
@@ -470,6 +628,49 @@ export function SettingsApp() {
       </section>
 
       <section className="settings-section">
+        <h2>Allowed projects</h2>
+        {allowed?.length === 0 && (
+          <div className="settings-row">
+            <div className="settings-row-text">
+              <span className="muted settings-row-detail">
+                Projects you allow to run show here. Forget one and it asks again on its next open.
+              </span>
+            </div>
+          </div>
+        )}
+        {allowed?.map((row) => (
+          <div className="settings-row" key={row.key}>
+            <div className="settings-row-text">
+              <span
+                className="settings-row-title"
+                style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+              >
+                <AllowedIcon />
+                {row.name}
+              </span>
+              <span className="muted settings-row-detail settings-path" title={row.path}>
+                {row.detail}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn"
+              disabled={row.open || forgetting !== null || clearingAll}
+              onClick={() => forget(row.key)}
+              title={
+                row.open
+                  ? "Close it in Kookaburra Cut first, then forget it here"
+                  : "Asks again before its scenes run next time"
+              }
+            >
+              {row.open ? <OpenNowIcon /> : <ForgetIcon />}
+              {row.open ? "Open now" : forgetting === row.key ? "Forgetting…" : "Forget"}
+            </button>
+          </div>
+        ))}
+      </section>
+
+      <section className="settings-section">
         <h2>Claude</h2>
         <div className="settings-row">
           <div className="settings-row-text">
@@ -620,6 +821,30 @@ export function SettingsApp() {
               {busy === "clips" ? "Clearing…" : "Clear"}
             </button>
           </div>
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span
+              className="settings-row-title"
+              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+            >
+              <ResetAllIcon />
+              Clear all app data
+            </span>
+            <span className="muted settings-row-detail">
+              Every cache, Website data, the projects and websites you allowed, recent projects and
+              preferences. Your projects, workspace and pack signing key stay.
+            </span>
+          </div>
+          <button
+            type="button"
+            className="btn"
+            disabled={clearingAll || busy !== null || forgetting !== null}
+            onClick={clearAll}
+          >
+            <ClearDataIcon />
+            {clearingAll ? "Clearing…" : "Clear all…"}
+          </button>
         </div>
       </section>
 
@@ -818,7 +1043,7 @@ export function SettingsApp() {
         </div>
       </section>
 
-      <PublisherPane />
+      <PublisherPane key={publisherEpoch} />
 
       <section className="settings-section">
         <h2>About</h2>
@@ -836,6 +1061,29 @@ export function SettingsApp() {
           >
             <PrivacyIcon />
             What leaves your Mac
+          </button>
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span
+              className="settings-row-title"
+              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+            >
+              <ActivityLogIcon />
+              Activity log
+            </span>
+            <span className="muted settings-row-detail">
+              What the app did: projects and websites you allowed, packs, updates. Names and
+              folders, never what is in your files, and it never leaves your Mac.
+            </span>
+          </div>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => void revealAppLogs().catch((e) => setError(String(e)))}
+          >
+            <FinderIcon />
+            Show in Finder
           </button>
         </div>
         <div className="settings-row">

@@ -236,7 +236,8 @@ Website scene content gets its review before Continue, on the trust screen:
 `read_pack_scene_docs` reads every scene sidecar beside a staged scene source
 straight from the pack, checks each against its signed hash (one mismatch refuses
 the pack) and hands the parsed documents to `src/packs/packReview.ts`, which lists
-every requested Website origin (`websiteReview.ts`). Never the author's manifest,
+every Website origin requested under a lower-case `scenes/` folder
+(`websiteReview.ts`; a `Scenes/` one is not listed but still loads on APFS). Never the author's manifest,
 which is self-declared, and never after the files land. No origin is approved by
 an import (`docs/scene-website.md`). Terminal scene content needs no review: it is
 text and a PNG, and nothing runs (`docs/scene-terminal.md`).

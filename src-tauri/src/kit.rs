@@ -1,3 +1,4 @@
+#![allow(unsafe_code)]
 //! The Claude Code kit a workspace project carries (docs/agent-kit.md, "Stamping"): the managed skill directories (`SHIPPED_SKILLS`, each with its own `kit.json`), the user's `CLAUDE.md`, and the app-owned `.claude/settings.json`. Every step is idempotent and writes only when something changed. What a project may hold is an allow-list: settings are stripped to the managed set, and every other file Claude Code reads as configuration or instructions (`sweep_agent_files`) moves to `NOTES.md` or aside, is logged and is shown to the person before a session starts.
 
 use std::collections::BTreeMap;
@@ -1345,6 +1346,7 @@ fn swap_paths(a: &Path, b: &Path) -> std::io::Result<()> {
     let a = CString::new(a.as_os_str().as_bytes())?;
     let b = CString::new(b.as_os_str().as_bytes())?;
     // RENAME_SWAP exchanges both entries in one step, so the skill path never goes missing.
+    // SAFETY: a and b are NUL-terminated paths that outlive the call.
     let rc = unsafe { libc::renamex_np(a.as_ptr(), b.as_ptr(), libc::RENAME_SWAP) };
     if rc == 0 {
         Ok(())

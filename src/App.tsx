@@ -1667,6 +1667,22 @@ export default function App() {
     };
   }, [isAutoRun, backToProjects]);
 
+  // Settings cleared all app data: the open project's Allow and every recent are gone, so start again from welcome.
+  useEffect(() => {
+    if (isAutoRun) return;
+    const unlisten = listen("kookaburra://app-data-cleared", () => {
+      getSettings()
+        .then(setSettings)
+        .catch(() => {});
+      setWelcomeRowId(ALL_PROJECTS);
+      setWelcomeQuery("");
+      backToProjects();
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [isAutoRun, backToProjects]);
+
   const retryDefaultWorkspace = useCallback(async () => {
     const root = await initDefaultWorkspace();
     setSettings((prev) => ({ ...(prev ?? {}), workspaceRoot: root }));

@@ -1,5 +1,8 @@
 name: Dependency review
 
+# What a pull request ADDS to the dependency graph (npm and Cargo): it fails on a moderate advisory or a
+# licence outside the allow list, which is src-tauri/deny.toml's plus OFL-1.1 for fonts, and comments on
+# the pull request only when it fails. audit.yml covers what is already in the lock files.
 on:
   pull_request:
     branches: [main]
@@ -11,6 +14,9 @@ jobs:
   dependency-review:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -22,3 +28,6 @@ jobs:
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           allow-ghsas: GHSA-wrw7-89jp-8q8g
+          fail-on-severity: moderate
+          allow-licenses: MIT, Apache-2.0, Apache-2.0 WITH LLVM-exception, BSD-2-Clause, BSD-3-Clause, ISC, Zlib, MPL-2.0, Unicode-3.0, 0BSD, CC0-1.0, MIT-0, Unlicense, OFL-1.1
+          comment-summary-in-pr: on-failure
