@@ -151,17 +151,6 @@
           "falloff": 0.5
         },
         {
-          "azimuthDeg": -152.32,
-          "elevationDeg": 20.4,
-          "rollDeg": 0,
-          "lengthDeg": 7.63,
-          "widthDeg": 7.63,
-          "color": "#ffd2a0",
-          "intensity": 1583,
-          "feather": 0.3,
-          "falloff": 0.3
-        },
-        {
           "azimuthDeg": -79.81,
           "elevationDeg": 49.47,
           "rollDeg": 0,

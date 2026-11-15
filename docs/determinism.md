@@ -705,7 +705,11 @@ many times brighter than white keeps a hard edge whatever the sample count.
   above. Each draw averages that many renders of the same instant, the camera's
   projection offset by a fixed sub-pixel table (`engine/supersample.ts`: a
   rotated grid at 4, Halton (2, 3) beyond; export contract), through the
-  motion blur lane's accumulator after the tone map. Pure in t. It fixes
+  motion blur lane's accumulator after the tone map. Each render also sets
+  `supersampleSeed` to its sample index, and screen-fixed noise the jitter
+  cannot move (the lens gather's rotation, the haze march's step offset)
+  shifts by it, so the samples average that noise too; it is 0 on every
+  single-sample frame, which therefore stays bit-identical. Pure in t. It fixes
   geometry thinner than MSAA's sample spacing, such as an edge-on band dotting
   along a rim, at about 2.2× the export cost at 4. Frames on a shutter lane keep
   their own samples, and transition frames jitter only the main camera. The
@@ -2108,6 +2112,20 @@ Verify ×2 here (the 2026-10-23 note):
 > enables that layer (the HDR composer's render pass, the dof side composer and
 > the dof-only lane's depth pre-pass), so frames with no lens pose, cards at
 > `lift` 0 and projects without a `ScreenRegion` draw exactly as before.
+
+> **2026-11-14 (lens depth of field sampling, lens projects rebase):** the
+> gather's taps and centre read a mip of the RGBA16F prefilter as wide as each
+> tap's share of the disc (texelFetch still reads the CoC, and a footprint
+> straddling a depth edge keeps the exact texel), discs under
+> `LENS_NEAR_COC` 4 full-res px blur at full resolution with `LENS_NEAR_TAPS`
+> 16 under the gather's reach rule (handing over from `LENS_NEAR_FADE` 2.5 px),
+> and supersampled frames offset the gather's rotation and the haze march's
+> step by `supersampleSeed`. Mip generation is a GPU box filter of the frame's
+> own target: pure, same machine. Every lens frame moves (only Unveil today; no
+> baseline row records it) and every supersampled frame with a haze beam (only
+> Unveil); nothing else compiles a changed program or reads a non-zero seed.
+> Proof: Unveil 16:9 Verify ×2 EQUAL `2c1fdbf3…`; `showcase-tour` and
+> `ws:launch-2026` EQUAL against their baselines.
 
 > **2026-10-31 (five machine-local cells re-recorded, four with no known cause):**
 > `ws:overlay-spike` 16:9 `f3d115a5…` → `ef78da55…` is #268's floor shift: `23e4c58b`
