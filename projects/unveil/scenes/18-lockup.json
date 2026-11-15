@@ -1,12 +1,290 @@
 {
   "version": 1,
   "name": "Lockup",
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "c1",
+        "tMs": 0,
+        "pose": {
+          "position": [0, 0, 11.1],
+          "aim": {
+            "mode": "point",
+            "at": [0, 0, 0]
+          },
+          "fov": 21.138
+        }
+      },
+      {
+        "id": "c2",
+        "tMs": 3750,
+        "pose": {
+          "position": [0, 0, 11.1],
+          "aim": {
+            "mode": "point",
+            "at": [0, 0, 0]
+          },
+          "fov": 21.138
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "c1",
+        "to": "c2",
+        "ease": "linear"
+      }
+    ]
+  },
+  "lighting": {
+    "ambient": 0,
+    "fills": [],
+    "sun": {
+      "azimuthDeg": -55,
+      "elevationDeg": 32,
+      "intensity": 0,
+      "color": "#ffc888",
+      "castShadow": false
+    },
+    "environment": {
+      "source": "kookaburra:strips",
+      "intensity": 1,
+      "rotationDeg": 0,
+      "strips": [
+        {
+          "azimuthDeg": -107.33,
+          "elevationDeg": 34,
+          "rollDeg": -13.82,
+          "lengthDeg": 59.49,
+          "widthDeg": 24.19,
+          "color": "#fff0e0",
+          "intensity": 14,
+          "feather": 0.95,
+          "falloff": 0.85
+        },
+        {
+          "azimuthDeg": 179.1,
+          "elevationDeg": 6.22,
+          "rollDeg": 14.95,
+          "lengthDeg": 45.24,
+          "widthDeg": 5.72,
+          "color": "#9ccfff",
+          "intensity": 200,
+          "feather": 0.6,
+          "falloff": 0.5
+        },
+        {
+          "azimuthDeg": -79.81,
+          "elevationDeg": 49.47,
+          "rollDeg": 0,
+          "lengthDeg": 12.2,
+          "widthDeg": 12.2,
+          "color": "#ffb070",
+          "intensity": 119,
+          "feather": 0.3,
+          "falloff": 0.3
+        },
+        {
+          "azimuthDeg": 76,
+          "elevationDeg": 27,
+          "rollDeg": 90,
+          "lengthDeg": 70,
+          "widthDeg": 12,
+          "color": "#e9efff",
+          "intensity": 12,
+          "feather": 1,
+          "falloff": 0.4
+        },
+        {
+          "azimuthDeg": 110,
+          "elevationDeg": 5,
+          "rollDeg": 0,
+          "lengthDeg": 50,
+          "widthDeg": 9,
+          "color": "#fff0e0",
+          "intensity": 4,
+          "feather": 1,
+          "falloff": 0.4
+        }
+      ]
+    },
+    "lights": [
+      {
+        "id": "halo",
+        "type": "spot",
+        "intensity": 260,
+        "placement": {
+          "mode": "point",
+          "position": [0, 0.72, -12]
+        },
+        "target": [0, 0.72, 10],
+        "angleDeg": 44,
+        "penumbra": 1,
+        "color": "#ffb070",
+        "decay": 2,
+        "castShadow": true,
+        "volumetric": {
+          "box": {
+            "min": [-14, -1.905, -30],
+            "max": [14, 9, -1.2]
+          },
+          "haze": {
+            "density": 0.028,
+            "anisotropy": 0.65,
+            "strength": 1,
+            "heightFalloff": 0,
+            "groundFade": 1.5
+          },
+          "extinction": true,
+          "shadowMapSize": 2048,
+          "smoke": {
+            "scale": 0.4,
+            "warp": 1.6,
+            "contrast": [0.4, 0.6],
+            "floor": 0.15,
+            "drift": [0.12, 0.08, 0],
+            "evolve": 0.08
+          }
+        }
+      }
+    ],
+    "keys": [
+      {
+        "id": "l1",
+        "tMs": 0,
+        "pose": {
+          "lights": {
+            "halo": {
+              "intensity": 360
+            }
+          }
+        }
+      },
+      {
+        "id": "l2",
+        "tMs": 937,
+        "at": "bar:31.3",
+        "pose": {
+          "lights": {
+            "halo": {
+              "intensity": 360
+            }
+          }
+        }
+      },
+      {
+        "id": "l3",
+        "tMs": 1300,
+        "pose": {
+          "lights": {
+            "halo": {
+              "intensity": 540
+            }
+          }
+        }
+      },
+      {
+        "id": "l4",
+        "tMs": 3750,
+        "pose": {
+          "lights": {
+            "halo": {
+              "intensity": 500
+            }
+          }
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "l1",
+        "to": "l2",
+        "ease": "linear"
+      },
+      {
+        "from": "l2",
+        "to": "l3",
+        "ease": "outCubic"
+      },
+      {
+        "from": "l3",
+        "to": "l4",
+        "ease": "linear"
+      }
+    ],
+    "shadow": {
+      "technique": "map",
+      "softness": 0.375,
+      "opacity": 0.85,
+      "mapSize": 2048,
+      "bias": -0.0005
+    },
+    "environmentIntensity": 1.2,
+    "environmentRotationDeg": 0
+  },
+  "background": {
+    "type": "gradient",
+    "spec": {
+      "type": "linear",
+      "angleDeg": 135,
+      "stops": [["#140c07", 0], ["#060504", 0.3], ["#030303", 1]],
+      "space": "oklch"
+    }
+  },
+  "backdrop": {
+    "type": "satin",
+    "color": "#22201e",
+    "roughness": 0.35,
+    "specular": 0.3,
+    "centre": [0, -14],
+    "fade": [1, 2],
+    "reflection": {
+      "strength": 1.3,
+      "blur": 24,
+      "heightBlur": 0.9,
+      "contact": 0.75
+    },
+    "glitter": {
+      "scale": 90,
+      "density": 0,
+      "roughness": 0.15,
+      "tilt": 0.5,
+      "weight": 0,
+      "grain": 0.5,
+      "seed": 5
+    },
+    "pools": []
+  },
+  "cameraKicks": [
+    {
+      "at": "bar:31",
+      "zoom": 1.03,
+      "releaseMs": 450
+    }
+  ],
   "text": {
-    "label": "18 · Lockup",
-    "bars": "Bars 31–32 · The payoff lands on the final hit",
-    "title": "Available today.",
-    "note": "The app icon lands",
-    "e1": "Kick: the logo catches light",
-    "e2": "Final hit: the call to action"
+    "name": "Fairywren",
+    "title": "Available today."
+  },
+  "textStyle": {
+    "nameFont": "Inter Tight@900",
+    "nameColor": "#fffaf0",
+    "titleFont": "Inter Tight@400",
+    "titleColor": "#d9cfc2"
+  },
+  "textAnimation": {
+    "in": "stamp",
+    "out": "static",
+    "staggerMs": 0,
+    "staggerExact": true,
+    "durationMs": 938
+  },
+  "textAnimationOverrides": {
+    "name": {
+      "in": "stamp",
+      "out": "static",
+      "durationMs": 469
+    }
   }
 }
