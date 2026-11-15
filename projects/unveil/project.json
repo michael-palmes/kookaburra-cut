@@ -206,7 +206,7 @@
   "render": {
     "toneMapping": "neutral",
     "antialias": "smaa",
-    "supersample": 4,
+    "supersample": 16,
     "textBlur": "optical",
     "dither": true,
     "specularAA": true
