@@ -17,6 +17,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `docs/privacy.md` now says how to uninstall the app completely.
 - A security overview and a fleet guide for the teams approving and deploying
   the app on managed Macs (`docs/security-overview.md`, `docs/fleet.md`).
+- `docs/fleet-deployment.md`: install, profile, check, update mirror and
+  removal recipes for Jamf Pro, Kandji (Iru), Mosyle and Intune, with three
+  profiles and root install and uninstall scripts in `packaging/mdm/`. A
+  Homebrew cask is staged in `packaging/homebrew/` until its tap exists.
 
 ### Changed
 

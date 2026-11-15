@@ -26,7 +26,11 @@ architecture → determinism → decisions.
 | [security-overview.md](./security-overview.md) | The security lead, CTO or engineering manager | What leaves the Mac, subprocessors, where data rests, how releases are built, questionnaire answers and what is not done yet, every line linked to its proof |
 | [SECURITY.md](../SECURITY.md) | The security engineer, auditor and contributor | The engineering record: the threat model, every control with the file or command behind it, release integrity, and how to report a vulnerability |
 | [fleet.md](./fleet.md) | The IT team deploying it | Verifying a release, the keys to force, Claude Code's own managed settings, shared folders, what to expect in EDR, retention, in-app or MDM updates |
+| [fleet-deployment.md](./fleet-deployment.md) | The IT team deploying it | Recipes for Jamf Pro, Kandji (Iru), Mosyle and Intune: the install script, three ready profiles, checks on a Mac, an update mirror and removal |
 | [mdm.md](./mdm.md) | The administrator writing the profile | Managed preferences: the keys a configuration profile can force, a sample profile, and how to verify |
+| [security-assessment-scope.md](./security-assessment-scope.md) | A third-party security assessor | The threat model, trust boundaries and their entry files, existing tests and fuzzing, rules of engagement, deliverables and a vendor shortlist |
+| [vendor-questionnaire.md](./vendor-questionnaire.md) | The procurement or security team filling in a questionnaire | SIG Lite and CAIQ v4 answers by domain: Yes, No, Partial or Not applicable, each with the file, workflow or command that proves it |
+| [subprocessors.md](./subprocessors.md) | The privacy or procurement reviewer | Every third party a Mac running the app can reach: when, what is sent, identifiers, the off switch and the file behind it |
 
 ## Features
 
@@ -50,3 +54,21 @@ architecture → determinism → decisions.
 Scene-authoring rules and the toolkit reference live in the
 `kookaburra-scene-authoring` skill (`.agents/skills/`); `/new-scene` scaffolds a
 scene, and the `kookaburra-export-presets` skill covers export preset flows.
+
+## Support and releases
+
+| Doc | For | What's in it |
+| --- | --- | --- |
+| [support-policy.md](./support-policy.md) | Anyone who needs help | Community support through GitHub issues, what is supported, what to send and how to report a security problem |
+| [release-cadence.md](./release-cadence.md) | The IT team | How versions are numbered, which release gets security fixes, how a fleet holds a version and how to check a release |
+| [incident-response.md](./incident-response.md) | Anyone running the app, and the maintainer | What happens if a release or a signing key is compromised, and how to check what you have |
+
+## Drafts
+
+Not in force. Each carries a banner: a draft for a lawyer's review, not legal
+advice. The terms for the app and its code are the licence files,
+[LICENSE-MIT](../LICENSE-MIT) or [LICENSE-APACHE](../LICENSE-APACHE).
+
+| Doc | What's in it |
+| --- | --- |
+| [legal/privacy-notice-draft.md](./legal/privacy-notice-draft.md) | The legal form of [privacy.md](./privacy.md) for the app and `kookaburracut.com`, against the Australian Privacy Principles and the GDPR |

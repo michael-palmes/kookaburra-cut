@@ -27,8 +27,9 @@ private vulnerability reporting: open the
 [Security tab](https://github.com/michael-palmes/kookaburra-cut/security) and
 choose **Report a vulnerability**, or use the
 [report form](https://github.com/michael-palmes/kookaburra-cut/security/advisories/new)
-directly. That creates a draft advisory visible only to the maintainer, so
-details stay private until a fix ships. Please do not open a public issue for
+directly, or email `security@kookaburracut.com`. A GitHub report creates a
+draft advisory visible only to the maintainer, so details stay private until a
+fix ships. Please do not open a public issue for
 anything that looks like a security problem.
 
 Include the app version (Settings ▸ About), your macOS version and steps to
@@ -38,8 +39,10 @@ under `### Security` in `CHANGELOG.md` and in the release notes built from it.
 
 ## Supported versions
 
-Only the latest release receives security fixes; please update before
-reporting.
+Only the latest release receives security fixes. Older versions are not
+patched; the in-app updater moves each Mac forward. Fixes are best effort, with
+no committed time; please update before reporting. If a release or a signing
+key is compromised: [docs/incident-response.md](docs/incident-response.md).
 
 ## Version 0.21.1
 
@@ -66,6 +69,9 @@ optional Claude Code integration. It runs on corporate Macs holding
 confidential, unreleased work. This file lists everything it touches and the
 control behind each claim, at the version named on its first line.
 [docs/privacy.md](docs/privacy.md) says the same in plain words.
+Questionnaire answers (SIG Lite, CAIQ v4) are in
+[docs/vendor-questionnaire.md](docs/vendor-questionnaire.md), and every third
+party a Mac can reach in [docs/subprocessors.md](docs/subprocessors.md).
 
 It is built for these risks:
 
@@ -880,8 +886,8 @@ builds it in separate jobs, each on a fresh runner.
   ```
 
 One maintainer holds admin rights on the repository and is the only reviewer on
-the `release` environment, so this pipeline rests on one account. A hardware
-security key on the account makes a takeover harder, and a Touch ID tag key in
+the `release` environment, so this pipeline rests on one account. A passkey on
+the account makes a takeover harder, and a Touch ID tag key in
 the Mac's Secure Enclave can't be copied off the Mac, while the promptless commit
 key, which agents use, can't tag. Neither stops an account that has been taken
 over: the list the tag key is checked against lives in the repository, and an
@@ -929,7 +935,8 @@ Deliberately deferred, recorded so nobody mistakes them for done:
 - An App Sandbox for the app itself: kb's headless CLI is the same binary, the
   updater swaps the bundle in place, and each workspace or linked `assets/`
   root would need a dialog (`docs/decisions.md`, "No App Sandbox").
-- A Homebrew cask, so MDM fleets can install and pin versions without the DMG.
+- A published Homebrew tap: the cask is staged in `packaging/homebrew/` until
+  the tap repository `michael-palmes/homebrew-kookaburra-cut` exists.
 - A per-project website data store: approved projects share one login profile
   today (`docs/scene-website.md`, "Accepted residual risk").
 - Bridge signing against same-user processes. Since 0.23.0 every request and
