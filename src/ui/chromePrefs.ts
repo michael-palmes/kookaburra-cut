@@ -1,5 +1,6 @@
 import { emit, listen } from "@tauri-apps/api/event";
 import { useSyncExternalStore } from "react";
+import { installControlArrowKeys } from "./controlArrowKeys";
 
 /** Per-Mac chrome preferences every window shares: text size and single-key shortcuts. Chrome only: the export path never reads them, and text size moves CSS tokens, never the canvas. */
 
@@ -144,6 +145,7 @@ export function installChromePrefs(): void {
   applyTextSize();
   if (installed || typeof window === "undefined") return;
   installed = true;
+  installControlArrowKeys();
   document.addEventListener("keydown", guardSingleKeyShortcuts);
   window.addEventListener("storage", (e) => {
     if (e.key === null || e.key === TEXT_SIZE_KEY || e.key === SINGLE_KEY_KEY) reload();
