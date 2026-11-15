@@ -155,6 +155,10 @@ export function clearWebsiteData(displayName?: string): Promise<void> {
   return invoke<void>("website_clear_data", { displayName: displayName ?? null });
 }
 
+export function clearProjectWebsiteData(projectPath: string): Promise<void> {
+  return invoke<void>("website_clear_project_data", { projectPath });
+}
+
 export function resumeWebsiteNavigation(viewId: string, requestedOrigins: string[]): Promise<void> {
   return invoke<void>("website_resume_pending", { viewId, requestedOrigins });
 }

@@ -1366,6 +1366,7 @@ pub async fn delete_project(
     app: AppHandle,
     state: State<'_, SettingsState>,
     trust: State<'_, TrustState>,
+    websites: State<'_, crate::website::WebsiteState>,
     slug: String,
 ) -> Result<(), String> {
     validate_slug(&slug)?;
@@ -1382,7 +1383,12 @@ pub async fn delete_project(
             .await
             .map_err(|e| e.to_string())?
     };
-    forget_trust_at(&app, &state, &trust, std::slice::from_ref(&dir))?;
+    let website_keys = forget_trust_at(&app, &state, &trust, std::slice::from_ref(&dir))?;
+    crate::website::clear_project_stores(&app, &websites, &website_keys)
+        .await
+        .map_err(|e| {
+            format!("couldn't sign its websites out, so it wasn't deleted; it asks for Allow again on its next open: {e}")
+        })?;
     trash_path(&dir).map_err(|e| format!("couldn't move the project to the Trash: {e}"))?;
     log::info!(
         "[workspace] {slug}: moved to the Trash ({})",
@@ -2401,30 +2407,59 @@ fn copy_source_needs_grant(scope: &ProjectScope) -> bool {
     )
 }
 
-/// Forget one project's grant, so it asks again on its next open: Settings ▸ Allowed projects ▸ Forget.
+/// Forget one project's grant and its website origins, so it asks again on its next open: Settings ▸ Allowed projects ▸ Forget. Its folder now and the one its grant recorded are both forgotten, as a delete would. Returns the website keys its stores go by.
 pub(crate) fn forget_project_trust(
     app: &AppHandle,
     state: &State<'_, SettingsState>,
     trust: &TrustState,
     id: &str,
-) -> Result<(), String> {
+) -> Result<Vec<String>, String> {
     parse_project_id(id)?;
     drop_session_then(&trust.session, id, || {
-        update_settings(app, state, |settings| {
-            settings.trusted_projects.remove(id);
-        })
+        let mut folders = vec![project_dir(app, state, id)?];
+        if let Some(record) = load_settings(app, state)?.trusted_projects.get(id) {
+            folders.push(PathBuf::from(&record.path));
+        }
+        let landing = Landing::new(&folders);
+        let loopback =
+            crate::website::forget_loopback_grants_at(app, |key| landing.holds(Path::new(key)));
+        let stored = update_settings(app, state, |settings| {
+            forget_one_stored(settings, id, &landing)
+        })?;
+        Ok(website_keys(&folders, loopback.into_iter().chain(stored)))
     })
 }
 
-/// Forget every grant held for these folders: a pack is landing in them, so the person meets the Allow sheet again on the next open. Keyed by the folder on disk, not the id, so a slug spelt in another case is forgotten too; website origins go with the grant.
+fn forget_one_stored(settings: &mut AppSettings, id: &str, landing: &Landing) -> Vec<String> {
+    settings.trusted_projects.remove(id);
+    forget_stored_at(settings, landing)
+}
+
+/// The keys these folders' website stores go by: each folder as written and as it resolves on disk, and every grant key a forget matched, so a store keyed under another spelling still goes.
+fn website_keys(folders: &[PathBuf], matched: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut keys: Vec<String> = folders
+        .iter()
+        .flat_map(|folder| {
+            let resolved = folder.canonicalize().ok();
+            std::iter::once(folder.to_string_lossy().into_owned())
+                .chain(resolved.map(|dir| dir.to_string_lossy().into_owned()))
+        })
+        .chain(matched)
+        .collect();
+    keys.sort();
+    keys.dedup();
+    keys
+}
+
+/// Forget every grant held for these folders: a pack is landing in them, so the person meets the Allow sheet again on the next open. Keyed by the folder on disk, not the id, so a slug spelt in another case is forgotten too; website origins go with the grant. Returns the website keys their stores go by.
 pub(crate) fn forget_trust_at(
     app: &AppHandle,
     state: &State<'_, SettingsState>,
     trust: &TrustState,
     folders: &[PathBuf],
-) -> Result<(), String> {
+) -> Result<Vec<String>, String> {
     if folders.is_empty() {
-        return Ok(());
+        return Ok(Vec::new());
     }
     let landing = Landing::new(folders);
     let ids: Vec<String> = trust
@@ -2446,8 +2481,10 @@ pub(crate) fn forget_trust_at(
         &landing,
         |id| dirs.get(id).cloned(),
     );
-    crate::website::forget_loopback_grants_at(app, |key| landing.holds(Path::new(key)));
-    update_settings(app, state, |settings| forget_stored_at(settings, &landing))
+    let loopback =
+        crate::website::forget_loopback_grants_at(app, |key| landing.holds(Path::new(key)));
+    let stored = update_settings(app, state, |settings| forget_stored_at(settings, &landing))?;
+    Ok(website_keys(folders, loopback.into_iter().chain(stored)))
 }
 
 /// Settings ▸ Clear all app data: every session allow and unredeemed Allow goes, so no project passes on this launch's word.
@@ -2465,11 +2502,11 @@ pub(crate) fn forget_session_trust(trust: &TrustState) {
 }
 
 /// The session allow goes before the stored grant, so a failed settings write still leaves the next open asking.
-fn drop_session_then(
+fn drop_session_then<T>(
     session: &Mutex<HashSet<String>>,
     id: &str,
-    drop_stored: impl FnOnce() -> Result<(), String>,
-) -> Result<(), String> {
+    drop_stored: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
     session
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -2485,13 +2522,19 @@ fn forget_session_at(
     session.retain(|id| dir_of(id).is_some_and(|dir| !landing.holds(&dir)));
 }
 
-fn forget_stored_at(settings: &mut AppSettings, landing: &Landing) {
+fn forget_stored_at(settings: &mut AppSettings, landing: &Landing) -> Vec<String> {
     settings
         .trusted_projects
         .retain(|_, record| !landing.holds(Path::new(&record.path)));
-    settings
-        .website_origin_grants
-        .retain(|key, _| !landing.holds(Path::new(key)));
+    let mut dropped = Vec::new();
+    settings.website_origin_grants.retain(|key, _| {
+        let gone = landing.holds(Path::new(key));
+        if gone {
+            dropped.push(key.clone());
+        }
+        !gone
+    });
+    dropped
 }
 
 /// The folders a pack or a delete is about to change, each read from disk once: by inode where it exists, else by its path in any case (the side that forgets more).
@@ -4400,10 +4443,49 @@ mod tests {
     }
 
     #[test]
+    fn forget_in_settings_drops_the_projects_website_grants_with_its_allow() {
+        let root = scratch_dir();
+        let mine = root.join("product-tour");
+        let moved = root.join("product-tour-old");
+        let other = root.join("other");
+        for dir in [&mine, &other] {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        let mut settings = AppSettings::default();
+        settings.trusted_projects.insert(
+            "product-tour".into(),
+            TrustRecord {
+                scenes_fingerprint: "fp".into(),
+                path: moved.to_string_lossy().into_owned(),
+                allowed_at_ms: 0,
+            },
+        );
+        let key = |dir: &Path| dir.canonicalize().unwrap().to_string_lossy().into_owned();
+        for grant in [key(&mine), moved.to_string_lossy().into_owned(), key(&other)] {
+            settings
+                .website_origin_grants
+                .insert(grant, vec!["https://example.com".into()]);
+        }
+
+        let landing = Landing::new(&[mine.clone(), moved.clone()]);
+        let dropped = forget_one_stored(&mut settings, "product-tour", &landing);
+        let keys = website_keys(&[mine.clone(), moved.clone()], dropped);
+
+        assert!(keys.contains(&key(&mine)) && keys.contains(&moved.to_string_lossy().into_owned()));
+        assert!(!keys.contains(&key(&other)));
+        assert!(settings.trusted_projects.is_empty());
+        assert_eq!(
+            settings.website_origin_grants.keys().collect::<Vec<_>>(),
+            vec![&key(&other)]
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn forget_in_settings_drops_the_session_allow_even_when_the_write_fails() {
         let dir = Path::new("/Users/x/Kookaburra Cut/demo");
         let shared = Mutex::new(HashSet::from(["demo".to_owned(), "other".to_owned()]));
-        let failed = drop_session_then(&shared, "demo", || Err("disk full".to_owned()));
+        let failed = drop_session_then(&shared, "demo", || Err::<(), _>("disk full".to_owned()));
         assert_eq!(failed, Err("disk full".to_owned()));
         let mut session = shared.into_inner().unwrap();
         assert_eq!(

@@ -15,6 +15,7 @@ const KEYS = [...new Set([...MANAGED.matchAll(/Key::(\w+) => "(\w+)",/g)].map((m
 const SHAPES = {
   "an array of strings": "keyIds",
   "an absolute path": "path",
+  "an absolute folder path": "folder",
   "an https URL": "url",
 };
 const shapeOf = (key) => {
@@ -66,6 +67,9 @@ function assertShape(key, raw, file) {
       break;
     case "path":
       assert.match(raw, /^<string>(\/|~\/)[^<]*<\/string>$/, `${where} must be an absolute path`);
+      break;
+    case "folder":
+      assert.match(raw, /^<string>\/[^<]*<\/string>$/, `${where} must be an absolute folder`);
       break;
     case "url":
       assert.match(

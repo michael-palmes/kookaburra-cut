@@ -114,7 +114,7 @@ Every location, with its mode, is in
 
 Encryption at rest is FileVault and the account: the app adds none and claims
 none. Deletion while installed: Settings ▸ Allowed projects ▸ Forget removes
-one project's grant; Settings ▸ Storage ▸ Clear all app data removes every
+one project's grant and its website grants; Settings ▸ Storage ▸ Clear all app data removes every
 cache, the website store, the bridge's queues and the autorun runs, and resets
 the settings to the workspace location and the update consent, keeping only
 the pack key and its Keychain item; deleting a project moves it to the Trash

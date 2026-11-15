@@ -42,6 +42,8 @@
                 <true/>
                 <key>UpdateEndpoint</key>
                 <string>https://updates.example.com/kookaburra-cut/latest.json</string>
+                <key>AuditLogPath</key>
+                <string>/Library/Logs/Kookaburra Cut</string>
               </dict>
             </dict>
           </array>
@@ -52,7 +54,7 @@
   <key>PayloadDisplayName</key>
   <string>Kookaburra Cut: locked down</string>
   <key>PayloadDescription</key>
-  <string>No Claude, agent kit, live websites, pack import or export, or update checks. Video and stills exports stay in each project, and projects stay in ~/Kookaburra Cut.</string>
+  <string>No Claude, agent kit, live websites, pack import or export, or update checks. Video and stills exports stay in each project, projects stay in ~/Kookaburra Cut, and the app log is copied to /Library/Logs/Kookaburra Cut.</string>
   <key>PayloadIdentifier</key>
   <string>com.example.kookaburracut.locked-down</string>
   <key>PayloadScope</key>

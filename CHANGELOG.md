@@ -21,6 +21,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   removal recipes for Jamf Pro, Kandji (Iru), Mosyle and Intune, with three
   profiles and root install and uninstall scripts in `packaging/mdm/`. A
   Homebrew cask is staged in `packaging/homebrew/` until its tap exists.
+- Settings ▸ About ▸ Export log saves the log as one file to send to support
+  or your IT team. Every line carries a UTC time and stays one line whatever a
+  file or folder is called, so a name can't pass as another entry.
+- A tenth managed preference, `AuditLogPath`, keeps a copy of the log in a
+  folder your organisation's log collector reads, and Settings says so. A
+  folder the app can't use means no copy, never a failed launch, and the log
+  on the Mac carries on. See `docs/mdm.md`.
 
 ### Changed
 
@@ -38,7 +45,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The app now keeps a log in every build, readable by your account alone:
   which projects and websites you allowed, packs imported, updates, and what
   your organisation's profile refused. It holds names and paths, never what is
-  in your files, keeps three files of 1 MiB at most and never leaves your Mac.
+  in your files, keeps three files of 1 MiB at most, and the app never sends it
+  anywhere.
 - Each release now ships a software bill of materials
   (`KookaburraCut-<version>.cdx.json`): every npm package and Rust crate built
   into the app, the sidecar's pinned sources and the beat model, attested on
@@ -70,6 +78,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   worktree folder git never made, or inside a folder moved aside earlier are
   now moved out before Claude starts. `./kb` refuses credential paths in any
   case, and Claude's own settings and the Claude app's folder too.
+- Forget in Settings ▸ Allowed projects now forgets the websites that project
+  allowed too, as deleting it or a pack landing in its folder already did.
+- Each project now keeps its own website sign-ins, so a login made for one
+  project's scene never shows in another. The website inspector gains Sign this
+  project out, deleting or forgetting a project or a pack landing in its folder
+  signs it out too, and Settings ▸ Website data still clears everything. The
+  old shared profile is deleted on first launch, so sites you signed in to
+  there ask you to sign in again.
 - A project replaced while closed asks for Allow again, even in the same launch.
 - A pack's trust screen lists every scene file it carries, whatever its folder
   is called, and a pack with two names a Mac would store as one is refused.
@@ -83,6 +99,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   settings or hold Present's focus, and a gizmo commits only to the selected
   item.
 - A link inside a project can no longer reach another folder the app can read.
+- A new app icon is checked like any dropped image: only a workspace file, its
+  real format read from its bytes, capped in size, and decoded before it lands as
+  a plain PNG. A file that fails keeps the old icon.
 
 ## [0.22.4] - 2026-11-10
 

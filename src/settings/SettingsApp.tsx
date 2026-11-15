@@ -24,6 +24,7 @@ import {
   forgetAllowedProject,
   revealAppLogs,
 } from "../engine/appData";
+import { exportAppLog } from "../engine/appLog";
 import {
   claudeAppInstalled,
   openClaudeDownload,
@@ -59,7 +60,7 @@ import {
   userHomeDir,
 } from "../engine/workspace";
 import { ClaudeSpark } from "../ui/ClaudeLauncher";
-import { ManagedLock } from "../ui/ManagedLock";
+import { LockGlyph, ManagedLock } from "../ui/ManagedLock";
 import { UpdateAvailableDialog } from "../ui/updateDialogs";
 import { useNativeTextUndo } from "../ui/useNativeTextUndo";
 import { PublisherPane } from "./PublisherPane";
@@ -132,6 +133,21 @@ function PrivacyIcon() {
         fill="none"
         stroke="currentColor"
         strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ExportLogIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M8.5 1.5h-5v13h9V8M5.5 7h3M5.5 9.5h4.5M5.5 12h4.5M9.5 6.5l5-5M11 1.5h3.5V5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
     </svg>
@@ -290,6 +306,8 @@ export function SettingsApp() {
   const [appVersion, setAppVersion] = useState("");
   const [busy, setBusy] = useState<"media" | "clips" | "workspace" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [exportingLog, setExportingLog] = useState(false);
+  const [logSaved, setLogSaved] = useState<string | null>(null);
   const [hwEnabled, setHwEnabled] = useState<boolean | null>(null);
   const [hwSupport, setHwSupport] = useState<HardwareVideoSupport | null>(null);
   const [lagWarning, setLagWarning] = useState<LagWarningMode | null>(null);
@@ -392,11 +410,14 @@ export function SettingsApp() {
       setForgetting(key);
       setError(null);
       forgetAllowedProject(key)
-        .then(refreshAllowed)
         .catch((e) => setError(String(e)))
-        .finally(() => setForgetting(null));
+        .finally(() => {
+          setForgetting(null);
+          void refreshAllowed();
+          void refreshWebsiteData();
+        });
     },
-    [refreshAllowed],
+    [refreshAllowed, refreshWebsiteData],
   );
 
   const clearAll = useCallback(() => {
@@ -405,6 +426,17 @@ export function SettingsApp() {
     clearAppData()
       .catch((e) => setError(String(e)))
       .finally(() => setClearingAll(false));
+  }, []);
+
+  const exportLog = useCallback(() => {
+    setExportingLog(true);
+    setError(null);
+    exportAppLog()
+      .then((name) => {
+        if (name) setLogSaved(name);
+      })
+      .catch((e) => setError(String(e)))
+      .finally(() => setExportingLog(false));
   }, []);
 
   const toggleHardware = useCallback((enabled: boolean) => {
@@ -523,7 +555,7 @@ export function SettingsApp() {
 
   const clearStoredWebsiteData = useCallback(
     async (displayName?: string) => {
-      const target = displayName ? ` for ${displayName}` : " for every site";
+      const target = displayName ? ` for ${displayName} in every project` : " for every project";
       const accepted = await ask(
         `Clear Website data${target}? This signs the affected sites out, but does not change project origin approvals.`,
         {
@@ -633,7 +665,8 @@ export function SettingsApp() {
           <div className="settings-row">
             <div className="settings-row-text">
               <span className="muted settings-row-detail">
-                Projects you allow to run show here. Forget one and it asks again on its next open.
+                Projects you allow to run show here. Forget one and it asks again on its next open,
+                websites included, and its sign-ins go.
               </span>
             </div>
           </div>
@@ -660,7 +693,7 @@ export function SettingsApp() {
               title={
                 row.open
                   ? "Close it in Kookaburra Cut first, then forget it here"
-                  : "Asks again before its scenes run next time"
+                  : "Asks again before its scenes or websites run next time"
               }
             >
               {row.open ? <OpenNowIcon /> : <ForgetIcon />}
@@ -852,7 +885,7 @@ export function SettingsApp() {
         <h2>Website data</h2>
         <div className="settings-row">
           <div className="settings-row-text">
-            <span className="settings-row-title">Dedicated browser profile</span>
+            <span className="settings-row-title">One browser profile per project</span>
             <span className="muted settings-row-detail">
               {websiteData === null
                 ? "Loading…"
@@ -1074,7 +1107,7 @@ export function SettingsApp() {
             </span>
             <span className="muted settings-row-detail">
               What the app did: projects and websites you allowed, packs, updates. Names and
-              folders, never what is in your files, and it never leaves your Mac.
+              folders, never what is in your files, and the app never sends it anywhere.
             </span>
           </div>
           <button
@@ -1084,6 +1117,35 @@ export function SettingsApp() {
           >
             <FinderIcon />
             Show in Finder
+          </button>
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span
+              className="settings-row-title"
+              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+            >
+              <ExportLogIcon />
+              Export log
+            </span>
+            <span className="muted settings-row-detail">
+              {logSaved
+                ? `Saved as ${logSaved}.`
+                : "What the app did, as one file for support or your IT team. It names projects and folders, never what is in your files."}
+            </span>
+            {managed?.auditLogPath && (
+              <span
+                className="muted settings-row-detail"
+                style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+              >
+                <LockGlyph size={12} />
+                Your organisation&apos;s profile asks for a copy of this log (AuditLogPath).
+              </span>
+            )}
+          </div>
+          <button type="button" className="btn" disabled={exportingLog} onClick={exportLog}>
+            <DownloadIcon />
+            {exportingLog ? "Exporting…" : "Export…"}
           </button>
         </div>
         <div className="settings-row">

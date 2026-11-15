@@ -226,6 +226,7 @@ fn only_the_main_window_reaches_trust_and_the_rest_of_the_studio() {
             "start_export",
             "delete_project",
             "website_grant_origin",
+            "website_clear_project_data",
             "init_default_workspace",
         ] {
             assert!(
@@ -242,6 +243,19 @@ fn only_the_main_window_reaches_trust_and_the_rest_of_the_studio() {
                 "{label} must not reach {denied}"
             );
         }
+    }
+    for label in [
+        "main",
+        "present",
+        "render",
+        "packs",
+        "theme-editor",
+        "editor",
+    ] {
+        assert!(
+            !allowed(label).contains("export_app_log"),
+            "{label} must not reach export_app_log"
+        );
     }
     assert!(!allowed("packs").contains("move_workspace"));
     assert!(!allowed("settings").contains("apply_import"));
@@ -291,6 +305,7 @@ fn the_main_window_keeps_the_studio() {
             "clear_clips_cache",
             "clear_media_cache",
             "discard_staged_pack",
+            "export_app_log",
             "font_embedding_for",
             "forget_allowed_project",
             "forget_publisher",
@@ -470,6 +485,7 @@ fn the_settings_window_owns_caches_the_workspace_location_updates_and_the_publis
             "clear_clips_cache",
             "clear_media_cache",
             "default_workspace_root",
+            "export_app_log",
             "forget_allowed_project",
             "forget_publisher",
             "get_publisher_profile",
