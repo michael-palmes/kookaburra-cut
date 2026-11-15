@@ -1,4 +1,4 @@
-/** GLSL for LensDofEffect (dof mode "lens"). Five passes: a half-res prefilter (colour + signed CoC from depth), a tile max and dilation of the near CoC, a scatter-as-gather on a Vogel disc, a CoC-aware tent, then a full-res composite that keeps in-focus pixels exactly as rendered. Signed CoC is in pixels: negative in front of focus, positive behind, so it doubles as a depth order. LENS_DISPLAY marks display-referred input (the dof-only lane): decoded to linear and highlight-expanded before the blur, compressed and re-encoded after. Every input is a pure function of the frame (no time, no history). See docs/camera.md. */
+/** GLSL for LensDofEffect (dof mode "lens"). Five passes: a half-res prefilter (colour + signed CoC from depth), a tile max and dilation of the near CoC, a scatter-as-gather on a Vogel disc whose taps read the mip matching their share of the disc, a CoC-aware tent, then a full-res composite that keeps in-focus pixels exactly as rendered and blurs small discs at full resolution. Signed CoC is in pixels: negative in front of focus, positive behind, so it doubles as a depth order. LENS_DISPLAY marks display-referred input (the dof-only lane): decoded to linear and highlight-expanded before the blur, compressed and re-encoded after. Every input is a pure function of the frame (no time, no history). See docs/camera.md. */
 
 export const lensVertexShader = /* glsl */ `
   varying vec2 vUv;
@@ -98,6 +98,14 @@ export const lensDilateShader = /* glsl */ `
   }
 `;
 
+/** A tap's weight at distance r from the centre: the gather's reach rule, shared with the composite's full-res blur. `gap` is one half-res pixel of CoC in the caller's units. */
+const lensCoverage = /* glsl */ `
+  float lensCover(const in float s, const in float c, const in float gap, const in float r, const in float ramp) {
+    float reach = s < c - gap ? abs(s) : min(abs(s), 2.0 * abs(c));
+    return clamp((reach - r) / ramp + 0.5, 0.0, 1.0);
+  }
+`;
+
 /** Each tap reaches the centre when its own CoC covers the distance. Taps behind the centre may reach no further than twice the centre's CoC, so a blurred background never smears over a sharp subject; taps in front blend over it by their disc coverage, so a blurred foreground does. */
 export const lensGatherShader = /* glsl */ `
   uniform highp sampler2D cocBuffer;
@@ -106,6 +114,14 @@ export const lensGatherShader = /* glsl */ `
   uniform float tileSize;
   uniform float cocMax;
   uniform float squeezeX;
+  uniform float sampleSeed;
+  ${lensCoverage}
+
+  // A footprint whose mean CoC strays from its own texel's straddles a depth edge: keep the exact texel there, so an in-focus edge never glows into the blur behind it.
+  vec3 lensMipColour(const in vec4 texel, const in vec2 uv, const in float lod) {
+    vec4 mip = textureLod(cocBuffer, uv, lod);
+    return mix(mip.rgb, texel.rgb, smoothstep(0.25, 1.0, abs(mip.a - texel.a)));
+  }
 
   void main() {
     ivec2 limit = ivec2(halfSize) - 1;
@@ -123,9 +139,12 @@ export const lensGatherShader = /* glsl */ `
     float fn = float(n);
     float ramp = radius * inversesqrt(fn);
     float area = radius * radius / fn;
-    // Interleaved gradient noise: a screen-fixed rotation per pixel, so the disc pattern never ghosts and the tent below smooths it.
-    float rot = 6.2831853 * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-    vec3 bg = centre.rgb;
+    // Each tap reads the mip as wide as its share of the disc, so a one-texel mote lands in every tap that covers it instead of flickering between hit and miss.
+    float lod = max(0.0, 0.5 * log2(area));
+    vec2 halfTexel = 1.0 / halfSize;
+    // Interleaved gradient noise, offset per supersample draw: a per-pixel rotation that never ghosts, which the tent and the supersample average smooth.
+    float rot = 6.2831853 * fract(52.9829189 * fract(dot(gl_FragCoord.xy + 5.588238 * sampleSeed, vec2(0.06711056, 0.00583715))));
+    vec3 bg = lensMipColour(centre, gl_FragCoord.xy * halfTexel, lod);
     float bgW = 1.0;
     vec3 fg = vec3(0.0);
     float fgW = 0.0;
@@ -137,10 +156,10 @@ export const lensGatherShader = /* glsl */ `
       float th = fi * 2.39996323 + rot;
       vec2 off = vec2(cos(th) * squeezeX, sin(th)) * r;
       vec4 s = texelFetch(cocBuffer, clamp(ivec2(floor(gl_FragCoord.xy + off)), ivec2(0), limit), 0);
+      s.rgb = lensMipColour(s, (gl_FragCoord.xy + off) * halfTexel, lod);
       float sSize = abs(s.a);
       bool front = s.a < cs - 1.0;
-      float reach = front ? sSize : min(sSize, 2.0 * cSize);
-      float m = clamp((reach - r) / ramp + 0.5, 0.0, 1.0);
+      float m = lensCover(s.a, cs, 1.0, r, ramp);
       if (front) {
         fg += s.rgb * m;
         fgW += m;
@@ -182,7 +201,7 @@ export const lensTentShader = /* glsl */ `
   }
 `;
 
-/** The composite (the effect's own mainImage): pixels whose full-res CoC is under half a pixel, with no foreground over them, stay exactly as rendered. */
+/** The composite (the effect's own mainImage): pixels whose full-res CoC is under half a pixel, with no foreground over them, stay exactly as rendered. Discs under LENS_NEAR_COC come from a full-res blur whose taps follow the gather's reach rule, so a small highlight never turns into half-res blocks and a sharp silhouette never bleeds into the blur behind it. */
 export const lensCompositeShader = /* glsl */ `
   uniform highp sampler2D lensBlurBuffer;
   uniform highp sampler2D lensCocBuffer;
@@ -191,7 +210,10 @@ export const lensCompositeShader = /* glsl */ `
   uniform float lensCocInf;
   uniform float lensCocMax;
   uniform float lensHalfScale;
+  uniform float lensSqueezeX;
   uniform bool lensActive;
+  ${displayDecode}
+  ${lensCoverage}
 
   vec3 lensCompress(vec3 c) {
   #ifdef LENS_DISPLAY
@@ -202,13 +224,40 @@ export const lensCompositeShader = /* glsl */ `
   #endif
   }
 
+  float lensCoc(const in float depth) {
+    float d = max(-getViewZ(depth), 1e-4);
+    return clamp(lensCocInf * (1.0 - lensFocus / d), -lensCocMax, lensCocMax);
+  }
+
+  vec3 lensLinear(const in vec3 c) {
+    return min(lensExpand(max(c, vec3(0.0))), vec3(60000.0));
+  }
+
+  vec3 lensNearBlur(const in vec3 centre, const in vec2 uv, const in float coc) {
+    float ac = abs(coc);
+    float fn = float(LENS_NEAR_TAPS);
+    float ramp = ac * inversesqrt(fn);
+    float gap = 1.0 / lensHalfScale;
+    vec3 sum = lensLinear(centre);
+    float wSum = 1.0;
+    for (int i = 0; i < LENS_NEAR_TAPS; i++) {
+      float fi = float(i);
+      float r = ac * sqrt((fi + 0.5) / fn);
+      float th = fi * 2.39996323;
+      vec2 tuv = uv + vec2(cos(th) * lensSqueezeX, sin(th)) * r * texelSize;
+      float m = lensCover(lensCoc(readDepth(tuv)), coc, gap, r, ramp);
+      sum += lensLinear(textureLod(inputBuffer, tuv, 0.0).rgb) * m;
+      wSum += m;
+    }
+    return sum / wSum;
+  }
+
   void mainImage(const in vec4 inputColor, const in vec2 uv, const in float depth, out vec4 outputColor) {
     if (!lensActive) {
       outputColor = inputColor;
       return;
     }
-    float d = max(-getViewZ(depth), 1e-4);
-    float coc = clamp(lensCocInf * (1.0 - lensFocus / d), -lensCocMax, lensCocMax);
+    float coc = lensCoc(depth);
     ivec2 limit = ivec2(lensHalfSize) - 1;
     vec2 hp = uv * lensHalfSize - 0.5;
     vec2 f = fract(hp);
@@ -226,7 +275,13 @@ export const lensCompositeShader = /* glsl */ `
       wSum += w;
     }
     vec4 blurred = acc / wSum;
-    float w = max(smoothstep(0.5, 1.5, abs(coc)), blurred.a);
-    outputColor = vec4(mix(inputColor.rgb, lensCompress(blurred.rgb), w), inputColor.a);
+    float ac = abs(coc);
+    // A foreground over the pixel always takes the gather.
+    float far = max(smoothstep(LENS_NEAR_FADE, LENS_NEAR_COC, ac), blurred.a);
+    vec3 near = inputColor.rgb;
+    if (ac >= 0.5 && far < 1.0) {
+      near = mix(near, lensCompress(lensNearBlur(inputColor.rgb, uv, coc)), smoothstep(0.5, 1.5, ac));
+    }
+    outputColor = vec4(mix(near, lensCompress(blurred.rgb), far), inputColor.a);
   }
 `;

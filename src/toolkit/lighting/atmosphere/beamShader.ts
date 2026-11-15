@@ -48,6 +48,7 @@ uniform vec2 uDepthSize;
 uniform vec3 uCamForward;
 uniform float uCamNear;
 uniform float uCamFar;
+uniform float uSampleSeed;
 #ifdef BEAM_BOX
 uniform vec3 uBoxMin;
 uniform vec3 uBoxMax;
@@ -173,7 +174,8 @@ void main() {
   }
   if (t1 <= t0) discard;
   float dt = (t1 - t0) / ${BEAM_STEPS}.0;
-  float jitter = hash21(ivec2(gl_FragCoord.xy));
+  // Offset per supersample draw, so the samples average the march noise away.
+  float jitter = fract(hash21(ivec2(gl_FragCoord.xy)) + 0.61803398875 * uSampleSeed);
   float sum = 0.0;
 #ifdef BEAM_EXTINCT
   // Haze between entering the box and reaching the beam dims it too.
