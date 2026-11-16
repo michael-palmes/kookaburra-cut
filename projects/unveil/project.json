@@ -150,12 +150,32 @@
     {
       "file": "scenes/08-proof-1.tsx",
       "durationMs": 3750,
-      "cutAt": "bar:16"
+      "cutAt": "bar:16",
+      "effects": {
+        "lens": {
+          "intensity": 1,
+          "bloom": 0.08,
+          "bloomRadius": 0.88,
+          "halation": 0.2,
+          "halationThreshold": 1,
+          "halationColor": "#ff7a30"
+        }
+      }
     },
     {
       "file": "scenes/09-detail-1.tsx",
       "durationMs": 1875,
-      "cutAt": "bar:17"
+      "cutAt": "bar:17",
+      "effects": {
+        "lens": {
+          "intensity": 1,
+          "bloom": 0.08,
+          "bloomRadius": 0.88,
+          "halation": 0.2,
+          "halationThreshold": 1,
+          "halationColor": "#ff7a30"
+        }
+      }
     },
     {
       "file": "scenes/10-claim-2.tsx",
@@ -165,12 +185,32 @@
     {
       "file": "scenes/11-proof-2.tsx",
       "durationMs": 3750,
-      "cutAt": "bar:20"
+      "cutAt": "bar:20",
+      "effects": {
+        "lens": {
+          "intensity": 1,
+          "bloom": 0.08,
+          "bloomRadius": 0.88,
+          "halation": 0.2,
+          "halationThreshold": 1,
+          "halationColor": "#ff7a30"
+        }
+      }
     },
     {
       "file": "scenes/12-detail-2.tsx",
       "durationMs": 1875,
-      "cutAt": "bar:21"
+      "cutAt": "bar:21",
+      "effects": {
+        "lens": {
+          "intensity": 1,
+          "bloom": 0.08,
+          "bloomRadius": 0.88,
+          "halation": 0.2,
+          "halationThreshold": 1,
+          "halationColor": "#ff7a30"
+        }
+      }
     },
     {
       "file": "scenes/13-claim-3.tsx",

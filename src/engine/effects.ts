@@ -59,6 +59,7 @@ import { isExporting } from "./exportState";
 import { MSAA_SAMPLES } from "./format";
 import { LensDofEffect } from "./LensDofEffect";
 import { LensEffect } from "./LensEffect";
+import { withLensDepth } from "./lensDepth";
 import { type CubeLut, parseCubeLut } from "./lutCube";
 import { composerToneMapping } from "./renderSettings";
 import { SmearEffect } from "./SmearEffect";
@@ -594,7 +595,8 @@ export function renderThroughComposer(
   }
   applyEffectUniforms(cs, cfg, seed);
   applyDofUniforms(cs, dof);
-  cs.composer.render(0); // fixed delta, the injected `time` uniform never advances
+  // Fixed delta, the injected `time` uniform never advances.
+  withLensDepth(mainCamera, dof, () => cs.composer.render(0));
   gl.toneMapping = prevTone;
   gl.autoClear = prevAutoClear;
   gl.setRenderTarget(prevTarget);
@@ -669,7 +671,7 @@ export function renderSideWithDof(
   st.composer.setMainCamera(sideCamera);
   applyDofUniforms(st, dof);
   st.copyPass.renderTarget = target;
-  st.composer.render(0);
+  withLensDepth(sideCamera, dof, () => st.composer.render(0));
   gl.setRenderTarget(prevTarget);
 }
 
@@ -769,11 +771,12 @@ function renderDofDepth(
   st: DofOverlayState,
   scene: Scene,
   camera: Camera,
+  dof: ResolvedDof,
 ): void {
   if (!st.depthTarget) return;
   const prevTarget = gl.getRenderTarget();
   gl.setRenderTarget(st.depthTarget);
-  gl.render(scene, camera);
+  withLensDepth(camera, dof, () => gl.render(scene, camera));
   gl.setRenderTarget(prevTarget);
 }
 
@@ -796,7 +799,7 @@ export function renderDofOverCanvas(
   const prevTarget = gl.getRenderTarget();
   gl.setRenderTarget(null);
   gl.copyFramebufferToTexture(st.frameTexture, _copyOrigin);
-  renderDofDepth(gl, st, scene, camera);
+  renderDofDepth(gl, st, scene, camera, dof);
   st.pass.mainCamera = camera;
   applyDofUniforms(st, dof);
   st.inputShim.texture = st.frameTexture;
@@ -820,7 +823,7 @@ export function renderDofOverTarget(
 ): void {
   const st = ensureDofOverlay(gl, w, h, dofUnion);
   const prevTarget = gl.getRenderTarget();
-  renderDofDepth(gl, st, scene, camera);
+  renderDofDepth(gl, st, scene, camera, dof);
   st.pass.mainCamera = camera;
   applyDofUniforms(st, dof);
   st.pass.renderToScreen = false;

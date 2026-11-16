@@ -20,6 +20,13 @@ import {
   deviceScreenRect,
   SCREEN_LIFT,
 } from "./screenAnchor";
+import {
+  asRegionDepthMesh,
+  REGION_DEPTH_ORDER,
+  REGION_VERTEX,
+  ROUNDED_BOX,
+  regionDepthMaterial,
+} from "./screenRegionDepth";
 import { glassCardMaterial } from "./screenRegionGlass";
 import {
   lensRect,
@@ -57,21 +64,6 @@ export interface ScreenRegionProps extends RegionLiftTiming {
   /** Card only: render it as glass with a bevel this wide (fitted units), lit by the scene's environment; absent keeps the flat card. */
   glassEdge?: number;
 }
-
-const VERTEX = /* glsl */ `
-varying vec2 vUv;
-void main() {
-  vUv = uv;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}
-`;
-
-const ROUNDED_BOX = /* glsl */ `
-float roundedBox(vec2 p, vec2 halfSize, float r) {
-  vec2 q = abs(p) - halfSize + r;
-  return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
-}
-`;
 
 // The display's own texture, sampled through the card's slice of it and dimmed by the display's power; a lens adds a rim.
 const CARD_FRAGMENT = /* glsl */ `
@@ -185,7 +177,7 @@ function regionMaterials() {
   const make = (uniforms: CardUniforms | ShadowUniforms, fragmentShader: string) => {
     const material = new ShaderMaterial({
       uniforms,
-      vertexShader: VERTEX,
+      vertexShader: REGION_VERTEX,
       fragmentShader,
       transparent: true,
       depthWrite: false,
@@ -202,6 +194,7 @@ function regionMaterials() {
     cardMaterial: make(card, CARD_FRAGMENT),
     shadowMaterial: make(shadow, SHADOW_FRAGMENT),
     haloMaterial: make(halo, SHADOW_FRAGMENT),
+    depthMaterial: regionDepthMaterial(card),
   };
 }
 
@@ -240,6 +233,7 @@ export function ScreenRegion(props: ScreenRegionProps) {
       parts.cardMaterial.dispose();
       parts.shadowMaterial.dispose();
       parts.haloMaterial.dispose();
+      parts.depthMaterial.dispose();
       parts.blank.dispose();
     },
     [parts],
@@ -336,6 +330,18 @@ export function ScreenRegion(props: ScreenRegionProps) {
       >
         <planeGeometry args={[1, 1]} />
       </mesh>
+      {lift > 0 ? (
+        <group renderOrder={REGION_DEPTH_ORDER}>
+          <mesh
+            ref={asRegionDepthMesh}
+            material={parts.depthMaterial}
+            position={[offset[0] * p, offset[1] * p, cardZ]}
+            scale={[width * grown, height * grown, 1]}
+          >
+            <planeGeometry args={[1, 1]} />
+          </mesh>
+        </group>
+      ) : null}
     </group>
   );
 }

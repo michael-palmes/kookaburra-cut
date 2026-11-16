@@ -2105,6 +2105,14 @@ Verify ×2 here (the 2026-10-23 note):
 > target path); an Unveil crossfade out of a lens scene renders both sides
 > through the HDR side composer.
 
+> **2026-11-14 (lifted `ScreenRegion` depth, additive):** a lifted card or lens
+> mounts a depth-only copy of its shape on `LENS_DEPTH_LAYER` (31, export
+> contract, `engine/lensDepth.ts`), in its own group drawn last in the
+> transparent list. Only the draw that feeds an active lens pose's depth
+> enables that layer (the HDR composer's render pass, the dof side composer and
+> the dof-only lane's depth pre-pass), so frames with no lens pose, cards at
+> `lift` 0 and projects without a `ScreenRegion` draw exactly as before.
+
 > **2026-11-14 (lens depth of field sampling, lens projects rebase):** the
 > gather's taps and centre read a mip of the RGBA16F prefilter as wide as each
 > tap's share of the disc (texelFetch still reads the CoC, and a footprint

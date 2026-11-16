@@ -203,6 +203,9 @@ scene's; blur can animate, the family cannot swap mid-flight.
 - Everything blurs by its true depth, device screens and SDF text included
   (the exact-colour contract holds AT the focal plane, and whatever you focus
   on stays exact). Keep legibility-critical text on or near the focus plane.
+  A lifted `ScreenRegion` blurs at its own depth in lens mode: a depth-only
+  copy of its shape sits on `LENS_DEPTH_LAYER` (`src/engine/lensDepth.ts`),
+  which only the draw feeding an active lens pose's depth turns on.
 - In a project with NO declared effects, dof never regrades the frame: every
   frame renders on the original byte-identical paths, and a pose with active
   blur is then blurred IN PLACE (the finished pixels are copied, the dof
