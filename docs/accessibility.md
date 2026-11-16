@@ -10,8 +10,9 @@ map, how to report a problem, and the Accessibility Conformance Report (ACR) for
   own assistive technology (VoiceOver, Keyboard navigation, Reduce motion, Zoom).
 - **Where it stands:** most of the chrome is reachable and named, dialogs manage focus, text and
   field borders meet AA contrast, text can be enlarged in Settings, and single-key shortcuts can be
-  turned off. The main gap left: several timeline and reorder edits need a pointer. The report below
-  names each one.
+  turned off. Timelines and reorders take the keyboard. The gap left: a few edits (soundtrack beat
+  markers, decoration stacking order, chart columns) still need a pointer. The report below names
+  each one.
 - **What it does not cover:** the films you export. Their pixels, captions and contrast are your
   content, built in your theme. The app helps where it can: every export runs a flash check against
   WCAG 2.3.1 and ITU-R BT.1702 and flags stretches to fix.
