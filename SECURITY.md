@@ -414,8 +414,8 @@ Also:
   history and rewrite it, at each kit stamp to read `.git/config` for the
   agent's verdict, and before each Edit with Claude handoff to check the
   committed agent files ("What reaches your agent"). When `git` is Apple's
-  `/usr/bin/git` shim, `xcode-select -p` runs once a launch to check the
-  developer tools are there (`git_usable`). A folder's `.git` arrives with it, so each run sets
+  `/usr/bin/git` shim, `xcode-select -p` runs before the launch's first git
+  run, once, to check the developer tools are there (`git_usable`). A folder's `.git` arrives with it, so each run sets
   `GIT_CONFIG_NOSYSTEM`, `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CEILING_DIRECTORIES`
   and overrides every key that names a program (`GUARDS`), and the app refuses a
   `.git` that is a link or file, holds a link (outside its hooks, which never

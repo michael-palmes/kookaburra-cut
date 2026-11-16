@@ -238,8 +238,8 @@ Children of `Kookaburra Cut.app/Contents/MacOS/kookaburra-cut`, from every
   cleared environment, built without networking), often (`tools.rs`).
 - `git` from `PATH`, in a project folder, at creation, after Allow, at each
   kit stamp and before each Edit with Claude handoff (`history.rs`).
-- `xcode-select -p`, once a launch, when `git` is Apple's `/usr/bin/git` shim
-  (`history.rs`, `git_usable`).
+- `xcode-select -p`, once, before a launch's first `git` run, when `git` is
+  Apple's `/usr/bin/git` shim (`history.rs`, `git_usable`).
 - `/usr/bin/sips`, one dropped still at a time (`imagefile.rs`).
 - `open`: `-R <file>` and `<folder>` for Finder, `claude://code/new?folder=…`
   for the handoff, and the two fixed pages (`claude_app.rs`, `lib.rs`,
