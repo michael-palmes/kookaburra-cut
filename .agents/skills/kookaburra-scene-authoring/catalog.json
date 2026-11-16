@@ -26312,13 +26312,21 @@
           "file": "scenes/08-proof-1.tsx",
           "durationMs": 3750,
           "transition": null,
-          "blocks": ["text"]
+          "blocks": ["backdrop", "background", "cameraMode", "cameraRig", "devices", "lighting"]
         },
         {
           "file": "scenes/09-detail-1.tsx",
           "durationMs": 1875,
           "transition": null,
-          "blocks": ["text"]
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "motionBlur"
+          ]
         },
         {
           "file": "scenes/10-claim-2.tsx",
@@ -26330,13 +26338,21 @@
           "file": "scenes/11-proof-2.tsx",
           "durationMs": 3750,
           "transition": null,
-          "blocks": ["text"]
+          "blocks": ["backdrop", "background", "cameraMode", "cameraRig", "devices", "lighting"]
         },
         {
           "file": "scenes/12-detail-2.tsx",
           "durationMs": 1875,
           "transition": null,
-          "blocks": ["text"]
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "motionBlur"
+          ]
         },
         {
           "file": "scenes/13-claim-3.tsx",
@@ -26348,31 +26364,77 @@
           "file": "scenes/14-lineup.tsx",
           "durationMs": 3750,
           "transition": null,
-          "blocks": ["text"]
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "deviceTrack",
+            "devices",
+            "lighting"
+          ]
         },
         {
           "file": "scenes/15-flyby.tsx",
           "durationMs": 1875,
           "transition": null,
-          "blocks": ["text"]
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "deviceTrack",
+            "devices",
+            "lighting"
+          ]
         },
         {
           "file": "scenes/16-montage.tsx",
           "durationMs": 7500,
           "transition": null,
-          "blocks": ["text"]
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "deviceTrack",
+            "devices",
+            "lighting"
+          ]
         },
         {
           "file": "scenes/17-hero.tsx",
           "durationMs": 3750,
           "transition": null,
-          "blocks": ["text"]
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "deviceTrack",
+            "devices",
+            "lighting",
+            "text",
+            "textAnimationOverrides",
+            "textStyle"
+          ]
         },
         {
           "file": "scenes/18-lockup.tsx",
           "durationMs": 3750,
           "transition": null,
-          "blocks": ["text"]
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraKicks",
+            "cameraMode",
+            "cameraRig",
+            "lighting",
+            "text",
+            "textAnimation",
+            "textAnimationOverrides",
+            "textStyle"
+          ]
         }
       ]
     },
