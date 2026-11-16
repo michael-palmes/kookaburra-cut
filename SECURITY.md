@@ -781,7 +781,8 @@ builds it in separate jobs, each on a fresh runner.
   repository script runs, it unpacks the licensed device models from a private
   repository's `age`-encrypted archive. It then refuses any glb that does not match
   `src/assets/models/licensed.sha256`, builds the ffmpeg sidecar from sources
-  pinned by SHA-256 and commit (`scripts/build-ffmpeg-sidecar.sh`), fetches the
+  pinned by SHA-256 and commit (`scripts/build-ffmpeg-sidecar.sh`, which keeps
+  those exact archives as their own artefact for the release), fetches the
   beat model against its pins, runs `pnpm tauri build --no-sign` through
   `cargo auditable`, so the binary carries its own crate list in a `.dep-v0`
   section (`rust-audit-info` must read it back before packing, and `cargo audit
@@ -827,22 +828,52 @@ builds it in separate jobs, each on a fresh runner.
   the notarisation ticket that signing adds are left out. The job also checks
   that this file names the Team ID the signatures carry: the `TeamIdentifier=`
   under "Verify an install" must equal the `APPLE_TEAM_ID` variable.
-- **Publish.** `SHA256SUMS` over the DMG, the zip, the updater tar and its
-  `.sig`, `latest.json`, `build-info.txt`, the SBOM and a copy of this file as
+- **Publish.** `SHA256SUMS` over the DMG, the pkg, the zip, the updater tar
+  and its `.sig`, `latest.json`, `build-info.txt`, the SBOM, the sidecar's
+  ffmpeg, x264 and x265 source archives and a copy of this file as
   it stood at the tag (`scripts/release-sums.sh`, which a branch rehearsal also
-  runs, so a file missing from the set fails a dry run); a GitHub build
-  provenance attestation over the DMG, zip, tar, `build-info.txt` and the SBOM,
+  runs, so a file missing from the set fails a dry run, and which refuses a
+  source archive whose SHA-256 is not the pin `build-info.txt` records); a GitHub build
+  provenance attestation over the DMG, pkg, zip, tar, `build-info.txt`, the SBOM and the source archives,
   kept by GitHub and uploaded beside them as
   `KookaburraCut-<version>.intoto.jsonl`, with the updater's `.sig` as its own
-  asset; an SBOM attestation on the DMG (`actions/attest` with `sbom-path`,
+  asset; an SBOM attestation on the DMG and the pkg (`actions/attest` with `sbom-path`,
   predicate `https://cyclonedx.org/bom`); a release body that opens with the
   version's `CHANGELOG.md` section, then how to install and verify, naming the
-  Team ID; a draft release a person publishes, with the SBOM among its assets.
+  Team ID; a draft release a person publishes, with the SBOM and the source
+  archives among its assets (`NOTICE.md`, "ffmpeg / ffprobe sidecar").
   The in-app updater sees a release only once it is published.
 - **Updater.** `plugins.updater.requireSignedVersion` is on: the app refuses a
   signature whose trusted comment does not bind the announced version, so a
   manifest re-pointed at an older signed archive cannot roll an install back.
   The manifest's notes are never rendered.
+- **Installer package.** The sign job builds `KookaburraCut-<version>.pkg`
+  for MDM installs from the stapled app (`scripts/sign-and-notarize.sh`,
+  `pkgbuild` then `productbuild`): one component, `Kookaburra Cut.app` into
+  `/Applications`, owned by `root:wheel`, no install scripts, not relocatable,
+  the system domain only, macOS 26.0+ on arm64. It signs it with a Developer
+  ID Installer certificate from the same team (a second `.p12` in the
+  `release` environment, imported into the same temporary keychain and deleted
+  with it), then notarises and staples it. The verify job checks
+  `pkgutil --check-signature` (Developer ID Installer, Apple's Developer ID CA,
+  a trusted timestamp, notarised, the Team ID), `stapler validate` and
+  `spctl -a -t install`, expands it with `pkgutil --expand-full`, checks each
+  property above from its `Distribution`, `PackageInfo` and `Bom`, and proves
+  the app inside equals the zip's app byte for byte and by
+  `scripts/bundle-digest.sh` (`scripts/verify-release.sh`). The publish job
+  lists it in `SHA256SUMS`, the build provenance attestation and the SBOM
+  attestation, and attaches it to the release. A rehearsal (`pnpm release:rehearse`, a branch dispatch)
+  builds it unsigned and runs every check but the signature ones. To check one
+  before deploying it:
+
+  ```bash
+  shasum -a 256 -c SHA256SUMS --ignore-missing
+  gh attestation verify KookaburraCut-<version>.pkg --repo michael-palmes/kookaburra-cut \
+    --signer-workflow michael-palmes/kookaburra-cut/.github/workflows/release.yml \
+    --source-ref refs/tags/v<version> --deny-self-hosted-runners
+  pkgutil --check-signature KookaburraCut-<version>.pkg  # 1. Developer ID Installer: ..., trusted by the Apple notary service
+  spctl -a -t install -vv KookaburraCut-<version>.pkg    # accepted, source=Notarized Developer ID
+  ```
 - **Repository controls.** `scripts/release.sh` only tags: it refuses unless on
   `main` equal to `origin/main` and this file's first line names the version
   being tagged, prints the commits and the tag-key files changed since the
@@ -891,8 +922,9 @@ builds it in separate jobs, each on a fresh runner.
   `pnpm install --frozen-lockfile` until someone reviews it; no dependency has
   one today, so the empty list changes nothing yet.
 - **Verify an install.** On the release page's files. `scripts/verify-install.sh`
-  runs all of this on a downloaded release, plus the sidecars' signatures and a
-  diff of this file against the previous release's, from 0.23.0 on. It downloads no release
+  runs all of this on a downloaded release, plus the sidecars' signatures, the
+  pkg's when it is in the folder (both attestations, its installer signature
+  and Gatekeeper) and a diff of this file against the previous release's, from 0.23.0 on. It downloads no release
   files, but reads the tag, the SBOM attestation (and the provenance unless its bundle is in the
   folder) and, with `--previous`, SECURITY.md at each tag from GitHub through `gh`:
 

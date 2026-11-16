@@ -51,6 +51,17 @@ grep '^commit=' build-info.txt                                  # the same commi
 git ls-remote https://github.com/michael-palmes/kookaburra-cut "refs/tags/v$V^{}"
 ```
 
+From 0.23.0 the release also carries a signed pkg for your MDM to install
+silently ([mdm.md, "Installing with the pkg"](./mdm.md#installing-with-the-pkg)).
+It is in `SHA256SUMS`, the provenance and the SBOM attestation, so run the
+`gh attestation verify` lines above on `KookaburraCut-$V.pkg` too, then check
+its installer signature:
+
+```bash
+pkgutil --check-signature "KookaburraCut-$V.pkg"   # Developer ID Installer: ... (Q4B8N8ZKA2), trusted by the Apple notary service
+spctl -a -t install -vv "KookaburraCut-$V.pkg"     # accepted, source=Notarized Developer ID
+```
+
 Install it on a staging Mac:
 
 ```bash
@@ -288,7 +299,9 @@ still carry this project's signature.
 release reaches the fleet only after your check ([Verify a
 release](#verify-a-release)), your read of the diff and a soak that gives a bad
 release time to surface. You also pin one version and avoid the administrator
-prompt. The cost is speed, so watch the repository's releases and advisories
+prompt. From 0.23.0 the signed pkg installs with no prompts
+([fleet-deployment.md](./fleet-deployment.md#from-0230-the-pkg) has a recipe
+per MDM). The cost is speed, so watch the repository's releases and advisories
 and fast-track security fixes. Your check catches a tampered or swapped
 download; it cannot catch a harmful change pushed through that account, since
 the signature, the notarisation and the attestation all come from it. Your

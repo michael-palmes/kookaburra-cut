@@ -327,6 +327,28 @@ pub fn reveal_app_logs(app: AppHandle, window: tauri::Window) -> Result<(), Stri
     open.spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
+/// Settings ▸ About ▸ Acknowledgements: Finder at the bundle's `licenses` folder, the notices selected when this build carries them.
+#[tauri::command]
+pub fn reveal_licences(app: AppHandle, window: tauri::Window) -> Result<(), String> {
+    workspace::require_window(&window, "settings")?;
+    let dir = app
+        .path()
+        .resource_dir()
+        .map_err(|e| e.to_string())?
+        .join("licenses");
+    if !dir.is_dir() {
+        return Err("this build carries no licences folder".into());
+    }
+    let notices = dir.join("THIRD-PARTY-NOTICES.txt");
+    let mut open = std::process::Command::new("open");
+    if notices.is_file() {
+        open.arg("-R").arg(&notices);
+    } else {
+        open.arg(&dir);
+    }
+    open.spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SidecarVersions {

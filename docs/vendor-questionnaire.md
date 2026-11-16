@@ -36,8 +36,9 @@ before that release is tagged. On 0.22.4, the latest release, these rows differ:
   ▸ Clear all app data arrive in 0.23.0.
 - **Supply chain:** the SBOM, the crate list embedded in the binary,
   [verify-install.sh](../scripts/verify-install.sh), the licence and source
-  policy, no dependency install scripts, and the provenance bundle and updater
-  signature as release assets.
+  policy, no dependency install scripts, the provenance bundle and updater
+  signature as release assets, the sidecar's source archives and the licence
+  notices inside the app.
 - **Vulnerability management:** the 14-day acknowledgement, CodeQL over Python
   and the `unsafe` allow-list.
 
@@ -221,7 +222,8 @@ SIG: Supply chain risk management. CAIQ: STA.
 | Are dependencies and tools pinned? | Yes | [rust-toolchain.toml](../rust-toolchain.toml), [package.json](../package.json), [install-build-tools.sh](../scripts/install-build-tools.sh), [build-ffmpeg-sidecar.sh](../scripts/build-ffmpeg-sidecar.sh), [setup-models.sh](../scripts/setup-models.sh) | Lock files for npm and both Cargo graphs; exact Rust, Node and pnpm; build tools, ffmpeg, x264, x265 and the beat model by SHA-256. |
 | Do dependency install scripts run? | No | [pnpm-workspace.yaml](../pnpm-workspace.yaml) | pnpm runs none, and a lock that adds one fails install until it is reviewed. |
 | Is there a dependency licence and source policy? | Yes | [deny.toml](../src-tauri/deny.toml), [dependency-review.yml](../.github/workflows/dependency-review.yml) | An allow list of permissive licences (plus OFL-1.1 for fonts), crates.io as the only source, no wildcard versions. |
-| Is an SBOM published? | Yes | [sbom.mjs](../scripts/sbom.mjs), [release.yml](../.github/workflows/release.yml) | CycloneDX 1.5, `KookaburraCut-<version>.cdx.json` on each release, attested on the DMG: npm packages, crates for the shipped target, the sidecar's sources and the beat model. The binary also embeds its crate list (`cargo auditable`). |
+| Is an SBOM published? | Yes | [sbom.mjs](../scripts/sbom.mjs), [release.yml](../.github/workflows/release.yml) | CycloneDX 1.5, `KookaburraCut-<version>.cdx.json` on each release, attested on the DMG and the pkg: npm packages, crates for the shipped target, the sidecar's sources, the beat model, and the bundled fonts, HDRIs, device models, adapted shaders and kit scripts with their hashes. The binary also embeds its crate list (`cargo auditable`). |
+| Does the app ship its third-party licences? | Yes | [NOTICE.md](../NOTICE.md), [licence-notices.mjs](../scripts/licence-notices.mjs), [verify-release.sh](../scripts/verify-release.sh) | The app carries the GPL texts from the sidecar's sources, the font, shader and model licences and a notice with the licence of every npm package and crate (Settings ▸ About ▸ Acknowledgements). A release without them fails verification. Each release attaches the sidecar's source archives. |
 | Is build provenance published? | Yes | [release.yml](../.github/workflows/release.yml) | A GitHub build provenance attestation (SLSA provenance predicate) over the DMG, zip, updater archive, `build-info.txt` and the SBOM, published as `KookaburraCut-<version>.intoto.jsonl` for offline checks. No SLSA level is claimed. |
 | Are releases signed and notarised? | Yes | [sign-and-notarize.sh](../scripts/sign-and-notarize.sh), [verify-release.sh](../scripts/verify-release.sh) | Developer ID, hardened runtime, no entitlements, notarised and stapled; Team ID `Q4B8N8ZKA2`. A separate job checks every signature and every file against the keyless build's record. |
 | Are updates verified before install? | Yes | [tauri.conf.json](../src-tauri/tauri.conf.json), [updater.rs](../src-tauri/src/updater.rs) | Ed25519 signature against the key built into the app, bound to the announced version, so an old archive cannot roll an install back. |
@@ -229,6 +231,7 @@ SIG: Supply chain risk management. CAIQ: STA.
 | Are builds reproducible? | No | [determinism.md](./determinism.md) | Not claimed: the runner image and Xcode float and are recorded in `build-info.txt`. The exported film is reproducible, and each release is gated on it. |
 | Is the build environment fresh and recorded? | Partial | [release.yml](../.github/workflows/release.yml) | A fresh GitHub-hosted runner per job; toolchains pinned, runner image and Xcode recorded, not pinned. |
 | Are licensed third-party assets checked? | Yes | [licensed.sha256](../src/assets/models/licensed.sha256) | The licensed device models arrive encrypted from a private repository and must match pinned SHA-256s. |
+| May films made with the bundled device models be published? | Yes | [NOTICE.md](../NOTICE.md#bundled-assets) | Renders of the device models may be published freely, commercial use included; the model files may not be extracted or redistributed, and Apple's trademarks and trade dress are the user's own call. |
 
 ## Business continuity
 

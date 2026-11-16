@@ -23,7 +23,7 @@ const NO_VERIFY = [
   /\/(__fixtures__|__snapshots__)\//,
   /^scripts\/(?!kookaburra-run\.sh$|setup-ffmpeg\.sh$|build-ffmpeg-sidecar\.sh$)/,
   /^(biome\.json|\.gitignore|\.npmrc|LICENSE.*|AGENTS\.md|CLAUDE\.md)$/,
-  /^src-tauri\/(capabilities|dmg|fuzz|icons|templates|tests|resources\/models)\//,
+  /^src-tauri\/(capabilities|dmg|fuzz|icons|templates|tests|resources\/models|resources\/licenses)\//,
   /^src-tauri\/(deny|osv-scanner)\.toml$/,
   /^packaging\//,
   // The pack round trip still renders every pack change against the baseline.

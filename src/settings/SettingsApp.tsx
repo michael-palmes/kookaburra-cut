@@ -23,6 +23,7 @@ import {
   clearAppData,
   forgetAllowedProject,
   revealAppLogs,
+  revealLicences,
 } from "../engine/appData";
 import { exportAppLog } from "../engine/appLog";
 import {
@@ -264,6 +265,21 @@ function ActivityLogIcon() {
     <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
       <path
         d="M3.5 1.5h6l3 3v10h-9zM9.5 1.5v3h3M5.5 7.5h5M5.5 10h5M5.5 12.5h3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function AcknowledgementsIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M8 4c-1.5-1.2-3.5-1.5-5.5-1v10c2-.5 4-.2 5.5 1 1.5-1.2 3.5-1.5 5.5-1V3c-2-.5-4-.2-5.5 1zM8 4v10"
         fill="none"
         stroke="currentColor"
         strokeWidth="1.35"
@@ -1146,6 +1162,28 @@ export function SettingsApp() {
           <button type="button" className="btn" disabled={exportingLog} onClick={exportLog}>
             <DownloadIcon />
             {exportingLog ? "Exporting…" : "Export…"}
+          </button>
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span
+              className="settings-row-title"
+              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+            >
+              <AcknowledgementsIcon />
+              Acknowledgements
+            </span>
+            <span className="muted settings-row-detail">
+              The open source software and assets inside Kookaburra Cut, with their licences.
+            </span>
+          </div>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => void revealLicences().catch((e) => setError(String(e)))}
+          >
+            <FinderIcon />
+            Show in Finder
           </button>
         </div>
         <div className="settings-row">

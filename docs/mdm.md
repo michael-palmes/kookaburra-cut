@@ -20,6 +20,41 @@ Two rules hold throughout:
 The policy is read once per launch (`src-tauri/src/managed.rs`); a profile
 installed or removed while the app runs takes effect at the next launch.
 
+## Installing with the pkg
+
+From 0.23.0 each release carries `KookaburraCut-<version>.pkg` beside the DMG,
+for an MDM to install with no prompts: Jamf, Kandji, Mosyle and Intune take
+it as it is, and `docs/fleet-deployment.md` has a recipe for each. It installs
+one thing, `Kookaburra Cut.app`, into `/Applications`, owned by `root:wheel`,
+with no install scripts; only into the system domain, only on macOS 26.0+ on
+Apple Silicon; and it is not relocatable, so Installer writes `/Applications`
+rather than a stray copy of the app elsewhere. It is signed with a Developer ID
+Installer certificate from the app's team, notarised and stapled
+(`scripts/sign-and-notarize.sh`); `scripts/verify-release.sh` checks each of
+these on every release, and `SECURITY.md` ("Release integrity", "Installer
+package") lists the commands to check a download yourself. The receipt is
+`com.mpalmes.kookaburracut` (`pkgutil --pkg-info com.mpalmes.kookaburracut`).
+
+- **Upgrades.** The next release's pkg replaces the bundle in place. Projects,
+  settings and app data live outside it (`~/Kookaburra Cut` and
+  `~/Library/Application Support/com.mpalmes.kookaburracut`), so they stay. The
+  package is version checked (`bundle-version` in its `PackageInfo`), so a pkg
+  older than the installed app leaves the app alone.
+- **The in-app updater** still runs on a pkg install, but it cannot replace a
+  root-owned bundle as the user, so it asks for an administrator's password
+  (`install_update_and_relaunch` in `src-tauri/src/updater.rs` hands the swap
+  to `tauri-plugin-updater`, which falls back to an authorised move). A
+  standard user cannot finish it, and an update that does finish leaves the
+  bundle owned by the user who ran it until the next pkg, while the receipt
+  still names the version the pkg installed. On a fleet, push each release's
+  pkg and force `DisableUpdateCheck`, or `UpdateEndpoint` to keep in-app
+  updates from your own mirror.
+- **Removing it.** Delete `/Applications/Kookaburra Cut.app`, then
+  `sudo pkgutil --forget com.mpalmes.kookaburracut`; the two folders above
+  stay until someone deletes them. `packaging/mdm/uninstall-kookaburra-cut.sh`,
+  run as root, does both and clears each account's app data, leaving projects
+  and the Keychain key (`docs/fleet-deployment.md`, "Remove it").
+
 ## Keys
 
 | Key | Type | When forced |

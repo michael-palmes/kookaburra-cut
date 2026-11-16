@@ -42,6 +42,9 @@ else
   echo "warning: no system ffprobe on PATH — media metadata probing won't work." >&2
 fi
 
+# The release build's licence texts describe its sources, not this copy.
+rm -rf "$ROOT/src-tauri/resources/licenses/sidecar"
+
 echo "Sidecar ready: $DEST"
 "$DEST" -version | head -1
 if [[ -n "$PROBE_SRC" ]]; then

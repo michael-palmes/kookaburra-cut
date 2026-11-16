@@ -64,3 +64,7 @@ export function clearAppData(): Promise<boolean> {
 export function revealAppLogs(): Promise<void> {
   return invoke<void>("reveal_app_logs");
 }
+
+export function revealLicences(): Promise<void> {
+  return invoke<void>("reveal_licences");
+}

@@ -46,14 +46,19 @@ while you watch them update here.
   [`docs/mdm.md`](docs/mdm.md))
 
 Every release is built by this repository's release workflow from a signed tag,
-signed with a Developer ID certificate and notarised by Apple. To check a
-download against the release's `SHA256SUMS` and its build provenance:
+signed with a Developer ID certificate and notarised by Apple. Managed Macs can
+install the release's signed `.pkg` through an MDM instead
+([`docs/mdm.md`](docs/mdm.md#installing-with-the-pkg)). To check a download
+against the release's `SHA256SUMS` and its build provenance (the same for the
+`.pkg`), and the pkg's installer signature:
 
 ```bash
 shasum -a 256 -c SHA256SUMS --ignore-missing
 gh attestation verify KookaburraCut-<version>.dmg --repo michael-palmes/kookaburra-cut \
   --signer-workflow michael-palmes/kookaburra-cut/.github/workflows/release.yml \
   --source-ref refs/tags/v<version> --deny-self-hosted-runners
+pkgutil --check-signature KookaburraCut-<version>.pkg  # Developer ID Installer, trusted by the Apple notary service
+spctl -a -t install -vv KookaburraCut-<version>.pkg    # accepted, source=Notarized Developer ID
 ```
 
 Offline, against the release's provenance bundle:

@@ -24,6 +24,10 @@ src-tauri/bin/ffprobe-*
 # beat-this ONNX model (provisioned via scripts/setup-models.sh, SHA-256 pinned; never committed)
 src-tauri/resources/models/
 
+# Licence texts and notices the app bundles (scripts/licence-notices.mjs and the sidecar build write them)
+src-tauri/resources/licenses/*
+!src-tauri/resources/licenses/README.md
+
 # Licensed third-party assets — bundled into app builds, never committed
 src/assets/models/licensed/
 
