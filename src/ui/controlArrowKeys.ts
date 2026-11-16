@@ -1,4 +1,4 @@
-/** Remote-control clients can send arrows as the old Mac control codes under another keycode, which WebKit types into the focused field. */
+/** Remote-control clients can send arrows with the old Mac control codes as their text, which WebKit types into the focused field. */
 const ARROW_CODES: Record<string, string> = {
   "\u001c": "ArrowLeft",
   "\u001d": "ArrowRight",
@@ -72,8 +72,20 @@ export function moveCaret(el: TextControl, arrow: string, shift: boolean, meta: 
     );
 }
 
+let held = { shift: false, meta: false };
+
+/** A real arrow keydown can still carry the control code as its text, which WebKit then types. */
+export function blockControlArrowText(e: InputEvent): void {
+  const arrow = e.data ? arrowForControlCode(e.data) : undefined;
+  if (!arrow) return;
+  e.preventDefault();
+  const field = textControl(e.target);
+  if (field) moveCaret(field, arrow, held.shift, held.meta);
+}
+
 /** Replays the arrow as itself, so lanes and fields get the key they expect, and nothing is typed. */
 export function normaliseControlArrow(e: KeyboardEvent): void {
+  held = { shift: e.shiftKey, meta: e.metaKey };
   const arrow = arrowForControlCode(e.key);
   if (!arrow) return;
   e.preventDefault();
@@ -101,4 +113,5 @@ export function installControlArrowKeys(): void {
   if (installed || typeof window === "undefined") return;
   installed = true;
   window.addEventListener("keydown", normaliseControlArrow, true);
+  window.addEventListener("beforeinput", blockControlArrowText, true);
 }

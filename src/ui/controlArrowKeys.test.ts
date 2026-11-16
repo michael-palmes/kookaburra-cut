@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { arrowForControlCode, moveCaret, normaliseControlArrow } from "./controlArrowKeys";
+import {
+  arrowForControlCode,
+  blockControlArrowText,
+  moveCaret,
+  normaliseControlArrow,
+} from "./controlArrowKeys";
 
 const testProcess = (
   globalThis as unknown as {
@@ -118,12 +123,32 @@ describe("arrows sent as control codes (2.1.1)", () => {
     expect(el.replays[0]).toMatchObject({ key: "ArrowRight", metaKey: true, shiftKey: true });
   });
 
+  it("blocks a real arrow's control-code text and makes the move it skipped", () => {
+    const el = field("0:04", 4);
+    press(el, "ArrowLeft", { shiftKey: true });
+    const typed = { data: "\u001c", target: el, preventDefault: vi.fn() };
+    blockControlArrowText(typed as unknown as InputEvent);
+    expect(typed.preventDefault).toHaveBeenCalled();
+    expect(el.value).toBe("0:04");
+    expect([el.selectionStart, el.selectionEnd]).toEqual([3, 4]);
+  });
+
+  it("lets ordinary typing through", () => {
+    const el = field("0:0", 3);
+    const typed = { data: "4", target: el, preventDefault: vi.fn() };
+    blockControlArrowText(typed as unknown as InputEvent);
+    expect(typed.preventDefault).not.toHaveBeenCalled();
+    expect(el.selectionStart).toBe(3);
+  });
+
   it("is installed in every chrome window, ahead of every other key listener", () => {
     expect(read("./chromePrefs.ts")).toMatch(
       /installed = true;\s*installControlArrowKeys\(\);\s*document\.addEventListener\("keydown", guardSingleKeyShortcuts\);/,
     );
-    expect(read("./controlArrowKeys.ts")).toContain(
-      'window.addEventListener("keydown", normaliseControlArrow, true);',
+    const source = read("./controlArrowKeys.ts");
+    expect(source).toContain('window.addEventListener("keydown", normaliseControlArrow, true);');
+    expect(source).toContain(
+      'window.addEventListener("beforeinput", blockControlArrowText, true);',
     );
   });
 });
