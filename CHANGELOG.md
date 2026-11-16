@@ -67,6 +67,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A selected option preview plays once and holds its last frame; hover or focus
   plays it again.
 - Field, select and selected-card borders are easier to see (3:1 contrast).
+- 0.23.0 is the first version recommended for managed Macs. From here on every
+  security fix also gets a GitHub security advisory; watch the repository's
+  releases and advisories (`SECURITY.md`, "Supported versions").
 
 ### Fixed
 
@@ -82,6 +85,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Option previews no longer flash an empty card on hover.
 - An arrow key sent as an old Mac control code, as some remote-control apps
   do, moves the caret instead of typing a stray character.
+- An export whose device screen video can't be prepared now stops and names
+  the clip, instead of finishing with a black or frozen screen. A clip that
+  failed earlier is tried once more when the next export starts.
 
 ### Security
 
@@ -90,6 +96,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   that announce changes can send events to the others.
 - A pull request that adds an HTTP client crate now fails the dependency
   policy: the updater is the only code that fetches over HTTP.
+- Signing a release now needs a second person's approval: whoever starts the
+  release can't approve it, and an admin can't skip the step.
 - A second reviewer is now asked to review every file where a trust decision
   lives: the Allow gate, the agent kit, git history, the Claude handoff, the
   bridge, live websites, the log, the window permissions and the stage worker.
@@ -105,8 +113,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   anywhere.
 - Each release now ships a software bill of materials
   (`KookaburraCut-<version>.cdx.json`): every npm package and Rust crate built
-  into the app, the sidecar's pinned sources and the beat model, attested on
-  the DMG, and the app binary carries its own Rust dependency list for
+  into the app, the sidecar's pinned sources, the beat model and the bundled
+  fonts, images, models and scripts, attested on the DMG and the pkg, and the
+  app binary carries its own Rust dependency list for
   `cargo audit bin`. Dependency licences and sources are now checked by policy
   in CI, and the release page carries this changelog's section for the version.
 - `unsafe` Rust is denied except where a file or function allows it, and every
