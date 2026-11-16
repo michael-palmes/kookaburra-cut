@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { opensContextMenu } from "./ContextMenu";
+import { KeptLengthNote, keptLengthNote } from "./keptLength";
 import { OptionCard } from "./OptionCard";
 
 /** WCAG 2.2 AA guards for the chrome (docs/accessibility.md). DOM behaviour this node suite can't mount is pinned to the source. */
@@ -217,15 +218,36 @@ describe("option card clips (2.2.2, 2.3.3)", () => {
 });
 
 describe("error suggestion (3.3.3)", () => {
-  it("reverts a typed scene length quietly, telling only a screen reader the kept value", () => {
+  it("speaks the kept scene length politely and shows nothing", () => {
+    expect(keptLengthNote(4000)).toBe("Duration kept at 0:04.00");
+    expect(renderToStaticMarkup(<KeptLengthNote note={keptLengthNote(2400)} />)).toBe(
+      '<span class="visually-hidden" aria-live="polite">Duration kept at 0:02.40</span>',
+    );
+  });
+
+  it("reverts every typed scene length quietly through the one note", () => {
+    const fields: [string, RegExp][] = [
+      [
+        "./inspector/SceneTab.tsx",
+        /if \(ms === null\) \{\s*setText\([^;]+;\s*kept\.keep\(durationMs\);/,
+      ],
+      ["./PlaybackBar.tsx", /if \(ms === null\) kept\.keep\(current\);/],
+      [
+        "./inspector/ScenesDrillIn.tsx",
+        /if \(ms === null\) \{\s*if \(current\) kept\.keep\(current\.durationMs\);/,
+      ],
+      ["./TrackLane.tsx", /if \(ms === null\) kept\.keep\(durationMs\);/],
+    ];
+    for (const [path, revert] of fields) {
+      const source = read(path);
+      expect(source, path).toMatch(revert);
+      expect(source, path).toContain("<KeptLengthNote note={kept.note} />");
+      expect(source, path).toContain("kept.clear();");
+      expect(source, path).not.toContain("Duration kept at");
+    }
     const row = read("./inspector/SceneTab.tsx");
     const body = row.slice(row.indexOf("function DurationRow("), row.indexOf("function HingeRow("));
     expect(body).not.toMatch(/field-error|role="alert"|aria-invalid/);
-    expect(body).toMatch(
-      /if \(ms === null\) \{\s*setText\(formatSceneLengthMs\(durationMs\)\);\s*setKept\(`Duration kept at \$\{formatSceneLengthMs\(durationMs\)\}`\);/,
-    );
-    expect(body).toMatch(/<span className="visually-hidden" aria-live="polite">\s*\{kept\}/);
-    expect(body).toMatch(/setText\(e\.target\.value\);\s*setKept\(""\);/);
   });
 
   it("says why a transition length reverted", () => {

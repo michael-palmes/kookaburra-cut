@@ -33,6 +33,7 @@ import { useUiStore } from "../store/uiStore";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { formatSceneLengthMs, parseSceneLengthMs } from "./durationText";
 import { ToggleRow } from "./inspector/rows";
+import { KeptLengthNote, useKeptLength } from "./keptLength";
 import { seekSceneLocal } from "./laneSeek";
 import { ResizeAnimationModal } from "./ResizeAnimationModal";
 import { SceneMenuIcon } from "./sceneMenu";
@@ -192,6 +193,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
   const [drag, setDrag] = useState<DragState<T> | null>(null);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [durEdit, setDurEdit] = useState<string | null>(null);
+  const kept = useKeptLength();
   /** The gap neighbour the dragged key would merge into on release (decision 2). */
   const [mergeTarget, setMergeTarget] = useState<string | null>(null);
   // Diamonds capture the pointer and preventDefault, so no native dblclick reaches them: the pair is counted here off the event's own timestamp.
@@ -625,8 +627,8 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
     setDurEdit(null);
     if (!commitEdit || text === null) return;
     const ms = parseSceneLengthMs(text);
-    if (ms === null) return;
-    if (ms !== durationMs) onSceneDuration(ms);
+    if (ms === null) kept.keep(durationMs);
+    else if (ms !== durationMs) onSceneDuration(ms);
   }
 
   return (
@@ -742,7 +744,10 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
               // biome-ignore lint/a11y/noAutofocus: entered by double-clicking the readout, so it IS the focus target
               autoFocus
               aria-label="Scene length in minutes and seconds"
-              onChange={(e) => setDurEdit(e.target.value)}
+              onChange={(e) => {
+                setDurEdit(e.target.value);
+                kept.clear();
+              }}
               onBlur={() => finishDurationEdit(true)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") (e.target as HTMLInputElement).blur();
@@ -759,6 +764,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
               {formatSceneLengthMs(durationMs)}
             </button>
           )}
+          <KeptLengthNote note={kept.note} />
         </span>
       </div>
 

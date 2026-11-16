@@ -187,9 +187,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Space on a focused button, tab, option or card presses it instead of also
   playing the preview.
 - VoiceOver hears export progress every 10% and how the export ended.
-- Hints inside a hovered or selected row stay readable, a scene or transition
-  length that doesn't parse says why it reverted, and the preview is a named
-  landmark. See `docs/accessibility.md`.
+- Hints inside a hovered or selected row stay readable, a transition length
+  that doesn't parse says why it reverted, VoiceOver hears the length a
+  mistyped scene length kept, and the preview is a named landmark. See
+  `docs/accessibility.md`.
 - A dialog taller than the window scrolls instead of cutting off its buttons.
 
 ### Security

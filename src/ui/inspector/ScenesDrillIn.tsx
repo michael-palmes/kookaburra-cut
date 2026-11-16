@@ -3,6 +3,7 @@ import { moveSelection, planDeletes } from "../../engine/sceneOrder";
 import { useUiStore } from "../../store/uiStore";
 import { ContextMenu, type ContextMenuState, opensContextMenu } from "../ContextMenu";
 import { formatSceneLengthMs, parseSceneLengthMs } from "../durationText";
+import { KeptLengthNote, useKeptLength } from "../keptLength";
 import { SceneMenuIcon, sceneMenuItems, sceneSelectionLabel } from "../sceneMenu";
 import { canOpenSceneMenu, nextRename, renameCommit, type SceneEdit } from "../sceneRename";
 import { DrillBack } from "./rows";
@@ -82,6 +83,7 @@ export function ScenesDrillIn({
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [renaming, setRenaming] = useState<SceneEdit | null>(null);
   const [timing, setTiming] = useState<SceneEdit | null>(null);
+  const kept = useKeptLength();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const edits = { busy, renaming, timing };
@@ -167,9 +169,10 @@ export function ScenesDrillIn({
     setTiming(null);
     if (!commit || !t) return;
     const ms = parseSceneLengthMs(t.text);
-    if (ms === null) return;
     const current = scenes.find((s) => s.index === t.index);
-    if (ms !== current?.durationMs) onDuration(t.index, ms);
+    if (ms === null) {
+      if (current) kept.keep(current.durationMs);
+    } else if (ms !== current?.durationMs) onDuration(t.index, ms);
   };
 
   const openMenu = (
@@ -305,7 +308,10 @@ export function ScenesDrillIn({
                   aria-label="Scene length in minutes and seconds"
                   onPointerDown={(e) => e.stopPropagation()}
                   onDoubleClick={(e) => e.stopPropagation()}
-                  onChange={(e) => setTiming({ index: scene.index, text: e.target.value })}
+                  onChange={(e) => {
+                    setTiming({ index: scene.index, text: e.target.value });
+                    kept.clear();
+                  }}
                   onBlur={() => finishTiming(true)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") (e.target as HTMLInputElement).blur();
@@ -326,6 +332,7 @@ export function ScenesDrillIn({
             />
           )}
         </div>
+        <KeptLengthNote note={kept.note} />
         <p className="modal-hint">
           Drag to reorder. ⌘-click to multi-select, ⇧-click for a range. Double-click renames. ⇧F10
           opens a scene's menu.
