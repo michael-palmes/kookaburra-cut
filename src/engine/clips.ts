@@ -71,6 +71,8 @@ interface ClipEntry {
   info?: ClipInfo;
   frames?: ClipFrames;
   error?: string;
+  /** Its conform failed: not transient, so an export keeps the conform's message instead of retrying. */
+  conformFailed?: boolean;
   /** Content hash at extraction time; the invalidation sweep compares against a re-hash. */
   sha?: string;
   /** The file's `<size>-<mtimeNs>` read before that hash; the sweep re-hashes only when it moved. */
@@ -262,6 +264,7 @@ export function registerClip(source: string): ClipEntry {
   noteClipReferenced(key);
   entry.promise = prepare(entry).catch((e) => {
     entry.error = String(e);
+    entry.conformFailed = e instanceof ClipConformError;
     throw e;
   });
   // Marks the stored rejection as handled (consumers read `entry.error` or catch on await); without this, a failed extraction (e.g. a clip briefly resolved against the wrong project's assets during a project swap) logs an unhandled promise rejection.
@@ -277,7 +280,7 @@ export async function ensureFrames(entry: ClipEntry, frames: Iterable<number>): 
   await entry.frames.ensureChunks(chunksForFrames(frames, info.frameCount));
 }
 
-// Registry version: bumped on eviction so mounted consumers re-register against a fresh extraction. Never bumps during export (both eviction paths are UI events the export state blocks or defers).
+// Registry version: bumped on eviction so mounted consumers re-register against a fresh extraction. During an export it bumps only in the preamble (a lane switch, or a retry of clips that failed before the run), never between frames.
 let registryVersion = 0;
 const registryListeners = new Set<() => void>();
 /** Subscribe to registry evictions (useSyncExternalStore shape). */
@@ -417,7 +420,7 @@ function addDemand(
 /** How long an export waits for a clip whose conform is still writing its file. */
 export const CONFORM_WAIT_MS = 15 * 60_000;
 
-/** An entry's info for the export barrier: a clip still conforming is waited on with status lines, failing the run with a clear message past the bound or when its conform fails. Other failures degrade the clip as they always have. */
+/** An entry's info for the export barrier: a clip still conforming is waited on with status lines, failing the run with a clear message past the bound or when its conform fails. Other failures fail the run at the frame barrier, where a mounted consumer shows the clip. */
 async function settleForExport(
   entry: ClipEntry,
   onStatus: (line: string) => void,
@@ -462,6 +465,21 @@ async function settleForExport(
   }
 }
 
+/** Evicts every clip this run uses that failed before it (its extraction, or chunks past their attempts), so its sources register fresh and a transient failure heals; once a run, on the first pass, and a no-op when nothing failed. Returns the evicted sources. */
+function retryFailedClips(declared: ReadonlyMap<string, readonly ClipDemand[]>): string[] {
+  const retried: string[] = [];
+  for (const [key, entry] of registry) {
+    if (entry.lane !== activeLane || entry.conformFailed) continue;
+    if (!(entry.error || entry.frames?.stuck())) continue;
+    if (!declared.has(entry.source) && entry.consumers.size === 0) continue;
+    evictEntry(key, entry);
+    exportHeld.delete(entry);
+    retried.push(entry.source);
+  }
+  if (retried.length > 0) notifyRegistry();
+  return retried;
+}
+
 /**
  * The export preamble's clip barrier, run twice (docs/determinism.md "Embedded video"). Registers every known and declared source in the active lane, holds them pinned for the run, waits out pending conforms, then extracts exactly the chunks each consumer needs: the declared slot demands (sidecar devices, media and layered screenshots, derived before anything mounts), plus on the `consumers` pass every mounted consumer's own window and held frame. A declared source whose timing is unknown and that no mounted consumer covers takes the whole clip. A one-frame capture (`atMs`) takes only the frames that instant shows. Chunk failures throw, so the export fails loudly instead of capturing black.
  */
@@ -475,9 +493,10 @@ export async function prepareExportClips(
     conformWaitMs?: number;
   },
 ): Promise<void> {
+  const retried = options.consumers ? [] : retryFailedClips(declared);
   // A lane switch may not have re-rendered consumers yet, so register every known source in the active lane here rather than trusting React's flush timing.
   const sources = new Set([...registry.values()].map((e) => e.source));
-  for (const src of declared.keys()) sources.add(src);
+  for (const src of [...declared.keys(), ...retried]) sources.add(src);
   const entries = [...sources].map((src) => registerClip(src));
   for (const entry of entries) exportHeld.add(entry);
   schedulePins();
@@ -649,13 +668,14 @@ export function awaitVideoFramesReady(scene: Scene): Promise<void> {
   return Promise.all(pending).then(() => undefined);
 }
 
-/** A pending consumer's wait for its first bind, driven by the consumer: `extraction` follows the entry it now waits on, `start` marks a bind run beginning, and `settle` marks one completing uncancelled, its extraction failing, or the consumer unmounting. */
+/** A pending consumer's wait for its first bind, driven by the consumer: `extraction` follows the entry it now waits on, `start` marks a bind run beginning, and `settle` marks one completing uncancelled, the consumer unmounting, or (with the reason) its extraction or bind failing. */
 export interface FirstBind {
   extraction: Promise<unknown>;
   started: Promise<void>;
   done: Promise<void>;
+  failure?: Error;
   start: () => void;
-  settle: () => void;
+  settle: (failure?: Error) => void;
 }
 
 export function createFirstBind(extraction: Promise<unknown>): FirstBind {
@@ -667,22 +687,24 @@ export function createFirstBind(extraction: Promise<unknown>): FirstBind {
   const done = new Promise<void>((r) => {
     settle = r;
   });
-  return {
+  const firstBind: FirstBind = {
     extraction,
     started,
     done,
     start,
-    settle: () => {
+    settle: (failure) => {
+      if (failure) firstBind.failure ??= failure;
       start();
       settle();
     },
   };
+  return firstBind;
 }
 
 /** How long a consumer may take to start its first bind once its extraction settles: a re-render, never a decode, so only a stalled tree reaches it. */
 export const FIRST_BIND_STALL_MS = 30_000;
 
-/** A still-pending consumer's readiness: its extraction, then its first completed bind, so a clip registered after the preamble's extract barrier (a screen behind its model's suspense) can never pass a capture in its pending state. Extraction may take minutes, so only the gap after it is bounded, by one timer (hidden pages throttle spin chains); a bind that never starts fails the run instead of hanging it. */
+/** A still-pending consumer's readiness: its extraction, then its first completed bind, so a clip registered after the preamble's extract barrier (a screen behind its model's suspense) can never pass a capture in its pending state. Extraction may take minutes, so only the gap after it is bounded, by one timer (hidden pages throttle spin chains); a bind that never starts fails the run instead of hanging it, and so does a failed extraction or bind while exporting. */
 export async function pendingFrameReady(
   firstBind: FirstBind,
   src: string,
@@ -704,6 +726,7 @@ export async function pendingFrameReady(
     }
   }
   await firstBind.done;
+  if (firstBind.failure && isExporting()) throw firstBind.failure;
 }
 
 /** Extraction attempts per chunk before its failure sticks for the entry's lifetime (a replaced file or a cleared cache makes a fresh entry). */
@@ -738,6 +761,13 @@ export class ClipFrames {
   ) {
     this.ready = new Set(info.chunks ?? allChunks(info.frameCount));
     this.previewReady = new Set(info.previewChunks ?? []);
+  }
+
+  /** Whether a chunk has failed every extraction attempt (only a fresh entry tries it again). */
+  stuck(): boolean {
+    for (const failure of this.failures.values())
+      if (failure.count >= MAX_CHUNK_ATTEMPTS) return true;
+    return false;
   }
 
   /** Whether frame `i`'s chunk is on disk (binding it needs no extraction). */
