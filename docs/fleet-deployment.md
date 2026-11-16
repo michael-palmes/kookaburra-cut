@@ -121,7 +121,8 @@ say "installed $VERSION"
 
 ### From 0.23.0: the pkg
 
-`KookaburraCut-<version>.pkg` ships beside the DMG from 0.23.0: the same app,
+`KookaburraCut-<version>.pkg` ships beside the DMG from 0.23.0 (before it, use
+the DMG and the install script above): the same app,
 installed into `/Applications` owned by root with no prompts and no install
 scripts, signed with a Developer ID Installer certificate of the same team,
 notarised and stapled (`scripts/sign-and-notarize.sh`). It is in the release's
@@ -527,8 +528,6 @@ paths, for the account that runs it only.
 
 ## Not yet
 
-- The pkg ships from 0.23.0; for 0.22.4 and earlier, the DMG and the install
-  script.
 - The Homebrew tap `michael-palmes/homebrew-kookaburra-cut` does not exist yet;
   the cask is staged in `packaging/homebrew/` with its audit record.
 - None of these recipes has run on a live Jamf Pro, Iru, Mosyle or Intune

@@ -25,7 +25,7 @@ checked against Anthropic's documentation on 6 November 2026.
    ([Claude Code's own managed settings on top](#claude-codes-own-managed-settings-on-top)).
 4. Treat a shared project folder like a script from that person
    ([Shared projects and packs](#shared-projects-and-packs)).
-5. Expect `ffmpeg`, `ffprobe`, `git`, `sips` and `open` as the app's children,
+5. Expect `ffmpeg`, `ffprobe`, `git`, `xcode-select`, `sips` and `open` as the app's children,
    and alert on anything else ([What to expect in EDR](#what-to-expect-in-edr)).
 
 ## Verify a release
@@ -47,6 +47,8 @@ gh attestation verify "KookaburraCut-$V.dmg" --bundle "KookaburraCut-$V.intoto.j
   --signer-workflow michael-palmes/kookaburra-cut/.github/workflows/release.yml \
   --source-ref "refs/tags/v$V" --deny-self-hosted-runners        # offline, from the release's own bundle
 gh attestation verify "KookaburraCut-$V.dmg" --repo michael-palmes/kookaburra-cut \
+  --signer-workflow michael-palmes/kookaburra-cut/.github/workflows/release.yml \
+  --source-ref "refs/tags/v$V" --deny-self-hosted-runners \
   --predicate-type https://cyclonedx.org/bom                    # the SBOM attestation
 grep '^commit=' build-info.txt                                  # the same commit as the next line
 git ls-remote https://github.com/michael-palmes/kookaburra-cut "refs/tags/v$V^{}"
@@ -80,10 +82,10 @@ to diff against the one you approved, and the source diff is one command:
 git diff v<previous> v<version> -- SECURITY.md docs/mdm.md src-tauri/src/managed.rs src-tauri/src/privacy.rs src-tauri/capabilities src-tauri/permissions src/stage
 ```
 
-`scripts/verify-install.sh --version <version> --previous <previous>` runs
-all of the above from a checkout of the tag, including the `SECURITY.md` diff
-and a check of the updater archive against its published `.tar.gz.sig` and
-the key built into the app. `SHA256SUMS` alone catches a broken download; the
+`scripts/verify-install.sh --version <version> --dir <downloads> --previous <previous>`
+runs all of the above from a checkout of the tag, including the pkg's checks
+when it is in the folder, the sidecars' signatures and the `SECURITY.md`
+diff. `SHA256SUMS` alone catches a broken download; the
 attestations are the check that counts, since they tie the DMG,
 `build-info.txt` and the SBOM to this repository's release workflow at that
 tag, on GitHub's own runners
@@ -116,6 +118,7 @@ later before relying on them. `AuditLogPath` and `AllowedWebsiteOrigins` need
 | `WorkspaceRoot` | Only to standardise; a local, unsynced path | Projects hold unreleased footage, so keep them out of synced folders. The agent bridge stays in `~/Kookaburra Cut/_bridge` either way (`bridge.rs`). |
 | `DisableAgentKit` | `true` where Claude Code is not approved for this work | Stops everything the app lays out for an agent: no kit stamped into a project, no `_bridge` folder, no handoff, and the Claude entry points go with it (`workspace.rs`, `bridge.rs`). Where Claude Code is approved, leave it unset: the kit is what gives the agent its rules. |
 | `DisableClaude` | Unset where Claude Code is approved; `true` beside `DisableAgentKit` where it is not | Removes the Edit with Claude buttons and the Claude download link, nothing more (`claude_app.rs`). |
+| `AuditLogPath` | `/Library/Logs/Kookaburra Cut`, where your collector reads logs | Copies every log line to `<folder>/<login>.log`, 0600 and owned by the person; an unusable folder means no copy and one `[managed]` line, never a failed launch. On a Mac with several accounts, create the folder first ([mdm.md, "A copy for your collector"](./mdm.md#a-copy-for-your-collector)) (`audit_mirror.rs`). |
 
 `DisableClaude` on its own is not recommended, because it removes a button, not
 a capability: anyone can still open the folder in Claude Code from a terminal,
@@ -185,9 +188,10 @@ Pressing Allow on a project means
   `CLAUDE.md` and `.claude/settings.json` (not its assets); a change made
   outside the app asks again at the next launch (`workspace.rs`, `trust_covered_files`).
 - Scene code runs in a Web Worker with no DOM and none of the app's commands,
-  under a content security policy naming no outside host, behind a guard that
-  limits every request to the project's own files; a release build will not
-  start it unless that policy is live (`src/stage/`).
+  under a content security policy naming no outside host; a release build will
+  not start it unless that policy is live (`src/stage/`). A guard limits every
+  request to the project's own files, but code in the worker can undo it, so
+  the policy and the window's `asset://` reach are the bound.
 - The app moves agent files the folder brought (`AGENTS.md`, nested
   `CLAUDE.md`, `.mcp.json`, foreign `.claude/` content) into `NOTES.md` or
   aside, stamps its own kit, and runs git with the system and global config off
@@ -195,6 +199,12 @@ Pressing Allow on a project means
   `.git/hooks.moved-aside/` and the review sheet lists it; a `.git/config`
   that names a program leaves the agent with no git allow rule and a
   `Bash(git:*)` deny, and kb's own hook refuses git there too.
+- Before each Edit with Claude handoff, the app checks the agent files the
+  project's git `HEAD` and index hold against the swept folder
+  (`history::committed_agent_files`). Its own kit updates are committed and
+  logged `[kit]`; anything else goes on a native sheet and Claude stays off
+  until the person presses Save and Start Claude, which commits the folder's
+  copies. Expect these commits in people's project history.
 - Live websites need a separate grant per origin, on another native sheet,
   and `AllowedWebsiteOrigins` limits which origins can be granted at all
   (`website.rs`).
@@ -203,8 +213,11 @@ What is left: a WebKit or GPU driver bug reached through scene code, and the
 media parsers (ffmpeg, AVFoundation, `sips`, the font, glTF and PNG readers),
 which are bounded and tested on hostile files; a weekly cargo-fuzz run covers
 the pack, edit document, font, mp4 and PNG parsers (`.github/workflows/fuzz.yml`,
-[SECURITY.md, "Not yet"](../SECURITY.md#not-yet)). Allow no longer runs code
-with the person's account, which it did on 0.21.1.
+[SECURITY.md, "Not yet"](../SECURITY.md#not-yet)). Also left: one stage
+worker serves each window, so one project's scene code can see the next
+project's, and kb can read and write any project in the workspace without
+asking. Allow no longer runs code with the person's account, which it did on
+0.21.1.
 
 Packs are signed, hash-checked as they unpack, stripped of agent files, never
 compiled on import and limited by `AllowedPublisherKeyIds`
@@ -223,8 +236,10 @@ Children of `Kookaburra Cut.app/Contents/MacOS/kookaburra-cut`, from every
 
 - `Contents/MacOS/ffmpeg` and `ffprobe` beside the binary (the same Team ID, a
   cleared environment, built without networking), often (`tools.rs`).
-- `git` from `PATH`, in a project folder, at creation and after Allow
-  (`history.rs`).
+- `git` from `PATH`, in a project folder, at creation, after Allow, at each
+  kit stamp and before each Edit with Claude handoff (`history.rs`).
+- `xcode-select -p`, once a launch, when `git` is Apple's `/usr/bin/git` shim
+  (`history.rs`, `git_usable`).
 - `/usr/bin/sips`, one dropped still at a time (`imagefile.rs`).
 - `open`: `-R <file>` and `<folder>` for Finder, `claude://code/new?folder=…`
   for the handoff, and the two fixed pages (`claude_app.rs`, `lib.rs`,
@@ -276,7 +291,8 @@ On the Mac ([SECURITY.md, "On the Mac"](../SECURITY.md#on-the-mac)):
   slugs, origins, key ids and versions, never file contents. Rotated at 1 MiB
   with three files kept, owner-only. Settings ▸ About reveals the folder; an
   incident responder reads it from there, since nothing sends it anywhere.
-- Bridge responses last up to an hour, import backups 24 hours; deleted
+- Bridge responses last up to an hour, import backups and `kb video` drafts
+  24 hours, and `_bridge` keeps kb's newest film frames and export records; deleted
   projects go to the Trash; exports land in `~/Downloads` unless
   `ExportsInProject` is forced.
 

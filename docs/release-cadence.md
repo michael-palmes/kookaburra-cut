@@ -45,10 +45,11 @@ If a release itself is pulled or a signing key is compromised,
    draft, and the in-app updater sees a release only once it is published
    ([SECURITY.md, "Release integrity"](../SECURITY.md#release-integrity)).
 2. The [releases page](https://github.com/michael-palmes/kookaburra-cut/releases)
-   carries the DMG, the zip, the updater archive and its `.sig`,
-   `latest.json`, `SHA256SUMS`, `build-info.txt`, the provenance bundle
-   (`KookaburraCut-<version>.intoto.jsonl`) and `SECURITY.md` as it stood at
-   the tag.
+   carries the DMG, the pkg for MDM installs, the zip, the updater archive and
+   its `.sig`, `latest.json`, `SHA256SUMS`, `build-info.txt`, the SBOM
+   (`KookaburraCut-<version>.cdx.json`), the sidecar's ffmpeg, x264 and x265
+   source archives, the provenance bundle (`KookaburraCut-<version>.intoto.jsonl`)
+   and `SECURITY.md` as it stood at the tag.
 3. With the first-run consent on, the app checks at launch and then hourly
    while it is open, at most once every 20 hours; Check for Updates runs on
    request. It installs only when a person presses Install and relaunch, and
@@ -88,3 +89,17 @@ the commit in `build-info.txt`, then `codesign` and `spctl` on the installed
 app. [fleet.md, "Verify a release"](./fleet.md#verify-a-release) runs the same
 checks with a staging install and the `SECURITY.md` diff between the version
 you approved and the new one.
+
+## If the project stops
+
+One person maintains the project and no successor is named, so plan for it to
+stop:
+
+- **Installed apps keep working.** The app needs no account, licence server or
+  service from the project; it renders and exports offline.
+- **Releases and fixes stop.** The updater keeps finding the last release, and
+  nothing patches it after that.
+- **The code stays open.** MIT OR Apache-2.0, with every tool and source pinned
+  (`.github/workflows/release.yml`), so anyone can fork, build and ship it
+  under their own Developer ID. Installed apps trust only this project's
+  updater key, so moving a Mac to a fork takes one manual install.

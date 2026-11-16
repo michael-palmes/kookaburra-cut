@@ -29,7 +29,7 @@ react-three-fiber front end in WKWebView, with ffmpeg and ffprobe sidecars.
   holds no API key.
 - **Updates:** tauri-plugin-updater against a signed manifest on GitHub, or an
   organisation's server ([docs/mdm.md](mdm.md)).
-- **Distribution:** a Developer ID signed, notarised DMG from a GitHub Actions
+- **Distribution:** a Developer ID signed, notarised DMG and pkg from a GitHub Actions
   pipeline that keeps building, signing and verifying in separate jobs
   (SECURITY.md, "Release integrity").
 
@@ -86,8 +86,8 @@ people who trust what colleagues send them.
   dependencies. Where the app widens one (handing untrusted bytes to a decoder
   it could avoid, say), that use is in scope.
 - **Known gaps.** SECURITY.md, "Not yet", lists what is deliberately deferred
-  (bridge signing against same-user processes, a sealed trust store, a per-project website store,
-  an agent sandbox). A finding that only restates one is noted, not scored,
+  (bridge signing against same-user processes, a sealed trust store, one stage
+  worker per project, an agent sandbox). A finding that only restates one is noted, not scored,
   unless it shows a wider impact than the entry admits.
 - **Infrastructure.** The release pipeline's design, workflows and scripts are
   in scope to review; attacking GitHub, Apple's notary service or the
@@ -283,16 +283,20 @@ Ask each firm for a fixed quote against this file.
 
 Every release from 0.22.0 on carries what an install's integrity rests on
 (SECURITY.md, "Release integrity"; `build-info.txt` from 0.22.1). Later
-releases may add assets, and their own `SECURITY.md` lists them. For 0.22.4:
+releases may add assets, and their own `SECURITY.md` lists them. For 0.23.0
+(0.22.4 has no pkg, SBOM or source archives):
 
 | Asset | What it proves |
 | --- | --- |
 | `KookaburraCut-<version>.dmg`, `.zip` | The signed, notarised app (the DMG holds the same bytes as the zip) |
+| `KookaburraCut-<version>.pkg` | The same app as a Developer ID Installer signed, notarised pkg for MDM installs |
 | `KookaburraCut-<version>-updater.app.tar.gz` and `.sig` | The archive the in-app updater installs, and its ed25519 signature bound to the version |
 | `latest.json` | The updater manifest: the same signature and version |
-| `SHA256SUMS` | Checksums over the DMG, zip, tar, `.sig`, `latest.json`, `build-info.txt` and `SECURITY.md` |
+| `KookaburraCut-<version>.cdx.json` | The CycloneDX SBOM, attested on the DMG and the pkg |
+| `ffmpeg-*.tar.xz`, `x264-*.tar`, `x265_*.tar.gz` | The exact sidecar sources the build checked against its pins |
+| `SHA256SUMS` | Checksums over every file above, `build-info.txt` and `SECURITY.md` |
 | `build-info.txt` | The commit, toolchain pins, runner image and Xcode the build used |
-| `KookaburraCut-<version>.intoto.jsonl` | GitHub's build provenance attestation over the DMG, zip, tar and `build-info.txt` |
+| `KookaburraCut-<version>.intoto.jsonl` | GitHub's build provenance attestation over the DMG, pkg, zip, tar, `build-info.txt`, the SBOM and the source archives |
 | `SECURITY.md` | The security policy as it stood at the tag |
 
 ```bash

@@ -18,6 +18,7 @@ mechanism for a step yet, the step says so.
 | Tag key | The maintainer's Mac, in the Secure Enclave behind Touch ID; listed in `.github/allowed_tag_signers` | Sign a `v*` tag that starts a release, and sign a pull request that changes the release pipeline |
 | Commit key | The same Mac, Secure Enclave, no prompt; listed in `.github/allowed_signers` | Sign every other pull request head. It can't tag or change a signer list |
 | Developer ID certificate | The `release` environment (`DEVELOPER_ID_P12`) and an encrypted offline backup | Sign a Mac app as this project's Team ID |
+| Developer ID Installer certificate | The `release` environment (`DEVELOPER_ID_INSTALLER_P12`) | Sign an installer pkg as this project's Team ID, which an MDM installs with no prompt |
 | Notary API key | The `release` environment (`NOTARY_KEY_P8`) | Notarise a build with Apple |
 | Updater key | The `release` environment (`TAURI_SIGNING_PRIVATE_KEY`) and an encrypted offline backup | Sign an update archive the app installs, checked against `plugins.updater.pubkey` in `src-tauri/tauri.conf.json` |
 | The GitHub account | The maintainer | Everything above: it administers the repository, edits the signer lists and the `release` environment's reviewers ([SECURITY.md, "Release integrity"](../SECURITY.md#release-integrity)) |
@@ -55,6 +56,9 @@ mechanism for a step yet, the step says so.
      release is signed with the old certificate, so ask Apple what revoking it
      does to existing installs before you do. The repository has no
      mechanism for this step; it is Apple's.
+   - **Developer ID Installer certificate.** The same, for
+     `DEVELOPER_ID_INSTALLER_P12` and its password: every published pkg is
+     signed with the old one.
    - **Notary API key.** Revoke it in App Store Connect and replace
      `NOTARY_KEY_P8`, `NOTARY_KEY_ID` and `NOTARY_ISSUER_ID`.
    - **Updater key.** Generate a new key (`pnpm tauri signer generate`),
@@ -65,7 +69,8 @@ mechanism for a step yet, the step says so.
      manifest the app reads: the GitHub release, which needs the repository,
      or an organisation's own `UpdateEndpoint`.
 5. **Ship a fixed version.** Bump the version and release it the usual way
-   (the `kookaburra-release` skill), listed under `### Security` in
+   (the `kookaburra-release` skill; the second named reviewer approves the
+   sign job, since the person who pushed the tag cannot), listed under `### Security` in
    `CHANGELOG.md`. The in-app updater offers it to every Mac that checks for
    updates, unless the updater key was rotated, in which case the advisory and
    the release notes say to download it by hand. Fleets that pin a version or
@@ -86,7 +91,8 @@ mechanism for a step yet, the step says so.
   ```
 
 - **A downloaded file**, against its release: `SHA256SUMS` and the build
-  provenance attestation, as [SECURITY.md, "Release integrity"](../SECURITY.md#release-integrity)
+  provenance attestation (`scripts/verify-install.sh` runs every check on a
+  downloaded release, the pkg's included), as [SECURITY.md, "Release integrity"](../SECURITY.md#release-integrity)
   shows under "Verify an install". A file whose attestation does not name this
   repository's release workflow at the expected tag did not come from it.
 - **An installed app against its release, file by file**: not yet. The
