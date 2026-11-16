@@ -47,7 +47,7 @@ import {
 } from "./sceneCamera";
 import { compareSpecOf, resolveCompareFrame } from "./sceneCompare";
 import type { SceneDoc } from "./sceneDocSchema";
-import { getSceneHosts } from "./sceneHostRegistry";
+import { getSceneHosts, subscribeSceneHosts } from "./sceneHostRegistry";
 import { buildCompareBLightingTracks, buildLightingTracks } from "./sceneLighting";
 import { buildRoomTracks } from "./sceneRoom";
 import { buildSceneRenderStates, resolveFramePlans } from "./sceneState";
@@ -70,6 +70,13 @@ import { useSceneStageFloors } from "./stageRegistry";
 import { beginSupersample, endSupersample } from "./supersample";
 
 const SETTLE_MS = 150;
+
+/** Every slot has a primary host still in the scene graph; a previous project's hosts unregister an effect after leaving it. */
+function sceneHostsCommitted(slotCount: number): boolean {
+  let live = 0;
+  for (const host of getSceneHosts()) if (host.side === undefined && host.group.parent) live++;
+  return live >= slotCount;
+}
 const bufferSize = new Vector2();
 
 /** A paused object-blur pass in flight: which frame it serves, its samples, and the running sum. */
@@ -292,6 +299,8 @@ export function CompositorDriver({
 
   // Redraw on camera-edit draft changes (a drag moves the camera without moving the clock).
   useEffect(() => useCameraEditStore.subscribe(() => invalidate()), [invalidate]);
+  // Redraw once the scenes' hosts register: frames before that are skipped below.
+  useEffect(() => subscribeSceneHosts(() => invalidate()), [invalidate]);
   // Redraw on divider-lane draft changes, same rule.
   useEffect(() => useCompareEditStore.subscribe(() => invalidate()), [invalidate]);
   useEffect(() => useLightingEditStore.subscribe(() => invalidate()), [invalidate]);
@@ -308,6 +317,8 @@ export function CompositorDriver({
   useFrame((s) => {
     // Stands down while the exporter owns rendering: a stray preview render here would race the export's async text sync and capture stale glyphs (non-deterministic export).
     if (isExporting()) return;
+    // A frame before the hosts register draws every scene at once (awaitSceneHostsCommitted is the export's twin).
+    if (!sceneHostsCommitted(slots.length)) return;
     // Preview frames see the light helpers' layer; the exporter disables it per run (the double guard), and a thumbnail/snapshot capture borrows one frame without it.
     if (isCapturingPreview()) s.camera.layers.disable(HELPER_LAYER);
     else s.camera.layers.enable(HELPER_LAYER);
