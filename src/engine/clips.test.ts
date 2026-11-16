@@ -315,6 +315,39 @@ describe("pendingFrameReady", () => {
     expect(ready.done).toBe(true);
   });
 
+  it("fails an export when the extraction failed, instead of capturing the blank screen", async () => {
+    const clips = await import("./clips");
+    const { setExporting } = await import("./exportState");
+    const extraction = deferred();
+    const firstBind = clips.createFirstBind(extraction.promise);
+    setExporting(true);
+    try {
+      const ready = clips.pendingFrameReady(firstBind, "assets/a.mp4");
+      extraction.reject(new Error("unreadable"));
+      await tick();
+      firstBind.settle(new Error("unreadable"));
+      await expect(ready).rejects.toThrow(/unreadable/);
+    } finally {
+      setExporting(false);
+    }
+  });
+
+  it("fails an export when the first bind failed", async () => {
+    const clips = await import("./clips");
+    const { setExporting } = await import("./exportState");
+    const firstBind = clips.createFirstBind(Promise.resolve());
+    setExporting(true);
+    try {
+      const ready = clips.pendingFrameReady(firstBind, "assets/a.mp4");
+      await tick();
+      firstBind.start();
+      firstBind.settle(new Error("decode failed"));
+      await expect(ready).rejects.toThrow(/decode failed/);
+    } finally {
+      setExporting(false);
+    }
+  });
+
   it("is released at once when the consumer unmounts mid-extraction", async () => {
     const clips = await import("./clips");
     const firstBind = clips.createFirstBind(deferred().promise);
@@ -432,12 +465,65 @@ describe("prepareExportClips", () => {
     ).rejects.toBeInstanceOf(clips.ClipChunkError);
   });
 
-  it("degrades an unreadable source as before instead of failing the run", async () => {
+  it("leaves an unreadable source to the frame barrier instead of failing the preamble", async () => {
     const clips = await freshClips();
     await expect(
       clips.prepareExportClips(new Map([[SRC, [fromStart]]]), { consumers: true }),
     ).resolves.toBeUndefined();
     expect(clips.registerClip(SRC).error).toBeTruthy();
+  });
+
+  it("gives a clip that failed before the run one fresh attempt", async () => {
+    const clips = await freshClips();
+    await clips.registerClip(SRC).promise.catch(() => {});
+    expect(clips.registerClip(SRC).error).toBeTruthy();
+    shas.set(SRC, "sha-rec");
+    frameCounts.set(SRC, 600);
+    await clips.prepareExportClips(new Map([[SRC, [fromStart]]]), { consumers: false });
+    expect(clips.registerClip(SRC).error).toBeUndefined();
+    expect(chunksRequested(SRC)).toEqual([0, 1]);
+  });
+
+  it("retries once a run, and only the clips the run uses", async () => {
+    const clips = await freshClips();
+    const OTHER = src("assets/other.mp4");
+    await clips.registerClip(SRC).promise.catch(() => {});
+    await clips.registerClip(OTHER).promise.catch(() => {});
+    const declared = new Map([[SRC, [fromStart]]]);
+    await clips.prepareExportClips(declared, { consumers: false });
+    await clips.prepareExportClips(declared, { consumers: true });
+    expect(infoCalls.filter((k) => k === SRC)).toHaveLength(2);
+    expect(infoCalls.filter((k) => k === OTHER)).toHaveLength(1);
+    expect(clips.registerClip(SRC).error).toBeTruthy();
+  });
+
+  it("gives chunks stuck after their attempts a fresh entry", async () => {
+    const clips = await freshClips();
+    shas.set(SRC, "sha-rec");
+    frameCounts.set(SRC, 600);
+    const declared = new Map([[SRC, [fromStart]]]);
+    failChunks = true;
+    for (let run = 0; run < 2; run++) {
+      await expect(clips.prepareExportClips(declared, { consumers: false })).rejects.toBeInstanceOf(
+        clips.ClipChunkError,
+      );
+    }
+    failChunks = false;
+    await clips.prepareExportClips(declared, { consumers: false });
+    expect(chunksRequested(SRC)).toEqual([0, 1]);
+  });
+
+  it("leaves the registry alone when nothing failed", async () => {
+    const clips = await freshClips();
+    shas.set(SRC, "sha-rec");
+    frameCounts.set(SRC, 600);
+    await clips.registerClip(SRC).promise;
+    const version = clips.clipRegistryVersion();
+    const declared = new Map([[SRC, [fromStart]]]);
+    await clips.prepareExportClips(declared, { consumers: false });
+    await clips.prepareExportClips(declared, { consumers: true });
+    expect(clips.clipRegistryVersion()).toBe(version);
+    expect(infoCalls).toEqual([SRC]);
   });
 
   it("pins what a running export holds and lets go when it ends", async () => {
@@ -656,6 +742,22 @@ describe("pending conforms", () => {
     });
     await expect(entry.promise).rejects.toBeInstanceOf(clips.ClipConformError);
     await expect(run).rejects.toThrow(/Conforming "assets\/rec\.mp4" failed: refused/);
+  });
+
+  it("keep a failed conform's message on the next export instead of retrying it", async () => {
+    const clips = await freshClips();
+    conformJobs.set(SRC, job);
+    const entry = clips.registerClip(SRC);
+    await flush();
+    await flush();
+    eventHandlers.get("kookaburra://conform-progress")?.({
+      payload: { ...job, stage: "failed", error: "refused" },
+    });
+    await expect(entry.promise).rejects.toBeInstanceOf(clips.ClipConformError);
+    conformJobs.clear();
+    await expect(
+      clips.prepareExportClips(new Map([[SRC, []]]), { consumers: false }),
+    ).rejects.toThrow(/Conforming "assets\/rec\.mp4" failed: refused/);
   });
 
   it("fail an export with a clear message past the bounded wait", async () => {
