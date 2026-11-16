@@ -170,6 +170,21 @@ function AgentKitIcon() {
   );
 }
 
+function LiveWebsiteIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M8 2.5a5.5 5.5 0 1 0 0 11a5.5 5.5 0 1 0 0-11M2.5 8h11M8 2.5c-1.6 1.6-2.2 3.4-2.2 5.5s.6 3.9 2.2 5.5M8 2.5c1.6 1.6 2.2 3.4 2.2 5.5s-.6 3.9-2.2 5.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function UpdateIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
@@ -608,6 +623,19 @@ export function SettingsApp() {
     ? "A configuration profile turns Claude off (DisableClaude)."
     : "A configuration profile turns the agent kit off, and Claude with it (DisableAgentKit).";
   const exportsPinned = managed?.exportsInProject ?? false;
+  const websitesOff = managed?.disableLiveWebsites ?? false;
+  const websiteList = managed?.allowedWebsiteOrigins ?? null;
+  const websitesLocked = websitesOff || websiteList !== null;
+  const websitesDetail = websitesOff
+    ? "Turned off by your organisation. Scenes show their captured image."
+    : websiteList === null
+      ? "Each project asks before a website opens live in its scenes."
+      : websiteList.length === 0
+        ? "Turned off by your organisation: its list allows no websites."
+        : `Your organisation allows only ${websiteList.join(", ")}.`;
+  const websitesLockDetail = websitesOff
+    ? "A configuration profile turns live websites off (DisableLiveWebsites)."
+    : "A configuration profile allows only the websites it lists (AllowedWebsiteOrigins).";
   const updatesLocked = updates.managed || (managed !== null && updateChecksLocked(managed));
   const updateServerBroken = managed !== null && updateEndpointUnusable(managed);
   const updateServer = managed ? updateServerHost(managed) : null;
@@ -899,6 +927,23 @@ export function SettingsApp() {
 
       <section className="settings-section">
         <h2>Website data</h2>
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span
+              className="settings-row-title"
+              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+            >
+              <LiveWebsiteIcon />
+              Live websites
+            </span>
+            <span className="muted settings-row-detail">{websitesDetail}</span>
+          </div>
+          {websitesLocked ? (
+            <ManagedLock detail={websitesLockDetail} />
+          ) : (
+            <span className="muted">On</span>
+          )}
+        </div>
         <div className="settings-row">
           <div className="settings-row-text">
             <span className="settings-row-title">One browser profile per project</span>

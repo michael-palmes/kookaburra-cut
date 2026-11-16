@@ -1063,14 +1063,21 @@ fn cli_exe() -> Option<String> {
     std::env::current_exe().ok().map(path_text)
 }
 
+/// The bridge folder, 0700; at first launch it comes before the workspace, so a workspace folder it makes is made private too.
+fn bridge_dir_ready(root: &Path) -> Result<(), String> {
+    if let Some(workspace) = root.parent() {
+        crate::workspace::ensure_root(workspace)?;
+    }
+    crate::privacy::private_dir(root).map_err(|e| e.to_string())
+}
+
 /// Written once per interactive launch and never removed, so a closed app still leaves kb a CLI to run.
 fn write_cli_marker(app: &AppHandle) {
     let (Some(path), Ok(root)) = (cli_exe(), bridge_root(app)) else {
         return;
     };
     let body = cli_marker_body(&path, &app.package_info().version.to_string(), now_ms());
-    let written = crate::privacy::private_dir(&root)
-        .map_err(|e| e.to_string())
+    let written = bridge_dir_ready(&root)
         .and_then(|()| serde_json::to_string_pretty(&body).map_err(|e| e.to_string()))
         .and_then(|text| write_atomic(&root.join(CLI_MARKER_FILE), &text));
     if let Err(e) = written {
@@ -3988,6 +3995,19 @@ mod tests {
             json!({ "live": false, "reason": "cancelled" })
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_first_bridge_folder_makes_the_workspace_folder_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        let home = scratch("first-bridge");
+        let workspace = home.join("Kookaburra Cut");
+        let _ = std::fs::remove_dir_all(&workspace);
+        bridge_dir_ready(&workspace.join(BRIDGE_DIR)).unwrap();
+        assert_eq!(mode(&workspace), 0o700);
+        assert_eq!(mode(&workspace.join(BRIDGE_DIR)), 0o700);
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     #[test]

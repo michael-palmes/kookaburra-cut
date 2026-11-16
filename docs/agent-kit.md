@@ -123,7 +123,12 @@ scripts/
   this repository registered), a nested `.claude`, a link,
   a folder, a file over 256 KB or not UTF-8, and a settings file that doesn't parse move aside
   unread. A root `CLAUDE.md` that isn't a shipped default moves only on the first open of a
-  folder; after that it is the person's. The same goes for hooks: on the first open everything
+  folder; after that it is the person's, though a change made outside the app since the last
+  stamp (`claudeMd`, its SHA-256 after each stamp) goes on the review sheet as "CLAUDE.md
+  changed since the last check". A first open is a folder with no finished record, or one whose
+  creation time differs from the recorded `folderCreatedNs` (a folder replaced at the path); a
+  duplicate and a workspace move clear `folderCreatedNs` so the app's own copies adopt theirs.
+  Forget, delete and a pack landing drop the record. The same goes for hooks: on the first open everything
   in `.git/hooks` but git's `.sample` files (a link moves as a link, and a `.git/hooks` that is
   a link moves whole) goes to `.git/hooks.moved-aside/<name>` (then `-2`, `-3`), inside `.git` so
   packs, the trust hash and this sweep never see it, and the review lists it. A hook that won't
@@ -135,6 +140,21 @@ scripts/
   anything is unreviewed, or a file is still present (`foreign_agent_files`, read-only, also
   catches what landed after the stamp), naming the files and what to do. Stripping a person's own "don't ask again" rule from
   `settings.local.json` shows here once too: the app can't tell it from a planted one.
+  Then `review_committed_agent_files` reads `HEAD` and the index with the app's guarded git
+  (`history::committed_agent_files`), since a Claude worktree or a checkout brings back what
+  was committed: any agent path there (`kit::steers_agent`: under a `.claude`, a `NOTES.md`
+  name or the root `kb`, folded as APFS folds) that is a link, a conflict, or not the swept
+  folder's file byte for byte keeps Claude off and is listed on a sheet whose Save and Start
+  Claude commits the folder's copies of those paths alone (`commit_agent_files`) and checks
+  again. The app's own updates skip the sheet: each stamp records `stamp`, a `kit::stamp_key`
+  for every app-owned file it left (`kit::own_stamp`), moving the keys it replaces to
+  `stampedBefore` (capped); a difference at an `app_owned` path whose committed copy's key is
+  recorded and whose folder copy is in `stamp` (or gone from a shipped skill) is committed
+  without asking. `stampsLate` marks a folder the app had checked before it recorded stamps;
+  until its history first matches (`historySynced`), a sheet of app-owned paths alone says it is
+  a one-off after updating. Only stamped skills are recorded, and committed copies over 4 MiB
+  are never read. A shipped default root `CLAUDE.md` and gitlinks pass; a refused `.git` or a git
+  error refuses the handoff.
 - `./kb`: the shim (`stamp_shim`), written from `src-tauri/templates/project-kb.sh` with mode
   0755 when missing, and rewritten (content or mode) while it carries the marker. Any other
   `kb` at the project root (a file, folder or link) arrived with the folder and would run with

@@ -15,7 +15,8 @@ checked against Anthropic's documentation on 6 November 2026.
    updater and point it at your own server with `UpdateEndpoint`
    ([Updates](#updates-in-app-or-mdm-delivery)).
 2. Force `AllowedPublisherKeyIds` (empty until you approve a publisher),
-   `DisableLiveWebsites` and `ExportsInProject`. Leave `DisableClaude` and
+   `DisableLiveWebsites` (or `AllowedWebsiteOrigins` with your own sites) and
+   `ExportsInProject`. Leave `DisableClaude` and
    `DisableAgentKit` unset where Claude Code is approved for this work; force
    both where it is not ([Force the keys](#force-the-keys)).
 3. Put the credential deny rules, `disableBypassPermissionsMode` and an
@@ -100,12 +101,14 @@ a wrong type fails closed to the most restrictive setting; the policy is read
 once per launch (`src-tauri/src/managed.rs`).
 `DisableAgentKit`, `DisablePackExport`, `ExportsInProject` and `UpdateEndpoint`
 are honoured from 0.22.3; an older build ignores them, so deploy 0.22.3 or
-later before relying on them.
+later before relying on them. `AuditLogPath` and `AllowedWebsiteOrigins` need
+0.23.0.
 
 | Key | Recommend | Why |
 | --- | --- | --- |
 | `AllowedPublisherKeyIds` | `[]`, then approved publishers' key ids | Empty means no pack imports at all; there is no separate switch. The id is recomputed from the pack's own key, so a manifest cannot claim one (`pack/commands.rs`). |
 | `DisableLiveWebsites` | `true` unless a team needs them | The only path where remote pages load inside the app. Captured images still render in previews and exports (`website.rs`). |
+| `AllowedWebsiteOrigins` | Your own sites' origins, where a team needs them live | Live websites open only from these exact origins (scheme, host and port), and a grant made before the profile stops working. Empty means none. `DisableLiveWebsites` wins over it (`managed.rs`, `website.rs`). |
 | `DisableUpdateCheck` | `true` with MDM delivery | Stops the GitHub request and the in-app install, which a standard user cannot finish anyway, since it asks for an administrator password (`updater.rs`). |
 | `UpdateEndpoint` | Your mirror's `https://` manifest URL, if you keep the in-app updater | The app then asks only that host. The archive must still carry this project's updater signature, bound to the version, so a mirror can serve only builds this project signed; a malformed value means no check at all, never a fallback to GitHub (`updater.rs`). |
 | `ExportsInProject` | `true` | Renders land in the project's `exports/` folder instead of `~/Downloads`, where they outlive the project and ride whatever syncs that folder (`resolve_export_output` in `lib.rs`). |
@@ -192,7 +195,8 @@ Pressing Allow on a project means
   `.git/hooks.moved-aside/` and the review sheet lists it; a `.git/config`
   that names a program leaves the agent with no git allow rule and a
   `Bash(git:*)` deny, and kb's own hook refuses git there too.
-- Live websites need a separate grant per origin, on another native sheet
+- Live websites need a separate grant per origin, on another native sheet,
+  and `AllowedWebsiteOrigins` limits which origins can be granted at all
   (`website.rs`).
 
 What is left: a WebKit or GPU driver bug reached through scene code, and the
@@ -266,7 +270,9 @@ On the Mac ([SECURITY.md, "On the Mac"](../SECURITY.md#on-the-mac)):
   cap) also skip Time Machine.
 - The activity log, `~/Library/Application Support/com.mpalmes.kookaburracut/logs/app.log`,
   records trust grants and declines, website grants, pack imports with their
-  key id and verdict, update checks and installs, and managed refusals: paths,
+  key id and verdict, pack exports, each Edit with Claude handoff, each
+  finished video or stills export and where it went, update checks and
+  installs, and managed refusals: paths,
   slugs, origins, key ids and versions, never file contents. Rotated at 1 MiB
   with three files kept, owner-only. Settings ▸ About reveals the folder; an
   incident responder reads it from there, since nothing sends it anywhere.
@@ -280,9 +286,9 @@ steps are in [security-overview.md](./security-overview.md#where-data-rests-and-
 
 ## Updates: in-app or MDM delivery
 
-The maintainer is the only repository admin and the only `release` reviewer,
-and can approve their own run, by recorded choice
-([SECURITY.md, "Release integrity"](../SECURITY.md#release-integrity)).
+The maintainer is the only repository admin. A release run needs a second
+reviewer's approval, never the person who started it, but the admin can change
+that rule ([SECURITY.md, "Release integrity"](../SECURITY.md#release-integrity)).
 
 **The in-app updater** installs only an archive with an ed25519 signature from
 the key built into the app, bound to the announced version so a manifest
@@ -290,10 +296,10 @@ cannot roll an install back, holding a Developer ID signed and notarised app.
 Fixes arrive at the next launch (the automatic check runs at most every 20
 hours), and only the latest release receives them. But both keys, the tag
 signer and the updater key, sit behind one GitHub account: whoever took it
-over could change the tag-signer list, approve a run and ship a properly
-signed update to every Mac. The updater adds no second person. `UpdateEndpoint`
-moves the request to your server and nothing else: the archive it serves must
-still carry this project's signature.
+over could change the tag-signer list and the release reviewers, approve a
+run and ship a properly signed update to every Mac. The updater adds no second
+person. `UpdateEndpoint` moves the request to your server and nothing else:
+the archive it serves must still carry this project's signature.
 
 **MDM delivery of verified builds** makes your team the second reviewer. A
 release reaches the fleet only after your check ([Verify a
@@ -308,6 +314,6 @@ the signature, the notarisation and the attestation all come from it. Your
 delay and your review are the real control.
 
 **Recommendation:** MDM delivery with `DisableUpdateCheck` forced on, a short
-soak for ordinary releases and a fast lane for security ones; revisit once a
-second reviewer is added to the `release` environment
+soak for ordinary releases and a fast lane for security ones; revisit once the
+`release` environment's rules sit beyond the admin's reach
 ([SECURITY.md, "Not yet"](../SECURITY.md#not-yet)).

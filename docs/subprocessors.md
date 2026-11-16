@@ -15,7 +15,7 @@ turn it off. Each one is reached only after a person acts. What changes at
 | --- | --- | --- | --- | --- | --- |
 | GitHub | The update check, with consent or on Check for Updates; the download, on Install and relaunch | One GET for `latest.json`; then the signed archive comes down | None added by the app | Settings ▸ Updates; `DisableUpdateCheck`; `UpdateEndpoint` | [updater.rs](../src-tauri/src/updater.rs), [tauri.conf.json](../src-tauri/tauri.conf.json) |
 | Anthropic, through the person's own Claude Code | Only after Edit with Claude, or Claude Code started in the folder by the person | Nothing from the app. Claude Code sends project files as the person works | None from the app; Claude Code uses the person's own login | `DisableClaude`; `DisableAgentKit` | [claude_app.rs](../src-tauri/src/claude_app.rs) |
-| Websites a person approves | After Allow for that origin, in the editor or a Present hold | The page loads like a browser tab | None added by the app; the site's own cookies | Revoke in the inspector; `DisableLiveWebsites` | [website.rs](../src-tauri/src/website.rs) |
+| Websites a person approves | After Allow for that origin, in the editor or a Present hold | The page loads like a browser tab | None added by the app; the site's own cookies | Revoke in the inspector; `DisableLiveWebsites`, or `AllowedWebsiteOrigins` for your own sites only | [website.rs](../src-tauri/src/website.rs) |
 
 Apple is not on this list: it notarises each release at build time and
 receives nothing from the app at run time ([below](#apple-build-time-only)).
@@ -81,7 +81,7 @@ with Anthropic; it is not a subprocessor of this vendor. Get Claude opens
   live in one WebKit profile separate from Safari, shared by every approved
   project, and never travel in a pack.
 - **Off switch.** Revoke the origin in the scene's inspector; Settings ▸
-  Website data clears one site or all; `DisableLiveWebsites` for a fleet.
+  Website data clears one site or all; `DisableLiveWebsites` or `AllowedWebsiteOrigins` for a fleet.
 - **Behind it.** [website.rs](../src-tauri/src/website.rs),
   [scene-website.md](./scene-website.md#accepted-residual-risk).
 
@@ -108,7 +108,8 @@ reports nothing about its use to anyone. To check:
   outside page is granted any of the app's commands
   ([capabilities](../src-tauri/capabilities/)).
 - No Rust code links an HTTP client of its own: reqwest arrives only through
-  Tauri and the updater plugin ([Cargo.toml](../src-tauri/Cargo.toml)).
+  the updater plugin, and [deny.toml](../src-tauri/deny.toml) bans every other
+  way in.
 - Scene code runs behind a guard that refuses every network API but the app's
   own files ([realmGuard.ts](../src/stage/realmGuard.ts)), and the release
   ffmpeg is built with `--disable-network`

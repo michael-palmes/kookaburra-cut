@@ -533,6 +533,9 @@ fn origin_granted(
     origin: &str,
     loopback: bool,
 ) -> Result<bool, String> {
+    if !crate::managed::website_origin_allowed(origin) {
+        return Ok(false);
+    }
     if loopback {
         return Ok(state
             .0
@@ -616,6 +619,10 @@ fn navigation_allowed(app: &AppHandle, view_id: &str, target: &Url) -> bool {
             view.requested_origins.contains(&origin),
         )
     };
+    if crate::managed::deny_website_origin(&origin).is_err() {
+        emit_view_state(app, &owner, view_id, "blocked", Some(origin));
+        return false;
+    }
     let granted = requested
         && origin_granted(
             app,
@@ -756,6 +763,7 @@ pub fn website_open(
     }
     let project_key = canonical_project_key(&app, &settings, &request.project_path)?;
     let (authored_url, origin, loopback) = parse_website_url(&request.url)?;
+    crate::managed::deny_website_origin(&origin)?;
     let mut requested_origins = normalise_requested_origins(&request.requested_origins)?;
     requested_origins.insert(origin.clone());
     let id = view_id(&owner, &project_key, &request.scene_stem);
@@ -961,6 +969,7 @@ pub async fn website_grant_origin(
     require_caller(&webview, &["main"])?;
     let project_key = canonical_project_key(&app, &settings, &project_path)?;
     let (_, origin, loopback) = parse_navigation_url(&origin)?;
+    crate::managed::deny_website_origin(&origin)?;
     let granted = origin_granted(&app, &settings, &state, &project_key, &origin, loopback)?;
     {
         let mut registry = state.0.lock().map_err(|_| "website state poisoned")?;
@@ -1075,6 +1084,7 @@ pub fn website_list_grants(
             .filter(|(key, _)| key == &project_key)
             .map(|(_, origin)| origin.clone()),
     );
+    origins.retain(|origin| crate::managed::website_origin_allowed(origin));
     origins.sort();
     origins.dedup();
     Ok(origins)
@@ -1112,6 +1122,7 @@ pub fn website_resume_pending(
         if !requested.contains(&origin) {
             return Err("pending Website origin is not requested by this scene".into());
         }
+        crate::managed::deny_website_origin(&origin)?;
         if !origin_granted(&app, &settings, &state, &project_key, &origin, loopback)? {
             return Err("pending Website origin is not approved for this project".into());
         }

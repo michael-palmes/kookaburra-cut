@@ -44,11 +44,20 @@ jobs:
       - name: Build frontend
         run: pnpm build
 
-      # cargo-fuzz needs nightly's coverage flags; rust-toolchain.toml pins stable for everything else.
+      # cargo-fuzz needs nightly's coverage flags; rust-toolchain.toml pins stable for everything else. One dated nightly, named in src-tauri/fuzz/nightly-toolchain.
+      - name: Read the pinned nightly
+        run: |
+          nightly="$(cat src-tauri/fuzz/nightly-toolchain)"
+          if ! [[ "$nightly" =~ ^nightly-[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+            echo "::error::src-tauri/fuzz/nightly-toolchain must name one dated nightly"
+            exit 1
+          fi
+          echo "NIGHTLY=$nightly" >> "$GITHUB_ENV"
+
       - name: Set up Rust nightly
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
-          toolchain: nightly
+          toolchain: ${{ env.NIGHTLY }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
@@ -58,7 +67,7 @@ jobs:
       # tauri-build validates externalBin paths; the real sidecars are gitignored and nothing fuzzed runs them.
       - name: Stub ffmpeg sidecars
         run: |
-          triple="$(rustc +nightly -vV | sed -n 's/host: //p')"
+          triple="$(rustc +"$NIGHTLY" -vV | sed -n 's/host: //p')"
           mkdir -p src-tauri/bin
           for bin in ffmpeg ffprobe; do
             printf '#!/bin/sh\nexit 0\n' > "src-tauri/bin/${bin}-${triple}"
@@ -70,14 +79,14 @@ jobs:
         run: bash scripts/setup-models.sh --stub
 
       - name: Install cargo-fuzz
-        run: cargo +nightly install --locked cargo-fuzz@0.13.2
+        run: cargo +"$NIGHTLY" install --locked cargo-fuzz@0.13.2
 
       # The RUSTFLAGS let rten's unused cdylib link under sancov (src-tauri/fuzz/README.md says why).
       - name: Build the targets
         working-directory: src-tauri
         env:
           RUSTFLAGS: -Clink-arg=-Wl,-undefined,dynamic_lookup
-        run: cargo +nightly fuzz build -s none
+        run: cargo +"$NIGHTLY" fuzz build -s none
 
       # Each target runs a minute from its seeds; every target runs even after a crash, which fails the job with its input under fuzz/artifacts.
       - name: Fuzz
@@ -86,9 +95,9 @@ jobs:
           RUSTFLAGS: -Clink-arg=-Wl,-undefined,dynamic_lookup
         run: |
           crashed=""
-          for target in $(cargo +nightly fuzz list); do
+          for target in $(cargo +"$NIGHTLY" fuzz list); do
             mkdir -p "fuzz/corpus/$target"
-            cargo +nightly fuzz run -s none "$target" "fuzz/corpus/$target" "fuzz/seeds/$target" -- \
+            cargo +"$NIGHTLY" fuzz run -s none "$target" "fuzz/corpus/$target" "fuzz/seeds/$target" -- \
               -max_total_time=60 -rss_limit_mb=2048 -max_len=65536 || crashed="$crashed $target"
           done
           if [ -n "$crashed" ]; then

@@ -191,6 +191,98 @@ fn dev_sets_are_granted_only_by_the_dev_capabilities() {
     }
 }
 
+/// Window label -> the core permissions (`core:…`) its capabilities in `dir` grant.
+fn core_grants(dir: &str) -> BTreeMap<String, BTreeSet<String>> {
+    let mut windows: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for path in json_files(&Path::new(MANIFEST_DIR).join(dir)) {
+        let doc = read_json(&path);
+        let core: BTreeSet<String> = doc["permissions"]
+            .as_array()
+            .expect("permissions")
+            .iter()
+            .filter_map(|p| p.as_str())
+            .filter(|p| p.starts_with("core:"))
+            .map(str::to_string)
+            .collect();
+        for label in doc["windows"].as_array().expect("windows") {
+            windows
+                .entry(label.as_str().unwrap().to_string())
+                .or_default()
+                .extend(core.iter().cloned());
+        }
+    }
+    windows
+}
+
+#[test]
+fn each_window_holds_only_the_core_permissions_it_uses() {
+    const EVENTS: [&str; 2] = ["core:event:allow-listen", "core:event:allow-unlisten"];
+    const DRAG: [&str; 2] = [
+        "core:window:allow-start-dragging",
+        "core:window:allow-internal-toggle-maximize",
+    ];
+    const PATHS: [&str; 2] = ["core:path:allow-resolve-directory", "core:path:allow-join"];
+    let set = |parts: &[&[&str]]| -> BTreeSet<String> {
+        parts.iter().flat_map(|p| p.iter()).map(|s| s.to_string()).collect()
+    };
+    let close = ["core:window:allow-close", "core:window:allow-destroy"];
+    let emit = ["core:event:allow-emit"];
+    let version = ["core:app:allow-version"];
+    let expected = BTreeMap::from([
+        (
+            "main".to_string(),
+            set(&[
+                &EVENTS,
+                &emit,
+                &version,
+                &PATHS,
+                &DRAG,
+                &["core:window:allow-set-title", "core:window:allow-available-monitors"],
+            ]),
+        ),
+        ("editor".to_string(), set(&[&EVENTS, &emit, &DRAG, &close])),
+        ("packs".to_string(), set(&[&EVENTS, &DRAG, &close])),
+        (
+            "present".to_string(),
+            set(&[
+                &EVENTS,
+                &PATHS,
+                &DRAG,
+                &close,
+                &[
+                    "core:window:allow-set-fullscreen",
+                    "core:window:allow-is-fullscreen",
+                    "core:window:allow-set-position",
+                    "core:window:allow-set-cursor-visible",
+                ],
+            ]),
+        ),
+        ("render".to_string(), set(&[&EVENTS, &emit, &PATHS])),
+        ("settings".to_string(), set(&[&EVENTS, &version])),
+        (
+            "theme-editor".to_string(),
+            set(&[&EVENTS, &emit, &PATHS, &DRAG, &close, &["core:window:allow-set-title"]]),
+        ),
+    ]);
+    assert_eq!(core_grants("capabilities"), expected);
+    for dir in ["capabilities", "capabilities/dev"] {
+        for (label, grants) in core_grants(dir) {
+            for grant in grants {
+                let area = grant.split(':').nth(1).unwrap_or_default();
+                assert!(
+                    !grant.ends_with(":default"),
+                    "{label} holds {grant}: name each core permission it uses"
+                );
+                assert!(
+                    !matches!(area, "menu" | "tray" | "image" | "resources" | "webview")
+                        && grant != "core:event:allow-emit-to",
+                    "{label} holds {grant}, which no window uses"
+                );
+            }
+        }
+    }
+}
+
 #[test]
 fn every_window_has_a_capability() {
     let labels: BTreeSet<String> = capabilities("capabilities").into_keys().collect();

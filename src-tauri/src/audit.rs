@@ -158,6 +158,33 @@ pub(crate) fn path(path: &Path) -> String {
     field(&path.to_string_lossy())
 }
 
+/// Edit with Claude handed the project over: which and where, never what it holds.
+pub(crate) fn handoff_line(slug: &str, dir: &Path) -> String {
+    format!(
+        "[claude] {}: handed to the Claude app ({})",
+        field(slug),
+        path(dir)
+    )
+}
+
+/// A finished video or stills export: `what` is its kind, aspect and format.
+pub(crate) fn export_line(project: &str, what: &str, dest: &Path) -> String {
+    format!(
+        "[export] {}: {} saved to {}",
+        field(project),
+        field(what),
+        path(dest)
+    )
+}
+
+pub(crate) fn pack_export_line(items: usize, key_id: &str, dest: &Path) -> String {
+    format!(
+        "[pack] exported {items} items, key {} to {}",
+        field(key_id),
+        path(dest)
+    )
+}
+
 /// `YYYY-MM-DD_HH-MM-SS`, the plugin's rotated-file stamp.
 pub(crate) fn is_stamp(text: &str) -> bool {
     text.len() == 19
@@ -492,6 +519,37 @@ mod tests {
             line(at, "t", log::Level::Info, &long).ends_with(&long),
             "never capped"
         );
+    }
+
+    #[test]
+    fn work_leaving_the_app_is_one_line_naming_what_and_where() {
+        let folder = Path::new("/Users/x/Kookaburra Cut/a\n[INFO] [trust] b");
+        assert_eq!(
+            handoff_line("product-tour", Path::new("/Users/x/Kookaburra Cut/product-tour")),
+            "[claude] product-tour: handed to the Claude app (/Users/x/Kookaburra Cut/product-tour)"
+        );
+        assert_eq!(
+            export_line("product-tour", "video 16x9 mp4", Path::new("/Users/x/Downloads/product-tour-16x9.mp4")),
+            "[export] product-tour: video 16x9 mp4 saved to /Users/x/Downloads/product-tour-16x9.mp4"
+        );
+        assert_eq!(
+            pack_export_line(
+                3,
+                "ab12cd34",
+                Path::new("/Users/x/Desktop/Highlights.kbpack")
+            ),
+            "[pack] exported 3 items, key ab12cd34 to /Users/x/Desktop/Highlights.kbpack"
+        );
+        for written in [
+            handoff_line("p\nq", folder),
+            export_line("p", "video\n16x9", folder),
+            pack_export_line(1, "k\r", folder),
+        ] {
+            assert!(
+                !written.contains('\n') && !written.contains('\r'),
+                "{written}"
+            );
+        }
     }
 
     #[test]

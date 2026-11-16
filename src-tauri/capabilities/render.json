@@ -3,5 +3,14 @@
   "identifier": "render",
   "description": "Capabilities for the Kookaburra Cut hidden render window: read and render projects, serve thumbs, posters and bridge captures.",
   "windows": ["render"],
-  "permissions": ["core:default", "project-read", "project-render", "render-window"]
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:event:allow-emit",
+    "core:path:allow-resolve-directory",
+    "core:path:allow-join",
+    "project-read",
+    "project-render",
+    "render-window"
+  ]
 }

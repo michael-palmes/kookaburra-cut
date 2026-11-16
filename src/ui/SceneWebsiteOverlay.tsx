@@ -1,7 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useCameraEditStore } from "../engine/cameraEditStore";
-import { plainError, useManagedPolicy } from "../engine/managed";
+import { plainError, useManagedPolicy, websiteOriginAllowed } from "../engine/managed";
 import { type LoadedProject, projectFolderPath, sceneFileStem } from "../engine/project";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 import { resolveSceneWebsite, sceneWebsiteLayout } from "../engine/sceneWebsite";
@@ -161,7 +161,10 @@ export function SceneWebsiteOverlay({
   const { present: modalBlocked, presentRef: modalBlockedRef } = useBlockingModalOverlay();
   // Locked until the policy is known: the native command refuses either way, so the panel never offers what it cannot open.
   const managed = useManagedPolicy();
-  const websitesLocked = managed === null || managed.disableLiveWebsites;
+  const websitesOff = managed === null || managed.disableLiveWebsites;
+  const websitesLocked =
+    websitesOff ||
+    (!!website?.url && URL.canParse(website.url) && !websiteOriginAllowed(managed, website.url));
   suspendedRef.current = suspended;
   const blocked = suspended || modalBlocked;
 
@@ -461,7 +464,9 @@ export function SceneWebsiteOverlay({
       {!current.active && !current.pendingOrigin && websitesLocked && (
         <button type="button" className="scene-website-activate locked" style={pageStyle} disabled>
           <LockGlyph />
-          Live websites are managed by your organisation
+          {websitesOff
+            ? "Live websites are managed by your organisation"
+            : "Your organisation doesn't allow this website live"}
         </button>
       )}
       {!current.active && !current.pendingOrigin && !websitesLocked && (

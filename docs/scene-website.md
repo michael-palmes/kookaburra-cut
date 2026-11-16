@@ -102,6 +102,12 @@ local grant, once per origin per project folder path; declining adds nothing, an
 stays blocked until the scene opens it again. Present never prompts or mutates a project;
 it denies unapproved navigation and leaves the capture visible.
 
+A configuration profile can narrow this further (`docs/mdm.md`):
+`DisableLiveWebsites` refuses every open, and `AllowedWebsiteOrigins` refuses
+any origin off its list, matched exactly on scheme, host and port. Rust checks
+the policy before a grant counts and before any sheet asks, so an off-list
+navigation is blocked without a prompt and a grant made earlier does nothing.
+
 New-window requests are converted to same-panel navigation. HTTP
 authentication and client-certificate challenges are cancelled. Form and
 cookie-based authentication is supported. Subresources retain ordinary browser

@@ -610,8 +610,8 @@ class SvgImportTests(ImportCase):
         self.assertEqual((again["path"], again["copied"]), ("assets/mark.png", False))
 
     def test_a_file_reference_never_reaches_the_raster(self) -> None:
-        secret = self.source("secret.png", png([[(255, 0, 0, 255), (0, 255, 0, 255)], [(0, 0, 255, 255), (9, 9, 9, 255)]]))
-        svg = f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="64" height="64"><image xlink:href="file://{secret}" width="64" height="64"/></svg>'
+        local = self.source("local.png", png([[(255, 0, 0, 255), (0, 255, 0, 255)], [(0, 0, 255, 255), (9, 9, 9, 255)]]))
+        svg = f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="64" height="64"><image xlink:href="file://{local}" width="64" height="64"/></svg>'
         res = self.add(str(self.source("sneaky.svg", svg.encode("utf-8"))), code=1)
         self.assertEqual(res["refused"], "blank", "with the image gone nothing is left to draw")
 
@@ -740,13 +740,13 @@ class FolderTests(ImportCase):
 
     def test_links_are_never_followed_in_or_out(self) -> None:
         folder = self.kit()
-        target = self.source("elsewhere/secret.png", png_bytes(3, 3))
+        target = self.source("elsewhere/away.png", png_bytes(3, 3))
         os.symlink(target, folder / "link.png")
         os.symlink(target.parent, folder / "linked-dir")
         os.symlink(folder / "Logos" / "Mark Final (1).PNG", folder / "inside-link.png")
         res = self.folder(str(folder))
         self.assertEqual(sorted(s["file"] for s in res["skipped"]), ["inside-link.png", "link.png", "linked-dir"])
-        self.assertFalse(any("secret" in i["path"] or "link" in i["path"] for i in res["items"]))
+        self.assertFalse(any("away" in i["path"] or "link" in i["path"] for i in res["items"]))
 
     def test_hidden_and_credential_names_are_left_alone(self) -> None:
         folder = self.kit()

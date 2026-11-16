@@ -342,6 +342,8 @@ struct ExportRun {
     mezz_dir: Option<PathBuf>,
     /// The soundtrack copy ffmpeg reads, so an edit to the music mid-export can't reach the film.
     audio_snapshot: Option<PathBuf>,
+    /// The project and `video <aspect> <format>`, for the log line once the film is in place.
+    landed: (String, String),
 }
 
 impl ExportRun {
@@ -637,6 +639,13 @@ fn start_export(
         partial,
         mezz_dir: run_mezz_dir,
         audio_snapshot,
+        landed: (
+            options
+                .project_slug
+                .clone()
+                .unwrap_or_else(|| options.project_id.clone()),
+            format!("video {} {ext}", options.aspect),
+        ),
     });
     *state.active.lock().map_err(|_| "export state poisoned")? = Some(ActiveExport {
         child,
@@ -886,6 +895,10 @@ async fn finish_export(
         flash.set(None);
     }
     result?;
+    log::info!(
+        "{}",
+        audit::export_line(&run.landed.0, &run.landed.1, &run.output)
+    );
     history.note(&run.output);
     let (report, unavailable) = finish_flash_tap(detector);
     write_flash_report(&run.output, report.as_ref());
@@ -2187,6 +2200,7 @@ mod tests {
             partial: PathBuf::from("/d/.out.part.mp4"),
             mezz_dir: None,
             audio_snapshot: None,
+            landed: (String::new(), String::new()),
         }
     }
 

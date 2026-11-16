@@ -30,6 +30,8 @@
                 <true/>
                 <key>DisableLiveWebsites</key>
                 <true/>
+                <key>AllowedWebsiteOrigins</key>
+                <array/>
                 <key>AllowedPublisherKeyIds</key>
                 <array/>
                 <key>DisablePackExport</key>

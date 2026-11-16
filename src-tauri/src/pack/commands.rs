@@ -683,6 +683,8 @@ pub async fn build_pack(
         files,
     };
 
+    let key_id =
+        key::key_id_of(&manifest.publisher.public_key).unwrap_or_else(|| "unreadable".into());
     // Sign the EXACT bytes we store, so verification never depends on JSON re-serialisation being stable.
     let manifest_json = serde_json::to_vec(&manifest).map_err(|e| e.to_string())?;
     let signature = key::sign_manifest(&app, &manifest_json)?;
@@ -714,6 +716,10 @@ pub async fn build_pack(
         &move || cancelled.load(Ordering::SeqCst),
     )?;
 
+    log::info!(
+        "{}",
+        crate::audit::pack_export_line(closure.contents.item_count(), &key_id, &summary.path)
+    );
     if let Ok(mut last) = state.last_built.lock() {
         *last = Some(summary.path.clone());
     }

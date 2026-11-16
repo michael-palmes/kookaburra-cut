@@ -27,11 +27,9 @@ WORKSPACE_DIR_NAME = "Kookaburra Cut"
 
 CLEAN_CAP = 500
 _UNSAFE = re.compile(
-    "[\u2028\u2029]|"
-    "[\x00-\x08\x0b-\x1f\x7f-\x9f­؀-؅؜۝܏࢐࢑࣢᠎"
-    "​-‏‪-‮⁠-⁤⁦-⁯﻿￹-￻"
-    "\U000110bd\U000110cd\U00013430-\U0001343f\U0001bca0-\U0001bca3\U0001d173-\U0001d17a"
-    "\U000e0001\U000e0020-\U000e007f]"
+    r"[\x00-\x08\x0b-\x1f\x7f-\x9f"
+    r"\u00ad\u0600-\u0605\u061c\u06dd\u070f\u0890-\u0891\u08e2\u180e\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u206f"
+    r"\ufeff\ufff9-\ufffb\U000110bd\U000110cd\U00013430-\U0001343f\U0001bca0-\U0001bca3\U0001d173-\U0001d17a\U000e0001\U000e0020-\U000e007f]"
 )
 
 

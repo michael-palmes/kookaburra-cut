@@ -68,6 +68,7 @@ package") lists the commands to check a download yourself. The receipt is
 | `DisablePackExport` | boolean | `true` removes File ▸ Export Pack…, and `open_pack_export`, `build_pack` and `rotate_publisher_key` refuse before any dialog, so the app never creates a pack signing key in the Keychain (`pack/commands.rs`, `pack/publisher.rs`). Settings ▸ Publisher shows locked rows. Imports stay with `AllowedPublisherKeyIds` |
 | `ExportsInProject` | boolean | `true` keeps every video and stills export started in the app in the project's `exports/` folder: a request for Downloads is routed there rather than refused (`export_dir_kind` in `lib.rs`), `set_export_to_downloads` records off whatever it is asked, and Settings ▸ Video locks Save exports to Downloads. `.kbpack` files keep their Save dialog; terminal and bridge runs already use the project |
 | `UpdateEndpoint` | string | An `https` URL of the update manifest your organisation serves, with no query, fragment, login or `{{…}}` template. A release build's `check_for_update` asks it instead of GitHub (`updater.rs`). The archive's signature is still checked against the key pinned in the app (`plugins.updater.pubkey` in `tauri.conf.json`), so a mirror can serve only builds this project signed; the manifest's `platforms.darwin-aarch64.url` must point at the mirror's copy of the archive. A malformed value means no check at all, never a fallback to GitHub: Check for Updates is gone and Settings ▸ Updates shows the lock with the reason. `DisableUpdateCheck` still wins |
+| `AllowedWebsiteOrigins` | array of strings | Live websites open only from these origins: `https://host`, `https://host:port`, or `http://localhost:port` (also `127.0.0.1` and `[::1]`), with no path, login or `*`. Scheme, host and port match exactly, as the browser compares origins, so `https://example.com` does not cover `https://www.example.com` or `http://example.com`; list each one. `website_open`, every navigation, `website_grant_origin` and `website_resume_pending` refuse any other origin in Rust (`deny_website_origin` in `managed.rs`), before a grant counts and before any sheet asks. A grant a person made before the profile stays on the Mac but does nothing, the inspector stops listing it, and it returns only if the profile is lifted. An empty forced array, or anything but an array, means no live websites; a malformed entry allows nothing. `DisableLiveWebsites` wins over it. Settings ▸ Website data shows the list with a lock, and the editor's website panel shows the lock for a site off it |
 | `AuditLogPath` | string | An absolute folder outside every home folder, such as `/Library/Logs/Kookaburra Cut`. The app also appends every line of its log to `<folder>/<login>.log`, the login name read from the password database (`audit::mirror_at_launch`), so a collector running as root (Jamf, Kandji, Intune, a SIEM forwarder) can pick it up. The copy is 0600, owned by the person, and rotates like `app.log` at 1 MiB with two older files kept (`audit_mirror.rs`). A missing folder is made 0700, which suits a Mac with one account; see "A copy for your collector" for shared Macs. A relative, `~`, `.` or `..` path, a home-folder path, a folder the account can't write or list, or a file there that is a link, a hard link or another account's means no copy and one `[managed]` line, never a failed launch, and the local log carries on either way. Settings ▸ About ▸ Export log tells the person their organisation's profile asks for a copy |
 
 No pack imports at all is `AllowedPublisherKeyIds` forced to an empty array;
@@ -178,6 +179,17 @@ and add `UpdateEndpoint` beside the other keys:
 <string>https://updates.example.com/kookaburra-cut/latest.json</string>
 ```
 
+To keep live websites but only from your own sites, leave `DisableLiveWebsites`
+out and add `AllowedWebsiteOrigins`:
+
+```xml
+<key>AllowedWebsiteOrigins</key>
+<array>
+  <string>https://www.example.com</string>
+  <string>https://docs.example.com</string>
+</array>
+```
+
 To keep a copy of the app log where your collector reads it, add
 `AuditLogPath` the same way:
 
@@ -191,7 +203,11 @@ To keep a copy of the app log where your collector reads it, add
 The app's own log is `~/Library/Application Support/com.mpalmes.kookaburracut/logs/app.log`
 (`src-tauri/src/audit.rs`), owner-only, so a collector running as root can
 already read it per user. `AuditLogPath` puts a copy at one path you choose
-instead.
+instead. Besides trust, websites, pack imports, updates and refusals, it
+records the moments work leaves the app: each Edit with Claude handoff
+(`[claude]`), each finished video or stills export and the file it wrote
+(`[export]`) and each pack export with its key id (`[pack]`), by name and path
+only.
 
 On a Mac with more than one account, create the folder in your deployment (a
 package postinstall or an MDM script) before anyone launches the app, so each
@@ -224,7 +240,7 @@ Each line is one event (`audit::line`):
 The time is UTC in ISO 8601 with milliseconds, then the Rust module, the level
 (`INFO` or `WARN`) and the message, which most often starts with an area tag
 (`[trust]`, `[pack]`, `[managed]`, `[kit]`, `[workspace]`, `[website]`,
-`[update]`, `[history]`, `[privacy]`, `[audit]`). Every control character in a
+`[claude]`, `[export]`, `[update]`, `[history]`, `[privacy]`, `[audit]`). Every control character in a
 message is escaped as `\u000A` and the like, so a file or folder name can never
 start a line of its own. The message is prose, not key=value pairs; this
 pattern splits a line for a SIEM:
@@ -269,7 +285,11 @@ never hold what is in a file (`SECURITY.md`, "On the Mac"). With
    match the end of `app.log`, and Settings ▸ About ▸ Export log carries the
    note. A malformed or unusable value leaves one `[managed] AuditLogPath ...
    keeping no copy of the app log` line instead (`audit::log_mirror_at_boot`).
-9. The negative check: without a profile,
+9. Under `AllowedWebsiteOrigins`, Settings ▸ Website data shows the list with
+   the lock, a scene whose website is off the list shows the lock in place of
+   Open live website, and a link on a listed site to any other origin stays
+   blocked without a sheet.
+10. The negative check: without a profile,
    `defaults write com.mpalmes.kookaburracut DisableClaude -bool true` changes
    nothing, because the key is set but not forced. `defaults delete` it
    afterwards.
@@ -303,7 +323,7 @@ sudo rm "/Library/Managed Preferences/$USER/com.mpalmes.kookaburracut.plist"
 ## For contributors
 
 - Every guard lives in `src-tauri/src/managed.rs`: `deny_claude`,
-  `deny_live_websites`, `deny_update_check`, `deny_workspace_change`,
+  `deny_live_websites`, `deny_website_origin`, `deny_update_check`, `deny_workspace_change`,
   `deny_publisher`, `deny_agent_kit`, `deny_pack_export`,
   `managed_update_endpoint`, `exports_in_project` and `audit_log_dir`, each a
   one-line call at the top of the command it governs (`audit_log_dir` in
