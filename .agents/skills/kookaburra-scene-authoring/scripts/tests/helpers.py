@@ -379,7 +379,8 @@ def run_git(project: Path, args: List[str]) -> str:
     env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
     for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
         env.pop(key, None)
-    proc = subprocess.run(["git", "-C", str(project)] + args, capture_output=True, text=True, env=env)
+    # A commit's detached auto maintenance would outlive this call and prune through links a test plants in .git.
+    proc = subprocess.run(["git", "-c", "maintenance.auto=false", "-C", str(project)] + args, capture_output=True, text=True, env=env)
     if proc.returncode != 0:
         raise AssertionError(f"git {args} failed: {proc.stderr}")
     return proc.stdout
