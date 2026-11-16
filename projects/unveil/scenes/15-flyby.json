@@ -1,11 +1,688 @@
 {
   "version": 1,
   "name": "Fly-by",
-  "text": {
-    "label": "15 · Fly-by",
-    "bars": "Bar 24 · Fill into 25",
-    "title": "",
-    "note": "Fly past the line-up",
-    "e1": "A foreground device wipes the frame"
+  "devices": [
+    {
+      "id": "p1",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "media": {
+        "src": "assets/fairywren-today-dark-phone.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [-3.1, -1.825, -1.9],
+        "rotationDeg": [-90, 0, -4],
+        "scale": 1.0,
+        "ground": true
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "soft",
+      "finish": {
+        "frame": {
+          "roughness": 0.3,
+          "metalness": 1,
+          "anisotropy": 0.4,
+          "grain": 1,
+          "grainScale": 20000,
+          "brushedMap": 0,
+          "chamferRoughness": 0.08,
+          "envIntensity": 1.6,
+          "iblTaps": 7
+        },
+        "polished": {
+          "roughness": 0.06,
+          "envIntensity": 1.8
+        },
+        "glass": {
+          "roughness": 0.05,
+          "ior": 1.5,
+          "specularIntensity": 1,
+          "envIntensity": 1.5
+        },
+        "back": {
+          "roughness": 0.45,
+          "metalness": 0,
+          "tint": 0.55,
+          "clearcoat": 0.6,
+          "clearcoatRoughness": 0.12,
+          "envIntensity": 1.3
+        }
+      }
+    },
+    {
+      "id": "p2",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "media": {
+        "src": "assets/fairywren-focus-dark-phone.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [-1.55, -1.825, -0.2],
+        "rotationDeg": [-90, 0, -2],
+        "scale": 1.0,
+        "ground": true
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "soft",
+      "finish": {
+        "frame": {
+          "roughness": 0.3,
+          "metalness": 1,
+          "anisotropy": 0.4,
+          "grain": 1,
+          "grainScale": 20000,
+          "brushedMap": 0,
+          "chamferRoughness": 0.08,
+          "envIntensity": 1.6,
+          "iblTaps": 7
+        },
+        "polished": {
+          "roughness": 0.06,
+          "envIntensity": 1.8
+        },
+        "glass": {
+          "roughness": 0.05,
+          "ior": 1.5,
+          "specularIntensity": 1,
+          "envIntensity": 1.5
+        },
+        "back": {
+          "roughness": 0.45,
+          "metalness": 0,
+          "tint": 0.55,
+          "clearcoat": 0.6,
+          "clearcoatRoughness": 0.12,
+          "envIntensity": 1.3
+        }
+      }
+    },
+    {
+      "id": "p3",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "media": {
+        "src": "assets/fairywren-insights-dark-phone.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [0.0, -1.825, 0.6],
+        "rotationDeg": [-90, 0, 0.0],
+        "scale": 1.0,
+        "ground": true
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "soft",
+      "finish": {
+        "frame": {
+          "roughness": 0.3,
+          "metalness": 1,
+          "anisotropy": 0.4,
+          "grain": 1,
+          "grainScale": 20000,
+          "brushedMap": 0,
+          "chamferRoughness": 0.08,
+          "envIntensity": 1.6,
+          "iblTaps": 7
+        },
+        "polished": {
+          "roughness": 0.06,
+          "envIntensity": 1.8
+        },
+        "glass": {
+          "roughness": 0.05,
+          "ior": 1.5,
+          "specularIntensity": 1,
+          "envIntensity": 1.5
+        },
+        "back": {
+          "roughness": 0.45,
+          "metalness": 0,
+          "tint": 0.55,
+          "clearcoat": 0.6,
+          "clearcoatRoughness": 0.12,
+          "envIntensity": 1.3
+        }
+      }
+    },
+    {
+      "id": "p4",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "media": {
+        "src": "assets/fairywren-month-dark-phone.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [1.55, -1.825, -0.2],
+        "rotationDeg": [-90, 0, 2],
+        "scale": 1.0,
+        "ground": true
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "soft",
+      "finish": {
+        "frame": {
+          "roughness": 0.3,
+          "metalness": 1,
+          "anisotropy": 0.4,
+          "grain": 1,
+          "grainScale": 20000,
+          "brushedMap": 0,
+          "chamferRoughness": 0.08,
+          "envIntensity": 1.6,
+          "iblTaps": 7
+        },
+        "polished": {
+          "roughness": 0.06,
+          "envIntensity": 1.8
+        },
+        "glass": {
+          "roughness": 0.05,
+          "ior": 1.5,
+          "specularIntensity": 1,
+          "envIntensity": 1.5
+        },
+        "back": {
+          "roughness": 0.45,
+          "metalness": 0,
+          "tint": 0.55,
+          "clearcoat": 0.6,
+          "clearcoatRoughness": 0.12,
+          "envIntensity": 1.3
+        }
+      }
+    },
+    {
+      "id": "p5",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "media": {
+        "src": "assets/fairywren-share-dark-phone.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [3.1, -1.825, -1.9],
+        "rotationDeg": [-90, 0, 4],
+        "scale": 1.0,
+        "ground": true
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "soft",
+      "finish": {
+        "frame": {
+          "roughness": 0.3,
+          "metalness": 1,
+          "anisotropy": 0.4,
+          "grain": 1,
+          "grainScale": 20000,
+          "brushedMap": 0,
+          "chamferRoughness": 0.08,
+          "envIntensity": 1.6,
+          "iblTaps": 7
+        },
+        "polished": {
+          "roughness": 0.06,
+          "envIntensity": 1.8
+        },
+        "glass": {
+          "roughness": 0.05,
+          "ior": 1.5,
+          "specularIntensity": 1,
+          "envIntensity": 1.5
+        },
+        "back": {
+          "roughness": 0.45,
+          "metalness": 0,
+          "tint": 0.55,
+          "clearcoat": 0.6,
+          "clearcoatRoughness": 0.12,
+          "envIntensity": 1.3
+        }
+      }
+    },
+    {
+      "id": "fg",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "media": {
+        "src": "assets/fairywren-today-dark-phone.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [-0.95, -1.825, 2.58],
+        "rotationDeg": [0, 41, 90],
+        "scale": 1.0,
+        "ground": true
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "none",
+      "finish": {
+        "frame": {
+          "roughness": 0.3,
+          "metalness": 1,
+          "anisotropy": 0.4,
+          "grain": 1,
+          "grainScale": 20000,
+          "brushedMap": 0,
+          "chamferRoughness": 0.08,
+          "envIntensity": 1.6,
+          "iblTaps": 7
+        },
+        "polished": {
+          "roughness": 0.06,
+          "envIntensity": 1.8
+        },
+        "glass": {
+          "roughness": 0.05,
+          "ior": 1.5,
+          "specularIntensity": 1,
+          "envIntensity": 1.5
+        },
+        "back": {
+          "roughness": 0.45,
+          "metalness": 0,
+          "tint": 0.55,
+          "clearcoat": 0.6,
+          "clearcoatRoughness": 0.12,
+          "envIntensity": 1.3
+        }
+      }
+    }
+  ],
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "c1",
+        "tMs": 0,
+        "pose": {
+          "position": [5.6, -1.105, 3.2],
+          "aim": {
+            "mode": "point",
+            "at": [2.0, -1.855, -0.4]
+          },
+          "fov": 22,
+          "dof": {
+            "mode": "lens",
+            "fStop": 22,
+            "focus": "auto"
+          }
+        },
+        "at": "bar:24"
+      },
+      {
+        "id": "c2",
+        "tMs": 1875,
+        "pose": {
+          "position": [-0.4, -1.205, 2.9],
+          "aim": {
+            "mode": "point",
+            "at": [-3.8, -1.805, -1.0]
+          },
+          "fov": 22
+        },
+        "at": "bar:25"
+      }
+    ],
+    "segments": [
+      {
+        "from": "c1",
+        "to": "c2",
+        "ease": "linear"
+      }
+    ]
+  },
+  "lighting": {
+    "ambient": 0,
+    "fills": [],
+    "sun": {
+      "azimuthDeg": -55,
+      "elevationDeg": 32,
+      "intensity": 0,
+      "color": "#ffc888",
+      "castShadow": false
+    },
+    "environment": {
+      "source": "kookaburra:strips",
+      "intensity": 1,
+      "rotationDeg": 0,
+      "strips": [
+        {
+          "azimuthDeg": -107.33,
+          "elevationDeg": 34,
+          "rollDeg": -13.82,
+          "lengthDeg": 59.49,
+          "widthDeg": 24.19,
+          "color": "#fff0e0",
+          "intensity": 14,
+          "feather": 0.95,
+          "falloff": 0.85
+        },
+        {
+          "azimuthDeg": 179.1,
+          "elevationDeg": 6.22,
+          "rollDeg": 14.95,
+          "lengthDeg": 45.24,
+          "widthDeg": 5.72,
+          "color": "#9ccfff",
+          "intensity": 25,
+          "feather": 0.6,
+          "falloff": 0.5
+        },
+        {
+          "azimuthDeg": -79.81,
+          "elevationDeg": 49.47,
+          "rollDeg": 0,
+          "lengthDeg": 12.2,
+          "widthDeg": 12.2,
+          "color": "#ffb070",
+          "intensity": 119,
+          "feather": 0.3,
+          "falloff": 0.3
+        },
+        {
+          "azimuthDeg": 76,
+          "elevationDeg": 27,
+          "rollDeg": 90,
+          "lengthDeg": 70,
+          "widthDeg": 12,
+          "color": "#e9efff",
+          "intensity": 12,
+          "feather": 1,
+          "falloff": 0.4
+        }
+      ]
+    },
+    "lights": [
+      {
+        "id": "key",
+        "type": "spot",
+        "intensity": 1100,
+        "placement": {
+          "mode": "point",
+          "position": [-9, 3.495, -8.2]
+        },
+        "target": [0.5, -1.905, 0],
+        "angleDeg": 70,
+        "penumbra": 1,
+        "color": "#ffc79a",
+        "decay": 2,
+        "castShadow": true,
+        "volumetric": {
+          "grate": {
+            "lens": "camera",
+            "slat": [0.02, 0.05],
+            "gap": [0.03, 0.09],
+            "soft": 0.02,
+            "seed": 11
+          },
+          "box": {
+            "min": [-14, -1.905, -30],
+            "max": [14, 4, -2.6]
+          },
+          "haze": {
+            "density": 0.028,
+            "anisotropy": 0.65,
+            "strength": 1,
+            "heightFalloff": 0,
+            "groundFade": 1.5
+          },
+          "extinction": true,
+          "smoke": {
+            "scale": 0.4,
+            "warp": 1.6,
+            "contrast": [0.4, 0.6],
+            "floor": 0.15,
+            "drift": [0.12, 0.08, 0],
+            "evolve": 0.08
+          },
+          "dust": {
+            "count": 280,
+            "min": [-7, -1.705, -6],
+            "max": [3, 0.6950000000000001, -1.5],
+            "radius": [0.006, 0.012],
+            "gain": 0.26,
+            "drift": [0.05, 0.06, 0]
+          },
+          "shadowMapSize": 2048
+        }
+      },
+      {
+        "id": "pool1",
+        "type": "spot",
+        "intensity": 60,
+        "placement": {
+          "mode": "point",
+          "position": [-2.8, 2.595, -1.3]
+        },
+        "target": [-3.1, -1.905, -1.9],
+        "angleDeg": 34,
+        "penumbra": 1,
+        "color": "#ffb070",
+        "decay": 2
+      },
+      {
+        "id": "pool2",
+        "type": "spot",
+        "intensity": 60,
+        "placement": {
+          "mode": "point",
+          "position": [-1.25, 2.595, 0.4]
+        },
+        "target": [-1.55, -1.905, -0.2],
+        "angleDeg": 34,
+        "penumbra": 1,
+        "color": "#ffb070",
+        "decay": 2
+      },
+      {
+        "id": "pool3",
+        "type": "spot",
+        "intensity": 60,
+        "placement": {
+          "mode": "point",
+          "position": [0.3, 2.595, 1.2]
+        },
+        "target": [0.0, -1.905, 0.6],
+        "angleDeg": 34,
+        "penumbra": 1,
+        "color": "#ffb070",
+        "decay": 2
+      },
+      {
+        "id": "pool4",
+        "type": "spot",
+        "intensity": 60,
+        "placement": {
+          "mode": "point",
+          "position": [1.85, 2.595, 0.4]
+        },
+        "target": [1.55, -1.905, -0.2],
+        "angleDeg": 34,
+        "penumbra": 1,
+        "color": "#ffb070",
+        "decay": 2
+      },
+      {
+        "id": "pool5",
+        "type": "spot",
+        "intensity": 60,
+        "placement": {
+          "mode": "point",
+          "position": [3.4, 2.595, -1.3]
+        },
+        "target": [3.1, -1.905, -1.9],
+        "angleDeg": 34,
+        "penumbra": 1,
+        "color": "#ffb070",
+        "decay": 2
+      }
+    ],
+    "keys": [
+      {
+        "id": "l1",
+        "tMs": 0,
+        "at": "bar:24",
+        "pose": {
+          "lights": {
+            "key": {
+              "intensity": 1100
+            },
+            "pool1": {
+              "intensity": 60
+            },
+            "pool2": {
+              "intensity": 60
+            },
+            "pool3": {
+              "intensity": 60
+            },
+            "pool4": {
+              "intensity": 60
+            },
+            "pool5": {
+              "intensity": 60
+            }
+          },
+          "environmentIntensity": 1
+        }
+      },
+      {
+        "id": "l2",
+        "tMs": 1500,
+        "at": "bar:24.4+94ms",
+        "pose": {
+          "lights": {
+            "key": {
+              "intensity": 1100
+            },
+            "pool1": {
+              "intensity": 60
+            },
+            "pool2": {
+              "intensity": 60
+            },
+            "pool3": {
+              "intensity": 60
+            },
+            "pool4": {
+              "intensity": 60
+            },
+            "pool5": {
+              "intensity": 60
+            }
+          },
+          "environmentIntensity": 1
+        }
+      },
+      {
+        "id": "l3",
+        "tMs": 1800,
+        "at": "bar:24.4+394ms",
+        "pose": {
+          "lights": {
+            "key": {
+              "intensity": 0
+            },
+            "pool1": {
+              "intensity": 0
+            },
+            "pool2": {
+              "intensity": 0
+            },
+            "pool3": {
+              "intensity": 0
+            },
+            "pool4": {
+              "intensity": 0
+            },
+            "pool5": {
+              "intensity": 0
+            }
+          },
+          "environmentIntensity": 0
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "l1",
+        "to": "l2",
+        "ease": "linear"
+      },
+      {
+        "from": "l2",
+        "to": "l3",
+        "ease": "inQuad"
+      }
+    ],
+    "shadow": {
+      "technique": "map",
+      "softness": 0.375,
+      "opacity": 0.85,
+      "mapSize": 2048,
+      "bias": -0.0005
+    }
+  },
+  "background": {
+    "type": "gradient",
+    "spec": {
+      "type": "linear",
+      "angleDeg": 135,
+      "stops": [["#140c07", 0], ["#060504", 0.3], ["#030303", 1]],
+      "space": "oklch"
+    }
+  },
+  "backdrop": {
+    "type": "satin",
+    "color": "#26221f",
+    "roughness": 0.35,
+    "specular": 0.3,
+    "centre": [0, -0.5],
+    "fade": [4, 10],
+    "reflection": {
+      "strength": 1.3,
+      "blur": 24,
+      "heightBlur": 0.9,
+      "contact": 0.75
+    },
+    "glitter": {
+      "scale": 90,
+      "density": 0,
+      "roughness": 0.15,
+      "tilt": 0.5,
+      "weight": 0,
+      "grain": 0.5,
+      "seed": 5
+    },
+    "pools": []
+  },
+  "deviceTrack": {
+    "keys": [
+      {
+        "id": "d1",
+        "tMs": 0,
+        "pose": {
+          "fg": {
+            "screenPower": 0
+          }
+        }
+      }
+    ],
+    "segments": []
   }
 }

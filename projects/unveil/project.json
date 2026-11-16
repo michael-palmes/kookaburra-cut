@@ -220,27 +220,77 @@
     {
       "file": "scenes/14-lineup.tsx",
       "durationMs": 3750,
-      "cutAt": "bar:24"
+      "cutAt": "bar:24",
+      "effects": {
+        "lens": {
+          "intensity": 1,
+          "bloom": 0.08,
+          "bloomRadius": 0.88,
+          "halation": 0.2,
+          "halationThreshold": 1,
+          "halationColor": "#ff7a30"
+        }
+      }
     },
     {
       "file": "scenes/15-flyby.tsx",
       "durationMs": 1875,
-      "cutAt": "bar:25"
+      "cutAt": "bar:25",
+      "effects": {
+        "lens": {
+          "intensity": 1,
+          "bloom": 0.08,
+          "bloomRadius": 0.88,
+          "halation": 0.2,
+          "halationThreshold": 1,
+          "halationColor": "#ff7a30"
+        }
+      }
     },
     {
       "file": "scenes/16-montage.tsx",
       "durationMs": 7500,
-      "cutAt": "bar:29"
+      "cutAt": "bar:29",
+      "effects": {
+        "lens": {
+          "intensity": 1,
+          "bloom": 0.08,
+          "bloomRadius": 0.88,
+          "halation": 0.2,
+          "halationThreshold": 1,
+          "halationColor": "#ff7a30"
+        }
+      }
     },
     {
       "file": "scenes/17-hero.tsx",
       "durationMs": 3750,
-      "cutAt": "bar:31"
+      "cutAt": "bar:31",
+      "effects": {
+        "lens": {
+          "intensity": 1,
+          "bloom": 0.08,
+          "bloomRadius": 0.88,
+          "halation": 0.2,
+          "halationThreshold": 1,
+          "halationColor": "#ff7a30"
+        }
+      }
     },
     {
       "file": "scenes/18-lockup.tsx",
       "durationMs": 3750,
-      "cutAt": "bar:33"
+      "cutAt": "bar:33",
+      "effects": {
+        "lens": {
+          "intensity": 1,
+          "bloom": 0.08,
+          "bloomRadius": 0.88,
+          "halation": 0.2,
+          "halationThreshold": 1,
+          "halationColor": "#ff7a30"
+        }
+      }
     }
   ],
   "render": {
