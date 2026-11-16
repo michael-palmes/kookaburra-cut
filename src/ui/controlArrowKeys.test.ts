@@ -141,7 +141,11 @@ describe("arrows sent as control codes (2.1.1)", () => {
     expect(el.selectionStart).toBe(3);
   });
 
-  it("is installed in every chrome window, ahead of every other key listener", () => {
+  it("is installed in every chrome window and Present, ahead of every other key listener", () => {
+    expect(read("../presentMain.tsx")).toMatch(
+      /installWindowNativePort\(\);\s*installControlArrowKeys\(\);/,
+    );
+    expect(read("../renderMain.tsx")).not.toContain("installControlArrowKeys");
     expect(read("./chromePrefs.ts")).toMatch(
       /installed = true;\s*installControlArrowKeys\(\);\s*document\.addEventListener\("keydown", guardSingleKeyShortcuts\);/,
     );
