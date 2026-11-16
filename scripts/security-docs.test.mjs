@@ -37,6 +37,6 @@ test("every security document describes the version tauri.conf.json names", () =
 });
 
 test("the changelog has a section for that version", () => {
-  const heading = new RegExp(`^## \\[${VERSION.replaceAll(".", "\\.")}\\]`, "m");
+  const heading = new RegExp(`^## \\[${RegExp.escape(VERSION)}\\]`, "m");
   assert.match(read("CHANGELOG.md"), heading, `CHANGELOG.md has no ## [${VERSION}] section`);
 });

@@ -308,6 +308,32 @@ describe("the release SBOM", () => {
       }
     });
 
+    test("matches a resource glob's other characters literally", () => {
+      const conf = join(repo, "src-tauri/tauri.conf.json");
+      const saved = readFileSync(conf, "utf8");
+      const odd = ["a+b.py", "ab.py", "aab.py", "(c).py", "c.py", "d\\e.py", "de.py"];
+      for (const name of odd) put(`odd/scripts/${name}`);
+      put(
+        "src-tauri/tauri.conf.json",
+        JSON.stringify({
+          bundle: {
+            resources: Object.fromEntries(
+              ["a+b*.py", "(c)*.py", "d\\e*.py"].map((g) => [`../odd/scripts/${g}`, "x/"]),
+            ),
+          },
+        }),
+      );
+      try {
+        const kit = assetComponents(repo)
+          .map((a) => a.name)
+          .filter((n) => n.startsWith("odd/"));
+        assert.deepEqual(kit, ["odd/scripts/(c).py", "odd/scripts/a+b.py", "odd/scripts/d\\e.py"]);
+      } finally {
+        writeFileSync(conf, saved);
+        rmSync(join(repo, "odd"), { recursive: true, force: true });
+      }
+    });
+
     test("covers this checkout's licensed models, every font and the kit", () => {
       const assets = assetComponents(ROOT);
       const pinned = readFileSync(join(ROOT, "src/assets/models/licensed.sha256"), "utf8")

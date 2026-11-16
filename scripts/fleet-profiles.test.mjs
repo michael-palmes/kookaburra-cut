@@ -164,10 +164,7 @@ test("the doc carries the locked-down profile and both scripts verbatim", () => 
 test("the cask, the install script and the doc pin the same release", () => {
   const version = CASK.match(/^ {2}version "([^"]+)"$/m)[1];
   const sha = CASK.match(/^ {2}sha256 "([0-9a-f]{64})"$/m)[1];
-  assert.match(
-    INSTALL,
-    new RegExp(`^VERSION="\\$\\{4:-${version.replaceAll(".", "\\.")}\\}"$`, "m"),
-  );
+  assert.match(INSTALL, new RegExp(`^VERSION="\\$\\{4:-${RegExp.escape(version)}\\}"$`, "m"));
   assert.match(INSTALL, new RegExp(`^DMG_SHA256="\\$\\{5:-${sha}\\}"$`, "m"));
   assert.ok(
     DOC.includes(`\`${sha}\``),
