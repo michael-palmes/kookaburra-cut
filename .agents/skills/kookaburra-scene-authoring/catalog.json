@@ -26371,7 +26371,8 @@
             "cameraRig",
             "deviceTrack",
             "devices",
-            "lighting"
+            "lighting",
+            "motionBlur"
           ]
         },
         {
