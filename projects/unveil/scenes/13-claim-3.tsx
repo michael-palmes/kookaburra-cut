@@ -21,7 +21,8 @@ export default defineScene({
           hitAt={0}
           outAt={1710}
           outDurationMs={165}
-          fontSize={0.36}
+          fontSize={0.46}
+          textAlign="center"
           fit="width"
           maxWidth={(frame.width - safe.left - safe.right) * 0.76}
         />

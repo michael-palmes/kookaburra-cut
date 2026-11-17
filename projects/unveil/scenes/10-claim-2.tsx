@@ -11,7 +11,7 @@ export default defineScene({
   durationMs: 1875,
   Scene() {
     const { frame, safe } = useFormat();
-    const claim = useSceneText("title", "Moves your plans automatically.");
+    const claim = useSceneText("title", "Moves your plans\nautomatically.");
 
     return (
       <SceneStage floorY={-1.905}>
@@ -21,7 +21,8 @@ export default defineScene({
           hitAt={0}
           outAt={1710}
           outDurationMs={165}
-          fontSize={0.36}
+          fontSize={0.46}
+          textAlign="center"
           fit="width"
           maxWidth={(frame.width - safe.left - safe.right) * 0.76}
         />
