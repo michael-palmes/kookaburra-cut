@@ -176,6 +176,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `rustix` moves to 1.1.6 (RUSTSEC-2026-0486), a dependency of the updater
   whose affected calls the app never makes, and the dependency audit now fails
   on an unsound crate anywhere in the graph, not only a direct one.
+- `libz-sys` moves to 1.1.33 (RUSTSEC-2026-0544, a heap overflow in its
+  bundled zlib's `gzwrite`). The Mac app was not affected: it links macOS's own
+  zlib and only compresses and decompresses in memory, never through `gzwrite`.
 - kb checks an imported scene or a shell command in one pass, so text crafted
   to stall a check can no longer hold up an agent's work.
 
