@@ -1265,7 +1265,7 @@
         "id": "s1b",
         "tMs": 936,
         "pose": {
-          "position": [0.8131, 1.3553, 2.8705],
+          "position": [0.6607, 1.3577, 3.0276],
           "aim": {
             "mode": "point",
             "at": [-2.0243, 0.7706, -0.1722]
@@ -1300,7 +1300,7 @@
         "id": "s2b",
         "tMs": 1874,
         "pose": {
-          "position": [-1.122, 0.276, 2.2705],
+          "position": [-1.2491, 0.2752, 2.3214],
           "aim": {
             "mode": "point",
             "at": [-1.9692, 0.4579, -0.1899]
@@ -1335,7 +1335,7 @@
         "id": "s3b",
         "tMs": 2811,
         "pose": {
-          "position": [-0.7274, 0.5173, 4.4699],
+          "position": [-0.969, 0.5186, 4.5479],
           "aim": {
             "mode": "point",
             "at": [-1.976, 0.18, -0.1898]
@@ -1370,7 +1370,7 @@
         "id": "s4b",
         "tMs": 3749,
         "pose": {
-          "position": [-0.6077, 2.0592, 1.7152],
+          "position": [-0.7039, 2.0659, 1.7926],
           "aim": {
             "mode": "point",
             "at": [-1.9874, 0.3537, -0.1838]
@@ -1405,7 +1405,7 @@
         "id": "s5b",
         "tMs": 4217,
         "pose": {
-          "position": [-1.6985, -0.9406, 3.534],
+          "position": [-1.8865, -0.9362, 3.6758],
           "aim": {
             "mode": "point",
             "at": [-2.0883, -1.0708, -0.175]
@@ -1440,7 +1440,7 @@
         "id": "s6b",
         "tMs": 4686,
         "pose": {
-          "position": [-0.5432, 1.2178, 2.014],
+          "position": [-0.6136, 1.2336, 2.1647],
           "aim": {
             "mode": "point",
             "at": [-2.0165, 0.7532, -0.1703]
@@ -1475,7 +1475,7 @@
         "id": "s7b",
         "tMs": 5155,
         "pose": {
-          "position": [-2.8023, 0.6, 2.4982],
+          "position": [-2.9716, 0.6166, 2.5434],
           "aim": {
             "mode": "point",
             "at": [-2.0371, 0.1105, -0.1705]
@@ -1510,7 +1510,7 @@
         "id": "s8b",
         "tMs": 5624,
         "pose": {
-          "position": [-1.9238, 2.4021, 1.1044],
+          "position": [-2.1303, 2.5412, 1.1668],
           "aim": {
             "mode": "point",
             "at": [-2.1303, -1.537, -0.7349]
@@ -1545,7 +1545,7 @@
         "id": "s9b",
         "tMs": 6092,
         "pose": {
-          "position": [7.0176, -0.5368, 8.4518],
+          "position": [6.8394, -0.5517, 9.2249],
           "aim": {
             "mode": "point",
             "at": [-2.0213, -0.098, -0.277]
@@ -1580,7 +1580,7 @@
         "id": "s10b",
         "tMs": 6561,
         "pose": {
-          "position": [-1.7494, -1.2195, 2.3344],
+          "position": [-1.8835, -1.2239, 2.4181],
           "aim": {
             "mode": "point",
             "at": [-1.7931, -1.0882, -0.17]
@@ -1615,7 +1615,7 @@
         "id": "s11b",
         "tMs": 7030,
         "pose": {
-          "position": [-1.8295, -0.6545, 2.431],
+          "position": [-1.9645, -0.6357, 2.5255],
           "aim": {
             "mode": "point",
             "at": [-2.0117, -1.2098, -0.175]
@@ -1650,7 +1650,7 @@
         "id": "s12b",
         "tMs": 7500,
         "pose": {
-          "position": [-0.8484, 1.3163, 2.3086],
+          "position": [-0.9325, 1.3231, 2.4666],
           "aim": {
             "mode": "point",
             "at": [-2.3089, 1.1181, -0.122]
@@ -1668,7 +1668,8 @@
       {
         "from": "s1a",
         "to": "s1b",
-        "ease": "linear"
+        "ease": "linear",
+        "smooth": false
       },
       {
         "from": "s1b",
@@ -1678,7 +1679,8 @@
       {
         "from": "s2a",
         "to": "s2b",
-        "ease": "linear"
+        "ease": "linear",
+        "smooth": false
       },
       {
         "from": "s2b",
@@ -1688,7 +1690,8 @@
       {
         "from": "s3a",
         "to": "s3b",
-        "ease": "linear"
+        "ease": "linear",
+        "smooth": false
       },
       {
         "from": "s3b",
@@ -1698,7 +1701,8 @@
       {
         "from": "s4a",
         "to": "s4b",
-        "ease": "linear"
+        "ease": "linear",
+        "smooth": false
       },
       {
         "from": "s4b",
@@ -1708,7 +1712,8 @@
       {
         "from": "s5a",
         "to": "s5b",
-        "ease": "linear"
+        "ease": "linear",
+        "smooth": false
       },
       {
         "from": "s5b",
@@ -1718,7 +1723,8 @@
       {
         "from": "s6a",
         "to": "s6b",
-        "ease": "linear"
+        "ease": "linear",
+        "smooth": false
       },
       {
         "from": "s6b",
@@ -1728,7 +1734,8 @@
       {
         "from": "s7a",
         "to": "s7b",
-        "ease": "linear"
+        "ease": "linear",
+        "smooth": false
       },
       {
         "from": "s7b",
@@ -1738,7 +1745,8 @@
       {
         "from": "s8a",
         "to": "s8b",
-        "ease": "linear"
+        "ease": "linear",
+        "smooth": false
       },
       {
         "from": "s8b",
@@ -1748,7 +1756,8 @@
       {
         "from": "s9a",
         "to": "s9b",
-        "ease": "linear"
+        "ease": "linear",
+        "smooth": false
       },
       {
         "from": "s9b",
@@ -1758,7 +1767,8 @@
       {
         "from": "s10a",
         "to": "s10b",
-        "ease": "linear"
+        "ease": "linear",
+        "smooth": false
       },
       {
         "from": "s10b",
@@ -1768,7 +1778,8 @@
       {
         "from": "s11a",
         "to": "s11b",
-        "ease": "linear"
+        "ease": "linear",
+        "smooth": false
       },
       {
         "from": "s11b",
@@ -1778,7 +1789,8 @@
       {
         "from": "s12a",
         "to": "s12b",
-        "ease": "linear"
+        "ease": "outSine",
+        "smooth": false
       }
     ]
   },
