@@ -64,7 +64,7 @@ describe("release-sums.sh", () => {
     assert.equal(r.status, 0, r.stderr);
     const listed = readFileSync(join(dir, "SHA256SUMS"), "utf8");
     for (const f of [`KookaburraCut-${V}.pkg`, ...Object.keys(SOURCES)]) {
-      assert.match(listed, new RegExp(`  ${f.replaceAll(".", "\\.")}\\n`));
+      assert.match(listed, new RegExp(`  ${RegExp.escape(f)}\\n`));
     }
   });
 

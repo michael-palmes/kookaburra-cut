@@ -333,9 +333,7 @@ export function assetComponents(repo) {
   for (const from of Object.keys(resources).filter((k) => k.includes("/scripts/"))) {
     const path = join(repo, "src-tauri", from);
     if (basename(path).includes("*")) {
-      const pattern = new RegExp(
-        `^${basename(path).replace(/\./g, "\\.").replace(/\*/g, "[^/]*")}$`,
-      );
+      const pattern = new RegExp(`^${basename(path).split("*").map(RegExp.escape).join("[^/]*")}$`);
       for (const name of readdirSync(dirname(path))) {
         if (pattern.test(name) && statSync(join(dirname(path), name)).isFile())
           kit.add(join(dirname(path), name));
