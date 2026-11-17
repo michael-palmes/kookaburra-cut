@@ -48,7 +48,7 @@ against IP Australia, USPTO and the App Store (see that README).
 | `songlark-ask-window.mp4` | Ask, think, answer on the web |
 | `songlark-ask-phone.jpg` / `songlark-answer-phone.jpg` / `.mp4` | The same on a phone |
 | `songlark-voice-phone.jpg` | Voice mode |
-| `fairywren-sorted-phone.mp4` / `.jpg`, `fairywren-sorted-dark-phone.mp4` / `.jpg` | "Plans itself": the week sorts itself under a "This week, sorted" card |
+| `fairywren-sorted-phone.mp4` / `.jpg`, `fairywren-sorted-dark-phone.mp4` / `.jpg` | "Plans your week for you": the week sorts itself under a "This week, sorted" card |
 | `fairywren-quickadd-phone.mp4` / `.jpg`, `fairywren-quickadd-dark-phone.mp4` / `.jpg` | "Faster": a plan typed in plain words is parsed and added |
 | `fairywren-reschedule-phone.mp4` / `.jpg`, `fairywren-reschedule-dark-phone.mp4` / `.jpg` | "Smarter": a meeting runs over and two plans move to fit |
 | `fairywren-share-phone.mp4` / `.jpg`, `fairywren-share-dark-phone.mp4` / `.jpg` | "Together": a list shared with three people, who tick items off |
