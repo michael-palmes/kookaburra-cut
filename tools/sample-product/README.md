@@ -36,6 +36,8 @@ oxipng and the ffmpeg sidecar (`pnpm setup:ffmpeg`; it falls back to `ffmpeg` on
   Chrome over the DevTools protocol in sRGB, steps 30 frames a second to PNG and
   encodes H.264 yuv420p with BT.709 tags and faststart, raising the CRF until a clip
   fits 1.5 MB. Stills are JPEG; icons are 1024 PNG with transparent corners.
+- Fairywren's icon tile holds painted artwork (`fairywren/icon-art.jpg`); `mark.svg`
+  stays the small mark inside its screens.
 - Type is the bundled OFL faces only (Inter, Inter Tight, JetBrains Mono, Space
   Grotesk). They are Latin subsets, so symbols such as ticks and arrows are inline SVG.
 
