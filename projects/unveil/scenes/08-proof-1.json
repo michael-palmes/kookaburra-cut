@@ -70,8 +70,104 @@
           "fov": 18,
           "dof": {
             "mode": "lens",
-            "fStop": 11,
-            "focus": "auto"
+            "fStop": 22,
+            "focus": 4.2222
+          }
+        }
+      },
+      {
+        "id": "f1",
+        "tMs": 937.5,
+        "pose": {
+          "position": [0.0315, 0.5008, 2.6749],
+          "aim": {
+            "mode": "point",
+            "at": [-2.6045, -0.3709, -0.4666]
+          },
+          "fov": 18,
+          "dof": {
+            "fStop": 22,
+            "focus": 4.1136
+          }
+        }
+      },
+      {
+        "id": "f2",
+        "tMs": 1172,
+        "pose": {
+          "position": [0.0146, 0.4952, 2.6547],
+          "aim": {
+            "mode": "point",
+            "at": [-2.6045, -0.3709, -0.4666]
+          },
+          "fov": 18,
+          "dof": {
+            "fStop": 22,
+            "focus": 3.8245
+          }
+        }
+      },
+      {
+        "id": "f3",
+        "tMs": 1406,
+        "pose": {
+          "position": [-0.0023, 0.4896, 2.6346],
+          "aim": {
+            "mode": "point",
+            "at": [-2.6045, -0.3709, -0.4666]
+          },
+          "fov": 18,
+          "dof": {
+            "fStop": 22,
+            "focus": 3.7014
+          }
+        }
+      },
+      {
+        "id": "f4",
+        "tMs": 1640,
+        "pose": {
+          "position": [-0.0192, 0.484, 2.6145],
+          "aim": {
+            "mode": "point",
+            "at": [-2.6045, -0.3709, -0.4666]
+          },
+          "fov": 18,
+          "dof": {
+            "fStop": 22,
+            "focus": 3.6606
+          }
+        }
+      },
+      {
+        "id": "f5",
+        "tMs": 1875,
+        "pose": {
+          "position": [-0.0361, 0.4784, 2.5943],
+          "aim": {
+            "mode": "point",
+            "at": [-2.6045, -0.3709, -0.4666]
+          },
+          "fov": 18,
+          "dof": {
+            "fStop": 22,
+            "focus": 3.6333
+          }
+        }
+      },
+      {
+        "id": "f6",
+        "tMs": 2344,
+        "pose": {
+          "position": [-0.0699, 0.4673, 2.554],
+          "aim": {
+            "mode": "point",
+            "at": [-2.6045, -0.3709, -0.4666]
+          },
+          "fov": 18,
+          "dof": {
+            "fStop": 23,
+            "focus": 3.5245
           }
         }
       },
@@ -86,7 +182,8 @@
           },
           "fov": 18,
           "dof": {
-            "fStop": 11
+            "fStop": 27,
+            "focus": 3.3389
           }
         },
         "at": "bar:15.3"
@@ -102,7 +199,8 @@
           },
           "fov": 18,
           "dof": {
-            "fStop": 16
+            "fStop": 31,
+            "focus": 3.1527
           }
         }
       },
@@ -115,7 +213,11 @@
             "mode": "point",
             "at": [-2.0636, -0.192, 0.1781]
           },
-          "fov": 18
+          "fov": 18,
+          "dof": {
+            "fStop": 33,
+            "focus": 3.0845
+          }
         }
       },
       {
@@ -127,13 +229,53 @@
             "mode": "point",
             "at": [-2.0549, -0.1892, 0.1884]
           },
-          "fov": 18
+          "fov": 18,
+          "dof": {
+            "fStop": 35,
+            "focus": 3.0427
+          }
         }
       }
     ],
     "segments": [
       {
         "from": "k1",
+        "to": "f1",
+        "ease": "linear",
+        "smooth": false
+      },
+      {
+        "from": "f1",
+        "to": "f2",
+        "ease": "linear",
+        "smooth": false
+      },
+      {
+        "from": "f2",
+        "to": "f3",
+        "ease": "linear",
+        "smooth": false
+      },
+      {
+        "from": "f3",
+        "to": "f4",
+        "ease": "linear",
+        "smooth": false
+      },
+      {
+        "from": "f4",
+        "to": "f5",
+        "ease": "linear",
+        "smooth": false
+      },
+      {
+        "from": "f5",
+        "to": "f6",
+        "ease": "linear",
+        "smooth": false
+      },
+      {
+        "from": "f6",
         "to": "k2",
         "ease": "linear",
         "smooth": false

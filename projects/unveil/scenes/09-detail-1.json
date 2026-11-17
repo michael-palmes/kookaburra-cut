@@ -62,46 +62,33 @@
         "id": "k1",
         "tMs": 0,
         "pose": {
-          "position": [-0.0203, 1.1977, 0.6947],
+          "position": [0.5206, 0.009, 0.7032],
           "aim": {
             "mode": "point",
-            "at": [-2.191, -0.2066, 0.1131]
+            "at": [-1.563, -1.0431, 0.1449]
           },
           "fov": 18,
           "dof": {
             "mode": "lens",
-            "fStop": 32,
-            "focus": 2.7468
+            "fStop": 28,
+            "focus": 2.395
           }
         }
       },
       {
         "id": "k2",
-        "tMs": 1250,
+        "tMs": 1875,
         "pose": {
-          "position": [-0.0436, 1.1305, 0.6885],
+          "position": [0.5412, -0.0331, 0.2932],
           "aim": {
             "mode": "point",
-            "at": [-2.1492, -0.2316, 0.1243]
+            "at": [-1.4591, -1.0431, -0.2428]
           },
           "fov": 18,
           "dof": {
-            "fStop": 32,
-            "focus": 2.5162
+            "fStop": 28,
+            "focus": 2.2989
           }
-        }
-      },
-      {
-        "id": "k3",
-        "tMs": 1875,
-        "pose": {
-          "position": [3.0606, 4.5387, 1.5203],
-          "aim": {
-            "mode": "point",
-            "at": [-2.1492, 1.5684, 0.1243]
-          },
-          "fov": 18,
-          "shutterDeg": 300
         },
         "at": "bar:17"
       }
@@ -110,14 +97,7 @@
       {
         "from": "k1",
         "to": "k2",
-        "ease": "linear",
-        "easeLens": "inOutSine",
-        "smooth": false
-      },
-      {
-        "from": "k2",
-        "to": "k3",
-        "ease": "inCubic",
+        "ease": "outSine",
         "smooth": false
       }
     ]
