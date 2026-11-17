@@ -117,7 +117,7 @@
       },
       {
         "id": "h2",
-        "tMs": 1875,
+        "tMs": 937,
         "pose": {
           "position": [-1.83, -0.22, 12.3],
           "aim": {
@@ -126,13 +126,26 @@
           },
           "fov": 21
         },
-        "at": "bar:30"
+        "at": "bar:29.3"
       },
       {
         "id": "h3",
-        "tMs": 2812,
+        "tMs": 1875,
         "pose": {
           "position": [-1.85, 0.85, 17.2],
+          "aim": {
+            "mode": "point",
+            "at": [-2.05, -0.3, -0.3]
+          },
+          "fov": 21
+        },
+        "at": "bar:30"
+      },
+      {
+        "id": "h4",
+        "tMs": 2812,
+        "pose": {
+          "position": [-1.86, 0.9, 17.5],
           "aim": {
             "mode": "point",
             "at": [-2.05, -0.3, -0.3]
@@ -142,13 +155,13 @@
         "at": "bar:30.3"
       },
       {
-        "id": "h4",
+        "id": "h5",
         "tMs": 3750,
         "pose": {
-          "position": [-1.86, 0.9, 17.5],
+          "position": [-1.86, 2.5, 17.5],
           "aim": {
             "mode": "point",
-            "at": [-2.05, -0.3, -0.3]
+            "at": [-2.05, 1.3, -0.3]
           },
           "fov": 21
         }
@@ -158,17 +171,26 @@
       {
         "from": "h1",
         "to": "h2",
-        "ease": "outSine"
+        "ease": "outSine",
+        "smooth": false
       },
       {
         "from": "h2",
         "to": "h3",
-        "ease": "inOutCubic"
+        "ease": "inOutCubic",
+        "smooth": false
       },
       {
         "from": "h3",
         "to": "h4",
-        "ease": "linear"
+        "ease": "linear",
+        "smooth": false
+      },
+      {
+        "from": "h4",
+        "to": "h5",
+        "ease": "inSine",
+        "smooth": false
       }
     ]
   },
@@ -318,6 +340,44 @@
           "position": [-5.5, 3.2, 2.6]
         },
         "target": [-2.05, 0.4, -0.3]
+      },
+      {
+        "id": "halo",
+        "type": "spot",
+        "intensity": 0,
+        "placement": {
+          "mode": "point",
+          "position": [-2.1803, 2.4794, -12.5057]
+        },
+        "target": [-1.86, 2.5, 17.5],
+        "angleDeg": 44,
+        "penumbra": 1,
+        "color": "#ffb070",
+        "decay": 2,
+        "castShadow": true,
+        "volumetric": {
+          "box": {
+            "min": [-18, -1.905, -34],
+            "max": [14, 14, -0.8]
+          },
+          "haze": {
+            "density": 0.028,
+            "anisotropy": 0.65,
+            "strength": 1,
+            "heightFalloff": 0,
+            "groundFade": 1.5
+          },
+          "extinction": true,
+          "shadowMapSize": 2048,
+          "smoke": {
+            "scale": 0.4,
+            "warp": 1.6,
+            "contrast": [0.4, 0.6],
+            "floor": 0.15,
+            "drift": [0.12, 0.08, 0],
+            "evolve": 0.08
+          }
+        }
       }
     ],
     "keys": [
@@ -334,6 +394,9 @@
               }
             },
             "rake": {
+              "intensity": 0
+            },
+            "halo": {
               "intensity": 0
             }
           },
@@ -383,6 +446,9 @@
             },
             "rake": {
               "intensity": 0
+            },
+            "halo": {
+              "intensity": 0
             }
           },
           "environmentRotationDeg": 0
@@ -394,11 +460,14 @@
         "pose": {
           "lights": {
             "key": {
-              "intensity": 760,
+              "intensity": 80.0,
               "placement": {
                 "mode": "point",
                 "position": [-3.2, 4.85, -8.8]
               }
+            },
+            "halo": {
+              "intensity": 900.0
             }
           },
           "environmentRotationDeg": 40
@@ -424,7 +493,7 @@
       {
         "from": "l4",
         "to": "l5",
-        "ease": "inSine"
+        "ease": "linear"
       }
     ],
     "shadow": {
@@ -479,16 +548,13 @@
     ]
   },
   "text": {
-    "name": "Fairywren"
+    "slogan": "Your week, sorted."
   },
   "textStyle": {
-    "nameFont": "Inter Tight@900",
-    "nameColor": "#fffaf0"
+    "sloganColor": "#fffaf0"
   },
-  "textAnimationOverrides": {
-    "name": {
-      "in": "static",
-      "out": "static"
-    }
+  "textAnimation": {
+    "in": "stamp",
+    "out": "fade"
   }
 }
