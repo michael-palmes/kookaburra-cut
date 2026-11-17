@@ -85,8 +85,7 @@
             "mode": "point",
             "at": [-2.307, 0.1537, 0.0013]
           },
-          "fov": 18,
-          "shutterDeg": 300
+          "fov": 18
         },
         "at": "bar:20.3"
       },
@@ -94,16 +93,15 @@
         "id": "k3",
         "tMs": 1875,
         "pose": {
-          "position": [-0.2469, 1.6626, 1.823],
+          "position": [-1.2799, -0.0239, 1.3389],
           "aim": {
             "mode": "point",
-            "at": [-4.45, 5.1087, -2.918]
+            "at": [-2.3375, 0.1467, 0.0189]
           },
           "fov": 18,
           "dof": {
-            "fStop": 2.8
-          },
-          "shutterDeg": 360
+            "fStop": 22
+          }
         },
         "at": "bar:21"
       }
@@ -118,8 +116,7 @@
       {
         "from": "k2",
         "to": "k3",
-        "ease": "inCubic",
-        "easeLens": "outCubic",
+        "ease": "inOutSine",
         "smooth": false
       }
     ]
