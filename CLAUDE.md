@@ -306,3 +306,11 @@ intuition before the probe settled it).
   half way; 7.1 GB measured over five spikes). Exports now keep two a clip and
   release idle frames at start and end. Probe memory with `--action memory`
   (`docs/determinism.md`, "Memory probe"), not fps alone: a big Mac hides it.
+- **Fifth measured impactor (2026-11-18): passed stage scenes.** Every scene
+  kept its satin-floor mirror, volumetric pre-pass, shadow maps and screen
+  images for the whole export, and each floor's own mirror camera left a
+  ~490 MB transmission target three never frees, so a 16-stage 4K film died at
+  17.9 GB. Floors now share mirror cameras, and exports release a scene's
+  owners once the film passes it (`src/engine/sceneRelease.ts`,
+  `useSceneRelease`): peak 6.3 GB, bytes unchanged. A new per-scene GPU owner
+  registers there.
