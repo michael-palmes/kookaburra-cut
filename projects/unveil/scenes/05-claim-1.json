@@ -4,6 +4,9 @@
   "text": {
     "title": "Plans your week for you."
   },
+  "textStyle": {
+    "titleColor": "#efe9df"
+  },
   "textAnimation": {
     "in": "stamp",
     "out": "fade"

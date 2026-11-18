@@ -27113,7 +27113,8 @@
             "cameraKicks",
             "lighting",
             "text",
-            "textAnimation"
+            "textAnimation",
+            "textStyle"
           ]
         },
         {
@@ -27140,7 +27141,15 @@
           "file": "scenes/08-claim-2.tsx",
           "durationMs": 1875,
           "transition": null,
-          "blocks": ["backdrop", "background", "camera", "lighting", "text", "textAnimation"]
+          "blocks": [
+            "backdrop",
+            "background",
+            "camera",
+            "lighting",
+            "text",
+            "textAnimation",
+            "textStyle"
+          ]
         },
         {
           "file": "scenes/09-proof-2.tsx",
@@ -27173,7 +27182,8 @@
             "cameraKicks",
             "lighting",
             "text",
-            "textAnimation"
+            "textAnimation",
+            "textStyle"
           ]
         },
         {

@@ -4,6 +4,9 @@
   "text": {
     "title": "Moves your plans\nautomatically."
   },
+  "textStyle": {
+    "titleColor": "#efe9df"
+  },
   "textAnimation": {
     "in": "stamp",
     "out": "fade"

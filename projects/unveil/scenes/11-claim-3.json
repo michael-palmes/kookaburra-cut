@@ -4,6 +4,9 @@
   "text": {
     "title": "Share with one tap."
   },
+  "textStyle": {
+    "titleColor": "#efe9df"
+  },
   "textAnimation": {
     "in": "stamp",
     "out": "fade"
