@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { moveSelection, planDeletes } from "../../engine/sceneOrder";
+import { moveSelection, nudgeSelection, planDeletes } from "../../engine/sceneOrder";
 import { useUiStore } from "../../store/uiStore";
 import { ContextMenu, type ContextMenuState, opensContextMenu } from "../ContextMenu";
 import { formatSceneLengthMs, parseSceneLengthMs } from "../durationText";
@@ -28,6 +28,10 @@ interface DragState {
 }
 
 const ROW_DRAG_THRESHOLD_PX = 5;
+const BUSY_TITLE = "Wait for the current change to finish";
+
+const sceneOrderKey = (rows: readonly SceneManagerRow[]) =>
+  rows.map((row) => `${row.name}\u0000${row.durationMs}`).join("\u0001");
 
 export function ScenesDrillIn({
   scenes,
@@ -86,7 +90,22 @@ export function ScenesDrillIn({
   const kept = useKeptLength();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const focusAfterMove = useRef<{ at: number; order: string } | null>(null);
   const edits = { busy, renaming, timing };
+
+  const commitReorder = (desired: number[]) => {
+    setSelected(new Set());
+    setAnchor(null);
+    onReorder(desired);
+  };
+
+  useEffect(() => {
+    const pending = focusAfterMove.current;
+    // The host re-renders with the old order while the move is in flight; wait for the new one.
+    if (pending === null || sceneOrderKey(scenes) === pending.order) return;
+    focusAfterMove.current = null;
+    listRef.current?.querySelectorAll<HTMLElement>('[role="option"]')[pending.at]?.focus();
+  }, [scenes]);
 
   const select = (index: number, e: Pick<React.MouseEvent, "shiftKey" | "metaKey" | "ctrlKey">) => {
     if (e.shiftKey && anchor !== null) {
@@ -119,6 +138,8 @@ export function ScenesDrillIn({
   function onRowPointerDown(e: React.PointerEvent, index: number) {
     if (busy || e.button !== 0 || renaming || timing) return;
     e.preventDefault(); // suppress the compatibility mousedown, else the drag sweeps a text selection across the panel
+    // That also cancels click-to-focus, so focus the row here or ⇧F10, Space and Return miss it.
+    (e.currentTarget as HTMLElement).focus({ preventScroll: true });
     e.currentTarget.setPointerCapture(e.pointerId);
     setDrag({ index, startY: e.clientY, insertBefore: null });
   }
@@ -146,11 +167,7 @@ export function ScenesDrillIn({
     }
     const block = selected.has(drag.index) ? [...selected].sort((a, b) => a - b) : [drag.index];
     const desired = moveSelection(scenes.length, block, insertBefore);
-    if (desired.some((original, i) => original !== i)) {
-      setSelected(new Set());
-      setAnchor(null);
-      onReorder(desired);
-    }
+    if (desired.some((original, i) => original !== i)) commitReorder(desired);
   }
 
   const startRename = (scene: SceneManagerRow) => {
@@ -186,6 +203,14 @@ export function ScenesDrillIn({
     const bulk =
       selected.has(scene.index) && selected.size > 1 ? [...selected].sort((a, b) => a - b) : null;
     const deletable = planDeletes(bulk ?? [scene.index], scenes.length);
+    const move = (delta: -1 | 1) => {
+      const desired = busy ? null : nudgeSelection(scenes.length, bulk ?? [scene.index], delta);
+      if (!desired) return null;
+      return () => {
+        focusAfterMove.current = { at: desired.indexOf(scene.index), order: sceneOrderKey(scenes) };
+        commitReorder(desired);
+      };
+    };
     setMenu({
       x: e.clientX,
       y: e.clientY,
@@ -221,6 +246,11 @@ export function ScenesDrillIn({
           (i) => scenes.find((row) => row.index === i)?.stillsExcluded === true,
         ),
         onStills: onStills ? (include) => onStills(bulk ?? [scene.index], include) : undefined,
+        moves: {
+          up: move(-1),
+          down: move(1),
+          ...(busy ? { upTitle: BUSY_TITLE, downTitle: BUSY_TITLE } : {}),
+        },
       }),
     });
   };
@@ -334,8 +364,8 @@ export function ScenesDrillIn({
         </div>
         <KeptLengthNote note={kept.note} />
         <p className="modal-hint">
-          Drag to reorder. ⌘-click to multi-select, ⇧-click for a range. Double-click renames. ⇧F10
-          opens a scene's menu.
+          Drag, or use a scene's menu, to reorder. ⌘-click to multi-select, ⇧-click for a range.
+          Double-click renames. ⇧F10 opens a scene's menu.
         </p>
       </div>
       <div className="inspector-drill-actions">

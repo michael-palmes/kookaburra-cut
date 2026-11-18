@@ -1559,13 +1559,17 @@ export function EditorApp() {
     (id: string, x: number, y: number) => {
       const clip = doc?.clips.find((c) => c.id === id);
       const rel = clip ? doc?.sources.find((s) => s.id === clip.sourceId)?.rel : undefined;
+      const index = doc?.clips.findIndex((c) => c.id === id) ?? -1;
+      const count = doc?.clips.length ?? 0;
       setClipMenu({
         x,
         y,
+        ariaLabel: "Clip actions",
         items: [
           {
             id: "insert",
             label: "Insert at playhead",
+            icon: <ToolIcon id="insert" />,
             disabled: !rel,
             title: "Splice this clip's media in at the playhead, full length",
             onSelect: () => {
@@ -1575,6 +1579,7 @@ export function EditorApp() {
           {
             id: "append",
             label: "Append to the end",
+            icon: <ToolIcon id="append" />,
             disabled: !rel,
             title: "Add this clip's media again as the last clip",
             onSelect: () => {
@@ -1582,8 +1587,26 @@ export function EditorApp() {
             },
           },
           {
+            id: "move-earlier",
+            label: "Move earlier",
+            icon: <ToolIcon id="moveEarlier" />,
+            disabled: index <= 0,
+            title: index <= 0 ? "Already first" : undefined,
+            onSelect: () => runOp({ op: "moveClip", from: index, to: index - 1 }),
+          },
+          {
+            id: "move-later",
+            label: "Move later",
+            icon: <ToolIcon id="moveLater" />,
+            disabled: index < 0 || index >= count - 1,
+            title: index >= count - 1 ? "Already last" : undefined,
+            onSelect: () => runOp({ op: "moveClip", from: index, to: index + 1 }),
+          },
+          "separator",
+          {
             id: "crop",
             label: "Crop…",
+            icon: <ToolIcon id="crop" />,
             disabled: !clip,
             title: "Frame this clip at the output's shape with the crop tool",
             onSelect: () => {
@@ -1599,6 +1622,7 @@ export function EditorApp() {
           {
             id: "reset-crop",
             label: "Reset crop",
+            icon: <ToolIcon id="resetCrop" />,
             disabled: !clip?.crop && !clip?.zoom,
             title: "Show this clip's whole frame again",
             onSelect: () => handleCommitCrop(id, null),
@@ -1606,6 +1630,7 @@ export function EditorApp() {
           {
             id: "remove",
             label: "Remove clip",
+            icon: <ToolIcon id="delete" />,
             confirmLabel: "Really remove?",
             danger: true,
             onSelect: () => {
@@ -1615,7 +1640,7 @@ export function EditorApp() {
         ],
       });
     },
-    [doc, handleInsertClipAt, handleAddClip, handleRemoveClip, handleCommitCrop],
+    [doc, handleInsertClipAt, handleAddClip, handleRemoveClip, handleCommitCrop, runOp],
   );
 
   // Space plays/pauses (committing the value first when it comes from the tap-size slider or the hold field, where a literal space means nothing); S/F split/freeze at the playhead; Delete/Backspace removes the selected clip; Escape deselects. Lives below canSplit/canFreeze so the dependency array can read them.
@@ -2179,6 +2204,8 @@ export function EditorApp() {
           onMaskKeyMenu={handleMaskKeyMenu}
           fps={outputFps}
           onZoomKeyMenu={handleZoomKeyMenu}
+          onTapMenu={handleTapContextMenu}
+          onMaskMenu={handleMaskContextMenu}
         />
       )}
 

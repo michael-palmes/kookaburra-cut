@@ -1,26 +1,43 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { EditClip, EditMask, EditSource, EditTap } from "../engine/edit";
-import {
-  maskOpacityAt,
-  maskWindows,
-  packMaskRows,
-  retimeMaskEdge,
-  timelineToSourceUnclamped,
-} from "../engine/editMasks";
+import { maskOpacityAt, maskWindows, packMaskRows } from "../engine/editMasks";
 import {
   clipIndexAt,
   clipTimelineMs,
   edgeTargetsMs,
-  setClipHold,
   snapMs,
-  snapZoomMs,
   timelineDurationMs,
-  trimClipIn,
-  trimClipOut,
 } from "../engine/editMath";
 import type { EditOp } from "../engine/editOps";
 import { fsUrl, MEDIA_DRAG_TYPE, type MediaMeta } from "../engine/media";
+import { opensContextMenu } from "../ui/ContextMenu";
+import { formatSceneLengthMs } from "../ui/durationText";
+import {
+  focusAdjacentLane,
+  LANE_FOCUS_RING,
+  laneKeyIntent,
+  nextAnnouncement,
+  rovingIndex,
+  rovingStop,
+} from "../ui/laneKeys";
 import type { TrimScrub } from "./Preview";
+import {
+  clipItemId,
+  clipLaneItems,
+  maskEdgeDraft,
+  maskEdgeOp,
+  maskItemId,
+  maskLaneItems,
+  reorderIndex,
+  type TimelineItem,
+  type TimelineKeyContext,
+  timelineItemName,
+  timelineNudge,
+  trimDraft,
+  trimOp,
+  zoomItemId,
+  zoomKeyTarget,
+} from "./timelineKeys";
 
 /** The magnetic timeline: seconds ruler + playhead, filmstrip clip blocks with trim handles, drag-reorder, zoom (fit-all default), edge/playhead snapping. Clips always butt together (gapless, a locked decision); every committed gesture is one edit op (editOps.ts) via `onEditOp`, which the editor applies and autosaves; drags preview with the same editMath functions the ops call. Here the playhead is the edit cursor (split point, snap target). */
 
@@ -32,8 +49,8 @@ export interface TimelineProps {
   playheadMs: number;
   onSelect: (id: string | null) => void;
   onPlayhead: (ms: number) => void;
-  /** A finished trim, hold, reorder or mask-edge drag. */
-  onEditOp: (op: EditOp) => void;
+  /** A finished trim, hold, reorder or mask-edge drag; the host's result (`{ ok: false }` when refused) silences the announcement. */
+  onEditOp: (op: EditOp) => unknown;
   /** Live trim feedback: the dragged edge's source frame, null when the drag ends. */
   onTrimScrub?: (scrub: TrimScrub | null) => void;
   /** Horizontal wheel/trackpad delta scrubs the playhead (scroll scrubs in both the preview and the timeline; the timeline pans via auto-follow). */
@@ -59,6 +76,10 @@ export interface TimelineProps {
   fps?: number;
   /** Right-click on a clip's zoom key diamond (`tMs` is clip-local). */
   onZoomKeyMenu?: (clipId: string, tMs: number, x: number, y: number) => void;
+  /** Right-click (or ⇧F10) on a ruler tap dot: the tap's menu. */
+  onTapMenu?: (id: string, x: number, y: number) => void;
+  /** Right-click (or ⇧F10) on a mask bar: the mask's own menu. */
+  onMaskMenu?: (id: string, x: number, y: number) => void;
 }
 
 const PAD_L = 16; // content inset before t=0
@@ -94,6 +115,9 @@ interface Block {
   w: number;
   dragging: boolean;
 }
+
+const refused = (result: unknown) =>
+  typeof result === "object" && result !== null && (result as { ok?: unknown }).ok === false;
 
 function clampZoom(pxPerMs: number): number {
   return Math.min(MAX_PX_PER_MS, Math.max(MIN_PX_PER_MS, pxPerMs));
@@ -165,6 +189,8 @@ export function Timeline({
   onMaskKeyMenu,
   fps = 60,
   onZoomKeyMenu,
+  onTapMenu,
+  onMaskMenu,
 }: TimelineProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -172,6 +198,16 @@ export function Timeline({
   const [zoom, setZoom] = useState<number | null>(null); // null = fit-all (the default)
   const [drag, setDrag] = useState<DragState | null>(null);
   const [dropMs, setDropMs] = useState<number | null>(null); // media-panel drops (output ms)
+  // Keyboard model (ui/laneKeys.ts): the roving item, the one drawing a ring, and the polite announcement.
+  const [focusedItem, setFocusedItem] = useState<string | null>(null);
+  const [ringItem, setRingItem] = useState<string | null>(null);
+  const [announcement, setAnnouncement] = useState("");
+  const itemRefs = useRef(new Map<string, HTMLElement>());
+  const pendingFocus = useRef<{ id: string | null; index: number; lane: "clips" | "masks" } | null>(
+    null,
+  );
+  const trackRef = useRef<HTMLDivElement>(null);
+  const maskLaneRef = useRef<HTMLDivElement>(null);
 
   const sourceById = new Map(sources.map((s) => [s.id, s]));
   const durationMs = timelineDurationMs(clips);
@@ -295,6 +331,8 @@ export function Timeline({
   ) {
     if (e.button !== 0) return;
     e.stopPropagation();
+    e.preventDefault();
+    pointerTakesStop(clipItemId(id));
     e.currentTarget.setPointerCapture(e.pointerId);
     onSelect(id);
     setDrag({ kind, id, startClientX: e.clientX, orig: clips, draft: clips });
@@ -307,48 +345,29 @@ export function Timeline({
     const origClip = drag.orig.find((c) => c.id === drag.id);
     if (!origClip) return;
     const dxMs = (e.clientX - drag.startClientX) / pxPerMs;
-    const speed = effectiveSpeed(origClip.speed);
     const startTl = origClip.startMs;
     const endTl = startTl + clipTimelineMs(origClip);
-    let draft: EditClip[];
-    if (drag.kind === "hold") {
-      const edgeTl = snapMs(endTl + dxMs, [playheadMs], snapThresholdMs);
-      draft = setClipHold(drag.orig, drag.id, edgeTl - startTl);
-    } else if (drag.kind === "trim-in") {
-      const edgeTl = snapMs(startTl + dxMs, [playheadMs], snapThresholdMs);
-      draft = trimClipIn(drag.orig, drag.id, origClip.outMs - (endTl - edgeTl) * speed);
-    } else {
-      const source = sourceById.get(origClip.sourceId);
-      const edgeTl = snapMs(endTl + dxMs, [playheadMs], snapThresholdMs);
-      draft = trimClipOut(
-        drag.orig,
-        drag.id,
-        origClip.inMs + (edgeTl - startTl) * speed,
-        source?.durationMs ?? origClip.outMs,
-      );
-    }
+    const edgeTl = snapMs(
+      (drag.kind === "trim-in" ? startTl : endTl) + dxMs,
+      [playheadMs],
+      snapThresholdMs,
+    );
+    const draft = trimDraft(
+      drag.orig,
+      drag.id,
+      drag.kind,
+      edgeTl,
+      sourceById.get(origClip.sourceId)?.durationMs,
+    );
     setDrag({ ...drag, draft });
     if (drag.kind !== "hold") onTrimScrub?.(trimScrubOf(draft, drag.id, drag.kind));
   }
 
   function onTrimPointerUp() {
     if (!drag || drag.kind === "move") return;
-    const orig = drag.orig.find((c) => c.id === drag.id);
-    const draft = drag.draft.find((c) => c.id === drag.id);
-    if (
-      orig &&
-      draft &&
-      (orig.inMs !== draft.inMs || orig.outMs !== draft.outMs || orig.holdMs !== draft.holdMs)
-    ) {
-      // The draft already holds the clamped edge, which the op re-applies unchanged.
-      onEditOp(
-        drag.kind === "hold"
-          ? { op: "setHold", clipId: drag.id, holdMs: draft.holdMs ?? 0 }
-          : drag.kind === "trim-in"
-            ? { op: "trimIn", clipId: drag.id, inMs: draft.inMs }
-            : { op: "trimOut", clipId: drag.id, outMs: draft.outMs },
-      );
-    }
+    // The draft already holds the clamped edge, which the op re-applies unchanged.
+    const op = trimOp(drag.kind, drag.id, drag.orig, drag.draft);
+    if (op) onEditOp(op);
     setDrag(null);
     onTrimScrub?.(null);
   }
@@ -377,17 +396,7 @@ export function Timeline({
     const dx = e.clientX - drag.startClientX;
     const active = drag.active || Math.abs(dx) > MOVE_THRESHOLD_PX;
     if (!active) return;
-    const draggedOrig = drag.orig[drag.fromIndex];
-    const centerPx =
-      draggedOrig.startMs * pxPerMs + dx + (clipTimelineMs(draggedOrig) * pxPerMs) / 2;
-    const others = drag.orig.filter((c) => c.id !== drag.id);
-    let cum = 0;
-    let toIndex = 0;
-    for (const c of others) {
-      const w = clipTimelineMs(c) * pxPerMs;
-      if (centerPx > cum + w / 2) toIndex++;
-      cum += w;
-    }
+    const toIndex = reorderIndex(drag.orig, drag.fromIndex, dx, pxPerMs);
     setDrag({ ...drag, pointerDx: dx, active, toIndex });
   }
 
@@ -421,6 +430,7 @@ export function Timeline({
   ) {
     if (e.button !== 0) return;
     e.stopPropagation();
+    e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     setMaskDrag({ orig: mask, draft: mask, edge, clip });
   }
@@ -429,10 +439,11 @@ export function Timeline({
     if (!maskDrag) return;
     const t = snapMs(pointerMs(e.clientX), [playheadMs, ...edgeTargetsMs(clips)], snapThresholdMs);
     const source = sourceById.get(maskDrag.orig.sourceId);
-    const draft = retimeMaskEdge(
+    const draft = maskEdgeDraft(
       maskDrag.orig,
       maskDrag.edge,
-      timelineToSourceUnclamped(maskDrag.clip, t),
+      maskDrag.clip,
+      t,
       source?.durationMs ?? 0,
     );
     setMaskDrag({ ...maskDrag, draft });
@@ -442,15 +453,8 @@ export function Timeline({
     if (!maskDrag) return;
     const { orig, draft } = maskDrag;
     setMaskDrag(null);
-    if (draft.startMs !== orig.startMs || draft.endMs !== orig.endMs) {
-      const edge = maskDrag.edge;
-      onEditOp({
-        op: "retimeMaskEdge",
-        maskId: orig.id,
-        edge,
-        sourceMs: edge === "start" ? draft.startMs : draft.endMs,
-      });
-    }
+    const op = maskEdgeOp(orig, draft, maskDrag.edge);
+    if (op) onEditOp(op);
   }
 
   // ── Zoom keys (diamonds on a clip's block) ───────────────────────────────
@@ -465,6 +469,8 @@ export function Timeline({
   function onZoomKeyDown(e: React.PointerEvent, clipId: string, tMs: number) {
     if (e.button !== 0) return;
     e.stopPropagation();
+    e.preventDefault();
+    pointerTakesStop(zoomItemId(clipId, tMs));
     e.currentTarget.setPointerCapture(e.pointerId);
     setKeyDrag({ clipId, tMs, draftMs: tMs, startClientX: e.clientX, moved: false });
   }
@@ -474,9 +480,15 @@ export function Timeline({
     const dx = e.clientX - keyDrag.startClientX;
     const moved = keyDrag.moved || Math.abs(dx) > MOVE_THRESHOLD_PX;
     if (!moved) return;
-    const raw = Math.min(clipTimelineMs(clip), Math.max(0, keyDrag.tMs + dx / pxPerMs));
-    const local = snapMs(raw, [playheadMs - clip.startMs], snapThresholdMs);
-    setKeyDrag({ ...keyDrag, moved, draftMs: snapZoomMs(local, fps) });
+    const draftMs = zoomKeyTarget(
+      clip,
+      keyDrag.tMs,
+      dx / pxPerMs,
+      [playheadMs - clip.startMs],
+      snapThresholdMs,
+      fps,
+    );
+    setKeyDrag({ ...keyDrag, moved, draftMs });
   }
 
   function onZoomKeyUp(clip: EditClip) {
@@ -547,6 +559,192 @@ export function Timeline({
     if (e.buttons & 1) seekTo(e.clientX);
   }
 
+  // ── Keyboard ──────────────────────────────────────────────────────────────
+  const clipName = (clip: EditClip) =>
+    (sourceById.get(clip.sourceId)?.rel ?? clip.sourceId).replace(/^assets\//, "");
+  const keyCtx: TimelineKeyContext = {
+    clips,
+    masks,
+    fps,
+    sourceDurationMs: (id) => sourceById.get(id)?.durationMs,
+    isImage: (id) => imageSources.has(id),
+  };
+  const showMasks = showMaskLane || masks.length > 0;
+  const clipItems = clipLaneItems(clips, clipName);
+  const maskItems = showMasks ? maskLaneItems(clips, masks, keyCtx.isImage) : [];
+  const clipStop = rovingStop(
+    clipItems.map((i) => i.id),
+    focusedItem,
+    selectedId ? clipItemId(selectedId) : null,
+  );
+  const maskStop = rovingStop(
+    maskItems.map((i) => i.id),
+    focusedItem,
+    selectedMaskId ? maskItemId(selectedMaskId) : null,
+  );
+  const itemIndex = new Map(
+    [...clipItems, ...maskItems].map((item) => [
+      item.id,
+      { item, lane: item.kind === "mask" ? maskItems : clipItems },
+    ]),
+  );
+
+  // A moved or deleted item keeps focus (or hands it to its neighbour) once the new doc arrives.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once per committed doc
+  useLayoutEffect(() => {
+    const pending = pendingFocus.current;
+    if (!pending) return;
+    pendingFocus.current = null;
+    const lane = pending.lane === "masks" ? maskItems : clipItems;
+    const target =
+      (pending.id !== null && itemIndex.has(pending.id) ? pending.id : null) ??
+      lane[Math.min(pending.index, lane.length - 1)]?.id;
+    const el = target ? itemRefs.current.get(target) : null;
+    (el ?? (pending.lane === "masks" ? maskLaneRef : trackRef).current)?.focus({
+      preventScroll: true,
+    });
+    el?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [clips, masks]);
+
+  const announce = (message: string) =>
+    setAnnouncement((previous) => nextAnnouncement(previous, message));
+
+  /** A press on an item focuses its lane, not the item (so arrows keep stepping frames), and moves the lane's Tab stop there. */
+  function pointerTakesStop(id: string) {
+    pendingFocus.current = null;
+    setFocusedItem(id);
+    (id.startsWith("mask:") ? maskLaneRef : trackRef).current?.focus({ preventScroll: true });
+  }
+
+  function focusItem(item: TimelineItem | undefined) {
+    if (!item) return;
+    const el = itemRefs.current.get(item.id);
+    el?.focus({ preventScroll: true });
+    el?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+
+  function onItemKeyDown(e: React.KeyboardEvent<HTMLElement>, item: TimelineItem) {
+    const intent = laneKeyIntent(e);
+    if (!intent) return;
+    pendingFocus.current = null;
+    const isMask = item.kind === "mask";
+    if (intent.kind === "escape") {
+      // The window handler still disarms or deselects; focus steps back to the lane.
+      (isMask ? maskLaneRef : trackRef).current?.focus({ preventScroll: true });
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    const lane = isMask ? maskItems : clipItems;
+    const index = lane.findIndex((i) => i.id === item.id);
+    const clip = item.kind === "mask" ? undefined : clips.find((c) => c.id === item.clipId);
+    const r = e.currentTarget.getBoundingClientRect();
+    switch (intent.kind) {
+      case "focus":
+        focusItem(lane[rovingIndex(index, lane.length, intent.to)]);
+        return;
+      case "lane":
+        focusAdjacentLane(
+          [trackRef.current, maskLaneRef.current].filter((el): el is HTMLDivElement => !!el),
+          e.currentTarget,
+          intent.step,
+        );
+        return;
+      case "move":
+      case "trim": {
+        const result = timelineNudge(keyCtx, item, intent);
+        if (!result) return;
+        if (result.op) {
+          const op = result.op;
+          const keepId =
+            op.op === "moveZoomKey" ? zoomItemId(op.clipId, op.toMs) : (item.id as string);
+          pendingFocus.current = { id: keepId, index, lane: isMask ? "masks" : "clips" };
+          if (refused(onEditOp(op))) {
+            pendingFocus.current = null;
+            return;
+          }
+        }
+        announce(result.message);
+        return;
+      }
+      case "select":
+        if (item.kind === "clip") onSelect(item.clipId);
+        else if (item.kind === "zoomKey" && clip) onPlayhead(Math.round(clip.startMs + item.tMs));
+        else if (item.kind === "mask") {
+          const mask = masks.find((m) => m.id === item.maskId);
+          onSelectMask?.(item.maskId);
+          const windows = mask ? maskWindows(clips, mask, keyCtx.isImage(mask.sourceId)) : [];
+          if (windows[0] && !windows.some((w) => playheadMs >= w.startMs && playheadMs < w.endMs)) {
+            onPlayhead(Math.round(windows[0].startMs));
+          }
+        }
+        return;
+      case "delete": {
+        const op: EditOp =
+          item.kind === "clip"
+            ? { op: "removeClip", clipId: item.clipId }
+            : item.kind === "zoomKey"
+              ? { op: "removeZoomKey", clipId: item.clipId, tMs: item.tMs }
+              : { op: "removeMask", maskId: item.maskId };
+        const neighbour = lane[index - 1] ?? lane[index + 1];
+        pendingFocus.current = {
+          id: neighbour?.id ?? null,
+          index: Math.max(0, index - 1),
+          lane: isMask ? "masks" : "clips",
+        };
+        if (refused(onEditOp(op))) {
+          pendingFocus.current = null;
+          return;
+        }
+        announce(
+          item.kind === "clip"
+            ? "Clip removed"
+            : item.kind === "zoomKey"
+              ? "Zoom key deleted"
+              : "Mask deleted",
+        );
+        return;
+      }
+      case "menu":
+        if (item.kind === "clip") {
+          onSelect(item.clipId);
+          onClipMenu?.(item.clipId, r.left, r.bottom + 4);
+        } else if (item.kind === "zoomKey")
+          onZoomKeyMenu?.(item.clipId, item.tMs, r.left, r.bottom + 4);
+        else onMaskMenu?.(item.maskId, r.left, r.bottom + 4);
+        return;
+    }
+  }
+
+  /** The roving, naming and focus plumbing every item shares; pointer handlers stay on the elements. */
+  function itemProps(id: string) {
+    const entry = itemIndex.get(id);
+    return {
+      "aria-label": entry ? timelineItemName(entry.item, keyCtx) : undefined,
+      "aria-posinset": entry ? entry.lane.indexOf(entry.item) + 1 : undefined,
+      "aria-setsize": entry?.lane.length,
+      ref: (el: HTMLElement | null) => {
+        if (el) itemRefs.current.set(id, el);
+        else itemRefs.current.delete(id);
+      },
+      onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => {
+        if (entry) onItemKeyDown(e, entry.item);
+      },
+      onFocus: (e: React.FocusEvent<HTMLElement>) => {
+        setFocusedItem(id);
+        let visible = false;
+        try {
+          visible = e.currentTarget.matches(":focus-visible");
+        } catch {
+          visible = false;
+        }
+        setRingItem(visible ? id : null);
+      },
+      onBlur: () => setRingItem((current) => (current === id ? null : current)),
+    };
+  }
+  const ring = (id: string) => (ringItem === id ? LANE_FOCUS_RING : null);
+
   // ── Render ────────────────────────────────────────────────────────────────
   const contentW = PAD_L + durationMs * pxPerMs + TAIL_PX;
   const step = tickStepMs(pxPerMs);
@@ -615,12 +813,39 @@ export function Timeline({
                 className="timeline-tap-dot"
                 style={{ left: PAD_L + startMs * pxPerMs }}
                 title="Tap highlight: jump the playhead here"
-                onPointerDown={(e) => e.stopPropagation()}
+                aria-label={`Tap highlight, ${formatSceneLengthMs(startMs)}`}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  // WebKit never focuses a clicked button; ⇧F10 needs the dot, and the arrows still step frames.
+                  e.currentTarget.focus({ preventScroll: true });
+                }}
                 onClick={() => onPlayhead(startMs)}
+                onContextMenu={
+                  onTapMenu
+                    ? (e) => {
+                        e.preventDefault();
+                        onTapMenu(tap.id, e.clientX, e.clientY);
+                      }
+                    : undefined
+                }
+                onKeyDown={(e) => {
+                  if (!onTapMenu || !opensContextMenu(e)) return;
+                  e.preventDefault();
+                  const r = e.currentTarget.getBoundingClientRect();
+                  onTapMenu(tap.id, r.left, r.bottom + 4);
+                }}
               />
             ))}
           </div>
-          <div className="timeline-track" onPointerDown={() => onSelect(null)}>
+          <div
+            className="timeline-track"
+            ref={trackRef}
+            role="listbox"
+            aria-label="Clips"
+            aria-orientation="horizontal"
+            tabIndex={-1}
+            onPointerDown={() => onSelect(null)}
+          >
             {renderClips.length === 0 && (
               <span className="timeline-empty muted">No clips: everything was deleted.</span>
             )}
@@ -635,16 +860,22 @@ export function Timeline({
               const frozen = clip.holdMs !== undefined;
               // A still is a freeze by construction: same single handle, but its own poster instead of the snowflake.
               const still = source?.kind === "image";
+              const itemId = clipItemId(clip.id);
               return (
-                // biome-ignore lint/a11y/useSemanticElements: a real <button> won't paint img children in WKWebView
                 <div
                   key={stable.id}
-                  role="button"
-                  tabIndex={0}
+                  role="option"
+                  tabIndex={itemId === clipStop ? 0 : -1}
+                  aria-selected={clip.id === selectedId}
+                  {...itemProps(itemId)}
                   className={`timeline-clip${clip.id === selectedId ? " selected" : ""}${block.dragging ? " dragging" : ""}${frozen ? " frozen" : ""}${still ? " still" : ""}`}
-                  style={{ left: PAD_L + block.x, width: Math.max(4, block.w) }}
+                  style={{ left: PAD_L + block.x, width: Math.max(4, block.w), ...ring(itemId) }}
                   onPointerDown={(e) => {
                     e.stopPropagation();
+                    if (e.button === 0) {
+                      e.preventDefault();
+                      pointerTakesStop(itemId);
+                    }
                     onClipPointerDown(e, clip.id);
                   }}
                   onPointerMove={onClipPointerMove}
@@ -659,12 +890,6 @@ export function Timeline({
                         }
                       : undefined
                   }
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      onSelect(clip.id);
-                    }
-                  }}
                 >
                   {still && meta?.posterPath && (
                     <img
@@ -721,36 +946,51 @@ export function Timeline({
                       />
                     </>
                   )}
-                  {(clip.zoom?.keys ?? []).map((k) => {
-                    const dragged = keyDrag?.clipId === clip.id && keyDrag.tMs === k.tMs;
-                    const at = dragged ? keyDrag.draftMs : k.tMs;
-                    if (at < 0 || at > clipTimelineMs(clip)) return null;
-                    return (
-                      // biome-ignore lint/a11y/noStaticElementInteractions: a key marker; the crop strip's buttons cover keyboard use
-                      <span
-                        key={k.tMs}
-                        className={`timeline-zoom-key${k.ease === "smooth" ? " smooth" : ""}${dragged ? " dragging" : ""}`}
-                        style={{ left: at * pxPerMs }}
-                        title="Zoom key: click to jump here, drag to retime, right-click to ease or delete"
-                        onPointerDown={(e) => onZoomKeyDown(e, clip.id, k.tMs)}
-                        onPointerMove={(e) => onZoomKeyMove(e, clip)}
-                        onPointerUp={() => onZoomKeyUp(clip)}
-                        onPointerCancel={() => setKeyDrag(null)}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          onZoomKeyMenu?.(clip.id, k.tMs, e.clientX, e.clientY);
-                        }}
-                      />
-                    );
-                  })}
                 </div>
               );
             })}
+            {renderClips.map((stable) => {
+              const block = blockById.get(stable.id);
+              if (!block) return null;
+              const { clip } = block;
+              return (clip.zoom?.keys ?? []).map((k) => {
+                const dragged = keyDrag?.clipId === clip.id && keyDrag.tMs === k.tMs;
+                const at = dragged ? keyDrag.draftMs : k.tMs;
+                if (at < 0 || at > clipTimelineMs(clip)) return null;
+                const itemId = zoomItemId(clip.id, k.tMs);
+                return (
+                  <span
+                    key={`${clip.id}@${k.tMs}`}
+                    role="option"
+                    tabIndex={itemId === clipStop ? 0 : -1}
+                    aria-selected={false}
+                    {...itemProps(itemId)}
+                    className={`timeline-zoom-key${k.ease === "smooth" ? " smooth" : ""}${dragged ? " dragging" : ""}`}
+                    // Drawn over its clip (the border is 1px), outside the clip so options never nest.
+                    style={{ left: PAD_L + block.x + 1 + at * pxPerMs, bottom: 6, ...ring(itemId) }}
+                    title="Zoom key: click to jump here, drag to retime, right-click to ease or delete"
+                    onPointerDown={(e) => onZoomKeyDown(e, clip.id, k.tMs)}
+                    onPointerMove={(e) => onZoomKeyMove(e, clip)}
+                    onPointerUp={() => onZoomKeyUp(clip)}
+                    onPointerCancel={() => setKeyDrag(null)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onZoomKeyMenu?.(clip.id, k.tMs, e.clientX, e.clientY);
+                    }}
+                  />
+                );
+              });
+            })}
           </div>
-          {(showMaskLane || masks.length > 0) && (
+          {showMasks && (
             <div
               className="timeline-mask-lane"
+              ref={maskLaneRef}
+              role="listbox"
+              aria-label="Masks"
+              aria-orientation="horizontal"
+              tabIndex={-1}
               style={{ height: maskRowCount * MASK_ROW_PX + 4 }}
               title="Masks: click a bar to select it, drag its ends to retime; a sloped end fades"
             >
@@ -759,11 +999,16 @@ export function Timeline({
                 const image = imageSources.has(mask.sourceId);
                 const row = maskRows.get(committed.id) ?? 0;
                 const selected = mask.id === selectedMaskId;
+                const itemId = maskItemId(mask.id);
+                // A mask a clip shows twice draws a bar per clip; the first is the one focus lands on.
+                let first = true;
                 return renderClips.map((stable) => {
                   const block = blockById.get(stable.id);
                   if (!block) return null;
                   const [w] = maskWindows([block.clip], mask, image);
                   if (!w) return null;
+                  const focusable = first;
+                  first = false;
                   const clip = block.clip;
                   const speed = effectiveSpeed(clip.speed);
                   const x = PAD_L + block.x + (w.startMs - clip.startMs) * pxPerMs;
@@ -777,26 +1022,35 @@ export function Timeline({
                             k.sourceMs < Math.min(clip.outMs, mask.endMs),
                         )
                       : [];
-                  return (
-                    // biome-ignore lint/a11y/useSemanticElements: a real <button> can't host the edge handles' pointer capture cleanly
-                    <div
-                      key={`${mask.id}:${clip.id}`}
-                      role="button"
-                      tabIndex={-1}
-                      className={`timeline-mask-bar ${mask.style}${selected ? " selected" : ""}${w.hold ? " hold" : ""}`}
-                      style={{ left: x, width, top: 2 + row * MASK_ROW_PX }}
-                      onPointerDown={(e) => {
-                        if (e.button !== 0) return;
-                        e.stopPropagation();
-                        onSelectMask?.(mask.id);
-                        if (playheadMs < w.startMs || playheadMs >= w.endMs) {
-                          onPlayhead(Math.round(w.startMs));
+                  const barKey = `${mask.id}:${clip.id}`;
+                  const barProps = {
+                    className: `timeline-mask-bar ${mask.style}${selected ? " selected" : ""}${w.hold ? " hold" : ""}`,
+                    style: {
+                      left: x,
+                      width,
+                      top: 2 + row * MASK_ROW_PX,
+                      ...(focusable ? ring(itemId) : null),
+                    },
+                    onPointerDown: (e: React.PointerEvent) => {
+                      if (e.button !== 0) return;
+                      e.stopPropagation();
+                      e.preventDefault();
+                      pointerTakesStop(itemId);
+                      onSelectMask?.(mask.id);
+                      if (playheadMs < w.startMs || playheadMs >= w.endMs) {
+                        onPlayhead(Math.round(w.startMs));
+                      }
+                    },
+                    onContextMenu: onMaskMenu
+                      ? (e: React.MouseEvent) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onMaskMenu(mask.id, e.clientX, e.clientY);
                         }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") onSelectMask?.(mask.id);
-                      }}
-                    >
+                      : undefined,
+                  };
+                  const barContent = (
+                    <>
                       {ramps.map((r) => (
                         <span
                           key={r.x}
@@ -852,6 +1106,22 @@ export function Timeline({
                           onPointerCancel={() => setMaskDrag(null)}
                         />
                       )}
+                    </>
+                  );
+                  return focusable ? (
+                    <div
+                      {...barProps}
+                      key={barKey}
+                      role="option"
+                      tabIndex={itemId === maskStop ? 0 : -1}
+                      aria-selected={selected}
+                      {...itemProps(itemId)}
+                    >
+                      {barContent}
+                    </div>
+                  ) : (
+                    <div {...barProps} key={barKey} aria-hidden="true">
+                      {barContent}
                     </div>
                   );
                 });
@@ -887,6 +1157,9 @@ export function Timeline({
           </div>
         </div>
       </div>
+      <span className="visually-hidden" role="status">
+        {announcement}
+      </span>
     </div>
   );
 }

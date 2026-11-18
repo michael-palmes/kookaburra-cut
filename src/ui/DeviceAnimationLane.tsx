@@ -76,6 +76,7 @@ export function DeviceAnimationLane({
       onSceneDuration={onDuration}
       addTitle="Add a device animation after the last one, or ending at the playhead when it is past it"
       label="Devices"
+      laneName="Device"
       laneClassName="lane-device"
       writeErrorPrefix="Save failed, this device edit isn’t on disk:"
     />

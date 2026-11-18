@@ -49,6 +49,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   when they're off.
 - The transition preview has a pause button, and starts paused under Reduce
   motion.
+- Timeline edits from the keyboard. Tab into an animation lane or the video
+  editor's timeline, then use the arrows to move between keyframes, animations,
+  clips, zoom keys and masks. ⌘ with an arrow moves the focused item a frame
+  (⇧ for ten, or a clip one place), ⌥ trims its start and ⌥⌘ its end, Return
+  selects, Delete removes and ⇧F10 opens its menu. Each move is one undo step,
+  writes exactly what the drag writes, and VoiceOver reads the item and where it
+  landed.
+- Move up and Move down in the scene, library and theme menus, and Move earlier
+  and Move later in the clip menu. Theme cards open their menu with ⇧F10.
 
 ### Changed
 

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { type RefObject, useEffect, useRef, useState } from "react";
+import { type RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { reorderCatalogue } from "../engine/catalogueOrder";
 import { devSetBuiltinThemeOrders, setWorkspaceThemeOrders } from "../engine/library";
 import {
@@ -22,7 +22,9 @@ import {
 import { resolveThemeDocument, themeDependents, themeExtendsOf } from "../theme/extends";
 import { themeDocLookup, WORKSPACE_THEME_PREFIX } from "../theme/registry";
 import { parseThemeDoc } from "../theme/schema";
+import { opensContextMenu } from "./ContextMenu";
 import { THEME_CATEGORY_ICONS } from "./libraryIcons";
+import type { MenuMoves } from "./moveMenu";
 import { canEditBundledThemes } from "./theme-editor/themeEditorIo";
 import { useSlashFocus } from "./useSlashFocus";
 
@@ -312,7 +314,7 @@ function ThemeCard({
   onFocus: () => void;
   onSelect: () => void;
   onNavigate: (event: React.KeyboardEvent) => void;
-  onContextMenu?: (event: React.MouseEvent) => void;
+  onContextMenu?: (event: CardMenuEvent) => void;
   /** Pointer-drag handlers, present only where the grid can reorder. */
   drag?: {
     onPointerDown: (event: React.PointerEvent) => void;
@@ -357,6 +359,17 @@ function ThemeCard({
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           onSelect();
+          return;
+        }
+        if (onContextMenu && opensContextMenu(event)) {
+          event.preventDefault();
+          const rect = event.currentTarget.getBoundingClientRect();
+          onContextMenu({
+            preventDefault: () => {},
+            clientX: rect.left + 16,
+            clientY: rect.bottom,
+            currentTarget: event.currentTarget,
+          });
           return;
         }
         onNavigate(event);
@@ -410,11 +423,18 @@ function ThemeCard({
   );
 }
 
+/** A right-click, or ⇧F10 on a focused card, which places the menu at the card. */
+export type CardMenuEvent = Pick<
+  React.MouseEvent,
+  "preventDefault" | "clientX" | "clientY" | "currentTarget"
+>;
+
 export interface ThemeGridProps {
   choices: readonly ThemeChoice[];
   value: string;
   onChange: (id: string) => void;
-  onCardContextMenu?: (choice: ThemeChoice, event: React.MouseEvent) => void;
+  /** `moves` is present where the grid reorders: the drag's own reorder, one place either way. */
+  onCardContextMenu?: (choice: ThemeChoice, event: CardMenuEvent, moves?: MenuMoves) => void;
   ariaLabel?: string;
   /** Present only where the listing has a writable order; a drag lands as one move (`from` lifted out, dropped at `to`). */
   onReorder?: (from: number, to: number) => void;
@@ -444,6 +464,30 @@ export function ThemeGrid({
   );
   const swallowClickRef = useRef(false);
   const [drag, setDrag] = useState<{ from: number; over: number } | null>(null);
+  const focusAfterMove = useRef<string | null>(null);
+
+  // A menu move keeps focus on the card it moved.
+  useLayoutEffect(() => {
+    const id = focusAfterMove.current;
+    if (id === null) return;
+    focusAfterMove.current = null;
+    const index = choices.findIndex((choice) => choice.id === id);
+    if (index < 0) return;
+    setFocusId(id);
+    refs.current[index]?.focus({ preventScroll: true });
+  }, [choices]);
+
+  const moves = (index: number): MenuMoves | undefined => {
+    if (!onReorder) return undefined;
+    const to = (target: number) =>
+      target < 0 || target >= choices.length
+        ? null
+        : () => {
+            focusAfterMove.current = choices[index].id;
+            onReorder(index, target);
+          };
+    return { up: to(index - 1), down: to(index + 1) };
+  };
 
   const cardIndexAt = (x: number, y: number): number | null => {
     let nearestIndex: number | null = null;
@@ -572,7 +616,9 @@ export function ThemeGrid({
           onSelect={() => onChange(choice.id)}
           onNavigate={(event) => navigate(event, index)}
           onContextMenu={
-            onCardContextMenu ? (event) => onCardContextMenu(choice, event) : undefined
+            onCardContextMenu
+              ? (event) => onCardContextMenu(choice, event, moves(index))
+              : undefined
           }
         />
       ))}

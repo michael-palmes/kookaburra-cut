@@ -1,6 +1,7 @@
 import type { ContextMenuItem } from "./ContextMenu";
 import type { LibraryKind, LibrarySource } from "./libraryDetails";
 import { LibraryMenuIcon } from "./libraryIcons";
+import { type MenuMoves, moveMenuItems } from "./moveMenu";
 import { SceneMenuIcon } from "./sceneMenu";
 
 /** Item builders for the welcome screen's right-click menus (the `sceneMenu.tsx` pattern): the project cards and the four library grids. Every item carries a leading icon (design rule 10), and the destructive ones arm through the shared two-step rather than a confirm dialog. */
@@ -63,6 +64,8 @@ export function libraryCardMenuItems(opts: {
   onEditDetails: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  /** Present where the grid can reorder: the drag's own commit, one place either way. */
+  moves?: MenuMoves;
 }): (ContextMenuItem | "separator")[] {
   const mine = opts.source === "user";
   const writable = opts.writable;
@@ -99,6 +102,7 @@ export function libraryCardMenuItems(opts: {
     icon: mine ? <SceneMenuIcon id="duplicate" /> : <LibraryMenuIcon id="duplicate-to" />,
     onSelect: opts.onDuplicate,
   });
+  if (opts.moves) items.push("separator", ...moveMenuItems(opts.moves));
   if (writable) {
     items.push("separator", {
       id: "delete",

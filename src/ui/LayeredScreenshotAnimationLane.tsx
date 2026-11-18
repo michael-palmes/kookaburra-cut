@@ -125,6 +125,7 @@ export function LayeredScreenshotAnimationLane({
       onSceneDuration={onDuration}
       addTitle="Add a stack animation after the last one, or ending at the playhead when it is past it"
       label={label}
+      laneName="Screenshot stack"
       writeErrorPrefix="Save failed, this stack edit isn’t on disk:"
     />
   );
