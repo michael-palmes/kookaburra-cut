@@ -172,6 +172,28 @@ describe("keyboard context menus (2.1.1)", () => {
     expect(opensContextMenu({ key: "F10", shiftKey: false })).toBe(false);
     expect(opensContextMenu({ key: "Enter", shiftKey: true })).toBe(false);
   });
+
+  it("focuses a clicked scene row, so the menu key then opens that row's menu", () => {
+    const source = read("./inspector/ScenesDrillIn.tsx");
+    const down = source.slice(source.indexOf("function onRowPointerDown"));
+    expect(down).toMatch(
+      /if \(busy \|\| e\.button !== 0 \|\| renaming \|\| timing\) return;\s*e\.preventDefault\(\);[^\n]*\n[^\n]*\n\s*\(e\.currentTarget as HTMLElement\)\.focus\(\{ preventScroll: true \}\);/,
+    );
+    expect(source).toMatch(
+      /if \(e\.target !== e\.currentTarget \|\| busy \|\| renaming \|\| timing\) return;\s*if \(opensContextMenu\(e\)\) \{/,
+    );
+    // A press inside a live rename or length field stays in that field.
+    expect(source.match(/onPointerDown=\{\(e\) => e\.stopPropagation\(\)\}/g)).toHaveLength(2);
+  });
+
+  it("focuses a clicked ruler tap dot, so the menu key then opens its menu", () => {
+    const source = read("../editor/Timeline.tsx");
+    const dot = source.slice(source.indexOf('className="timeline-tap-dot"'));
+    expect(dot).toMatch(
+      /onPointerDown=\{\(e\) => \{\s*e\.stopPropagation\(\);\s*\/\/[^\n]*\n\s*e\.currentTarget\.focus\(\{ preventScroll: true \}\);/,
+    );
+    expect(dot).toMatch(/if \(!onTapMenu \|\| !opensContextMenu\(e\)\) return;/);
+  });
 });
 
 describe("option card clips (2.2.2, 2.3.3)", () => {

@@ -138,6 +138,8 @@ export function ScenesDrillIn({
   function onRowPointerDown(e: React.PointerEvent, index: number) {
     if (busy || e.button !== 0 || renaming || timing) return;
     e.preventDefault(); // suppress the compatibility mousedown, else the drag sweeps a text selection across the panel
+    // That also cancels click-to-focus, so focus the row here or ⇧F10, Space and Return miss it.
+    (e.currentTarget as HTMLElement).focus({ preventScroll: true });
     e.currentTarget.setPointerCapture(e.pointerId);
     setDrag({ index, startY: e.clientY, insertBefore: null });
   }

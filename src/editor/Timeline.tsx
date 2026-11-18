@@ -814,7 +814,11 @@ export function Timeline({
                 style={{ left: PAD_L + startMs * pxPerMs }}
                 title="Tap highlight: jump the playhead here"
                 aria-label={`Tap highlight, ${formatSceneLengthMs(startMs)}`}
-                onPointerDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  // WebKit never focuses a clicked button; ⇧F10 needs the dot, and the arrows still step frames.
+                  e.currentTarget.focus({ preventScroll: true });
+                }}
                 onClick={() => onPlayhead(startMs)}
                 onContextMenu={
                   onTapMenu
