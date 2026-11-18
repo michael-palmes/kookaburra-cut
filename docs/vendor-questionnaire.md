@@ -325,5 +325,6 @@ SIG: Compliance management. CAIQ: A&A.
 | Physical and environmental security (DCS) | No office, data centre or hosted data. Releases build on GitHub-hosted runners ([release.yml](../.github/workflows/release.yml)). |
 | Server security, Cloud hosting services (IVS) | No server and no hosted service. |
 
-Not answered here: ESG and accessibility. The vendor, the terms, support and
-insurance are in [Governance and risk](#governance-and-risk).
+Not answered here: ESG. Accessibility, with the WCAG 2.2 AA conformance
+report, is in [accessibility.md](./accessibility.md). The vendor, the terms,
+support and insurance are in [Governance and risk](#governance-and-risk).
