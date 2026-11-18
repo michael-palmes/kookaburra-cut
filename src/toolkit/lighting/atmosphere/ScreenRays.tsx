@@ -14,6 +14,7 @@ import {
   type WebGLRenderer,
   WebGLRenderTarget,
 } from "three";
+import { useSceneRelease } from "../../../engine/sceneRelease";
 import { LOOK_GLSL_HASH } from "../../stage/scene3d/kit/glsl";
 import { renderOccluders } from "./occlusionPass";
 
@@ -167,6 +168,7 @@ export function ScreenRays({
     },
     [geometry, target, black, material],
   );
+  useSceneRelease(() => target.dispose());
 
   useLayoutEffect(() => {
     const u = material.uniforms;

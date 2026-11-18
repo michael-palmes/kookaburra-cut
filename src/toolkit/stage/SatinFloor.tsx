@@ -31,6 +31,7 @@ import {
   WebGLRenderTarget,
 } from "three";
 import { createSeededRandom } from "../../engine/rng";
+import { useSceneRelease } from "../../engine/sceneRelease";
 
 /** A satin stage floor (the `satin` backdrop): a planar reflection blurred with the height of what it reflects, an albedo and sheen that fade with distance, blended over whatever is behind so it dissolves into the background, sparse glitter flakes, and floor-only pools standing in for caustics. Deterministic: fixed passes, no history. */
 
@@ -324,6 +325,12 @@ export function SatinFloor({
     },
     [passes],
   );
+  // Exports let the mirror go once the film has passed the scene; the next draw re-allocates it, and every pass is cleared or fully overwritten before it is read.
+  useSceneRelease(() => {
+    passes.sharp.dispose();
+    passes.across.dispose();
+    passes.blurred.dispose();
+  });
 
   const uniforms = useMemo(
     () => ({

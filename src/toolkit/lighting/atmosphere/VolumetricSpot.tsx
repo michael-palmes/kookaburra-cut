@@ -20,6 +20,7 @@ import {
   type WebGLRenderer,
   WebGLRenderTarget,
 } from "three";
+import { useSceneRelease } from "../../../engine/sceneRelease";
 import { useTimeline } from "../../../engine/timeline";
 import { createBeamDust, createBeamMaterial } from "./beamParts";
 import { GOBO_DEFAULTS, type GoboSpec, goboTexture } from "./gobo";
@@ -304,6 +305,8 @@ export function VolumetricSpot(props: VolumetricSpotProps) {
     },
     [depthPass],
   );
+  // The pre-pass clears on every draw, so an export can let it go once the film has passed the scene.
+  useSceneRelease(() => depthPass.target.dispose());
 
   const seconds = time.globalMs / 1000;
   useLayoutEffect(() => {
