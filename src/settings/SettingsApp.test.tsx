@@ -148,3 +148,23 @@ describe("Settings rows a profile governs", () => {
     expect(exportRow).toContain("Export…");
   });
 });
+
+describe("Settings › Accessibility", () => {
+  it("offers Text size as four options, each with a leading icon", async () => {
+    const html = await render({ managed: false });
+    expect(html).toMatch(/<\/svg>Text size<\/span>/);
+    const size = html.slice(html.indexOf("Text size<"), html.indexOf("Single-key shortcuts<"));
+    expect(size).toContain('role="radiogroup" aria-label="Text size"');
+    for (const label of ["Default", "Large", "Larger", "Largest"]) {
+      expect(size).toMatch(new RegExp(`role="radio"[^>]*>\\s*<svg[^]*?</svg>${label}<`));
+    }
+    expect(size).toContain('aria-checked="true"');
+  });
+
+  it("offers Single-key shortcuts as a switch, on by default", async () => {
+    const html = await render({ managed: false });
+    expect(html).toMatch(/<\/svg>Single-key shortcuts<\/span>/);
+    const keys = row(html, "Single-key shortcuts");
+    expect(keys).toMatch(/type="checkbox" aria-label="Single-key shortcuts" checked=""/);
+  });
+});

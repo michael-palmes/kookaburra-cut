@@ -88,17 +88,17 @@ describe("inspector redesign styles", () => {
       /\.inspector-drill-body\.banded\s*\{[^}]*gap: 0;[^}]*padding: 0;[^}]*overflow: hidden;/s,
     );
     expect(styles).toMatch(
-      /\.bg-type-strip\s*\{[^}]*height: 30px;[^}]*margin: 10px 12px;[^}]*background: var\(--surface-recessed\);/s,
+      /\.bg-type-strip\s*\{[^}]*height: calc\(30px \* var\(--text-scale\)\);[^}]*margin: 10px 12px;[^}]*background: var\(--surface-recessed\);/s,
     );
     expect(styles).toMatch(/\.bg-type-strip-tab svg\s*\{[^}]*width: 16px;[^}]*height: 16px;/s);
     expect(styles).toMatch(
-      /\.bg-type-strip-tab\.selected\s*\{[^}]*background: var\(--surface-raised\);[^}]*border-color: var\(--border-strong\);/s,
+      /\.bg-type-strip-tab\.selected\s*\{[^}]*background: var\(--surface-raised\);[^}]*border-color: var\(--border-control\);/s,
     );
     expect(styles).toMatch(
       /\.bg-look-browser\s*\{[^}]*position: relative;[^}]*flex: 1;[^}]*min-height: 120px;[^}]*overflow-y: auto;/s,
     );
     expect(styles).toMatch(
-      /\.bg-look-group-header\s*\{[^}]*position: sticky;[^}]*top: 0;[^}]*height: 28px;/s,
+      /\.bg-look-group-header\s*\{[^}]*position: sticky;[^}]*top: 0;[^}]*height: calc\(28px \* var\(--text-scale\)\);/s,
     );
     expect(styles).toMatch(
       /\.bg-look-grid\s*\{[^}]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);[^}]*gap: 6px;/s,
@@ -108,10 +108,10 @@ describe("inspector redesign styles", () => {
   it("keeps the compact look tile and preset swatches at the handoff geometry", () => {
     expect(styles).toMatch(/\.theme-card\.compact \.theme-card-thumb\s*\{[^}]*height: 44px;/s);
     expect(styles).toMatch(
-      /\.theme-card\.compact \.theme-card-meta\s*\{[^}]*font-size: 10\.5px;[^}]*text-overflow: ellipsis;[^}]*white-space: nowrap;/s,
+      /\.theme-card\.compact \.theme-card-meta\s*\{[^}]*font-size: calc\(10\.5px \* var\(--text-scale\)\);[^}]*text-overflow: ellipsis;[^}]*white-space: nowrap;/s,
     );
     expect(styles).toMatch(
-      /\.theme-card\.compact\.selected\s*\{[^}]*background: var\(--accent-subtle\);[^}]*border-color: var\(--accent-border\);/s,
+      /\.theme-card\.compact\.selected\s*\{[^}]*background: var\(--accent-subtle\);[^}]*border-color: var\(--accent\);/s,
     );
     expect(styles).toMatch(
       /\.bg-preset-strip-row\s*\{[^}]*overflow-x: auto;[^}]*scrollbar-width: none;/s,
@@ -126,7 +126,7 @@ describe("inspector redesign styles", () => {
 
   it("pins the Options sheet between its bar and the clamp that spares the look browser", () => {
     expect(styles).toMatch(
-      /\.bg-options-sheet\s*\{[^}]*height: 43px;[^}]*max-height: calc\(100% - 66px - 120px\);[^}]*overflow: hidden;[^}]*transition: height var\(--dur-base\) var\(--ease-standard\);/s,
+      /\.bg-options-sheet\s*\{[^}]*height: calc\(42px \* var\(--text-scale\) \+ 1px\);[^}]*max-height: calc\(100% - 66px - 120px\);[^}]*overflow: hidden;[^}]*transition: height var\(--dur-base\) var\(--ease-standard\);/s,
     );
     expect(styles).toMatch(/\.bg-options-sheet\.open\s*\{[^}]*height: 480px;/s);
     expect(styles).toMatch(
@@ -139,17 +139,19 @@ describe("inspector redesign styles", () => {
       /\.bg-options-sheet-body\s*\{[^}]*min-height: 0;[^}]*overflow-y: auto;/s,
     );
     expect(styles).toMatch(
-      /\.bg-sheet-slider\s*\{[^}]*grid-template-columns: 76px minmax\(0, 1fr\) 44px;/s,
+      /\.bg-sheet-slider\s*\{[^}]*grid-template-columns: calc\(76px \* var\(--text-scale\)\) minmax\(0, 1fr\) calc\(\s*44px \*\s*var\(--text-scale\)\s*\);/s,
     );
     expect(styles).toMatch(/\.bg-sheet-slider \.popover-inline\s*\{[^}]*display: contents;/s);
     expect(styles).toMatch(
       /\.bg-sheet-slider \.range-value\s*\{[^}]*font-family: var\(--font-mono\);/s,
     );
     expect(styles).toMatch(
-      /\.inspector-subtabs\.bg-sheet-segmented\s*\{[^}]*height: 24px;[^}]*margin: 0;/s,
+      /\.inspector-subtabs\.bg-sheet-segmented\s*\{[^}]*height: calc\(24px \* var\(--text-scale\)\);[^}]*margin: 0;/s,
     );
     expect(styles).toMatch(/\.bg-sheet-segmented \.inspector-subtab svg\s*\{[^}]*width: 13px;/s);
-    expect(styles).toMatch(/\.bg-options-sheet \.toggle-row\s*\{[^}]*height: 28px;/s);
+    expect(styles).toMatch(
+      /\.bg-options-sheet \.toggle-row\s*\{[^}]*height: calc\(28px \* var\(--text-scale\)\);/s,
+    );
     expect(styles).toMatch(
       /\.inspector-drill-header-action\.confirming\s*\{[^}]*width: auto;[^}]*padding: 0 8px;[^}]*font-size: var\(--text-xs\);[^}]*white-space: nowrap;/s,
     );

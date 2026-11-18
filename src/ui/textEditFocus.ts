@@ -67,6 +67,35 @@ export function spaceMeansPlayback(el: SpaceTargetLike | null): boolean {
   return mode === "decimal" || mode === "numeric";
 }
 
+const SPACE_PRESSES_ROLES = new Set([
+  "button",
+  "link",
+  "tab",
+  "option",
+  "radio",
+  "checkbox",
+  "switch",
+  "menuitem",
+  "menuitemcheckbox",
+  "menuitemradio",
+  "treeitem",
+]);
+
+interface PressTargetLike {
+  tagName: string;
+  getAttribute?: (name: string) => string | null;
+  matches?: (selector: string) => boolean;
+}
+
+/** True for a control keyboard focus rests on that Space presses (a button, tab, option or card), so the transport leaves the key to it; a card focused by a click keeps Space for playback. */
+export function spacePressesControl(el: PressTargetLike | null): boolean {
+  if (!el) return false;
+  if (el.matches && !el.matches(":focus-visible")) return false;
+  if (el.tagName === "BUTTON" || el.tagName === "SUMMARY") return true;
+  if (el.tagName === "A" && el.getAttribute?.("href") != null) return true;
+  return SPACE_PRESSES_ROLES.has(el.getAttribute?.("role") ?? "");
+}
+
 /** Blur a focused inspector edit so its pending value commits through its own `onBlur`; a no-op anywhere else. */
 export function commitFocusedInspectorEdit(): void {
   if (typeof document === "undefined") return;

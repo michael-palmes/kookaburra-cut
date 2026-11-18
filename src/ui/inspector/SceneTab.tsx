@@ -220,6 +220,7 @@ import {
   textIconInspectorRoute,
   textIconInspectorScreenForRoute,
 } from "../inspectorTitles";
+import { KeptLengthNote, useKeptLength } from "../keptLength";
 import { HEADER_EMOJIS } from "../SceneTextFields";
 import { detectWindowRecording } from "../windowRecordingDetect";
 import { ArrangeDevicesDrill } from "./ArrangeDevicesDrill";
@@ -1460,6 +1461,7 @@ function DurationRow({
   onCommit: (ms: number) => void;
 }) {
   const [text, setText] = useState(formatSceneLengthMs(durationMs));
+  const kept = useKeptLength();
   const inputRef = useRef<HTMLInputElement>(null);
   const { dragging, onPointerDown } = useDragScrub({
     value: durationMs / 1000,
@@ -1478,6 +1480,7 @@ function DurationRow({
     const ms = parseSceneLengthMs(text);
     if (ms === null) {
       setText(formatSceneLengthMs(durationMs));
+      kept.keep(durationMs);
       return;
     }
     if (ms !== durationMs) onCommit(ms);
@@ -1500,13 +1503,17 @@ function DurationRow({
         value={text}
         aria-label="Scene length in minutes and seconds"
         onPointerDown={onPointerDown}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => {
+          setText(e.target.value);
+          kept.clear();
+        }}
         onBlur={commit}
         onKeyDown={(e) => {
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
           if (e.key === "Escape") setText(formatSceneLengthMs(durationMs));
         }}
       />
+      <KeptLengthNote note={kept.note} />
     </div>
   );
 }

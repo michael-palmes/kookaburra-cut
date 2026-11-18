@@ -7,11 +7,13 @@ import { EditorApp } from "./editor/EditorApp";
 import { installDevPerformanceDrain } from "./engine/devPerformance";
 import { revealFailsafe } from "./engine/reveal";
 import { installWindowNativePort } from "./engine/windowNativePort";
+import { installChromePrefs } from "./ui/chromePrefs";
 import "./styles.css";
 
 installWindowNativePort();
 installDevPerformanceDrain();
 revealFailsafe();
+installChromePrefs();
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing #root element");

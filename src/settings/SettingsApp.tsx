@@ -61,6 +61,15 @@ import {
   userHomeDir,
 } from "../engine/workspace";
 import { ClaudeSpark } from "../ui/ClaudeLauncher";
+import {
+  setSingleKeyShortcuts,
+  setTextSize,
+  TEXT_SIZES,
+  type TextSize,
+  useSingleKeyShortcuts,
+  useTextSize,
+} from "../ui/chromePrefs";
+import { SegmentedRow } from "../ui/inspector/rows";
 import { LockGlyph, ManagedLock } from "../ui/ManagedLock";
 import { UpdateAvailableDialog } from "../ui/updateDialogs";
 import { useNativeTextUndo } from "../ui/useNativeTextUndo";
@@ -320,6 +329,53 @@ function FinderIcon() {
   );
 }
 
+function TextSizeIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M2.5 13 6 3.5 9.5 13M3.8 9.8h4.4M10.5 13l2-5.5 2 5.5M11.2 11.3h2.6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function LetterIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M3.5 13.5 8 2.5l4.5 11M5.2 9.5h5.6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={16 / size}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function KeycapIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M3.5 2.5h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1ZM6 10.5l2-5 2 5M6.8 8.6h2.4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+const TEXT_SIZE_ICON: Record<TextSize, number> = { default: 9, large: 11, larger: 13, largest: 15 };
+
 /** The Settings window: native titlebar, opened via the app menu (⌘,). Cache management (media previews + clip extractions), the workspace location (the only place it can be changed, since first run no longer asks), the opt-in update lane (toggle + Check now), and read-only info (sidecar versions, app version). */
 
 export function SettingsApp() {
@@ -353,6 +409,8 @@ export function SettingsApp() {
   const [forgetting, setForgetting] = useState<string | null>(null);
   const [clearingAll, setClearingAll] = useState(false);
   const [publisherEpoch, setPublisherEpoch] = useState(0);
+  const textSize = useTextSize();
+  const singleKeyShortcuts = useSingleKeyShortcuts();
 
   const refreshStats = useCallback(() => {
     cacheStats()
@@ -745,6 +803,59 @@ export function SettingsApp() {
             </button>
           </div>
         ))}
+      </section>
+
+      <section className="settings-section">
+        <h2>Accessibility</h2>
+        <div className="settings-row stacked">
+          <div className="settings-row-text">
+            <span
+              className="settings-row-title"
+              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+            >
+              <TextSizeIcon />
+              Text size
+            </span>
+            <span className="muted settings-row-detail">
+              Sizes the words and controls in every window. Your preview and exports stay exactly as
+              they are.
+            </span>
+          </div>
+          <div className="settings-row-actions">
+            <SegmentedRow
+              className="settings-segments"
+              ariaLabel="Text size"
+              value={textSize}
+              onChange={setTextSize}
+              options={TEXT_SIZES.map((s) => ({
+                value: s.id,
+                label: s.label,
+                icon: <LetterIcon size={TEXT_SIZE_ICON[s.id]} />,
+              }))}
+            />
+          </div>
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span
+              className="settings-row-title"
+              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+            >
+              <KeycapIcon />
+              Single-key shortcuts
+            </span>
+            <span className="muted settings-row-detail">
+              Letter keys such as S to split and O for Orbit. Turn them off if you use voice control
+              or often brush a key; every action keeps its button.
+            </span>
+          </div>
+          <input
+            type="checkbox"
+            aria-label="Single-key shortcuts"
+            checked={singleKeyShortcuts}
+            onChange={(e) => setSingleKeyShortcuts(e.target.checked)}
+          />
+        </div>
       </section>
 
       <section className="settings-section">

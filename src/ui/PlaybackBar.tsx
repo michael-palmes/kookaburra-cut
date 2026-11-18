@@ -24,6 +24,7 @@ import { useUiStore } from "../store/uiStore";
 import { BeatLane } from "./BeatLane";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { formatSceneLengthMs, parseSceneLengthMs } from "./durationText";
+import { KeptLengthNote, useKeptLength } from "./keptLength";
 import { PresetGalleryModal } from "./PresetGalleryModal";
 import { SavePresetModal } from "./SavePresetModal";
 import { SceneInsertTimeline } from "./SceneInsertTimeline";
@@ -110,6 +111,7 @@ export function PlaybackBar({
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [renaming, setRenaming] = useState<{ index: number; text: string } | null>(null);
   const [timing, setTiming] = useState<{ index: number; text: string } | null>(null);
+  const kept = useKeptLength();
   const [duplicating, setDuplicating] = useState<number | null>(null);
   const [insertingPreset, setInsertingPreset] = useState<number | null>(null);
   const [savingPreset, setSavingPreset] = useState<number | null>(null);
@@ -190,8 +192,9 @@ export function PlaybackBar({
     setTiming(null);
     if (!commit || !t || !project) return;
     const ms = parseSceneLengthMs(t.text);
-    if (ms === null) return;
-    if (ms !== project.slots[t.index]?.durationMs) onSceneDuration(t.index, ms);
+    const current = project.slots[t.index]?.durationMs ?? 0;
+    if (ms === null) kept.keep(current);
+    else if (ms !== current) onSceneDuration(t.index, ms);
   };
 
   /** Pointer x → clock ms through the track's rect, so every surface in the bar scrubs exactly like the track itself; null while the track is unmounted. */
@@ -406,7 +409,10 @@ export function PlaybackBar({
                 autoFocus
                 aria-label="Scene length in minutes and seconds"
                 onPointerDown={holdPointer}
-                onChange={(e) => setTiming({ index: span.index, text: e.target.value })}
+                onChange={(e) => {
+                  setTiming({ index: span.index, text: e.target.value });
+                  kept.clear();
+                }}
                 onBlur={() => finishTiming(true)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") (e.target as HTMLInputElement).blur();
@@ -448,6 +454,7 @@ export function PlaybackBar({
           </button>
         )}
       </div>
+      <KeptLengthNote note={kept.note} />
       {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
       {insertingPreset !== null && project && (
         <PresetGalleryModal

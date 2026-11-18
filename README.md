@@ -44,6 +44,8 @@ while you watch them update here.
   approved publishers, point updates at your own server, keep exports in the
   project and fix the workspace location ([`docs/fleet.md`](docs/fleet.md),
   [`docs/mdm.md`](docs/mdm.md))
+- Accessibility: the WCAG 2.2 AA conformance report (VPAT), keyboard map and open
+  findings are in [`docs/accessibility.md`](docs/accessibility.md)
 
 Every release is built by this repository's release workflow from a signed tag,
 signed with a Developer ID certificate and notarised by Apple. Managed Macs can

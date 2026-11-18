@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { moveSelection, planDeletes } from "../../engine/sceneOrder";
 import { useUiStore } from "../../store/uiStore";
-import { ContextMenu, type ContextMenuState } from "../ContextMenu";
+import { ContextMenu, type ContextMenuState, opensContextMenu } from "../ContextMenu";
 import { formatSceneLengthMs, parseSceneLengthMs } from "../durationText";
+import { KeptLengthNote, useKeptLength } from "../keptLength";
 import { SceneMenuIcon, sceneMenuItems, sceneSelectionLabel } from "../sceneMenu";
 import { canOpenSceneMenu, nextRename, renameCommit, type SceneEdit } from "../sceneRename";
 import { DrillBack } from "./rows";
@@ -82,11 +83,12 @@ export function ScenesDrillIn({
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [renaming, setRenaming] = useState<SceneEdit | null>(null);
   const [timing, setTiming] = useState<SceneEdit | null>(null);
+  const kept = useKeptLength();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const edits = { busy, renaming, timing };
 
-  const select = (index: number, e: React.MouseEvent | React.PointerEvent) => {
+  const select = (index: number, e: Pick<React.MouseEvent, "shiftKey" | "metaKey" | "ctrlKey">) => {
     if (e.shiftKey && anchor !== null) {
       const [lo, hi] = anchor < index ? [anchor, index] : [index, anchor];
       setSelected(new Set(Array.from({ length: hi - lo + 1 }, (_, i) => lo + i)));
@@ -167,12 +169,16 @@ export function ScenesDrillIn({
     setTiming(null);
     if (!commit || !t) return;
     const ms = parseSceneLengthMs(t.text);
-    if (ms === null) return;
     const current = scenes.find((s) => s.index === t.index);
-    if (ms !== current?.durationMs) onDuration(t.index, ms);
+    if (ms === null) {
+      if (current) kept.keep(current.durationMs);
+    } else if (ms !== current?.durationMs) onDuration(t.index, ms);
   };
 
-  const openMenu = (e: React.MouseEvent, scene: SceneManagerRow) => {
+  const openMenu = (
+    e: Pick<React.MouseEvent, "preventDefault" | "clientX" | "clientY">,
+    scene: SceneManagerRow,
+  ) => {
     // Never preventDefault on a row holding a live field, or WKWebView's own text menu is suppressed too.
     if (!canOpenSceneMenu(scene.index, edits)) return;
     e.preventDefault();
@@ -251,6 +257,24 @@ export function ScenesDrillIn({
               onPointerUp={(e) => onRowPointerUp(e, i)}
               onContextMenu={(e) => openMenu(e, scene)}
               onDoubleClick={() => startRename(scene)}
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget || busy || renaming || timing) return;
+                if (opensContextMenu(e)) {
+                  const r = e.currentTarget.getBoundingClientRect();
+                  openMenu(
+                    {
+                      preventDefault: () => e.preventDefault(),
+                      clientX: r.left + 16,
+                      clientY: r.bottom,
+                    },
+                    scene,
+                  );
+                } else if (e.key === " " || e.key === "Enter") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  select(i, e);
+                }
+              }}
             >
               <span className="scene-manager-grip" aria-hidden>
                 ⠿
@@ -284,7 +308,10 @@ export function ScenesDrillIn({
                   aria-label="Scene length in minutes and seconds"
                   onPointerDown={(e) => e.stopPropagation()}
                   onDoubleClick={(e) => e.stopPropagation()}
-                  onChange={(e) => setTiming({ index: scene.index, text: e.target.value })}
+                  onChange={(e) => {
+                    setTiming({ index: scene.index, text: e.target.value });
+                    kept.clear();
+                  }}
                   onBlur={() => finishTiming(true)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") (e.target as HTMLInputElement).blur();
@@ -305,8 +332,10 @@ export function ScenesDrillIn({
             />
           )}
         </div>
+        <KeptLengthNote note={kept.note} />
         <p className="modal-hint">
-          Drag to reorder. ⌘-click to multi-select, ⇧-click for a range. Double-click renames.
+          Drag to reorder. ⌘-click to multi-select, ⇧-click for a range. Double-click renames. ⇧F10
+          opens a scene's menu.
         </p>
       </div>
       <div className="inspector-drill-actions">

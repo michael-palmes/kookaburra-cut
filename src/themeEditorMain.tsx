@@ -6,12 +6,14 @@ import ReactDOM from "react-dom/client";
 import { installDevPerformanceDrain } from "./engine/devPerformance";
 import { revealFailsafe } from "./engine/reveal";
 import { installWindowNativePort } from "./engine/windowNativePort";
+import { installChromePrefs } from "./ui/chromePrefs";
 import { ThemeEditorApp } from "./ui/theme-editor/ThemeEditorApp";
 import "./styles.css";
 
 installWindowNativePort();
 installDevPerformanceDrain();
 revealFailsafe();
+installChromePrefs();
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing #root element");

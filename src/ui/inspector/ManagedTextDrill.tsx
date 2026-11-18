@@ -15,7 +15,7 @@ import type {
 } from "../../engine/sceneDocSchema";
 import { defaultTheme } from "../../theme";
 import type { Theme } from "../../theme/tokens";
-import { ContextMenu, type ContextMenuState } from "../ContextMenu";
+import { ContextMenu, type ContextMenuState, opensContextMenu } from "../ContextMenu";
 import { ColourPicker } from "../colour/ColourPicker";
 import { HEADER_EMOJIS } from "../SceneTextFields";
 import {
@@ -1282,12 +1282,7 @@ export function ManagedTextDrill({
                         disabled={disabled}
                         onClick={() => onSelectItem(item.key)}
                         onKeyDown={(event) => {
-                          if (
-                            event.key !== "ContextMenu" &&
-                            !(event.shiftKey && event.key === "F10")
-                          ) {
-                            return;
-                          }
+                          if (!opensContextMenu(event)) return;
                           event.preventDefault();
                           openItemMenuFromButton(event.currentTarget, item, index);
                         }}

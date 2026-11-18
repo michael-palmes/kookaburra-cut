@@ -1,3 +1,4 @@
+import { useSingleKeyShortcuts } from "./chromePrefs";
 import { useEscapeClose } from "./useEscapeClose";
 
 /** Keyboard-shortcut reference, opened by ⌘/ or Project ▸ Keyboard Shortcuts…; static content, grouped by surface, with the accelerator also on the native menu item for menu-bar discoverability. */
@@ -28,6 +29,7 @@ const GROUPS: { title: string; rows: [string, string][] }[] = [
         "Gizmos, text, hero charts and decorations: turn off alignment snapping",
       ],
       ["Right-click", "Scenes · theme cards · animation segments: context menu"],
+      ["⇧F10", "Scenes list, scene overview and text rows: the same menu from the keyboard"],
     ],
   },
   {
@@ -57,12 +59,23 @@ const GROUPS: { title: string; rows: [string, string][] }[] = [
   },
 ];
 
+/** Rows whose keys are bare letters, which Settings › Single-key shortcuts can turn off. */
+export function isSingleKeyRow(keys: string): boolean {
+  return /^[A-Z](?: \/ [A-Z])*$/.test(keys);
+}
+
 export function ShortcutsSheet({ onClose }: { onClose: () => void }) {
   useEscapeClose(onClose);
+  const singleKey = useSingleKeyShortcuts();
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
       <div className="modal shortcuts-sheet">
         <h2>Keyboard shortcuts</h2>
+        <p className="shortcuts-note">
+          {singleKey
+            ? "Letter keys work unless you're typing. Turn them off in Settings › Accessibility."
+            : "Single-key shortcuts are off in Settings › Accessibility, so letter keys do nothing."}
+        </p>
         {GROUPS.map((g) => (
           <section key={g.title} className="shortcuts-group">
             <h3>{g.title}</h3>
@@ -72,7 +85,10 @@ export function ShortcutsSheet({ onClose }: { onClose: () => void }) {
                   <dt>
                     <kbd>{keys}</kbd>
                   </dt>
-                  <dd>{what}</dd>
+                  <dd>
+                    {what}
+                    {!singleKey && isSingleKeyRow(keys) && " (off)"}
+                  </dd>
                 </div>
               ))}
             </dl>

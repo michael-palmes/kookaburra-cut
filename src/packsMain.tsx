@@ -6,10 +6,12 @@ import ReactDOM from "react-dom/client";
 import { installDevPerformanceDrain } from "./engine/devPerformance";
 import { revealFailsafe } from "./engine/reveal";
 import { PacksApp } from "./packs/PacksApp";
+import { installChromePrefs } from "./ui/chromePrefs";
 import "./styles.css";
 
 installDevPerformanceDrain();
 revealFailsafe();
+installChromePrefs();
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing #root element");

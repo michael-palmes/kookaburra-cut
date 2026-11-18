@@ -42,12 +42,37 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   open only from the sites your organisation lists, matched exactly. A site off
   the list never asks, a site allowed before the profile stops working, and
   Settings ▸ Website data shows the list with a lock. See `docs/mdm.md`.
+- Settings ▸ Accessibility: **Text size** (Default, Large, Larger, Largest, up
+  to 200%) enlarges the words and controls in every window, live, without
+  touching the preview or an export; **Single-key shortcuts** turns off letter
+  shortcuts such as S to split or O for Orbit, and the shortcuts sheet says
+  when they're off.
+- The transition preview has a pause button, and starts paused under Reduce
+  motion.
 
 ### Changed
 
 - What leaves your Mac opens the privacy page for the installed version, so
   the words match the build.
 - Vulnerability reports are acknowledged within 14 days (`SECURITY.md`).
+- A selected option preview plays once and holds its last frame; hover or focus
+  plays it again.
+- Field, select and selected-card borders are easier to see (3:1 contrast).
+
+### Fixed
+
+- Space on a focused button, tab, option or card presses it instead of also
+  playing the preview.
+- VoiceOver hears export progress every 10% and how the export ended.
+- Hints inside a hovered or selected row stay readable, a transition length
+  that doesn't parse says why it reverted, VoiceOver hears the length a
+  mistyped scene length kept, and the preview is a named landmark. See
+  `docs/accessibility.md`.
+- A dialog taller than the window scrolls instead of cutting off its buttons.
+- The Settings window resizes, so larger text has room.
+- Option previews no longer flash an empty card on hover.
+- An arrow key sent as an old Mac control code, as some remote-control apps
+  do, moves the caret instead of typing a stray character.
 
 ### Security
 

@@ -29,8 +29,7 @@ pub(crate) fn open_settings_window(app: &AppHandle) -> Result<(), String> {
         WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
             .title("Settings")
             .inner_size(520.0, 480.0)
-            .resizable(false)
-            .maximizable(false)
+            .min_inner_size(440.0, 360.0)
             .theme(Some(tauri::Theme::Dark))
             // --surface-window; the NSWindow layer of the anti-flash work.
             .background_color(tauri::window::Color(0x0E, 0x11, 0x13, 0xFF))

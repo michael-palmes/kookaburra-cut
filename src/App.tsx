@@ -177,6 +177,7 @@ import { planDeletes, planDuplicates, planMoves } from "./engine/sceneOrder";
 import { reconcileTerminalBakes, settleTerminalBakes } from "./engine/sceneTerminalBaker";
 import { ensureSceneThumbs, listCachedSceneThumbs } from "./engine/sceneThumbs";
 import { activeSceneIndex } from "./engine/sceneTimeline";
+import { sceneTitle } from "./engine/sceneTitle";
 import { SHUTTER_SAMPLES_DEFAULT } from "./engine/shutter";
 import { canCaptureSnapshot, captureSnapshot, type SnapshotSaved } from "./engine/snapshots";
 import {
@@ -248,6 +249,7 @@ import {
   type ExportSelection,
   type StillsExportSelection,
 } from "./ui/ExportModal";
+import { exportProgressAnnouncement, exportVerbFor } from "./ui/exportAnnouncement";
 import { type ExportInterruption, interruptedExportMessage, STILLS_ID } from "./ui/exportOptions";
 import { clearExportCard, FlashWarning, noteExportFlashes } from "./ui/FlashWarning";
 import { GpuNotices } from "./ui/GpuNotices";
@@ -270,6 +272,7 @@ import { ALL_PROJECTS } from "./ui/projectLibrary";
 import { SceneWebsiteOverlay } from "./ui/SceneWebsiteOverlay";
 import { SceneWizardHost } from "./ui/SceneWizardHost";
 import { ShortcutsSheet } from "./ui/ShortcutsSheet";
+import { stageRegionLabel } from "./ui/stageRegion";
 import { playheadStillMs, stillAtFrame } from "./ui/stillsModel";
 import { TerminalGizmo } from "./ui/TerminalGizmo";
 import { TextGizmo } from "./ui/TextGizmo";
@@ -288,6 +291,7 @@ import {
   commitFocusedInspectorEdit,
   hasPendingTextEdit,
   spaceMeansPlayback,
+  spacePressesControl,
 } from "./ui/textEditFocus";
 import { duplicateThemeDoc } from "./ui/theme-editor/themeDraft";
 import { onThemeSaved, readThemeSourceDoc } from "./ui/theme-editor/themeEditorIo";
@@ -389,6 +393,7 @@ export default function App() {
   const [dismissedLoadNotice, setDismissedLoadNotice] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
+  const [exportOutcome, setExportOutcome] = useState("");
   // What the running export writes; the titlebar pill and the preparing overlay name it.
   const [exportKind, setExportKind] = useState<"video" | "pdf" | "png-zip">("video");
   // The running export's or verify's abort switch; the titlebar Cancel trips it.
@@ -2101,6 +2106,21 @@ export default function App() {
   );
   // Where the active scene's world lands on screen: an overlay draws it into the cutout, so every gizmo surface projects and hit-tests against that rect, not the frame's.
   const sceneFrame = project?.sceneFrames[camSceneIndex];
+  const stageLabel = stageRegionLabel(
+    project?.slots.length
+      ? {
+          title: sceneTitle(
+            project.sceneDocs[camSceneIndex],
+            null,
+            sceneFileStem(project.sceneFiles[camSceneIndex]),
+            camSceneIndex,
+          ),
+          index: camSceneIndex,
+          count: project.slots.length,
+        }
+      : null,
+    currentMs,
+  );
   const sceneCutout = useMemo(
     () => frameWorldCutout(sceneFrame, format.width / format.height),
     [sceneFrame, format.width, format.height],
@@ -2496,7 +2516,9 @@ export default function App() {
 
   // Never let preview playback run during an export/verify; they share the clock store.
   useEffect(() => {
-    if (exporting) setPlaying(false);
+    if (!exporting) return;
+    setPlaying(false);
+    setExportOutcome("");
   }, [exporting]);
 
   // Any pause (spacebar, export, end-of-replay) drops the bounded-replay stop mark.
@@ -2504,7 +2526,7 @@ export default function App() {
     if (!playing) playUntilRef.current = null;
   }, [playing]);
 
-  // Spacebar toggles play/pause, committing the value first when it comes from a slider, number or hex field (a literal space means nothing there); arrows step one frame (shift = 10) on the export frame grid. Text fields and selects keep their keys, and arrows always stay in a focused control so a frame step can never interrupt an edit; an open modal or media preview stands the whole handler down (the preview owns the transport keys, as it does in the editor window). Keyframe arbitration: while the camera editor has a selected diamond, arrows nudge that key instead and the playhead step stands down.
+  // Spacebar toggles play/pause unless a focused button, tab, option or card takes it (WCAG 2.1.1), committing the value first when it comes from a slider, number or hex field (a literal space means nothing there); arrows step one frame (shift = 10) on the export frame grid. Text fields and selects keep their keys, and arrows always stay in a focused control so a frame step can never interrupt an edit; an open modal or media preview stands the whole handler down (the preview owns the transport keys, as it does in the editor window). Keyframe arbitration: while the camera editor has a selected diamond, arrows nudge that key instead and the playhead step stands down.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -2514,7 +2536,7 @@ export default function App() {
       if (document.querySelector(".media-preview")) return;
       if (e.code === "Space" && !e.repeat) {
         if (formControl && !spaceMeansPlayback(target)) return;
-        if (target === playBtnRef.current) return;
+        if (spacePressesControl(target)) return;
         if (exporting || isExporting()) return;
         e.preventDefault();
         if (formControl) target?.blur(); // Enter semantics: the field's own onBlur commits before playback starts
@@ -2640,7 +2662,9 @@ export default function App() {
       });
       void invoke("notify_export_done");
       void setLastExportPreset(project.id, STILLS_ID).catch(() => {});
+      setExportOutcome("Export finished.");
     } catch (e) {
+      setExportOutcome(abort.signal.aborted ? "Export cancelled." : "Export failed.");
       setToast(
         abort.signal.aborted
           ? { kind: "info", message: "Export cancelled. Nothing was saved." }
@@ -2686,7 +2710,9 @@ export default function App() {
       void setLastExportPreset(project.id, sel.presetId).catch(() => {});
       // Refresh the welcome-card snapshot with the just-exported look.
       if (isWorkspaceBackedProjectId(project.id)) void captureSnapshot(project);
+      setExportOutcome("Export finished.");
     } catch (e) {
+      setExportOutcome(abort.signal.aborted ? "Export cancelled." : "Export failed.");
       setToast(
         abort.signal.aborted
           ? { kind: "info", message: "Export cancelled. Nothing was saved." }
@@ -2797,7 +2823,9 @@ export default function App() {
         message: `${allOk ? "Deterministic ✓" : "NOT deterministic ✗"} — ${summary}`,
       });
       void invoke("notify_export_done"); // long run either way, bounce if unfocused
+      setExportOutcome(allOk ? "Verify finished: identical." : "Verify finished: not identical.");
     } catch (e) {
+      setExportOutcome(abort.signal.aborted ? "Verify cancelled." : "Verify failed.");
       setToast(
         abort.signal.aborted
           ? { kind: "info", message: "Verify cancelled." }
@@ -2844,12 +2872,10 @@ export default function App() {
   }
 
   const pct = progress ? Math.round((progress.frame / progress.total) * 100) : 0;
-  const exportVerb =
-    exportKind === "pdf"
-      ? "Exporting PDF…"
-      : exportKind === "png-zip"
-        ? "Exporting images…"
-        : "Exporting…";
+  const exportSpoken = exporting
+    ? exportProgressAnnouncement(progress, exportVerbFor(exportKind))
+    : exportOutcome;
+  const exportVerb = `${exportVerbFor(exportKind)}…`;
   // Figure-space padding (U+2007 = one tabular-digit width) keeps the label the same width from "  1%" to "100%", no mid-export jitter.
   const exportLabel =
     progress?.stage === "pass1"
@@ -2874,6 +2900,9 @@ export default function App() {
 
   return (
     <div className="app">
+      <div className="visually-hidden" role="status" aria-live="polite">
+        {exportSpoken}
+      </div>
       {/* Titlebar: projects folder + identity left; ⌘K trigger + Export CTA right. The old center strip's actions live in the command palette (commandRegistry pins the vocabulary); Welcome keeps a New project button. */}
       <Titlebar>
         {editorView ? (
@@ -3017,7 +3046,7 @@ export default function App() {
             />
           )}
           <div className="editor-main">
-            <div className="stage">
+            <main className="stage" aria-label={stageLabel}>
               {/* Letterbox frame: contain-fit at the export aspect (design.md §7.2); the preview frames exactly like the export and can never overflow the window. */}
               <div
                 className="stage-frame"
@@ -3329,7 +3358,7 @@ export default function App() {
                   </div>
                 )}
               </div>
-            </div>
+            </main>
           </div>
 
           {/* The right-hand inspector: hidden during export/autorun like the edit bar; bundled projects get its Project tab only (decision 12). */}
