@@ -97,7 +97,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A pull request that adds an HTTP client crate now fails the dependency
   policy: the updater is the only code that fetches over HTTP.
 - Signing a release now needs a second person's approval: whoever starts the
-  release can't approve it, and an admin can't skip the step.
+  release can't approve it. The one exception, an urgent security fix while
+  the other reviewer can't be reached, is named in that release's notes and
+  its advisory.
 - A second reviewer is now asked to review every file where a trust decision
   lives: the Allow gate, the agent kit, git history, the Claude handoff, the
   bridge, live websites, the log, the window permissions and the stage worker.

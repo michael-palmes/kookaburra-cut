@@ -71,7 +71,15 @@ mechanism for a step yet, the step says so.
 5. **Ship a fixed version.** Bump the version and release it the usual way
    (the `kookaburra-release` skill; the second named reviewer approves the
    sign job, since the person who pushed the tag cannot), listed under `### Security` in
-   `CHANGELOG.md`. The in-app updater offers it to every Mac that checks for
+   `CHANGELOG.md`.
+   - **Break-glass, on the record.** For a security fix only, never a feature
+     release: if the other named reviewer can't be reached, the maintainer,
+     as repository admin, may turn off the `release` environment's Prevent
+     self-review for that run and approve it, after trying that reviewer
+     first. The rule goes back straight after the sign job. That release's
+     notes and its advisory name the use: when the reviewer was tried, and
+     when the rule was changed and restored.
+ The in-app updater offers it to every Mac that checks for
    updates, unless the updater key was rotated, in which case the advisory and
    the release notes say to download it by hand. Fleets that pin a version or
    point `UpdateEndpoint` at their own server move when their IT team pushes

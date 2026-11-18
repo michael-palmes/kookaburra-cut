@@ -305,6 +305,9 @@ steps are in [security-overview.md](./security-overview.md#where-data-rests-and-
 The maintainer is the only repository admin. A release run needs a second
 reviewer's approval, never the person who started it, but the admin can change
 that rule ([SECURITY.md, "Release integrity"](../SECURITY.md#release-integrity)).
+The one sanctioned change is a break-glass for an urgent security fix, named
+in that release's notes and advisory, so read both before you approve it for
+your fleet ([incident-response.md](./incident-response.md)).
 
 **The in-app updater** installs only an archive with an ed25519 signature from
 the key built into the app, bound to the announced version so a manifest

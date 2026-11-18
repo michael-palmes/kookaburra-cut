@@ -1021,7 +1021,11 @@ builds it in separate jobs, each on a fresh runner.
 
 One maintainer holds admin rights on the repository. A release run needs a
 second reviewer's approval, but an admin can change the `release` environment's
-rules, so this pipeline still rests on one account. A passkey on
+rules, so this pipeline still rests on one account. The one sanctioned change
+is a break-glass for an urgent security fix when the other reviewer can't be
+reached: self-review is allowed for that run only, restored straight after,
+and named in that release's notes and advisory
+([docs/incident-response.md](docs/incident-response.md)). A passkey on
 the account makes a takeover harder, and a Touch ID tag key in
 the Mac's Secure Enclave can't be copied off the Mac, while the promptless commit
 key, which agents use, can't tag. Neither stops an account that has been taken

@@ -260,7 +260,9 @@ Each line is one job or control in
 
 Two caveats, stated so they are not implied away: one maintainer holds admin
 rights, and though a release run needs a second reviewer's approval, an admin
-can change that rule, so the pipeline rests on one account; and no build is claimed reproducible (the runner image
+can change that rule, so the pipeline rests on one account (the one sanctioned
+change, a break-glass for an urgent security fix, is named in that release's
+notes and advisory: [incident-response.md](./incident-response.md)); and no build is claimed reproducible (the runner image
 and Xcode float and are recorded), though the exported film is, and the
 packaged-parity gate proves that each release
 ([determinism.md](./determinism.md)).
