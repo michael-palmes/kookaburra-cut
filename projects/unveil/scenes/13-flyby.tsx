@@ -1,8 +1,8 @@
 import { Device, defineScene, SceneStage, useSceneDevices } from "@kookaburra/toolkit";
 
 export default defineScene({
-  id: "unveil-16-montage",
-  durationMs: 7500,
+  id: "unveil-13-flyby",
+  durationMs: 1875,
   Scene() {
     const devices = useSceneDevices();
     return (

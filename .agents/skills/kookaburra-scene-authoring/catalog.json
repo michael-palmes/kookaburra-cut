@@ -27025,15 +27025,16 @@
         "An opening line",
         "Product name",
         "Three features, one line each",
-        "Three screen recordings and five screenshots",
-        "A date or call to action",
-        "Logo"
+        "Five screen recordings and five screenshots",
+        "A closing slogan",
+        "App icon",
+        "A date or call to action"
       ],
       "song": {
         "title": "First Light",
         "bpm": 128
       },
-      "looks": ["kookaburra-obsidian-stage", "kookaburra-daylight", "kookaburra-ink"],
+      "looks": ["kookaburra-obsidian-stage", "kookaburra-onyx", "kookaburra-ink"],
       "sceneCount": 16,
       "durationMs": 59983,
       "aspects": ["16:9"],
@@ -27082,7 +27083,7 @@
           ]
         },
         {
-          "file": "scenes/05-reveal.tsx",
+          "file": "scenes/04-reveal.tsx",
           "durationMs": 11250,
           "transition": null,
           "blocks": [
@@ -27102,7 +27103,7 @@
           ]
         },
         {
-          "file": "scenes/07-claim-1.tsx",
+          "file": "scenes/05-claim-1.tsx",
           "durationMs": 1875,
           "transition": null,
           "blocks": [
@@ -27116,13 +27117,13 @@
           ]
         },
         {
-          "file": "scenes/08-proof-1.tsx",
+          "file": "scenes/06-proof-1.tsx",
           "durationMs": 3750,
           "transition": null,
           "blocks": ["backdrop", "background", "cameraMode", "cameraRig", "devices", "lighting"]
         },
         {
-          "file": "scenes/09-detail-1.tsx",
+          "file": "scenes/07-detail-1.tsx",
           "durationMs": 1875,
           "transition": null,
           "blocks": [
@@ -27136,19 +27137,19 @@
           ]
         },
         {
-          "file": "scenes/10-claim-2.tsx",
+          "file": "scenes/08-claim-2.tsx",
           "durationMs": 1875,
           "transition": null,
           "blocks": ["backdrop", "background", "camera", "lighting", "text", "textAnimation"]
         },
         {
-          "file": "scenes/11-proof-2.tsx",
+          "file": "scenes/09-proof-2.tsx",
           "durationMs": 3750,
           "transition": null,
           "blocks": ["backdrop", "background", "cameraMode", "cameraRig", "devices", "lighting"]
         },
         {
-          "file": "scenes/12-detail-2.tsx",
+          "file": "scenes/10-detail-2.tsx",
           "durationMs": 1875,
           "transition": null,
           "blocks": [
@@ -27162,7 +27163,7 @@
           ]
         },
         {
-          "file": "scenes/13-claim-3.tsx",
+          "file": "scenes/11-claim-3.tsx",
           "durationMs": 1875,
           "transition": null,
           "blocks": [
@@ -27176,7 +27177,7 @@
           ]
         },
         {
-          "file": "scenes/14-lineup.tsx",
+          "file": "scenes/12-lineup.tsx",
           "durationMs": 3750,
           "transition": null,
           "blocks": [
@@ -27191,7 +27192,7 @@
           ]
         },
         {
-          "file": "scenes/15-flyby.tsx",
+          "file": "scenes/13-flyby.tsx",
           "durationMs": 1875,
           "transition": null,
           "blocks": [
@@ -27205,7 +27206,7 @@
           ]
         },
         {
-          "file": "scenes/16-montage.tsx",
+          "file": "scenes/14-montage.tsx",
           "durationMs": 7500,
           "transition": null,
           "blocks": [
@@ -27219,7 +27220,7 @@
           ]
         },
         {
-          "file": "scenes/17-hero.tsx",
+          "file": "scenes/15-hero.tsx",
           "durationMs": 3750,
           "transition": null,
           "blocks": [
@@ -27236,7 +27237,7 @@
           ]
         },
         {
-          "file": "scenes/18-lockup.tsx",
+          "file": "scenes/16-lockup.tsx",
           "durationMs": 3750,
           "transition": null,
           "blocks": [

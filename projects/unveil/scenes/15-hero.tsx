@@ -13,7 +13,7 @@ const SLOGAN_AT: [number, number, number] = [-2.05, -1.72, 5.0];
 const SLOGAN_SIZE = 0.34;
 
 export default defineScene({
-  id: "unveil-17-hero",
+  id: "unveil-15-hero",
   durationMs: 3750,
   Scene() {
     const devices = useSceneDevices();

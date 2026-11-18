@@ -16,7 +16,7 @@ const QUESTION_FACING: [number, number, number, "YXZ"] = [0.1053, 0.1326, 0, "YX
 const QUESTION_FRAME_HEIGHT = 1.33;
 
 export default defineScene({
-  id: "unveil-05-reveal",
+  id: "unveil-04-reveal",
   durationMs: 11250,
   Scene() {
     const devices = useSceneDevices();

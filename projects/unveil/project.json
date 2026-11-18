@@ -128,7 +128,7 @@
       }
     },
     {
-      "file": "scenes/05-reveal.tsx",
+      "file": "scenes/04-reveal.tsx",
       "durationMs": 11250,
       "cutAt": "bar:13",
       "effects": {
@@ -143,12 +143,12 @@
       }
     },
     {
-      "file": "scenes/07-claim-1.tsx",
+      "file": "scenes/05-claim-1.tsx",
       "durationMs": 1875,
       "cutAt": "bar:14"
     },
     {
-      "file": "scenes/08-proof-1.tsx",
+      "file": "scenes/06-proof-1.tsx",
       "durationMs": 3750,
       "cutAt": "bar:16",
       "effects": {
@@ -163,7 +163,7 @@
       }
     },
     {
-      "file": "scenes/09-detail-1.tsx",
+      "file": "scenes/07-detail-1.tsx",
       "durationMs": 1875,
       "cutAt": "bar:17",
       "effects": {
@@ -178,12 +178,12 @@
       }
     },
     {
-      "file": "scenes/10-claim-2.tsx",
+      "file": "scenes/08-claim-2.tsx",
       "durationMs": 1875,
       "cutAt": "bar:18"
     },
     {
-      "file": "scenes/11-proof-2.tsx",
+      "file": "scenes/09-proof-2.tsx",
       "durationMs": 3750,
       "cutAt": "bar:20",
       "effects": {
@@ -198,7 +198,7 @@
       }
     },
     {
-      "file": "scenes/12-detail-2.tsx",
+      "file": "scenes/10-detail-2.tsx",
       "durationMs": 1875,
       "cutAt": "bar:21",
       "effects": {
@@ -213,12 +213,12 @@
       }
     },
     {
-      "file": "scenes/13-claim-3.tsx",
+      "file": "scenes/11-claim-3.tsx",
       "durationMs": 1875,
       "cutAt": "bar:22"
     },
     {
-      "file": "scenes/14-lineup.tsx",
+      "file": "scenes/12-lineup.tsx",
       "durationMs": 3750,
       "cutAt": "bar:24",
       "effects": {
@@ -233,7 +233,7 @@
       }
     },
     {
-      "file": "scenes/15-flyby.tsx",
+      "file": "scenes/13-flyby.tsx",
       "durationMs": 1875,
       "cutAt": "bar:25",
       "effects": {
@@ -248,7 +248,7 @@
       }
     },
     {
-      "file": "scenes/16-montage.tsx",
+      "file": "scenes/14-montage.tsx",
       "durationMs": 7500,
       "cutAt": "bar:29",
       "effects": {
@@ -263,7 +263,7 @@
       }
     },
     {
-      "file": "scenes/17-hero.tsx",
+      "file": "scenes/15-hero.tsx",
       "durationMs": 3750,
       "cutAt": "bar:31",
       "effects": {
@@ -278,7 +278,7 @@
       }
     },
     {
-      "file": "scenes/18-lockup.tsx",
+      "file": "scenes/16-lockup.tsx",
       "durationMs": 3750,
       "cutAt": "bar:33",
       "effects": {

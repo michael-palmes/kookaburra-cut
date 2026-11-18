@@ -7,11 +7,11 @@ import {
 } from "@kookaburra/toolkit";
 
 export default defineScene({
-  id: "unveil-10-claim-2",
+  id: "unveil-05-claim-1",
   durationMs: 1875,
   Scene() {
     const { frame, safe } = useFormat();
-    const claim = useSceneText("title", "Moves your plans\nautomatically.");
+    const claim = useSceneText("title", "Plans your week for you.");
 
     return (
       <SceneStage floorY={-1.905}>

@@ -19,7 +19,7 @@ const CALL_Y = -1.27;
 const LAND_MS = 520;
 
 export default defineScene({
-  id: "unveil-18-lockup",
+  id: "unveil-16-lockup",
   durationMs: 3750,
   Scene() {
     const grid = useBeatGrid();

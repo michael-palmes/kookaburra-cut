@@ -7,7 +7,7 @@ import {
 } from "@kookaburra/toolkit";
 
 export default defineScene({
-  id: "unveil-13-claim-3",
+  id: "unveil-11-claim-3",
   durationMs: 1875,
   Scene() {
     const { frame, safe } = useFormat();
