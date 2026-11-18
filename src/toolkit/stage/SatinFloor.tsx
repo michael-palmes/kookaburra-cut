@@ -252,6 +252,10 @@ function mustReplace(source: string, anchor: string, replacement: string): strin
   return source.replace(anchor, replacement);
 }
 
+// Mirror cameras shared by every floor, one per nesting depth and set whole before each pass: three keeps a transmission target per camera for the renderer's life, so a camera per floor kept ~0.5 GB at 4K per stage scene.
+const mirrorEyes: PerspectiveCamera[] = [];
+let mirrorDepth = 0;
+
 function target(withDepth: boolean) {
   const t = new WebGLRenderTarget(1, 1, {
     type: HalfFloatType,
@@ -307,7 +311,6 @@ export function SatinFloor({
       blur,
       quad,
       quadCamera: new OrthographicCamera(-1, 1, 1, -1, 0, 1),
-      eye: new PerspectiveCamera(),
     };
   }, []);
   useLayoutEffect(
@@ -463,7 +466,8 @@ export function SatinFloor({
       for (const t of [passes.across, passes.blurred]) {
         if (t.width !== bw || t.height !== bh) t.setSize(bw, bh);
       }
-      const eye = passes.eye;
+      mirrorEyes[mirrorDepth] ??= new PerspectiveCamera();
+      const eye = mirrorEyes[mirrorDepth];
       cam.getWorldPosition(eyePos);
       cam.getWorldDirection(look);
       up.set(0, 1, 0).applyQuaternion(cam.getWorldQuaternion(eye.quaternion));
@@ -508,7 +512,12 @@ export function SatinFloor({
       renderer.setClearColor(0x000000, 1);
       renderer.setRenderTarget(passes.sharp);
       renderer.clear();
-      renderer.render(scene, eye);
+      mirrorDepth += 1;
+      try {
+        renderer.render(scene, eye);
+      } finally {
+        mirrorDepth -= 1;
+      }
       renderer.setClearColor(clearColor, clearAlpha);
       if (self) self.visible = true;
       const px = (Math.max(0, reflect?.blur ?? 24) * h) / 1080;
