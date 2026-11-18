@@ -29,6 +29,15 @@ export interface AppSettings {
   /** Last Present-modal pick per project id + the cross-project default. */
   presentOptionsByProject?: Record<string, PresentOptions>;
   presentOptionsDefault?: PresentOptions | null;
+  /** Projects allowed to run, keyed by workspace slug or `ws-template:` / `ws-preset:` id. */
+  trustedProjects?: Record<string, TrustRecord>;
+}
+
+/** One stored Allow: the content hash and folder it was given for. */
+export interface TrustRecord {
+  scenesFingerprint: string;
+  path: string;
+  allowedAtMs: number;
 }
 
 /** The Present modal's remembered options (mirrors PresentOptionsDoc in workspace.rs). */

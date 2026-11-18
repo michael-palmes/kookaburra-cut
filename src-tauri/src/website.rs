@@ -1,3 +1,4 @@
+#![allow(unsafe_code)]
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
@@ -10,7 +11,8 @@ use url::Url;
 use crate::{media, workspace};
 
 const MAX_WEBSITE_VIEWS: usize = 8;
-const WEBSITE_DATA_STORE: [u8; 16] = [
+/// The one store every project shared before 0.23; removed at launch, never opened again.
+const SHARED_DATA_STORE: [u8; 16] = [
     0x9b, 0x2d, 0x4c, 0x93, 0x65, 0xe2, 0x4e, 0x4a, 0x92, 0x0b, 0x55, 0x7a, 0x34, 0xe0, 0xb7, 0x2c,
 ];
 
@@ -226,6 +228,30 @@ impl WebsiteRegistry {
 #[derive(Default)]
 pub struct WebsiteState(Mutex<WebsiteRegistry>);
 
+/// Drop this launch's loopback grants for the projects `forget` names, as their stored grants go; returns the project keys it dropped.
+pub(crate) fn forget_loopback_grants_at(
+    app: &AppHandle,
+    forget: impl Fn(&str) -> bool,
+) -> Vec<String> {
+    let Some(state) = app.try_state::<WebsiteState>() else {
+        return Vec::new();
+    };
+    let mut registry = state
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut dropped = Vec::new();
+    registry.loopback_grants.retain(|(key, _)| {
+        let gone = forget(key);
+        if gone {
+            dropped.push(key.clone());
+        }
+        !gone
+    });
+    registry.grant_requests.retain(|(key, _)| !forget(key));
+    dropped
+}
+
 pub fn trusted_invoke_label(label: &str) -> bool {
     matches!(
         label,
@@ -365,6 +391,18 @@ fn view_id(owner: &str, project_key: &str, scene_stem: &str) -> String {
     format!("website-{suffix}")
 }
 
+/// A project's own WebKit data store, from the key its origin grants use, so a sign-in for one project never shows in another and the editor and Present open the same one.
+fn store_identifier(project_key: &str) -> [u8; 16] {
+    let mut hash = Sha256::new();
+    hash.update(b"kookaburra-website-store\0");
+    hash.update(project_key.as_bytes());
+    let mut id = [0u8; 16];
+    id.copy_from_slice(&hash.finalize()[..16]);
+    id[6] = (id[6] & 0x0f) | 0x80;
+    id[8] = (id[8] & 0x3f) | 0x80;
+    id
+}
+
 fn hex_bytes(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
@@ -495,6 +533,9 @@ fn origin_granted(
     origin: &str,
     loopback: bool,
 ) -> Result<bool, String> {
+    if !crate::managed::website_origin_allowed(origin) {
+        return Ok(false);
+    }
     if loopback {
         return Ok(state
             .0
@@ -578,6 +619,10 @@ fn navigation_allowed(app: &AppHandle, view_id: &str, target: &Url) -> bool {
             view.requested_origins.contains(&origin),
         )
     };
+    if crate::managed::deny_website_origin(&origin).is_err() {
+        emit_view_state(app, &owner, view_id, "blocked", Some(origin));
+        return false;
+    }
     let granted = requested
         && origin_granted(
             app,
@@ -656,7 +701,12 @@ fn evict_if_needed(state: &State<'_, WebsiteState>) -> Result<Option<Webview>, S
     Ok(registry.views.remove(&id).map(|view| view.webview))
 }
 
-fn make_builder(app: &AppHandle, owner: &str, id: &str) -> WebviewBuilder<tauri::Wry> {
+fn make_builder(
+    app: &AppHandle,
+    owner: &str,
+    id: &str,
+    project_key: &str,
+) -> WebviewBuilder<tauri::Wry> {
     let navigation_app = app.clone();
     let navigation_id = id.to_owned();
     let load_app = app.clone();
@@ -665,7 +715,7 @@ fn make_builder(app: &AppHandle, owner: &str, id: &str) -> WebviewBuilder<tauri:
         id,
         WebviewUrl::External(Url::parse("about:blank").expect("valid blank URL")),
     )
-    .data_store_identifier(WEBSITE_DATA_STORE)
+    .data_store_identifier(store_identifier(project_key))
     .disable_drag_drop_handler()
     .general_autofill_enabled(false)
     .allow_link_preview(false)
@@ -713,6 +763,7 @@ pub fn website_open(
     }
     let project_key = canonical_project_key(&app, &settings, &request.project_path)?;
     let (authored_url, origin, loopback) = parse_website_url(&request.url)?;
+    crate::managed::deny_website_origin(&origin)?;
     let mut requested_origins = normalise_requested_origins(&request.requested_origins)?;
     requested_origins.insert(origin.clone());
     let id = view_id(&owner, &project_key, &request.scene_stem);
@@ -784,7 +835,7 @@ pub fn website_open(
     }
     let child = parent_window(&app, &owner)?
         .add_child(
-            make_builder(&app, &owner, &id),
+            make_builder(&app, &owner, &id, &project_key),
             bounds.position(),
             bounds.size(),
         )
@@ -918,6 +969,7 @@ pub async fn website_grant_origin(
     require_caller(&webview, &["main"])?;
     let project_key = canonical_project_key(&app, &settings, &project_path)?;
     let (_, origin, loopback) = parse_navigation_url(&origin)?;
+    crate::managed::deny_website_origin(&origin)?;
     let granted = origin_granted(&app, &settings, &state, &project_key, &origin, loopback)?;
     {
         let mut registry = state.0.lock().map_err(|_| "website state poisoned")?;
@@ -942,10 +994,14 @@ pub async fn website_grant_origin(
         },
     )
     .await?;
+    let project = crate::audit::path(std::path::Path::new(&project_key));
+    let shown = crate::audit::field(&origin);
     if declined {
+        log::info!("[website] {shown}: declined for {project}");
         return Ok(false);
     }
     if loopback {
+        log::info!("[website] {shown}: allowed for {project} until the app quits");
         state
             .0
             .lock()
@@ -961,6 +1017,7 @@ pub async fn website_grant_origin(
             origins.sort();
         }
     })?;
+    log::info!("[website] {shown}: allowed for {project}");
     Ok(true)
 }
 
@@ -976,6 +1033,11 @@ pub fn website_revoke_origin(
     require_caller(&webview, &["main"])?;
     let project_key = canonical_project_key(&app, &settings, &project_path)?;
     let (_, origin, loopback) = parse_navigation_url(&origin)?;
+    log::info!(
+        "[website] {}: removed for {}",
+        crate::audit::field(&origin),
+        crate::audit::path(std::path::Path::new(&project_key))
+    );
     if loopback {
         state
             .0
@@ -1022,6 +1084,7 @@ pub fn website_list_grants(
             .filter(|(key, _)| key == &project_key)
             .map(|(_, origin)| origin.clone()),
     );
+    origins.retain(|origin| crate::managed::website_origin_allowed(origin));
     origins.sort();
     origins.dedup();
     Ok(origins)
@@ -1059,6 +1122,7 @@ pub fn website_resume_pending(
         if !requested.contains(&origin) {
             return Err("pending Website origin is not requested by this scene".into());
         }
+        crate::managed::deny_website_origin(&origin)?;
         if !origin_granted(&app, &settings, &state, &project_key, &origin, loopback)? {
             return Err("pending Website origin is not approved for this project".into());
         }
@@ -1356,7 +1420,7 @@ pub fn website_close(
     Ok(())
 }
 
-pub fn close_owner(state: &State<'_, WebsiteState>, owner: &str) {
+fn close_where(state: &State<'_, WebsiteState>, closes: impl Fn(&WebsiteView) -> bool) {
     let children = {
         let Ok(mut registry) = state.0.lock() else {
             return;
@@ -1364,7 +1428,7 @@ pub fn close_owner(state: &State<'_, WebsiteState>, owner: &str) {
         let ids: Vec<String> = registry
             .views
             .iter()
-            .filter(|(_, view)| view.owner == owner)
+            .filter(|(_, view)| closes(view))
             .map(|(id, _)| id.clone())
             .collect();
         ids.into_iter()
@@ -1376,26 +1440,27 @@ pub fn close_owner(state: &State<'_, WebsiteState>, owner: &str) {
     }
 }
 
-fn close_all(state: &State<'_, WebsiteState>) {
-    let children = {
-        let Ok(mut registry) = state.0.lock() else {
-            return;
-        };
-        registry
-            .views
-            .drain()
-            .map(|(_, value)| value.webview)
-            .collect::<Vec<_>>()
-    };
-    for child in children {
-        let _ = child.close();
+/// The loopback origins allowed until the app quits, and every sheet a page has asked for; stored grants live in settings.
+pub(crate) fn forget_session_grants(state: &State<'_, WebsiteState>) {
+    if let Ok(mut registry) = state.0.lock() {
+        registry.loopback_grants.clear();
+        registry.grant_requests.clear();
     }
+}
+
+pub fn close_owner(state: &State<'_, WebsiteState>, owner: &str) {
+    close_where(state, |view| view.owner == owner);
+}
+
+fn close_all(state: &State<'_, WebsiteState>) {
+    close_where(state, |_| true);
 }
 
 #[cfg(target_os = "macos")]
 fn set_native_zoom(webview: &Webview, zoom: f64) -> Result<(), String> {
     use objc2_web_kit::WKWebView;
 
+    // SAFETY: with_webview runs this on the main thread, and platform.inner() is Tauri's live WKWebView.
     webview
         .with_webview(move |platform| unsafe {
             let native = &*(platform.inner() as *mut WKWebView);
@@ -1411,8 +1476,11 @@ fn set_native_zoom(_webview: &Webview, _zoom: f64) -> Result<(), String> {
 
 #[cfg(target_os = "macos")]
 mod macos {
+    use std::cell::{Cell, RefCell};
+    use std::collections::{BTreeMap, BTreeSet};
     use std::ffi::c_void;
     use std::ptr::{null_mut, NonNull};
+    use std::rc::Rc;
     use std::sync::{Arc, Mutex};
 
     use block2::{Block, RcBlock};
@@ -1440,7 +1508,7 @@ mod macos {
 
     use super::{
         emit_to_owner, navigation_allowed, record_load_state, AppHandle, WebsiteDataRecordSummary,
-        WebsiteFocusState, WEBSITE_DATA_STORE,
+        WebsiteFocusState, SHARED_DATA_STORE,
     };
 
     static mut WEBSITE_UI_DELEGATE_KEY: u8 = 0;
@@ -1464,6 +1532,7 @@ mod macos {
         on_state: LoadStateHandler,
     }
 
+    // SAFETY: NSObject sets no rules for subclasses, and each method matches its WebKit protocol declaration.
     define_class!(
         #[unsafe(super(NSObject))]
         #[thread_kind = MainThreadOnly]
@@ -1480,6 +1549,7 @@ mod macos {
                 action: &WKNavigationAction,
                 decision_handler: &Block<dyn Fn(WKNavigationActionPolicy)>,
             ) {
+                // SAFETY: property reads on the action WebKit passes for this call, on the main thread.
                 let policy = unsafe {
                     if action.shouldPerformDownload() {
                         WKNavigationActionPolicy::Cancel
@@ -1510,6 +1580,7 @@ mod macos {
                 response: &WKNavigationResponse,
                 decision_handler: &Block<dyn Fn(WKNavigationResponsePolicy)>,
             ) {
+                // SAFETY: a property read on the response WebKit passes for this call, on the main thread.
                 let policy = unsafe {
                     if !response.canShowMIMEType() {
                         WKNavigationResponsePolicy::Cancel
@@ -1573,6 +1644,7 @@ mod macos {
                 >,
             ) {
                 let method = challenge.protectionSpace().authenticationMethod();
+                // SAFETY: NSURLAuthenticationMethodServerTrust is an immutable Foundation constant.
                 let disposition = if &*method == unsafe { NSURLAuthenticationMethodServerTrust } {
                     NSURLSessionAuthChallengeDisposition::PerformDefaultHandling
                 } else {
@@ -1605,12 +1677,14 @@ mod macos {
                     on_state,
                 },
             );
+            // SAFETY: NSObject's init on a fresh allocation whose ivars are set.
             unsafe { msg_send![super(delegate), init] }
         }
     }
 
     struct WebsiteUIDelegateIvars;
 
+    // SAFETY: NSObject sets no rules for subclasses, and each method matches its WebKit protocol declaration.
     define_class!(
         #[unsafe(super(NSObject))]
         #[thread_kind = MainThreadOnly]
@@ -1662,7 +1736,8 @@ mod macos {
                 action: &WKNavigationAction,
                 _window_features: &WKWindowFeatures,
             ) -> Option<Retained<WKWebView>> {
-                webview.loadRequest(&action.request());
+                // SAFETY: WebKit calls this on the main thread with a live view and action, and the popup's request loads in this panel instead.
+                unsafe { webview.loadRequest(&action.request()) };
                 None
             }
         }
@@ -1673,6 +1748,7 @@ mod macos {
             let delegate = mtm
                 .alloc::<WebsiteUIDelegate>()
                 .set_ivars(WebsiteUIDelegateIvars);
+            // SAFETY: NSObject's init on a fresh allocation whose ivars are set.
             unsafe { msg_send![super(delegate), init] }
         }
     }
@@ -1681,6 +1757,7 @@ mod macos {
         on_focus: Box<dyn Fn(bool)>,
     }
 
+    // SAFETY: NSObject sets no rules for subclasses, and each method matches its WebKit protocol declaration.
     define_class!(
         #[unsafe(super(NSObject))]
         #[thread_kind = MainThreadOnly]
@@ -1696,6 +1773,7 @@ mod macos {
                 _controller: &WKUserContentController,
                 message: &WKScriptMessage,
             ) {
+                // SAFETY: a property read on the message WebKit passes for this call, on the main thread.
                 let body = unsafe { message.body() };
                 let Some(value) = body.downcast_ref::<NSString>() else {
                     return;
@@ -1714,6 +1792,7 @@ mod macos {
             let handler = mtm
                 .alloc::<WebsiteMessageHandler>()
                 .set_ivars(WebsiteMessageHandlerIvars { on_focus });
+            // SAFETY: NSObject's init on a fresh allocation whose ivars are set.
             unsafe { msg_send![super(handler), init] }
         }
     }
@@ -1728,6 +1807,7 @@ mod macos {
         let app = app.clone();
         let owner = owner.to_owned();
         let view_id = view_id.to_owned();
+        // SAFETY: with_webview runs this on the main thread with Tauri's live WKWebView, and each delegate is retained on it, since WebKit holds delegates weakly.
         webview
             .with_webview(move |platform| unsafe {
                 let native = &*(platform.inner() as *mut WKWebView);
@@ -1813,8 +1893,8 @@ mod macos {
     }
 
     unsafe fn image_png(image: *mut NSImage) -> Result<Vec<u8>, String> {
-        let image = image
-            .as_ref()
+        // SAFETY: the caller passes what WebKit handed its snapshot block, a live NSImage or null.
+        let image = unsafe { image.as_ref() }
             .ok_or_else(|| "WebKit returned no website snapshot".to_string())?;
         let tiff = image
             .TIFFRepresentation()
@@ -1822,15 +1902,18 @@ mod macos {
         let bitmap = NSBitmapImageRep::imageRepWithData(&tiff)
             .ok_or_else(|| "website snapshot could not be converted".to_string())?;
         let properties = NSDictionary::<NSBitmapImageRepPropertyKey, AnyObject>::new();
-        let data = bitmap
-            .representationUsingType_properties(NSBitmapImageFileType::PNG, &properties)
-            .ok_or_else(|| "website snapshot could not be encoded".to_string())?;
+        // SAFETY: an empty properties dictionary holds no value of the wrong type.
+        let data = unsafe {
+            bitmap.representationUsingType_properties(NSBitmapImageFileType::PNG, &properties)
+        }
+        .ok_or_else(|| "website snapshot could not be encoded".to_string())?;
         let length = data.length();
         let mut bytes = vec![0; length];
         if length > 0 {
             let destination = NonNull::new(bytes.as_mut_ptr().cast::<c_void>())
                 .ok_or_else(|| "website snapshot allocation failed".to_string())?;
-            data.getBytes_length(destination, length);
+            // SAFETY: destination is the start of bytes, which holds exactly length bytes.
+            unsafe { data.getBytes_length(destination, length) };
         }
         Ok(bytes)
     }
@@ -1841,6 +1924,7 @@ mod macos {
         sender: tokio::sync::oneshot::Sender<Result<Vec<u8>, String>>,
     ) -> Result<(), String> {
         let sender = Arc::new(Mutex::new(Some(sender)));
+        // SAFETY: with_webview runs this on the main thread with Tauri's live WKWebView, and image_png takes what WebKit hands the snapshot block.
         webview
             .with_webview(move |platform| unsafe {
                 let native = &*(platform.inner() as *mut WKWebView);
@@ -1866,89 +1950,199 @@ mod macos {
             .map_err(|error| error.to_string())
     }
 
-    fn website_data_store(mtm: MainThreadMarker) -> Retained<WKWebsiteDataStore> {
-        let identifier = NSUUID::from_bytes(WEBSITE_DATA_STORE);
-        unsafe { WKWebsiteDataStore::dataStoreForIdentifier(&identifier, mtm) }
+    type Reply<T> = Arc<Mutex<Option<tokio::sync::oneshot::Sender<Result<T, String>>>>>;
+
+    fn reply<T>(sender: &Reply<T>, value: Result<T, String>) {
+        if let Some(sender) = sender.lock().ok().and_then(|mut sender| sender.take()) {
+            let _ = sender.send(value);
+        }
+    }
+
+    /// The ids of the stores this app made (every project's, and the shared one until it is retired), or just those in `only` that exist; WebKit answers on the main thread.
+    fn with_store_ids(
+        mtm: MainThreadMarker,
+        only: Option<Vec<[u8; 16]>>,
+        then: impl Fn(MainThreadMarker, Vec<Retained<NSUUID>>) + 'static,
+    ) {
+        let callback = RcBlock::new(move |ids: NonNull<NSArray<NSUUID>>| {
+            let Some(mtm) = MainThreadMarker::new() else {
+                log::warn!("[website] WebKit listed its data stores off the main thread");
+                return;
+            };
+            // SAFETY: WebKit hands the completion a live NSArray for the call's duration.
+            let ids = unsafe { ids.as_ref() }
+                .to_vec()
+                .into_iter()
+                .filter(|id| only.as_ref().map_or(true, |only| only.contains(&id.as_bytes())))
+                .collect();
+            then(mtm, ids);
+        });
+        // SAFETY: the block outlives the call (WebKit copies it) and the marker proves the main thread.
+        unsafe { WKWebsiteDataStore::fetchAllDataStoreIdentifiers(&callback, mtm) };
+    }
+
+    fn with_stores(
+        mtm: MainThreadMarker,
+        only: Option<Vec<[u8; 16]>>,
+        then: impl Fn(MainThreadMarker, Vec<Retained<WKWebsiteDataStore>>) + 'static,
+    ) {
+        with_store_ids(mtm, only, move |mtm, ids| {
+            let stores = ids
+                .iter()
+                // SAFETY: called on the main thread, as the marker proves.
+                .map(|id| unsafe { WKWebsiteDataStore::dataStoreForIdentifier(id, mtm) })
+                .collect();
+            then(mtm, stores);
+        });
+    }
+
+    /// Calls `done` once every one of `count` stores has answered.
+    fn countdown(count: usize, done: impl Fn() + 'static) -> Rc<dyn Fn()> {
+        let left = Cell::new(count);
+        Rc::new(move || {
+            left.set(left.get().saturating_sub(1));
+            if left.get() == 0 {
+                done();
+            }
+        })
     }
 
     pub fn list_data(
         sender: tokio::sync::oneshot::Sender<Result<Vec<WebsiteDataRecordSummary>, String>>,
     ) {
         let mtm = MainThreadMarker::new().expect("Website data runs on the main thread");
-        let store = website_data_store(mtm);
-        let types = unsafe { WKWebsiteDataStore::allWebsiteDataTypes(mtm) };
-        let sender = Arc::new(Mutex::new(Some(sender)));
-        let callback = RcBlock::new(move |records: NonNull<NSArray<WKWebsiteDataRecord>>| {
-            let records = unsafe { records.as_ref() };
-            let mut summaries = records
-                .to_vec()
-                .into_iter()
-                .map(|record| WebsiteDataRecordSummary {
-                    display_name: unsafe { record.displayName() }.to_string(),
-                    data_types: unsafe { record.dataTypes() }
-                        .to_vec()
-                        .into_iter()
-                        .map(|value| value.to_string())
-                        .collect(),
-                })
-                .collect::<Vec<_>>();
-            summaries.sort_by(|left, right| left.display_name.cmp(&right.display_name));
-            if let Ok(mut sender) = sender.lock() {
-                if let Some(sender) = sender.take() {
-                    let _ = sender.send(Ok(summaries));
-                }
+        let sender: Reply<Vec<WebsiteDataRecordSummary>> = Arc::new(Mutex::new(Some(sender)));
+        with_stores(mtm, None, move |mtm, stores| {
+            let sites: Rc<RefCell<BTreeMap<String, BTreeSet<String>>>> = Rc::default();
+            let finish_sites = sites.clone();
+            let finish_sender = sender.clone();
+            let tick = countdown(stores.len(), move || {
+                let summaries = finish_sites
+                    .borrow()
+                    .iter()
+                    .map(|(name, types)| WebsiteDataRecordSummary {
+                        display_name: name.clone(),
+                        data_types: types.iter().cloned().collect(),
+                    })
+                    .collect();
+                reply(&finish_sender, Ok(summaries));
+            });
+            if stores.is_empty() {
+                reply(&sender, Ok(Vec::new()));
+                return;
+            }
+            // SAFETY: the marker proves the main thread.
+            let types = unsafe { WKWebsiteDataStore::allWebsiteDataTypes(mtm) };
+            for store in stores {
+                let sites = sites.clone();
+                let tick = tick.clone();
+                let callback =
+                    RcBlock::new(move |records: NonNull<NSArray<WKWebsiteDataRecord>>| {
+                        // SAFETY: WebKit hands the completion a live NSArray of live records.
+                        for record in unsafe { records.as_ref() }.to_vec() {
+                            // SAFETY: a property read on a record WebKit fetched.
+                            let name = unsafe { record.displayName() }.to_string();
+                            // SAFETY: a property read on a record WebKit fetched.
+                            let types = unsafe { record.dataTypes() }.to_vec();
+                            sites
+                                .borrow_mut()
+                                .entry(name)
+                                .or_default()
+                                .extend(types.into_iter().map(|value| value.to_string()));
+                        }
+                        tick();
+                    });
+                // SAFETY: the block outlives the call (WebKit copies it) on the main thread.
+                unsafe { store.fetchDataRecordsOfTypes_completionHandler(&types, &callback) };
             }
         });
-        unsafe { store.fetchDataRecordsOfTypes_completionHandler(&types, &callback) };
     }
 
+    /// Removes every record named `display_name` (all of them when `None`) from the stores `only` names, or from every store when `only` is `None`.
     pub fn clear_data(
+        only: Option<Vec<[u8; 16]>>,
         display_name: Option<String>,
         sender: tokio::sync::oneshot::Sender<Result<(), String>>,
     ) {
         let mtm = MainThreadMarker::new().expect("Website data runs on the main thread");
-        let store = website_data_store(mtm);
-        let types = unsafe { WKWebsiteDataStore::allWebsiteDataTypes(mtm) };
-        let fetch_store = store.clone();
-        let fetch_types = types.clone();
-        let sender = Arc::new(Mutex::new(Some(sender)));
-        let fetch_sender = sender.clone();
-        let callback = RcBlock::new(move |records: NonNull<NSArray<WKWebsiteDataRecord>>| {
-            let records = unsafe { records.as_ref() };
-            let selected = records
-                .to_vec()
-                .into_iter()
-                .filter(|record| match display_name.as_ref() {
-                    Some(name) => unsafe { record.displayName() }.to_string() == *name,
-                    None => true,
-                })
-                .collect::<Vec<_>>();
-            if selected.is_empty() {
-                if let Ok(mut sender) = fetch_sender.lock() {
-                    if let Some(sender) = sender.take() {
-                        let _ = sender.send(Ok(()));
-                    }
-                }
+        let sender: Reply<()> = Arc::new(Mutex::new(Some(sender)));
+        with_stores(mtm, only, move |mtm, stores| {
+            let finish_sender = sender.clone();
+            let tick = countdown(stores.len(), move || reply(&finish_sender, Ok(())));
+            if stores.is_empty() {
+                reply(&sender, Ok(()));
                 return;
             }
-            let selected = NSArray::from_retained_slice(&selected);
-            let completion_sender = fetch_sender.clone();
-            let completion = RcBlock::new(move || {
-                if let Ok(mut sender) = completion_sender.lock() {
-                    if let Some(sender) = sender.take() {
-                        let _ = sender.send(Ok(()));
-                    }
+            // SAFETY: the marker proves the main thread.
+            let types = unsafe { WKWebsiteDataStore::allWebsiteDataTypes(mtm) };
+            for store in stores {
+                let fetch_store = store.clone();
+                let fetch_types = types.clone();
+                let display_name = display_name.clone();
+                let tick = tick.clone();
+                let callback =
+                    RcBlock::new(move |records: NonNull<NSArray<WKWebsiteDataRecord>>| {
+                        // SAFETY: WebKit hands the completion a live NSArray of live records.
+                        let selected = unsafe { records.as_ref() }
+                            .to_vec()
+                            .into_iter()
+                            .filter(|record| {
+                                display_name.as_ref().map_or(true, |name| {
+                                    // SAFETY: a property read on a record WebKit fetched.
+                                    unsafe { record.displayName() }.to_string() == *name
+                                })
+                            })
+                            .collect::<Vec<_>>();
+                        if selected.is_empty() {
+                            tick();
+                            return;
+                        }
+                        let selected = NSArray::from_retained_slice(&selected);
+                        let done = tick.clone();
+                        let completion = RcBlock::new(move || done());
+                        // SAFETY: the store, types and records are retained here, and WebKit copies the block.
+                        unsafe {
+                            fetch_store.removeDataOfTypes_forDataRecords_completionHandler(
+                                &fetch_types,
+                                &selected,
+                                &completion,
+                            )
+                        };
+                    });
+                // SAFETY: the block outlives the call (WebKit copies it) on the main thread.
+                unsafe { store.fetchDataRecordsOfTypes_completionHandler(&types, &callback) };
+            }
+        });
+    }
+
+    /// Deletes the store every project shared before 0.23, once; no view opens it any more, so nothing holds it.
+    pub fn retire_shared_store() {
+        let Some(mtm) = MainThreadMarker::new() else {
+            return;
+        };
+        with_store_ids(mtm, Some(vec![SHARED_DATA_STORE]), |mtm, ids| {
+            let Some(identifier) = ids.first() else {
+                return;
+            };
+            let completion = RcBlock::new(|error: *mut NSError| {
+                // SAFETY: WebKit passes nil or a live NSError.
+                match unsafe { error.as_ref() } {
+                    None => log::info!("[website] removed the shared Website data store"),
+                    Some(error) => log::warn!(
+                        "[website] removing the shared Website data store failed: {}",
+                        error.localizedDescription()
+                    ),
                 }
             });
+            // SAFETY: the marker proves the main thread and WebKit copies the block.
             unsafe {
-                fetch_store.removeDataOfTypes_forDataRecords_completionHandler(
-                    &fetch_types,
-                    &selected,
+                WKWebsiteDataStore::removeDataStoreForIdentifier_completionHandler(
+                    identifier,
                     &completion,
+                    mtm,
                 )
             };
         });
-        unsafe { store.fetchDataRecordsOfTypes_completionHandler(&types, &callback) };
     }
 }
 
@@ -1988,14 +2182,66 @@ pub async fn website_clear_data(
     if display_name.as_ref().is_some_and(|value| value.is_empty()) {
         return Err("Website data record name cannot be empty".into());
     }
-    close_all(&state);
+    clear_stored_data(&app, &state, display_name).await
+}
+
+/// Close every live website, then clear every store's records: one site's by display name, or all of them.
+pub(crate) async fn clear_stored_data(
+    app: &AppHandle,
+    state: &State<'_, WebsiteState>,
+    display_name: Option<String>,
+) -> Result<(), String> {
+    close_all(state);
+    clear_stores(app, None, display_name).await
+}
+
+/// Signs this project's pages out: its own store only, after closing its live views. Other projects keep theirs.
+#[tauri::command]
+pub async fn website_clear_project_data(
+    app: AppHandle,
+    webview: Webview,
+    settings: State<'_, workspace::SettingsState>,
+    state: State<'_, WebsiteState>,
+    project_path: String,
+) -> Result<(), String> {
+    require_caller(&webview, &["main"])?;
+    let project_key = canonical_project_key(&app, &settings, &project_path)?;
+    clear_project_stores(&app, &state, &[project_key]).await
+}
+
+/// Closes these projects' live views, then empties their own stores; every other project keeps its sign-ins.
+pub(crate) async fn clear_project_stores(
+    app: &AppHandle,
+    state: &State<'_, WebsiteState>,
+    project_keys: &[String],
+) -> Result<(), String> {
+    if project_keys.is_empty() {
+        return Ok(());
+    }
+    close_where(state, |view| project_keys.contains(&view.project_key));
+    let stores = project_keys.iter().map(|key| store_identifier(key)).collect();
+    clear_stores(app, Some(stores), None).await
+}
+
+async fn clear_stores(
+    app: &AppHandle,
+    only: Option<Vec<[u8; 16]>>,
+    display_name: Option<String>,
+) -> Result<(), String> {
     let (sender, receiver) = tokio::sync::oneshot::channel();
-    app.run_on_main_thread(move || macos::clear_data(display_name, sender))
+    app.run_on_main_thread(move || macos::clear_data(only, display_name, sender))
         .map_err(|error| error.to_string())?;
     tokio::time::timeout(std::time::Duration::from_secs(15), receiver)
         .await
         .map_err(|_| "clearing Website data timed out".to_string())?
         .map_err(|_| "clearing Website data was cancelled".to_string())?
+}
+
+/// Once per launch: the pre-0.23 shared store goes, so no sign-in made under it survives the move to one store per project.
+pub fn retire_shared_store(app: &AppHandle) {
+    if let Err(error) = app.run_on_main_thread(macos::retire_shared_store) {
+        log::warn!("[website] could not schedule the shared store's removal: {error}");
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -2079,6 +2325,26 @@ mod tests {
         assert_eq!(first, view_id("main", "/private/project", "01-intro"));
         assert_ne!(first, view_id("present", "/private/project", "01-intro"));
         assert!(!first.contains("private"));
+    }
+
+    #[test]
+    fn each_project_keeps_its_own_store_and_never_the_shared_one() {
+        let store = store_identifier("/Users/x/Kookaburra Cut/product-tour");
+        assert_eq!(
+            store,
+            store_identifier("/Users/x/Kookaburra Cut/product-tour")
+        );
+        for other in [
+            "/Users/x/Kookaburra Cut/product-tour-2",
+            "/Users/x/Kookaburra Cut/Product-tour",
+            "/Users/x/Kookaburra Cut/product-tour/",
+            "",
+        ] {
+            assert_ne!(store, store_identifier(other), "{other:?}");
+        }
+        assert_ne!(store, SHARED_DATA_STORE);
+        assert_eq!(store[6] >> 4, 8);
+        assert_eq!(store[8] >> 6, 0b10);
     }
 
     #[test]

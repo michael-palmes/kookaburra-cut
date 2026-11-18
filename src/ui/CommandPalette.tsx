@@ -50,6 +50,7 @@ export function CommandPalette({ ctx, onClose }: { ctx: CommandContext; onClose:
       className="modal-overlay palette-overlay"
       role="dialog"
       aria-modal="true"
+      aria-label="Command palette"
       onPointerDown={onClose}
     >
       {/* Click-away lives on the overlay only, the panel swallows its own clicks. */}

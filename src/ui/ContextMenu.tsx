@@ -68,6 +68,11 @@ export function contextMenuKeyboardIntent(
   return index === null ? null : { kind: "focus", index };
 }
 
+/** The keyboard's way to a right-click menu: the menu key, or ⇧F10. */
+export function opensContextMenu(e: Pick<KeyboardEvent, "key" | "shiftKey">): boolean {
+  return e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey);
+}
+
 export function contextMenuSequentialIndex(
   currentIndex: number,
   itemCount: number,

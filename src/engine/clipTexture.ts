@@ -64,10 +64,24 @@ function isDetached(tex: Texture): boolean {
   return !!img && img.width === 0;
 }
 
-/** Settles a consumer's first-bind wait and drops it, unless a newer wait has replaced it. */
-function releaseFirstBind(ref: RefObject<FirstBind | null>, firstBind: FirstBind): void {
-  firstBind.settle();
+/** Settles a consumer's first-bind wait (with the reason when it failed) and drops it, unless a newer wait has replaced it. */
+function releaseFirstBind(
+  ref: RefObject<FirstBind | null>,
+  firstBind: FirstBind,
+  failure?: Error,
+): void {
+  firstBind.settle(failure);
   if (ref.current === firstBind) ref.current = null;
+}
+
+/** What an export or capture reports when a screen's clip cannot be drawn, instead of drawing it blank or stale. */
+function clipExportError(src: string, frameIndex: number | null, cause: unknown): Error {
+  if (cause instanceof ClipChunkError) return cause;
+  const what = frameIndex === null ? `Video "${src}"` : `Frame ${frameIndex} of "${src}"`;
+  const reason = cause instanceof Error ? cause.message : String(cause);
+  return new Error(
+    `${what} could not be loaded (${reason}), so the render stopped rather than draw a wrong screen. Check the file plays, then try again.`,
+  );
 }
 
 export function useClipTexture(binding: ClipTextureBinding): ClipTextureState {
@@ -136,8 +150,9 @@ export function useClipTexture(binding: ClipTextureBinding): ClipTextureState {
       const firstBind = firstBindRef.current;
       firstBind.extraction = promise;
       target.userData.videoFrameReady = () => pendingFrameReady(firstBind, src);
-      // A failed extraction never binds, so the screen degrades to its pending black.
-      if (error !== undefined) releaseFirstBind(firstBindRef, firstBind);
+      // A failed extraction never binds: preview degrades to the pending black, an export fails.
+      if (error !== undefined)
+        releaseFirstBind(firstBindRef, firstBind, clipExportError(src, null, error));
       return;
     }
     let cancelled = false;
@@ -156,6 +171,7 @@ export function useClipTexture(binding: ClipTextureBinding): ClipTextureState {
         }
         if (cancelled) return;
         if (isDetached(bindable)) {
+          if (isExporting()) throw new Error("its bitmap stayed detached after three reloads");
           console.error(`useClipTexture: frame ${frameIndex} STILL detached — stale capture`);
           return;
         }
@@ -179,7 +195,7 @@ export function useClipTexture(binding: ClipTextureBinding): ClipTextureState {
       })
       .catch((err) => {
         if (cancelled || err instanceof ClipLoadSuperseded) return;
-        if (err instanceof ClipChunkError && isExporting()) throw err;
+        if (isExporting()) throw clipExportError(src, frameIndex, err);
         console.error(`useClipTexture: frame ${frameIndex} failed to load`, err);
       });
     // Rejections reach the export barrier through `videoFrameReady`; nothing else awaits them.
@@ -191,7 +207,7 @@ export function useClipTexture(binding: ClipTextureBinding): ClipTextureState {
         () => {
           if (!cancelled) releaseFirstBind(firstBindRef, firstBind);
         },
-        () => releaseFirstBind(firstBindRef, firstBind),
+        (err: Error) => releaseFirstBind(firstBindRef, firstBind, err),
       );
     }
     return () => {

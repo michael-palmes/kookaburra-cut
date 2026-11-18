@@ -4,8 +4,11 @@
   "description": "Capabilities for the Kookaburra Cut video-editor window (v6 · M5): edit documents and the media they reference, nothing else.",
   "windows": ["editor"],
   "permissions": [
-    "core:default",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:event:allow-emit",
     "core:window:allow-start-dragging",
+    "core:window:allow-internal-toggle-maximize",
     "core:window:allow-close",
     "core:window:allow-destroy",
     "dialog:default",

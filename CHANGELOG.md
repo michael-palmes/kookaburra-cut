@@ -6,6 +6,170 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Settings ▸ Allowed projects lists the projects you allowed to run, and Forget
+  makes one ask again on its next open.
+- Settings ▸ Storage ▸ Clear all app data empties every cache and the Website
+  data and forgets what you allowed, your recent projects and your preferences.
+  Your projects, workspace and pack signing key stay.
+- Settings ▸ About ▸ Activity log shows the app's log in Finder, and
+  `docs/privacy.md` now says how to uninstall the app completely.
+- A security overview and a fleet guide for the teams approving and deploying
+  the app on managed Macs (`docs/security-overview.md`, `docs/fleet.md`).
+- `docs/fleet-deployment.md`: install, profile, check, update mirror and
+  removal recipes for Jamf Pro, Kandji (Iru), Mosyle and Intune, with three
+  profiles and root install and uninstall scripts in `packaging/mdm/`. A
+  Homebrew cask is staged in `packaging/homebrew/` until its tap exists.
+- Settings ▸ About ▸ Export log saves the log as one file to send to support
+  or your IT team. Every line carries a UTC time and stays one line whatever a
+  file or folder is called, so a name can't pass as another entry.
+- A tenth managed preference, `AuditLogPath`, keeps a copy of the log in a
+  folder your organisation's log collector reads, and Settings says so. A
+  folder the app can't use means no copy, never a failed launch, and the log
+  on the Mac carries on. See `docs/mdm.md`.
+- A `.pkg` installer beside the DMG, for managed Macs: Jamf, Kandji, Mosyle or
+  Intune install it with no prompts. It is signed with a Developer ID
+  Installer certificate, notarised and covered by the release's checksums and
+  provenance. See `docs/mdm.md`, "Installing with the pkg".
+- Every release attaches the exact ffmpeg, x264 and x265 source archives its
+  ffmpeg sidecar was built from, listed in the release's checksums and
+  provenance, so anyone can rebuild it. See `NOTICE.md`.
+- The app now carries the licences of everything inside it: the GPL texts of
+  ffmpeg, x264 and x265, and the licence of every npm package and Rust crate.
+  Settings ▸ About ▸ Acknowledgements shows them in Finder.
+- An eleventh managed preference, `AllowedWebsiteOrigins`, lets live websites
+  open only from the sites your organisation lists, matched exactly. A site off
+  the list never asks, a site allowed before the profile stops working, and
+  Settings ▸ Website data shows the list with a lock. See `docs/mdm.md`.
+- Settings ▸ Accessibility: **Text size** (Default, Large, Larger, Largest, up
+  to 200%) enlarges the words and controls in every window, live, without
+  touching the preview or an export; **Single-key shortcuts** turns off letter
+  shortcuts such as S to split or O for Orbit, and the shortcuts sheet says
+  when they're off.
+- The transition preview has a pause button, and starts paused under Reduce
+  motion.
+
+### Changed
+
+- What leaves your Mac opens the privacy page for the installed version, so
+  the words match the build.
+- Vulnerability reports are acknowledged within 14 days (`SECURITY.md`).
+- A selected option preview plays once and holds its last frame; hover or focus
+  plays it again.
+- Field, select and selected-card borders are easier to see (3:1 contrast).
+
+### Fixed
+
+- Space on a focused button, tab, option or card presses it instead of also
+  playing the preview.
+- VoiceOver hears export progress every 10% and how the export ended.
+- Hints inside a hovered or selected row stay readable, a transition length
+  that doesn't parse says why it reverted, VoiceOver hears the length a
+  mistyped scene length kept, and the preview is a named landmark. See
+  `docs/accessibility.md`.
+- A dialog taller than the window scrolls instead of cutting off its buttons.
+- The Settings window resizes, so larger text has room.
+- Option previews no longer flash an empty card on hover.
+- An arrow key sent as an old Mac control code, as some remote-control apps
+  do, moves the caret instead of typing a stray character.
+
+### Security
+
+- Each window now holds only the Tauri permissions its own code uses, never
+  the default set: no window can reach the menu or tray, and only the windows
+  that announce changes can send events to the others.
+- A pull request that adds an HTTP client crate now fails the dependency
+  policy: the updater is the only code that fetches over HTTP.
+- A second reviewer is now asked to review every file where a trust decision
+  lives: the Allow gate, the agent kit, git history, the Claude handoff, the
+  bridge, live websites, the log, the window permissions and the stage worker.
+- A shared folder's git can no longer run a program through Claude's own git
+  commands. Hooks a folder arrives with move into `.git` on its first open and
+  are listed before Claude starts. Where a folder's git settings name a program,
+  or a hook is still there, Claude's git is turned off for that project, and
+  checkpoints carry on through `./kb`.
+- The app now keeps a log in every build, readable by your account alone:
+  which projects and websites you allowed, packs imported, updates, and what
+  your organisation's profile refused. It holds names and paths, never what is
+  in your files, keeps three files of 1 MiB at most, and the app never sends it
+  anywhere.
+- Each release now ships a software bill of materials
+  (`KookaburraCut-<version>.cdx.json`): every npm package and Rust crate built
+  into the app, the sidecar's pinned sources and the beat model, attested on
+  the DMG, and the app binary carries its own Rust dependency list for
+  `cargo audit bin`. Dependency licences and sources are now checked by policy
+  in CI, and the release page carries this changelog's section for the version.
+- `unsafe` Rust is denied except where a file or function allows it, and every
+  unsafe block says why it is sound.
+- CodeQL now scans the Python kit and scripts too, and `pnpm install` refuses a
+  dependency that would run an install script until someone reviews it.
+- `SECURITY.md` records why the app isn't App Sandboxed, and `docs/decisions.md`
+  what would change that.
+- Opening a shared project can no longer reach outside it. Its git history is
+  left alone when `.git` holds a link, and trimming old footage no longer
+  touches worktree records. Claude stays off when the app can't put its own
+  `./kb` in place. `./kb assets restore` puts back only files in `assets/`
+  from that batch's archive.
+- A pack can no longer replace a library or the bridge folder with a project
+  named `Themes`, `Templates`, `_bridge` or another workspace folder in any
+  case, or replace a folder that isn't a project.
+- In dev builds and terminal runs, scene code can no longer read files in your
+  home folder through the dev server.
+- Claude's requests to the app and the app's answers are now signed with a key
+  only Kookaburra Cut and its `./kb` read, so a misled agent's file tools can no
+  longer forge a capture, a check result or an export request, or replay an old
+  one. A project whose tools predate this gets a one-line answer: open it in
+  Kookaburra Cut once to update them.
+- Agent files a shared folder hides under another spelling of their name, in a
+  worktree folder git never made, or inside a folder moved aside earlier are
+  now moved out before Claude starts. `./kb` refuses credential paths in any
+  case, and Claude's own settings and the Claude app's folder too.
+- Forget in Settings ▸ Allowed projects now forgets the websites that project
+  allowed too, as deleting it or a pack landing in its folder already did.
+- Each project now keeps its own website sign-ins, so a login made for one
+  project's scene never shows in another. The website inspector gains Sign this
+  project out, deleting or forgetting a project or a pack landing in its folder
+  signs it out too, and Settings ▸ Website data still clears everything. The
+  old shared profile is deleted on first launch, so sites you signed in to
+  there ask you to sign in again.
+- A project replaced while closed asks for Allow again, even in the same launch.
+- A pack's trust screen lists every scene file it carries, whatever its folder
+  is called, and a pack with two names a Mac would store as one is refused.
+- Importing a pack over a project clears its Allow and website approvals before
+  anything moves, whatever case the pack spells it in, so an open project never
+  runs the pack's code unasked. Deleting a project clears its website approvals
+  too.
+- The import screens say backups are kept for a day, and a pack dated in the
+  future no longer makes Replace the default.
+- Scene code can no longer switch the editor's project, change the app's
+  settings or hold Present's focus, and a gizmo commits only to the selected
+  item.
+- A link inside a project can no longer reach another folder the app can read.
+- A new app icon is checked like any dropped image: only a workspace file, its
+  real format read from its bytes, capped in size, and decoded before it lands as
+  a plain PNG. A file that fails keeps the old icon.
+- Edit with Claude now checks the project's saved history (git) as well as its
+  folder, since Claude can pick files up from there. While the history holds
+  Claude settings, instructions or tools that differ from the ones the app
+  checked, Claude stays off and a sheet lists them; Save and Start Claude saves
+  the checked files to the history first. Kookaburra Cut's own updated files are
+  saved without asking; projects from earlier versions ask once after updating.
+- A project folder replaced in Finder is checked as a new folder, so its
+  `CLAUDE.md` and git hooks are reviewed again, and a `CLAUDE.md` changed
+  outside the app is shown before Claude starts. A project you forget in
+  Settings is checked as new on its next open.
+- A workspace folder the app creates is now readable by your account alone.
+  One that already exists keeps its permissions.
+- The log now records each Edit with Claude handoff, each finished video or
+  stills export, each pack export and where each one went, by name and path
+  only.
+- `rustix` moves to 1.1.6 (RUSTSEC-2026-0486), a dependency of the updater
+  whose affected calls the app never makes, and the dependency audit now fails
+  on an unsound crate anywhere in the graph, not only a direct one.
+- kb checks an imported scene or a shell command in one pass, so text crafted
+  to stall a check can no longer hold up an agent's work.
+
 ## [0.22.4] - 2026-11-10
 
 ### Fixed

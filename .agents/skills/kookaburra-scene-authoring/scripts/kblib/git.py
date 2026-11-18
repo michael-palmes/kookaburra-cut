@@ -111,6 +111,26 @@ def _config_refusal(config: str) -> Optional[str]:
     return None
 
 
+def link_inside(git_dir: str) -> Optional[str]:
+    """The first link anywhere below git_dir, as a path from it; links are never followed. Hooks never run under GUARDS, so their folders aren't walked."""
+    stack = [""]
+    while stack:
+        rel = stack.pop()
+        try:
+            entries = list(os.scandir(os.path.join(git_dir, rel)))
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return rel or "."
+        for entry in entries:
+            child = f"{rel}/{entry.name}" if rel else entry.name
+            if entry.is_symlink():
+                return child
+            if entry.is_dir(follow_symlinks=False) and child not in ("hooks", "hooks.moved-aside"):
+                stack.append(child)
+    return None
+
+
 def refusal(root: Path) -> Optional[str]:
     """Why git must not run in root: a .git that reaches elsewhere for its settings, or a .git/config key nothing here wrote."""
     global _config_seen
@@ -121,6 +141,9 @@ def refusal(root: Path) -> Optional[str]:
             return ".git is a link or a file"
         if os.path.lexists(os.path.join(git_dir, "commondir")):
             return ".git/commondir takes its settings from another repository"
+        link = link_inside(git_dir)
+        if link:
+            return f".git/{re.sub(r'[^A-Za-z0-9._/-]', '?', link)[:80]} is a link or can't be read, and git would write or prune through it"
         info = os.lstat(config)
     except FileNotFoundError:
         return None
@@ -132,6 +155,39 @@ def refusal(root: Path) -> Optional[str]:
     if _config_seen[0] != seen:
         _config_seen = (seen, _config_refusal(config))
     return _config_seen[1]
+
+
+def live_hooks(root: Path) -> List[str]:
+    """What .git/hooks holds beyond git's own .sample files, of any kind; a .git/hooks that isn't a real folder counts as one. kb's own git never runs them."""
+    hooks = os.path.join(str(root), ".git", "hooks")
+    try:
+        if not stat.S_ISDIR(os.lstat(hooks).st_mode):
+            return [".git/hooks"]
+        names = os.listdir(hooks)
+    except FileNotFoundError:
+        return []
+    except OSError:
+        return [".git/hooks"]
+    return sorted(f".git/hooks/{name}" for name in names if not name.endswith(".sample"))
+
+
+def nested_repo(root: Path) -> Optional[str]:
+    """The first .git below the project's own, links never followed: git run in that folder uses its hooks and settings instead."""
+    stack = [""]
+    while stack:
+        rel = stack.pop()
+        try:
+            entries = list(os.scandir(os.path.join(str(root), rel)))
+        except OSError:
+            continue
+        for entry in entries:
+            child = f"{rel}/{entry.name}" if rel else entry.name
+            if entry.name == ".git":
+                if rel:
+                    return child
+            elif entry.is_dir(follow_symlinks=False):
+                stack.append(child)
+    return None
 
 
 def run(root: Path, args: List[str], check: bool = True, timeout: float = 30) -> subprocess.CompletedProcess:

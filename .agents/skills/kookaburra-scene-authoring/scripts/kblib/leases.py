@@ -328,8 +328,8 @@ def parse_ttl(raw: Optional[str]) -> Tuple[int, Optional[str]]:
     if text.isdigit():
         ms = int(text) * 60_000
     else:
-        parts = re.findall(r"(\d+)\s*([hms])", text)
-        if not parts or re.sub(r"(\d+)\s*([hms])", "", text).strip():
+        parts = re.findall(r"(?<!\d)(\d+)\s*([hms])", text)
+        if not parts or re.sub(r"(?<!\d)(\d+)\s*([hms])", "", text).strip():
             raise KbError(f'--ttl "{raw}" is not a duration; use 2h, 90m or 1h30m', EXIT_ENV, kind="usage")
         ms = sum(int(n) * {"h": 3_600_000, "m": 60_000, "s": 1000}[u] for n, u in parts)
     if ms < 60_000:

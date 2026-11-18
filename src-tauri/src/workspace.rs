@@ -1,3 +1,4 @@
+#![allow(unsafe_code)]
 //! The user workspace: a folder of self-contained projects, chosen at first run (default `~/Kookaburra Cut`, moved out of ~/Documents for TCC) and remembered in `$APPDATA/settings.json`; commands are custom `#[tauri::command]`s that bypass the webview fs ACL, each re-asserting the on-disk layout first (`ensure_layout`) so a user deleting or rearranging folders mid-session degrades gracefully instead of crashing.
 
 use std::collections::{HashMap, HashSet};
@@ -174,6 +175,43 @@ pub struct AgentFilesRecord {
     /// Moved and not yet shown; the embedded session stays off until the person has seen them.
     #[serde(default)]
     pub unreviewed: Vec<String>,
+    /// SHA-256 of the root `CLAUDE.md` after the last stamp, so a change outside the app is reviewed again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_md: Option<String>,
+    /// The folder's creation time at the last stamp: a folder made at another moment is another folder at this path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder_created_ns: Option<u64>,
+    /// `kit::stamp_key` of each app-owned file as the last stamp left it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stamp: Vec<String>,
+    /// Keys of earlier stamps, oldest first and capped: committed copies the app wrote before.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stamped_before: Vec<String>,
+    /// The project's history has matched a stamp the app recorded.
+    #[serde(default)]
+    pub history_synced: bool,
+    /// The app began recording stamps in a folder it had already checked, so its history's first difference is the one-off after updating.
+    #[serde(default)]
+    pub stamps_late: bool,
+}
+
+/// Earlier stamp keys a record keeps: a few releases of the kit.
+const STAMPED_BEFORE_CAP: usize = 512;
+
+impl AgentFilesRecord {
+    /// Take `stamp` as the latest, keeping the one it replaces as earlier.
+    fn note_stamp(&mut self, stamp: Vec<String>) {
+        if self.stamp == stamp {
+            return;
+        }
+        for key in std::mem::replace(&mut self.stamp, stamp) {
+            if !self.stamp.contains(&key) && !self.stamped_before.contains(&key) {
+                self.stamped_before.push(key);
+            }
+        }
+        let over = self.stamped_before.len().saturating_sub(STAMPED_BEFORE_CAP);
+        self.stamped_before.drain(..over);
+    }
 }
 
 /// Managed settings cache. `None` = not yet loaded from disk.
@@ -263,8 +301,45 @@ fn update_settings_at<T>(
     Ok(out)
 }
 
+/// What Settings ▸ Clear all app data keeps: where the workspace is and the answer to the update question. Every grant, record and preference goes.
+fn cleared_settings(settings: &AppSettings) -> AppSettings {
+    AppSettings {
+        workspace_root: settings.workspace_root.clone(),
+        update_check_consent: settings.update_check_consent,
+        ..AppSettings::default()
+    }
+}
+
+pub(crate) fn reset_settings(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+) -> Result<(), String> {
+    update_settings(app, state, |settings| {
+        *settings = cleared_settings(settings)
+    })
+}
+
+/// The workspace folder, made owner-only when the app is the one making it; a folder already there keeps its mode.
+pub(crate) fn ensure_root(root: &Path) -> Result<(), String> {
+    use std::os::unix::fs::DirBuilderExt;
+    if std::fs::symlink_metadata(root).is_ok() {
+        return Ok(());
+    }
+    if let Some(parent) = root.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("creating {}: {e}", parent.display()))?;
+    }
+    match std::fs::DirBuilder::new().mode(0o700).create(root) {
+        Err(e) if e.kind() != std::io::ErrorKind::AlreadyExists => {
+            Err(format!("creating {}: {e}", root.display()))
+        }
+        _ => Ok(()),
+    }
+}
+
 /// Recreate the workspace skeleton idempotently; called by every command that touches the workspace, so a deleted subfolder heals on the next action.
 fn ensure_layout(root: &Path) -> Result<(), String> {
+    ensure_root(root)?;
     for dir in [
         root.to_path_buf(),
         root.join(STATE_DIR_NAME).join("snapshots"),
@@ -288,9 +363,11 @@ fn stamp_crtime(path: &Path, at: std::time::SystemTime) {
         tv_sec: dur.as_secs() as libc::time_t,
         tv_nsec: dur.subsec_nanos() as _,
     };
+    // SAFETY: attrlist is plain C data, so all zeroes is a valid value.
     let mut attrs: libc::attrlist = unsafe { std::mem::zeroed() };
     attrs.bitmapcount = libc::ATTR_BIT_MAP_COUNT;
     attrs.commonattr = libc::ATTR_CMN_CRTIME;
+    // SAFETY: cpath is NUL-terminated, and attrs asks for the creation time alone, which ts holds.
     unsafe {
         libc::setattrlist(
             cpath.as_ptr(),
@@ -396,8 +473,8 @@ pub(crate) fn slugify(name: &str) -> String {
     slug
 }
 
-/// Workspace folders owned by the app rather than by projects; a project taking one of these names would shadow a library, so creation and duplication both refuse them.
-const RESERVED_SLUGS: [&str; 9] = [
+/// Workspace folders owned by the app rather than by projects; a project taking one of these names would shadow a library or the bridge, so creation, duplication and pack import all refuse them.
+const RESERVED_SLUGS: [&str; 11] = [
     "themes",
     crate::brands::BRANDS_DIR_NAME,
     "fonts",
@@ -407,10 +484,19 @@ const RESERVED_SLUGS: [&str; 9] = [
     "screenshots",
     crate::library::TEMPLATES_DIR_NAME,
     crate::library::PRESETS_DIR_NAME,
+    "_bridge",
+    "_autorun",
 ];
 
+/// Matched as the volume matches names: slugs are ASCII, so APFS folds them as ASCII case.
+pub(crate) fn is_reserved_slug(slug: &str) -> bool {
+    RESERVED_SLUGS
+        .iter()
+        .any(|reserved| reserved.eq_ignore_ascii_case(slug))
+}
+
 fn reject_reserved_slug(slug: &str) -> Result<(), String> {
-    if RESERVED_SLUGS.contains(&slug) {
+    if is_reserved_slug(slug) {
         return Err(format!(
             "\"{slug}\" is a reserved folder name: pick another"
         ));
@@ -887,6 +973,11 @@ fn retarget_trust(settings: &mut AppSettings, from: &Path, to: &Path) {
     for path in moved {
         if let Some(record) = settings.agent_files.remove(&path) {
             let rest = &path[from_prefix.len()..];
+            // A move across volumes copies each folder, so its creation time is the app's doing.
+            let record = AgentFilesRecord {
+                folder_created_ns: None,
+                ..record
+            };
             settings.agent_files.insert(format!("{to_prefix}{rest}"), record);
         }
     }
@@ -965,6 +1056,11 @@ fn perform_workspace_move(app: &AppHandle, from: &Path, to: &Path) -> Result<Str
         retarget_trust(settings, from, to);
     })?;
     crate::asset_reach::set_workspace(app, to);
+    log::info!(
+        "[workspace] moved from {} to {}",
+        crate::audit::path(from),
+        crate::audit::path(to)
+    );
     let _ = app.emit("kookaburra://workspace-moved", to.to_string_lossy());
     Ok(to.to_string_lossy().into_owned())
 }
@@ -1024,6 +1120,7 @@ fn adopt_workspace(
     update_settings(app, state, |settings| {
         settings.workspace_root = Some(root.to_string_lossy().into_owned());
     })?;
+    log::info!("[workspace] now at {}", crate::audit::path(&root));
     Ok(root.to_string_lossy().into_owned())
 }
 
@@ -1311,6 +1408,10 @@ pub fn duplicate_project(
     // A copy of a folder the app has seen keeps the person's own CLAUDE.md.
     update_settings(&app, &state, |settings| {
         if let Some(record) = settings.agent_files.get(&*src.to_string_lossy()).cloned() {
+            let record = AgentFilesRecord {
+                folder_created_ns: None,
+                ..record
+            };
             settings
                 .agent_files
                 .insert(dst.to_string_lossy().into_owned(), record);
@@ -1332,6 +1433,8 @@ fn duplicate_skips(name: &std::ffi::OsStr) -> bool {
 pub async fn delete_project(
     app: AppHandle,
     state: State<'_, SettingsState>,
+    trust: State<'_, TrustState>,
+    websites: State<'_, crate::website::WebsiteState>,
     slug: String,
 ) -> Result<(), String> {
     validate_slug(&slug)?;
@@ -1348,7 +1451,17 @@ pub async fn delete_project(
             .await
             .map_err(|e| e.to_string())?
     };
+    let website_keys = forget_trust_at(&app, &state, &trust, std::slice::from_ref(&dir))?;
+    crate::website::clear_project_stores(&app, &websites, &website_keys)
+        .await
+        .map_err(|e| {
+            format!("couldn't sign its websites out, so it wasn't deleted; it asks for Allow again on its next open: {e}")
+        })?;
     trash_path(&dir).map_err(|e| format!("couldn't move the project to the Trash: {e}"))?;
+    log::info!(
+        "[workspace] {slug}: moved to the Trash ({})",
+        crate::audit::path(&dir)
+    );
     // The trust grant dies with the project, so a later same-slug project starts untrusted.
     update_settings(&app, &state, |settings| {
         settings.trusted_projects.remove(&slug);
@@ -1866,6 +1979,7 @@ pub(crate) fn stamp_claude_provisioning(app: &AppHandle, dir: &Path) -> Result<b
     for name in &missing {
         log::warn!("{name} skill not found at {}", root.join(name).display());
     }
+    let stamped: Vec<&str> = found.iter().map(|(name, _)| *name).collect();
     let skills: Vec<(&str, &Path)> = found
         .iter()
         .map(|(name, src)| (*name, src.as_path()))
@@ -1873,7 +1987,50 @@ pub(crate) fn stamp_claude_provisioning(app: &AppHandle, dir: &Path) -> Result<b
     let opts = crate::kit::StampOptions::for_app(app);
     sweep_agent_files_recorded(app, dir, &opts)?;
     crate::kit::stamp_project(&skills, dir, &opts)?;
+    let state = app.state::<SettingsState>();
+    let key = dir.to_string_lossy().into_owned();
+    update_settings(app, &state, |settings| {
+        if let Some(record) = settings.agent_files.get_mut(&key) {
+            record.claude_md = root_claude_md(dir).map(|(hash, _)| hash);
+            record.folder_created_ns = folder_created_ns(dir);
+            record.note_stamp(crate::kit::own_stamp(dir, &stamped));
+        }
+    })?;
     Ok(missing.is_empty())
+}
+
+/// The review line for a root `CLAUDE.md` changed outside the app since its last stamp; the file stays where it is.
+const CLAUDE_MD_CHANGED: &str = "CLAUDE.md changed since the last check";
+
+fn folder_created_ns(dir: &Path) -> Option<u64> {
+    let created = std::fs::symlink_metadata(dir).ok()?.created().ok()?;
+    u64::try_from(created.duration_since(UNIX_EPOCH).ok()?.as_nanos()).ok()
+}
+
+/// The root `CLAUDE.md`'s SHA-256 and whether it is still a shipped default, when it is a text file the sweep would read.
+fn root_claude_md(dir: &Path) -> Option<(String, bool)> {
+    let text = crate::kit::plain_text(&dir.join("CLAUDE.md"))?;
+    let hash = crate::hex_digest(Sha256::digest(text.as_bytes()).as_slice());
+    Some((hash, crate::kit::is_default_claude_md(&text)))
+}
+
+/// Whether this stamp is a first open, and whether a non-default root `CLAUDE.md` changed since the last one. A folder made at another moment than the one recorded is a new folder at an old path.
+fn agent_files_seen(
+    record: Option<&AgentFilesRecord>,
+    created_ns: Option<u64>,
+    claude_md: Option<&(String, bool)>,
+) -> (bool, bool) {
+    let Some(record) = record.filter(|record| record.swept) else {
+        return (true, false);
+    };
+    if record.folder_created_ns.is_some() && record.folder_created_ns != created_ns {
+        return (true, false);
+    }
+    let changed = match (record.claude_md.as_deref(), claude_md) {
+        (Some(before), Some((now, is_default))) => before != now && !is_default,
+        _ => false,
+    };
+    (false, changed)
 }
 
 fn sweep_agent_files_recorded(
@@ -1883,13 +2040,35 @@ fn sweep_agent_files_recorded(
 ) -> Result<(), String> {
     let state = app.state::<SettingsState>();
     let key = dir.to_string_lossy().into_owned();
-    let first_open = !load_settings(app, &state)?
-        .agent_files
-        .get(&key)
-        .is_some_and(|record| record.swept);
-    let sweep = crate::kit::sweep_agent_files(dir, first_open);
+    let record = load_settings(app, &state)?.agent_files.get(&key).cloned();
+    let (first_open, claude_md_changed) = agent_files_seen(
+        record.as_ref(),
+        folder_created_ns(dir),
+        root_claude_md(dir).as_ref(),
+    );
+    if first_open && record.as_ref().is_some_and(|record| record.swept) {
+        log::info!(
+            "[kit] {}: another folder now sits at this path, so it is checked as new",
+            crate::audit::path(dir)
+        );
+    }
+    let mut sweep = crate::kit::sweep_agent_files(dir, first_open);
+    if claude_md_changed {
+        log::info!(
+            "[kit] {}: CLAUDE.md changed outside the app",
+            crate::audit::path(dir)
+        );
+        sweep.moved.push(CLAUDE_MD_CHANGED.into());
+    }
+    let stamps_late = !first_open
+        && record
+            .as_ref()
+            .is_some_and(|record| record.stamp.is_empty());
     update_settings(app, &state, |settings| {
-        note_agent_sweep(settings, &key, &sweep, opts)
+        note_agent_sweep(settings, &key, &sweep, opts);
+        if let Some(record) = settings.agent_files.get_mut(&key) {
+            record.stamps_late |= stamps_late && !record.history_synced;
+        }
     })?;
     if let Some(error) = &sweep.error {
         log::warn!("[kit] {}: {error}", dir.display());
@@ -1937,6 +2116,46 @@ fn agent_files_block(record: Option<&AgentFilesRecord>, present: &[String]) -> O
     }
 }
 
+fn agent_files_sheet_body(unreviewed: &[String], folder: &str) -> String {
+    let moved: Vec<&String> = unreviewed
+        .iter()
+        .filter(|line| *line != CLAUDE_MD_CHANGED)
+        .collect();
+    let mut parts = Vec::new();
+    if !moved.is_empty() {
+        let listed: Vec<String> = moved
+            .iter()
+            .take(12)
+            .map(|line| format!("• {line}"))
+            .collect();
+        let more = moved.len() - listed.len();
+        let more = if more > 0 {
+            format!("\nand {more} more, named in the log")
+        } else {
+            String::new()
+        };
+        parts.push(format!(
+            "These could have steered Claude, so Kookaburra Cut moved them:\n\n{}{more}\n\nThe text is in NOTES.md, which Claude reads as notes, not instructions. If a CLAUDE.md was your own, copy back what you want.",
+            listed.join("\n")
+        ));
+    }
+    if moved.len() < unreviewed.len() {
+        parts.push("CLAUDE.md, the instructions Claude follows here, changed since Kookaburra Cut last checked this folder. Read it before you start Claude.".into());
+    }
+    parts.push(format!("Folder: {folder}"));
+    let mut body = parts.join("\n\n");
+    if unreviewed
+        .iter()
+        .any(|line| line.contains(crate::kit::HOOKS_ASIDE))
+    {
+        body.push_str(&format!(
+            "\n\nGit hooks are in {}: move one back into .git/hooks if it was yours.",
+            crate::kit::HOOKS_ASIDE
+        ));
+    }
+    body
+}
+
 /// Show the person what moved out of the folder on a native sheet a webview can't answer. `true` starts the session; Return and Not now leave it off.
 pub(crate) async fn review_agent_files_for(
     app: &AppHandle,
@@ -1947,7 +2166,10 @@ pub(crate) async fn review_agent_files_for(
     let present = crate::kit::foreign_agent_files(dir);
     let key = dir.to_string_lossy().into_owned();
     let record = load_settings(app, state)?.agent_files.get(&key).cloned();
-    let unreviewed = record.as_ref().map(|r| r.unreviewed.clone()).unwrap_or_default();
+    let unreviewed = record
+        .as_ref()
+        .map(|r| r.unreviewed.clone())
+        .unwrap_or_default();
     if unreviewed.is_empty() || !present.is_empty() {
         return match agent_files_block(record.as_ref(), &present) {
             Some(why) => Err(why),
@@ -1955,19 +2177,16 @@ pub(crate) async fn review_agent_files_for(
         };
     }
     let name = consent_project_name(dir, slug);
-    let listed: Vec<String> = unreviewed.iter().take(12).map(|line| format!("• {line}")).collect();
-    let more = unreviewed.len() - listed.len();
-    let more = if more > 0 { format!("\nand {more} more, named in the log") } else { String::new() };
-    let body = format!(
-        "These could have steered Claude, so Kookaburra Cut moved them:\n\n{}{more}\n\nThe text is in NOTES.md, which Claude reads as notes, not instructions. If a CLAUDE.md was your own, copy back what you want.\n\nFolder: {}",
-        listed.join("\n"),
-        display_path(app, dir)
-    );
+    let body = agent_files_sheet_body(&unreviewed, &display_path(app, dir));
     let declined = crate::native_alert::ask(
         app,
         "main",
         crate::native_alert::Prompt {
-            title: &format!("“{name}” came with agent files"),
+            title: &if unreviewed.iter().all(|line| line == CLAUDE_MD_CHANGED) {
+                format!("Claude's instructions in “{name}” changed")
+            } else {
+                format!("“{name}” came with agent files")
+            },
             body: &body,
             default_button: "Not now",
             other_button: "Start Claude",
@@ -1982,6 +2201,169 @@ pub(crate) async fn review_agent_files_for(
             record.unreviewed.retain(|line| !unreviewed.contains(line));
         }
     })?;
+    Ok(true)
+}
+
+fn committed_sheet_body(found: &[String], one_off: bool, folder: &str) -> String {
+    let listed: Vec<String> = found
+        .iter()
+        .take(12)
+        .map(|rel| format!("• {}", crate::clean_text::clean_name(rel)))
+        .collect();
+    let more = found.len() - listed.len();
+    let more = if more > 0 {
+        format!("\nand {more} more")
+    } else {
+        String::new()
+    };
+    let lead = if one_off {
+        "Kookaburra Cut updated its own Claude files here, and the project's saved history (git) still holds the older copies. This is a one-off after updating: later updates save them for you."
+    } else {
+        "This project's saved history (git) still holds these, and Claude could pick them up from there:"
+    };
+    format!(
+        "{lead}\n\n{}{more}\n\nSave the checked files to the history and Claude starts.\n\nFolder: {folder}",
+        listed.join("\n")
+    )
+}
+
+/// The project's stamp record, owned so the git work can run off the main thread.
+#[derive(Clone, Default)]
+struct RecordedStamps {
+    latest: HashSet<String>,
+    earlier: HashSet<String>,
+}
+
+impl RecordedStamps {
+    fn of(record: Option<&AgentFilesRecord>) -> Self {
+        record.map_or_else(Self::default, |record| RecordedStamps {
+            latest: record.stamp.iter().cloned().collect(),
+            earlier: record.stamped_before.iter().cloned().collect(),
+        })
+    }
+
+    fn view(&self) -> crate::history::Stamps<'_> {
+        crate::history::Stamps {
+            latest: &self.latest,
+            earlier: &self.earlier,
+        }
+    }
+}
+
+async fn history_check(
+    dir: &Path,
+    stamps: &RecordedStamps,
+) -> Result<crate::history::CommittedAgentFiles, String> {
+    let (dir, stamps) = (dir.to_path_buf(), stamps.clone());
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::history::committed_agent_files(&dir, &stamps.view())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+async fn history_save(
+    dir: &Path,
+    stamps: &RecordedStamps,
+    own_only: bool,
+) -> Result<usize, String> {
+    let (dir, stamps) = (dir.to_path_buf(), stamps.clone());
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::history::commit_agent_files(&dir, &stamps.view(), own_only)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn note_history_synced(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    key: &str,
+) -> Result<(), String> {
+    update_settings(app, state, |settings| {
+        if let Some(record) = settings.agent_files.get_mut(key) {
+            record.history_synced = true;
+            record.stamps_late = false;
+        }
+    })
+}
+
+/// Before the handoff, the project's git history as well as its folder: a Claude worktree or a checkout brings back what was committed. The app's own earlier stamps are saved without asking; anything else is listed on a sheet whose Save commits the checked files, and the handoff refuses until the history holds only those, or when it can't be read. `true` starts the session.
+pub(crate) async fn review_committed_agent_files(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    slug: &str,
+    dir: &Path,
+) -> Result<bool, String> {
+    let shown = crate::audit::field(slug);
+    let key = dir.to_string_lossy().into_owned();
+    let record = load_settings(app, state)?.agent_files.get(&key).cloned();
+    let synced = record.as_ref().is_some_and(|record| record.history_synced);
+    let late = record.as_ref().is_some_and(|record| record.stamps_late);
+    let stamps = RecordedStamps::of(record.as_ref());
+    let refused = |why: String| {
+        log::warn!(
+            "[kit] {shown}: Claude stays off, its git history can't be checked: {}",
+            crate::audit::field(&why)
+        );
+        format!(
+            "Claude stays off: Kookaburra Cut couldn't safely read this project's saved history (git), because {}. Remove that from the project's git setup, or start Claude from a terminal of your own.",
+            crate::clean_text::clean_name(&why)
+        )
+    };
+    let mut found = history_check(dir, &stamps).await.map_err(refused)?;
+    if found.listed().is_empty() && !found.own.is_empty() {
+        let saved = history_save(dir, &stamps, true).await.map_err(refused)?;
+        log::info!(
+            "[kit] {shown}: saved Kookaburra Cut's own updated files to its git history ({saved} changed)"
+        );
+        found = history_check(dir, &stamps).await.map_err(refused)?;
+    }
+    if found.is_clean() {
+        if !synced {
+            note_history_synced(app, state, &key)?;
+        }
+        return Ok(true);
+    }
+    let listed = found.listed();
+    let one_off = late && found.foreign.is_empty();
+    log::warn!(
+        "[kit] {shown}: Claude stays off, its git history holds agent files: {}",
+        crate::audit::field(&listed.join(", "))
+    );
+    let name = consent_project_name(dir, slug);
+    let declined = crate::native_alert::ask(
+        app,
+        "main",
+        crate::native_alert::Prompt {
+            title: &if one_off {
+                format!("Save “{name}”'s updated Claude files")
+            } else {
+                format!("“{name}” has other Claude files in its history")
+            },
+            body: &committed_sheet_body(&listed, one_off, &display_path(app, dir)),
+            default_button: "Not now",
+            other_button: "Save and Start Claude",
+        },
+    )
+    .await?;
+    if declined {
+        return Ok(false);
+    }
+    let saved = history_save(dir, &stamps, false).await.map_err(|e| {
+        format!("Claude stays off: Kookaburra Cut couldn't save the checked files to the history ({e}).")
+    })?;
+    let left = history_check(dir, &stamps).await.map_err(refused)?;
+    if !left.is_clean() {
+        let mut names = left.listed();
+        names.extend(left.own);
+        return Err(format!(
+            "Claude stays off: the history still holds {}.",
+            crate::clean_text::clean_name(&names.join(", "))
+        ));
+    }
+    note_history_synced(app, state, &key)?;
+    log::info!("[kit] {shown}: saved the checked agent files to its git history ({saved} changed)");
     Ok(true)
 }
 
@@ -2364,32 +2746,178 @@ fn copy_source_needs_grant(scope: &ProjectScope) -> bool {
     )
 }
 
-/// Forget every grant for a project, user template or user preset a pack import just wrote. The pack is a publisher's content, whoever that publisher is, so the person meets the Allow sheet again on the next open.
+/// Forget one project's grant and its website origins, so it asks again on its next open: Settings ▸ Allowed projects ▸ Forget. Its folder now and the one its grant recorded are both forgotten, as a delete would. Returns the website keys its stores go by.
 pub(crate) fn forget_project_trust(
     app: &AppHandle,
     state: &State<'_, SettingsState>,
     trust: &TrustState,
     id: &str,
-) -> Result<(), String> {
+) -> Result<Vec<String>, String> {
     parse_project_id(id)?;
     drop_session_then(&trust.session, id, || {
-        update_settings(app, state, |settings| {
-            settings.trusted_projects.remove(id);
-        })
+        let mut folders = vec![project_dir(app, state, id)?];
+        if let Some(record) = load_settings(app, state)?.trusted_projects.get(id) {
+            folders.push(PathBuf::from(&record.path));
+        }
+        let landing = Landing::new(&folders);
+        let loopback =
+            crate::website::forget_loopback_grants_at(app, |key| landing.holds(Path::new(key)));
+        let stored = update_settings(app, state, |settings| {
+            forget_one_stored(settings, id, &landing)
+        })?;
+        Ok(website_keys(&folders, loopback.into_iter().chain(stored)))
     })
 }
 
+fn forget_one_stored(settings: &mut AppSettings, id: &str, landing: &Landing) -> Vec<String> {
+    settings.trusted_projects.remove(id);
+    forget_stored_at(settings, landing)
+}
+
+/// The keys these folders' website stores go by: each folder as written and as it resolves on disk, and every grant key a forget matched, so a store keyed under another spelling still goes.
+fn website_keys(folders: &[PathBuf], matched: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut keys: Vec<String> = folders
+        .iter()
+        .flat_map(|folder| {
+            let resolved = folder.canonicalize().ok();
+            std::iter::once(folder.to_string_lossy().into_owned())
+                .chain(resolved.map(|dir| dir.to_string_lossy().into_owned()))
+        })
+        .chain(matched)
+        .collect();
+    keys.sort();
+    keys.dedup();
+    keys
+}
+
+/// Forget every grant held for these folders: a pack is landing in them, so the person meets the Allow sheet again on the next open. Keyed by the folder on disk, not the id, so a slug spelt in another case is forgotten too; website origins go with the grant. Returns the website keys their stores go by.
+pub(crate) fn forget_trust_at(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    trust: &TrustState,
+    folders: &[PathBuf],
+) -> Result<Vec<String>, String> {
+    if folders.is_empty() {
+        return Ok(Vec::new());
+    }
+    let landing = Landing::new(folders);
+    let ids: Vec<String> = trust
+        .session
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .iter()
+        .cloned()
+        .collect();
+    let dirs: HashMap<String, PathBuf> = ids
+        .into_iter()
+        .filter_map(|id| project_dir(app, state, &id).ok().map(|dir| (id, dir)))
+        .collect();
+    forget_session_at(
+        &mut trust
+            .session
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner),
+        &landing,
+        |id| dirs.get(id).cloned(),
+    );
+    let loopback =
+        crate::website::forget_loopback_grants_at(app, |key| landing.holds(Path::new(key)));
+    let stored = update_settings(app, state, |settings| forget_stored_at(settings, &landing))?;
+    Ok(website_keys(folders, loopback.into_iter().chain(stored)))
+}
+
+/// Settings ▸ Clear all app data: every session allow and unredeemed Allow goes, so no project passes on this launch's word.
+pub(crate) fn forget_session_trust(trust: &TrustState) {
+    trust
+        .nonces
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clear();
+    trust
+        .session
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clear();
+}
+
 /// The session allow goes before the stored grant, so a failed settings write still leaves the next open asking.
-fn drop_session_then(
+fn drop_session_then<T>(
     session: &Mutex<HashSet<String>>,
     id: &str,
-    drop_stored: impl FnOnce() -> Result<(), String>,
-) -> Result<(), String> {
+    drop_stored: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
     session
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .remove(id);
     drop_stored()
+}
+
+fn forget_session_at(
+    session: &mut HashSet<String>,
+    landing: &Landing,
+    dir_of: impl Fn(&str) -> Option<PathBuf>,
+) {
+    session.retain(|id| dir_of(id).is_some_and(|dir| !landing.holds(&dir)));
+}
+
+fn forget_stored_at(settings: &mut AppSettings, landing: &Landing) -> Vec<String> {
+    settings
+        .trusted_projects
+        .retain(|_, record| !landing.holds(Path::new(&record.path)));
+    settings
+        .agent_files
+        .retain(|key, _| !landing.holds(Path::new(key)));
+    let mut dropped = Vec::new();
+    settings.website_origin_grants.retain(|key, _| {
+        let gone = landing.holds(Path::new(key));
+        if gone {
+            dropped.push(key.clone());
+        }
+        !gone
+    });
+    dropped
+}
+
+/// The folders a pack or a delete is about to change, each read from disk once: by inode where it exists, else by its path in any case (the side that forgets more).
+struct Landing {
+    inodes: HashSet<(u64, u64)>,
+    absent: HashSet<String>,
+    spelt: HashSet<String>,
+}
+
+impl Landing {
+    fn new(folders: &[PathBuf]) -> Self {
+        let mut landing = Landing {
+            inodes: HashSet::new(),
+            absent: HashSet::new(),
+            spelt: HashSet::new(),
+        };
+        for folder in folders {
+            let name = folder.to_string_lossy().to_lowercase();
+            match folder_inode(folder) {
+                Some(inode) => landing.inodes.insert(inode),
+                None => landing.absent.insert(name.clone()),
+            };
+            landing.spelt.insert(name);
+        }
+        landing
+    }
+
+    fn holds(&self, path: &Path) -> bool {
+        let name = path.to_string_lossy().to_lowercase();
+        match folder_inode(path) {
+            Some(inode) => self.inodes.contains(&inode) || self.absent.contains(&name),
+            None => self.spelt.contains(&name),
+        }
+    }
+}
+
+fn folder_inode(path: &Path) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    std::fs::metadata(path)
+        .ok()
+        .map(|meta| (meta.dev(), meta.ino()))
 }
 
 /// One consent the native sheet (or an autorun launch) issued and `trust_project` has not consumed yet.
@@ -2399,11 +2927,43 @@ struct PendingTrust {
     issued: Instant,
 }
 
-/// Trust state that lives only as long as this app process: the consent nonces `request_project_trust` issued and `trust_project` has not consumed (nothing else writes there, so a call without one of them has nothing to redeem), and the slugs this session has allowed, whose live edits re-stamp without asking.
+/// Trust state that lives only as long as this app process: the consent nonces `request_project_trust` issued and `trust_project` has not consumed (nothing else writes there, so a call without one of them has nothing to redeem), the slugs this session has allowed while they stay open, whose live edits re-stamp without asking, and the project the main window has open.
 #[derive(Default)]
 pub struct TrustState {
     nonces: Mutex<HashMap<String, PendingTrust>>,
     session: Mutex<HashSet<String>>,
+    open: Mutex<Option<String>>,
+}
+
+impl TrustState {
+    /// The main window now shows `id`, or the welcome screen for None.
+    pub(crate) fn main_window_shows(&self, id: Option<&str>) {
+        let mut open = self
+            .open
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut session = self
+            .session
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        leave_open_project(&mut open, &mut session, id);
+    }
+}
+
+/// A project the main window leaves or enters keeps no session allow, so content replaced while it was closed asks again.
+fn leave_open_project(
+    open: &mut Option<String>,
+    session: &mut HashSet<String>,
+    next: Option<&str>,
+) {
+    if open.as_deref() == next {
+        return;
+    }
+    // Entering a project starts clean too: its allow is earned while it is open, never carried in.
+    for slug in open.iter().map(String::as_str).chain(next) {
+        session.remove(slug);
+    }
+    *open = next.map(str::to_owned);
 }
 
 /// What the main window's gate check decides for a project.
@@ -2467,7 +3027,15 @@ pub fn check_project_trust(
     };
     match decision {
         SessionTrust::Pass => Ok(true),
-        SessionTrust::Ask => Ok(false),
+        SessionTrust::Ask => {
+            if settings.trusted_projects.contains_key(&slug) {
+                log::info!(
+                    "[trust] {slug}: changed since it was allowed, so the sheet asks again ({})",
+                    crate::audit::path(&dir)
+                );
+            }
+            Ok(false)
+        }
         SessionTrust::Restamp => {
             if !grant_lasts_only_this_session(cfg!(debug_assertions), crate::is_autorun()) {
                 update_settings(&app, &state, |settings| {
@@ -2620,6 +3188,7 @@ pub async fn request_project_trust(
         )
         .await?;
         if declined {
+            log::info!("[trust] {slug}: declined ({})", crate::audit::path(&dir));
             return Ok(None);
         }
     }
@@ -2655,7 +3224,8 @@ pub fn trust_project(
     if fingerprint != consented_for {
         return Err("the project changed while the consent sheet was open; open it again".into());
     }
-    if !grant_lasts_only_this_session(cfg!(debug_assertions), crate::is_autorun()) {
+    let session_only = grant_lasts_only_this_session(cfg!(debug_assertions), crate::is_autorun());
+    if !session_only {
         let allowed_at_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|e| e.to_string())?
@@ -2669,6 +3239,11 @@ pub fn trust_project(
             settings.trusted_projects.insert(slug.clone(), record);
         })?;
     }
+    log::info!(
+        "[trust] {slug}: allowed{} ({})",
+        if session_only { " for this launch" } else { "" },
+        crate::audit::path(&dir)
+    );
     trust
         .session
         .lock()
@@ -2694,11 +3269,15 @@ pub fn read_project_manifest(
     window: tauri::Window,
     app: AppHandle,
     state: State<'_, SettingsState>,
+    trust: State<'_, TrustState>,
     slug: String,
 ) -> Result<String, String> {
     let (scope, item) = parse_project_id(&slug)?;
     let dir = project_dir(&app, &state, &slug)?;
     let text = project_manifest_for_loading(&dir, scope)?;
+    if window.label() == "main" {
+        trust.main_window_shows(Some(&slug));
+    }
     let readable = match scope {
         ProjectScope::BundledTemplate => bundled_assets_in_dev(&templates_root(&app), item)?,
         ProjectScope::BundledPreset => bundled_assets_in_dev(&presets_root(&app), item)?,
@@ -2721,8 +3300,11 @@ fn bundled_assets_in_dev(root: &Path, item: &str) -> Result<Option<PathBuf>, Str
 
 /// The calling window reads no project any more: the main window back on the welcome screen.
 #[tauri::command]
-pub fn release_project(window: tauri::Window, app: AppHandle) {
+pub fn release_project(window: tauri::Window, app: AppHandle, trust: State<'_, TrustState>) {
     crate::asset_reach::close_project(&app, window.label());
+    if window.label() == "main" {
+        trust.main_window_shows(None);
+    }
 }
 
 fn bundled_project_assets_path(root: &Path, slug: &str) -> Result<PathBuf, String> {
@@ -3026,6 +3608,48 @@ mod tests {
     }
 
     #[test]
+    fn a_reset_keeps_the_workspace_and_the_update_answer_only() {
+        let mut settings = AppSettings {
+            workspace_root: Some("/Users/x/Kookaburra Cut".into()),
+            update_check_consent: Some(false),
+            last_project: Some("ws:product-tour".into()),
+            last_update_check_ms: Some(9),
+            disable_hardware_video: true,
+            clip_cache_cap_gb: Some(5),
+            publisher: Some(PublisherProfile {
+                name: "Someone".into(),
+                ..Default::default()
+            }),
+            ..AppSettings::default()
+        };
+        settings.last_opened.insert("product-tour".into(), 1);
+        settings.trusted_projects.insert(
+            "product-tour".into(),
+            TrustRecord {
+                scenes_fingerprint: "f".into(),
+                path: "/w/product-tour".into(),
+                allowed_at_ms: 1,
+            },
+        );
+        settings
+            .agent_files
+            .insert("/w/product-tour".into(), AgentFilesRecord::default());
+        settings
+            .website_origin_grants
+            .insert("/w/product-tour".into(), vec!["https://example.com".into()]);
+        let fresh = serde_json::to_value(AppSettings {
+            workspace_root: settings.workspace_root.clone(),
+            update_check_consent: Some(false),
+            ..AppSettings::default()
+        })
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(cleared_settings(&settings)).unwrap(),
+            fresh
+        );
+    }
+
+    #[test]
     fn a_session_waits_for_a_swept_clean_reviewed_folder() {
         let mut settings = AppSettings::default();
         let blocked = |settings: &AppSettings, present: &[String]| {
@@ -3047,6 +3671,196 @@ mod tests {
         assert_eq!(blocked(&settings, &[]), None);
         let held = blocked(&settings, &[".mcp.json".to_owned()]).unwrap();
         assert!(held.contains(".mcp.json") && held.contains("Move or delete"), "{held}");
+    }
+
+    #[test]
+    fn a_folder_replaced_at_a_checked_path_is_checked_as_new() {
+        let dir = scratch_dir().join("product-tour");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("CLAUDE.md"), "# Mine\n\nKeep scenes short.\n").unwrap();
+        let mut record = AgentFilesRecord {
+            swept: true,
+            claude_md: root_claude_md(&dir).map(|(hash, _)| hash),
+            folder_created_ns: folder_created_ns(&dir),
+            ..AgentFilesRecord::default()
+        };
+        assert!(record.folder_created_ns.is_some());
+        let seen = |dir: &Path, record: &AgentFilesRecord| {
+            agent_files_seen(
+                Some(record),
+                folder_created_ns(dir),
+                root_claude_md(dir).as_ref(),
+            )
+        };
+        assert_eq!(
+            seen(&dir, &record),
+            (false, false),
+            "the same folder, unchanged"
+        );
+
+        std::fs::write(dir.join("CLAUDE.md"), "# Mine\n\nKeep scenes shorter.\n").unwrap();
+        assert_eq!(
+            seen(&dir, &record),
+            (false, true),
+            "an edit in place is shown again, not moved"
+        );
+        std::fs::write(
+            dir.join("CLAUDE.md"),
+            crate::kit::render_claude_md("Product tour"),
+        )
+        .unwrap();
+        assert_eq!(
+            seen(&dir, &record),
+            (false, false),
+            "a shipped default steers nothing"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("project.json"), "{}").unwrap();
+        std::fs::write(dir.join("CLAUDE.md"), "# Mine\n\nKeep scenes short.\n").unwrap();
+        assert_eq!(
+            seen(&dir, &record),
+            (true, false),
+            "same path and text, another folder"
+        );
+        crate::kit::sweep_agent_files(&dir, true);
+        assert!(std::fs::read_to_string(dir.join("NOTES.md"))
+            .unwrap()
+            .contains("Keep scenes short."));
+        assert!(!dir.join("CLAUDE.md").exists());
+
+        record.folder_created_ns = None;
+        assert!(
+            !seen(&dir, &record).0,
+            "a record from before this check adopts the folder"
+        );
+        assert_eq!(agent_files_seen(None, None, None), (true, false));
+    }
+
+    #[test]
+    fn a_changed_claude_md_reads_as_changed_on_the_review_sheet() {
+        let body = agent_files_sheet_body(&[CLAUDE_MD_CHANGED.into()], "~/w/p");
+        assert!(
+            body.contains("changed since Kookaburra Cut last checked"),
+            "{body}"
+        );
+        assert!(!body.contains("moved them"), "{body}");
+        let both = agent_files_sheet_body(
+            &["AGENTS.md → NOTES.md".into(), CLAUDE_MD_CHANGED.into()],
+            "~/w/p",
+        );
+        assert!(
+            both.contains("• AGENTS.md → NOTES.md") && both.contains("changed since"),
+            "{both}"
+        );
+        assert!(!both.contains(&format!("• {CLAUDE_MD_CHANGED}")), "{both}");
+    }
+
+    #[test]
+    fn the_history_sheet_names_each_file_and_the_one_next_step() {
+        let committed = committed_sheet_body(
+            &[".claude/settings.json".into(), "AGENTS.md".into()],
+            false,
+            "~/w/p",
+        );
+        assert!(
+            committed.contains("• .claude/settings.json\n• AGENTS.md"),
+            "{committed}"
+        );
+        assert!(
+            committed.contains("Save the checked files to the history"),
+            "{committed}"
+        );
+        assert!(!committed.contains("one-off"), "{committed}");
+        let after_update = committed_sheet_body(&[".claude/settings.json".into()], true, "~/w/p");
+        assert!(
+            after_update.contains("This is a one-off after updating"),
+            "{after_update}"
+        );
+    }
+
+    #[test]
+    fn a_new_stamp_keeps_the_one_it_replaces_as_earlier_and_stays_capped() {
+        let mut record = AgentFilesRecord::default();
+        record.note_stamp(vec!["a".into(), "b".into()]);
+        record.note_stamp(vec!["b".into(), "c".into()]);
+        assert_eq!(record.stamp, ["b", "c"]);
+        assert_eq!(record.stamped_before, ["a"]);
+        record.note_stamp(vec!["b".into(), "c".into()]);
+        assert_eq!(
+            record.stamped_before,
+            ["a"],
+            "an unchanged stamp adds nothing"
+        );
+        record.stamped_before = (0..STAMPED_BEFORE_CAP).map(|n| n.to_string()).collect();
+        record.note_stamp(vec!["d".into()]);
+        assert_eq!(record.stamped_before.len(), STAMPED_BEFORE_CAP);
+        assert_eq!(record.stamped_before.last().map(String::as_str), Some("c"));
+        assert_eq!(record.stamped_before.first().map(String::as_str), Some("2"));
+    }
+
+    #[test]
+    fn forgetting_a_folder_forgets_its_agent_file_record() {
+        let root = scratch_dir();
+        let mine = root.join("product-tour");
+        let other = root.join("other");
+        std::fs::create_dir_all(&mine).unwrap();
+        std::fs::create_dir_all(&other).unwrap();
+        let mut settings = AppSettings::default();
+        for dir in [&mine, &other] {
+            settings.agent_files.insert(
+                dir.to_string_lossy().into_owned(),
+                AgentFilesRecord {
+                    swept: true,
+                    ..Default::default()
+                },
+            );
+        }
+        forget_stored_at(&mut settings, &Landing::new(std::slice::from_ref(&mine)));
+        assert!(!settings.agent_files.contains_key(&*mine.to_string_lossy()));
+        assert!(settings.agent_files.contains_key(&*other.to_string_lossy()));
+    }
+
+    #[test]
+    fn a_new_workspace_folder_is_private_and_an_existing_one_keeps_its_mode() {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        let parent = scratch_dir();
+        let made = parent.join("nested").join("Kookaburra Cut");
+        ensure_layout(&made).unwrap();
+        assert_eq!(mode(&made), 0o700);
+        assert!(made.join(STATE_DIR_NAME).join("cache").is_dir());
+        let kept = parent.join("Existing");
+        std::fs::create_dir_all(&kept).unwrap();
+        std::fs::set_permissions(&kept, std::fs::Permissions::from_mode(0o755)).unwrap();
+        ensure_layout(&kept).unwrap();
+        assert_eq!(mode(&kept), 0o755);
+    }
+
+    #[test]
+    fn a_hook_moved_on_the_first_open_is_on_the_review_sheet() {
+        let dir = std::env::temp_dir().join(format!("kookaburra-review-hook-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("project.json"), "{}").unwrap();
+        crate::history::init_repo(&dir, "chore: create project").unwrap();
+        std::fs::create_dir_all(dir.join(".git/hooks")).unwrap();
+        std::fs::write(dir.join(".git/hooks/pre-commit"), "#!/bin/sh\n").unwrap();
+        let key = dir.to_string_lossy().into_owned();
+        let mut settings = AppSettings::default();
+        note_agent_sweep(&mut settings, &key, &crate::kit::sweep_agent_files(&dir, true), &stamp_opts());
+        let line = ".git/hooks/pre-commit → .git/hooks.moved-aside/pre-commit";
+        let record = &settings.agent_files[&key];
+        assert_eq!(record.unreviewed, vec![line]);
+        let present = crate::kit::foreign_agent_files(&dir);
+        assert!(present.is_empty(), "{present:?}");
+        assert!(agent_files_block(Some(record), &present).unwrap().contains("what moved"));
+        let body = agent_files_sheet_body(&record.unreviewed, "~/w/p");
+        assert!(body.contains(&format!("• {line}")), "{body}");
+        assert!(body.contains("move one back into .git/hooks"), "{body}");
+        assert!(!agent_files_sheet_body(&["AGENTS.md → NOTES.md".into()], "~/w/p").contains("hooks"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -3369,6 +4183,9 @@ mod tests {
             "templates",
             "presets",
         ] {
+            assert!(reject_reserved_slug(name).is_err(), "{name} was allowed");
+        }
+        for name in ["Themes", "PRESETS", "_bridge", "_Autorun"] {
             assert!(reject_reserved_slug(name).is_err(), "{name} was allowed");
         }
         assert!(reject_reserved_slug("my-video").is_ok());
@@ -4104,6 +4921,111 @@ mod tests {
     }
 
     #[test]
+    fn a_folder_replaced_while_closed_asks_again_in_the_same_launch() {
+        let dir = PathBuf::from("/ws/demo");
+        let record = TrustRecord {
+            scenes_fingerprint: "fp-allowed".into(),
+            path: dir.to_string_lossy().into_owned(),
+            allowed_at_ms: 0,
+        };
+        let (mut open, mut session) = (None, HashSet::new());
+        leave_open_project(&mut open, &mut session, Some("demo"));
+        assert_eq!(
+            session_trust_decision(Some(&record), &dir, "fp-allowed", &mut session, "demo"),
+            SessionTrust::Pass
+        );
+        leave_open_project(&mut open, &mut session, Some("demo"));
+        assert_eq!(
+            session_trust_decision(Some(&record), &dir, "fp-edited", &mut session, "demo"),
+            SessionTrust::Restamp
+        );
+        leave_open_project(&mut open, &mut session, None);
+        assert_eq!(
+            session_trust_decision(
+                Some(&record),
+                &dir,
+                "fp-someone-elses",
+                &mut session,
+                "demo"
+            ),
+            SessionTrust::Ask
+        );
+        leave_open_project(&mut open, &mut session, Some("demo"));
+        assert_eq!(
+            session_trust_decision(Some(&record), &dir, "fp-allowed", &mut session, "demo"),
+            SessionTrust::Pass
+        );
+        leave_open_project(&mut open, &mut session, Some("other"));
+        assert_eq!(
+            session_trust_decision(
+                Some(&record),
+                &dir,
+                "fp-someone-elses",
+                &mut session,
+                "demo"
+            ),
+            SessionTrust::Ask
+        );
+        // An allow given while another project was open (a scene copied from it) is not carried in.
+        session.insert("demo".into());
+        leave_open_project(&mut open, &mut session, Some("demo"));
+        assert_eq!(
+            session_trust_decision(
+                Some(&record),
+                &dir,
+                "fp-someone-elses",
+                &mut session,
+                "demo"
+            ),
+            SessionTrust::Ask
+        );
+    }
+
+    #[test]
+    fn a_landing_folder_forgets_its_grants_under_any_spelling() {
+        let root = scratch_dir();
+        let mine = root.join("product-tour");
+        let other = root.join("other");
+        std::fs::create_dir_all(&mine).unwrap();
+        std::fs::create_dir_all(&other).unwrap();
+        let record = |dir: &Path| TrustRecord {
+            scenes_fingerprint: "fp".into(),
+            path: dir.to_string_lossy().into_owned(),
+            allowed_at_ms: 0,
+        };
+        let mut settings = AppSettings::default();
+        settings
+            .trusted_projects
+            .insert("product-tour".into(), record(&mine));
+        settings
+            .trusted_projects
+            .insert("other".into(), record(&other));
+        let key = |dir: &Path| dir.canonicalize().unwrap().to_string_lossy().into_owned();
+        settings
+            .website_origin_grants
+            .insert(key(&mine), vec!["https://example.com".into()]);
+        settings
+            .website_origin_grants
+            .insert(key(&other), vec!["https://example.com".into()]);
+        let mut session = HashSet::from(["product-tour".to_owned(), "other".to_owned()]);
+
+        let landing = Landing::new(&[root.join("Product-Tour")]);
+        forget_session_at(&mut session, &landing, |id| Some(root.join(id)));
+        forget_stored_at(&mut settings, &landing);
+
+        assert_eq!(session, HashSet::from(["other".to_owned()]));
+        assert_eq!(
+            settings.trusted_projects.keys().collect::<Vec<_>>(),
+            vec!["other"]
+        );
+        assert_eq!(
+            settings.website_origin_grants.keys().collect::<Vec<_>>(),
+            vec![&key(&other)]
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn a_pack_landing_asks_even_when_its_stored_grant_survives() {
         let dir = Path::new("/Users/x/Kookaburra Cut/demo");
         let stale = TrustRecord {
@@ -4111,14 +5033,68 @@ mod tests {
             path: dir.to_string_lossy().into_owned(),
             allowed_at_ms: 1,
         };
-        let shared = Mutex::new(HashSet::from(["demo".to_owned(), "other".to_owned()]));
-        let failed = drop_session_then(&shared, "demo", || Err("disk full".to_owned()));
-        assert_eq!(failed, Err("disk full".to_owned()));
-        let mut session = shared.into_inner().unwrap();
+        let mut session = HashSet::from(["demo".to_owned(), "other".to_owned()]);
+        // The session allow goes first; the settings write that follows may fail.
+        forget_session_at(&mut session, &Landing::new(&[dir.to_path_buf()]), |id| {
+            Some(dir.with_file_name(id))
+        });
         assert_eq!(
             session_trust_decision(Some(&stale), dir, "fp-2", &mut session, "demo"),
             SessionTrust::Ask
         );
+        assert_eq!(
+            session_trust_decision(None, dir, "fp-2", &mut session, "demo"),
+            SessionTrust::Ask
+        );
+        assert_eq!(session, ["other".to_owned()].into());
+    }
+
+    #[test]
+    fn forget_in_settings_drops_the_projects_website_grants_with_its_allow() {
+        let root = scratch_dir();
+        let mine = root.join("product-tour");
+        let moved = root.join("product-tour-old");
+        let other = root.join("other");
+        for dir in [&mine, &other] {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        let mut settings = AppSettings::default();
+        settings.trusted_projects.insert(
+            "product-tour".into(),
+            TrustRecord {
+                scenes_fingerprint: "fp".into(),
+                path: moved.to_string_lossy().into_owned(),
+                allowed_at_ms: 0,
+            },
+        );
+        let key = |dir: &Path| dir.canonicalize().unwrap().to_string_lossy().into_owned();
+        for grant in [key(&mine), moved.to_string_lossy().into_owned(), key(&other)] {
+            settings
+                .website_origin_grants
+                .insert(grant, vec!["https://example.com".into()]);
+        }
+
+        let landing = Landing::new(&[mine.clone(), moved.clone()]);
+        let dropped = forget_one_stored(&mut settings, "product-tour", &landing);
+        let keys = website_keys(&[mine.clone(), moved.clone()], dropped);
+
+        assert!(keys.contains(&key(&mine)) && keys.contains(&moved.to_string_lossy().into_owned()));
+        assert!(!keys.contains(&key(&other)));
+        assert!(settings.trusted_projects.is_empty());
+        assert_eq!(
+            settings.website_origin_grants.keys().collect::<Vec<_>>(),
+            vec![&key(&other)]
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn forget_in_settings_drops_the_session_allow_even_when_the_write_fails() {
+        let dir = Path::new("/Users/x/Kookaburra Cut/demo");
+        let shared = Mutex::new(HashSet::from(["demo".to_owned(), "other".to_owned()]));
+        let failed = drop_session_then(&shared, "demo", || Err::<(), _>("disk full".to_owned()));
+        assert_eq!(failed, Err("disk full".to_owned()));
+        let mut session = shared.into_inner().unwrap();
         assert_eq!(
             session_trust_decision(None, dir, "fp-2", &mut session, "demo"),
             SessionTrust::Ask

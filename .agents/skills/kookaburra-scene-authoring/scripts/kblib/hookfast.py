@@ -25,21 +25,25 @@ SNAP_TTL_S = 86400
 SAFE_SESSION = re.compile(r"[^A-Za-z0-9._-]")
 RUNS_KB = re.compile(r"(?:^|[\s;&|(/\"'])kb(?:\.py)?(?=[\"'\s;&|)]|$)")
 AGENT_FLAG = re.compile(r"--agent(?:=|\s+)[\"']?([A-Za-z0-9][A-Za-z0-9._-]{0,63})")
-SED_I = re.compile(r"\b(?:g?sed|perl)\b[^;&|\n]*?\s-[A-Za-z]*i")
+SED_I = re.compile(r"\b(?:g?sed|perl)\b(?:[^;&|\n]*?(\s-[A-Za-z]*i)|[^;&|\n]*)")
 REDIRECT = re.compile(r"(?<![-<&=0-9>])>>?\|?\s*[\"']?([^\s\"';&|<>()]+)")
 TEE = re.compile(r"\btee\b((?:\s+[^\s;&|<>()]+)+)")
 FILE_OPS = re.compile(r"(?:^|[\s;&|(])(mv|rm|cp|install|rsync|truncate|touch|ln)\b((?:\s+[^\s;&|<>()]+)+)")
 HEREDOC = re.compile(r"<<-?\s*[\"']?[A-Za-z_]\w*")
 PY_WRITE = re.compile(r"\.write_(?:text|bytes)\s*\(|\bopen\s*\([^)]*,\s*[\"'][rwax]?[wax+]|\bjson\.dump\s*\(|\bos\.(?:replace|rename|remove|unlink)\s*\(|\bshutil\.(?:copy\w*|move)\s*\(")
-SCENE_TOKEN = re.compile(r"(?:[^\s\"'=;&|<>()]*/)?scenes/[^\s\"';&|<>(),]*")
-ASSET_TOKEN = re.compile(r"(?<![\w.-])(?:[^\s\"'=;&|<>()]*/)?(?:a(?:ss|ß)ets/|\.originals/)[^\s\"';&|<>(),]*", re.IGNORECASE)
+SCENE_TOKEN = re.compile(r"((?:[^\s\"'=;&|<>()]*/)?scenes/[^\s\"';&|<>(),]*)|(?:(?!scenes/)[^\s\"'=;&|<>()])+")
+ASSET_TOKEN = re.compile(
+    r"(?<![\w.-])(?:((?:[^\s\"'=;&|<>()]*/)?(?:a(?:ss|ß)ets/|\.originals/)[^\s\"';&|<>(),]*)|(?:(?!a(?:ss|ß)ets/|\.originals/)[^\s\"'=;&|<>()])+)",
+    re.IGNORECASE,
+)
 RECORD_WORDS = ("assets", ".originals", "_meta.json", ".timing.json")
 KB_WRITE = re.compile(
-    r"\bkb(?:\.py)?[\"']?\s+(?:--?[\w-]+(?:[= ][^\s-][^\s]*)?\s+)*"
+    r"\bkb(?:\.py)?[\"']?\s+(?:-[\w-]+(?:[= ][^\s-][^\s]*)?\s+)*"
     r"(?:scene\s+(?:add|duplicate|move|remove|set|split|renumber|import)|doc\s+\S+\s+(?:set|unset|merge)|project\s+(?:set|unset|fit)|theme\s+set|assets\s+(?:add|conform|replace)|"
     r"beats\s+(?:set-grid|set-downbeat|clear-grid|cue\s+(?:set|rm)|section\s+(?:set|rm))|song\s+analyse\b[^;&|\n]*--accept|"
     r"video\s+(?!list|show|map|usages|validate|caps|frames|sheet|analyse|durations|open)\w+)"
 )
+KB_VIDEO = re.compile(r"\bkb(?:\.py)?[\"']?\s+(?:-\S+\s+)*video\b")
 FILTERS = {"head", "tail", "grep", "egrep", "rg", "jq", "wc", "sort", "uniq", "cat", "less", "true", "column", "cut", "tr"}
 SEND_TOOLS = {"scp", "sftp", "ftp", "ssh", "gh", "aws", "gcloud", "az", "mail", "mailx", "sendmail"}
 SEND_WORD = re.compile(r"\b(?:curl|wget|scp|sftp|ftp|nc|ncat|socat|ssh|rsync|git|gh|aws|gcloud|az|mailx?|sendmail|open|python[\d.]*|node(?:js)?|sh|bash|zsh|dash|ksh|fish|eval)\b")
@@ -52,6 +56,7 @@ NET_ADDRESS = re.compile(r"^(?:tcp|udp|ssl|openssl|socks|proxy|ip|sctp|unix-conn
 FETCH_VALUE_FLAGS = {"-o", "--output", "-O", "--output-document", "-H", "--header", "-X", "--request", "-A", "--user-agent", "-w", "--write-out",
                      "-D", "--dump-header", "-m", "--max-time", "--connect-timeout", "-d", "--data", "--data-binary", "--data-raw", "-F", "--form",
                      "-T", "--upload-file", "-b", "--cookie", "-c", "--cookie-jar", "-e", "--referer", "--retry", "-P", "--directory-prefix"}
+GIT_WORD = re.compile(r"\bgit\b")
 SUBSTITUTION = re.compile(r"\$\(([^()]*)\)|`([^`]*)`")
 NETWORK_CODE = re.compile(r"\b(?:urllib\d?|http\.client|requests|httpx|aiohttp|socket|ftplib|smtplib|paramiko|fetch|https?|net|dgram|tls|XMLHttpRequest|WebSocket)\b")
 
@@ -142,19 +147,45 @@ def kb_only(command: str) -> bool:
     return True
 
 
-def _glob(token: str) -> "re.Pattern[str]":
-    out = []
-    for c in token:
-        out.append("[^/]*" if c == "*" else "[^/]" if c == "?" else re.escape(c))
-    return re.compile("".join(out) + "$")
+def edits_in_place(command: str) -> bool:
+    return any(m.group(1) for m in SED_I.finditer(command))
+
+
+def scene_tokens(command: str) -> List[str]:
+    return [t for t in SCENE_TOKEN.findall(command) if t]
+
+
+def asset_tokens(command: str) -> List[str]:
+    return [t for t in ASSET_TOKEN.findall(command) if t]
+
+
+def _segment_matches(pattern: str, text: str) -> bool:
+    """`*` and `?` against one path segment, by the linear two-pointer walk."""
+    i = j = 0
+    star, mark = -1, 0
+    while j < len(text):
+        if i < len(pattern) and pattern[i] == "*":
+            star, mark, i = i, j, i + 1
+        elif i < len(pattern) and pattern[i] in ("?", text[j]):
+            i, j = i + 1, j + 1
+        elif star >= 0:
+            i, mark = star + 1, mark + 1
+            j = mark
+        else:
+            return False
+    return all(c == "*" for c in pattern[i:])
+
+
+def _globbed(token: str, path: str) -> bool:
+    parts, segments = token.split("/"), path.split("/")
+    return len(parts) == len(segments) and all(_segment_matches(p, s) for p, s in zip(parts, segments))
 
 
 def names_scene(token: str, stem: str) -> bool:
     """Whether a path token (scenes/x.tsx, a glob, a prefix) names scenes/<stem>.tsx or .json."""
     part = token[token.find("scenes/"):]
     if "*" in part or "?" in part:
-        rx = _glob(part)
-        return bool(rx.match(f"scenes/{stem}.tsx") or rx.match(f"scenes/{stem}.json"))
+        return _globbed(part, f"scenes/{stem}.tsx") or _globbed(part, f"scenes/{stem}.json")
     return bool(re.match(rf"scenes/{re.escape(stem)}(?![A-Za-z0-9_-])", part))
 
 
@@ -172,7 +203,7 @@ def write_targets(command: str) -> List[str]:
 
 
 def scripted_write(command: str) -> bool:
-    return bool(SED_I.search(command) or HEREDOC.search(command) or PY_WRITE.search(command))
+    return bool(edits_in_place(command) or HEREDOC.search(command) or PY_WRITE.search(command))
 
 
 def asset_record_reason(rel: str) -> Optional[str]:
@@ -231,8 +262,8 @@ def asset_record_write(root: str, command: str, cwd: Any) -> Optional[Tuple[str,
     if not any(word in folded for word in RECORD_WORDS) or kb_only(command):
         return None
     tokens = write_targets(command)
-    if SED_I.search(command) or PY_WRITE.search(command):
-        tokens += ASSET_TOKEN.findall(command)
+    if edits_in_place(command) or PY_WRITE.search(command):
+        tokens += asset_tokens(command)
     for token in tokens:
         for rel in _project_rels(root, cwd, token.strip("\"'")):
             reason = asset_record_reason(rel)
@@ -271,7 +302,7 @@ def leased_writes(root: str, command: str, caller: Dict[str, Any]) -> List[Tuple
     found = leases.all_leases(root)
     if not found:
         return []
-    tokens = SCENE_TOKEN.findall(command)
+    tokens = scene_tokens(command)
     targets = [t for t in write_targets(command) if "scenes/" in t]
     scripted = scripted_write(command)
     out: List[Tuple[str, Dict[str, Any]]] = []
@@ -452,7 +483,8 @@ def _fetch_targets(args: List[str]) -> List[str]:
     return targets
 
 
-def _words_reason(words: List[str], command: str, depth: int) -> Optional[str]:
+def _unwrapped(words: List[str]) -> List[str]:
+    """The words past leading assignments and wrappers (`env`, `sudo`, `xargs` and their flags)."""
     words = list(words)
     while words:
         if ASSIGNMENT.match(words[0]):
@@ -463,6 +495,11 @@ def _words_reason(words: List[str], command: str, depth: int) -> Optional[str]:
                 words.pop(0)
         else:
             break
+    return words
+
+
+def _words_reason(words: List[str], command: str, depth: int) -> Optional[str]:
+    words = _unwrapped(words)
     if not words:
         return None
     head, args = os.path.basename(words[0]), words[1:]
@@ -516,6 +553,49 @@ def send_off_reason(command: str, depth: int = 0) -> Optional[str]:
     return None
 
 
+def runs_git(command: str, depth: int = 0) -> bool:
+    """Whether any simple command in `command` is git, past wrappers, a shell's -c, eval and command substitution."""
+    if depth > 4 or not GIT_WORD.search(re.sub(r"[\"'\\]", "", command)):
+        return False
+    if any(runs_git(m.group(1) or m.group(2) or "", depth + 1) for m in SUBSTITUTION.finditer(command)):
+        return True
+    for words in _command_words(command):
+        words = _unwrapped(words)
+        if not words:
+            continue
+        head, args = os.path.basename(words[0]), words[1:]
+        if head == "git":
+            return True
+        if head in SHELLS and any(a.startswith("-") and "c" in a[1:] and runs_git(args[i + 1], depth + 1) for i, a in enumerate(args[:-1])):
+            return True
+        if head == "eval" and runs_git(" ".join(args), depth + 1):
+            return True
+    return False
+
+
+def git_withheld(root: str) -> Optional[str]:
+    """Why the agent's own git must not run in root, as the app's stamp decides with its Bash(git:*) deny, checked live for a session started in a terminal."""
+    from pathlib import Path
+
+    from . import git
+
+    if not git.git_available():
+        return None
+    nested = git.nested_repo(Path(root))
+    if nested:
+        return (f"{nested} is another repository, and git run there uses its hooks and settings. kb denied this command: "
+                "./kb checkpoint, ./kb history and ./kb diff work on this project's own history, or ask the person to move that folder out.")
+    refused = git.refusal(Path(root))
+    if refused:
+        return (f"{refused}, so git could run a program this folder names. kb denied this command, and ./kb checkpoint refuses here too: "
+                "ask the person to check this folder's .git.")
+    hooks = git.live_hooks(Path(root))
+    if hooks:
+        return (f"{hooks[0]} would run under git. kb denied this command: ./kb checkpoint, ./kb history and ./kb diff never run hooks, "
+                "or ask the person to remove it.")
+    return None
+
+
 def ask_before_send_off(payload: Dict[str, Any], result: Tuple[int, str, str]) -> Tuple[int, str, str]:
     """The bash-pre answer, with `ask` added when the command is a send-off shape. A deny stands."""
     from .util import clean_lines
@@ -556,12 +636,29 @@ def session_marker(root: str, session: str) -> str:
     return os.path.join(root, ".git", "kb", "sessions", SAFE_SESSION.sub("_", session)[:80] or "unknown")
 
 
+def names_bridge_keys(command: str) -> bool:
+    """The command names the bridge keys or a glob matching them, quotes and escapes aside (best effort)."""
+    import fnmatch
+    import unicodedata
+
+    plain = re.sub(r"/(\./)+", "/", re.sub(r"/+", "/", re.sub(r"[\"'\\]", "", command)))
+    folded = unicodedata.normalize("NFD", unicodedata.normalize("NFD", plain).casefold())
+    return any(fnmatch.fnmatchcase("keys", part) for part in re.findall(r"_bridge/([^/\s;|&<>()]+)", folded))
+
+
 def bash_pre(payload: Dict[str, Any]) -> Tuple[int, str, str]:
     root = project_root(payload)
     ti = tool_input(payload)
     command = ti.get("command")
     if root is None or not isinstance(command, str) or not command.strip():
         return 0, "", ""
+    if names_bridge_keys(command):
+        return deny("~/Kookaburra Cut/_bridge/keys holds the app's bridge keys, which sign kb's requests and the app's answers. "
+                    "kb denied this command: ./kb talks to the app, nothing else needs the keys.")
+    if runs_git(command):
+        withheld = git_withheld(root)
+        if withheld:
+            return deny(withheld)
     caller = hook_caller(payload)
     bind(root, command, caller)
     hits = leased_writes(root, command, caller)
@@ -601,7 +698,7 @@ def bash_pre(payload: Dict[str, Any]) -> Tuple[int, str, str]:
 def named_sources(root: str, command: str) -> List[str]:
     """Existing project.json and scene files the command names, so their errors before it can be told from new ones."""
     out = []
-    for token in SCENE_TOKEN.findall(command):
+    for token in scene_tokens(command):
         rel = token[token.find("scenes/"):]
         if checked(rel) and os.path.isfile(os.path.join(root, rel)) and rel not in out:
             out.append(rel)
@@ -702,7 +799,7 @@ def bash_post(payload: Dict[str, Any]) -> Tuple[int, str, str]:
     if theirs & set(changed):
         notes.append(f"Other agents also changed {', '.join(sorted(theirs & set(changed)))} while this command ran; kb left those out.")
     edits = [r for r in mine if r.startswith("edits/")]
-    if edits and not re.search(r"\bkb(?:\.py)?[\"']?\s+(?:--?\S+\s+)*video\b", command):
+    if edits and not KB_VIDEO.search(command):
         errors.append(
             f"This command changed {', '.join(edits)}: only kb video changes edits/ (the app's video editor documents). "
             f"Put it back with git checkout -- {' '.join(edits)} and make the change with ./kb video."

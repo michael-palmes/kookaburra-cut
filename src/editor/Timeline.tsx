@@ -561,6 +561,7 @@ export function Timeline({
           type="button"
           className="btn"
           title="Zoom out"
+          aria-label="Zoom out"
           onClick={() => setZoom(clampZoom(pxPerMs / 1.5))}
         >
           −
@@ -577,6 +578,7 @@ export function Timeline({
           type="button"
           className="btn"
           title="Zoom in"
+          aria-label="Zoom in"
           onClick={() => setZoom(clampZoom(pxPerMs * 1.5))}
         >
           +

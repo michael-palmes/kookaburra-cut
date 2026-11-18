@@ -2,7 +2,7 @@
 
 use std::fs::File;
 use std::io::BufWriter;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -194,7 +194,7 @@ pub(crate) fn start_stills_export(
             },
         ))),
     };
-    let job = StillsJob::new(
+    let mut job = StillsJob::new(
         options.kind,
         output.path.clone(),
         temp,
@@ -202,6 +202,13 @@ pub(crate) fn start_stills_export(
         options.total_pages,
         on_progress,
         sink,
+    );
+    job.landed = (
+        options
+            .project_slug
+            .clone()
+            .unwrap_or_else(|| options.project_id.clone()),
+        options.aspect.clone(),
     );
     state.stills.install(job)?;
     Ok(output.path.to_string_lossy().into_owned())
@@ -458,12 +465,22 @@ pub(crate) async fn finish_stills_export(app: AppHandle) -> Result<StillsResult,
     let state = app.state::<ExportState>();
     let plan = state.stills.begin_finish()?;
     let serial = plan.serial;
+    let (project, aspect) = plan.landed.clone();
     let result = match tauri::async_runtime::spawn_blocking(move || finalise(plan)).await {
         Ok(result) => result,
         Err(e) => Err(format!("the stills finaliser stopped: {e}")),
     };
     state.stills.end_finish(serial, result.is_ok());
     let result = result?;
+    let what = format!(
+        "stills {aspect} {} ({} pages)",
+        result.kind.ext(),
+        result.pages
+    );
+    log::info!(
+        "{}",
+        crate::audit::export_line(&project, &what, Path::new(&result.path))
+    );
     app.state::<ExportHistory>().note(&PathBuf::from(&result.path));
     Ok(result)
 }

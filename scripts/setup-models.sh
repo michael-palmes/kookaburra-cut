@@ -11,6 +11,7 @@
 #   setup-models.sh --from DIR         copy verified files from DIR instead of downloading
 #   setup-models.sh --check [DIR]      verify only, no network (release and acceptance guards)
 #   setup-models.sh --stub             placeholder files so tauri-build passes (CI)
+#   setup-models.sh --print-pins       the source commit and each file's pin, nothing fetched
 #
 set -euo pipefail
 
@@ -91,11 +92,16 @@ case "${1:-}" in
   "") ;;
   --check) MODE="check"; DEST="${2:-$DEST}" ;;
   --stub) MODE="stub" ;;
+  --print-pins)
+    printf 'BEAT_THIS_RS_COMMIT=%s\n' "$COMMIT"
+    for entry in "${MODELS[@]}"; do printf 'MODEL=%s\n' "$entry"; done
+    exit 0
+    ;;
   --from)
     [[ -n "${2:-}" ]] || { echo "error: --from needs a folder" >&2; exit 2; }
     FROM="$2"
     ;;
-  --help | -h) sed -n '2,14p' "$0"; exit 0 ;;
+  --help | -h) sed -n '2,15p' "$0"; exit 0 ;;
   *) echo "error: unknown argument '$1'" >&2; exit 2 ;;
 esac
 

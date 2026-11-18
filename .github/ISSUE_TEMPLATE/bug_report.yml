@@ -7,11 +7,15 @@ body:
     attributes:
       value: |
         Thanks for the report. The more precise the details, the faster the fix.
+
+        Issues are public. Leave out confidential names, footage, captured frames
+        and screenshots of unreleased work. Security problems go to SECURITY.md,
+        never here.
   - type: input
     id: macos-version
     attributes:
       label: macOS version
-      placeholder: "e.g. macOS 15.1"
+      placeholder: "e.g. macOS 26.1"
     validations:
       required: true
   - type: input
@@ -25,8 +29,8 @@ body:
     id: app-version
     attributes:
       label: App version
-      description: Shown in the About panel, or `version` in `package.json` if running from source.
-      placeholder: "e.g. 0.1.0"
+      description: At the foot of the Settings window (⌘,), or `version` in `src-tauri/tauri.conf.json` from source.
+      placeholder: "e.g. 0.23.0"
     validations:
       required: true
   - type: dropdown
@@ -59,15 +63,16 @@ body:
       value: |
         ### Export issue? (skip if this isn't about export)
 
-        Kookaburra Cut renders deterministically — the same project should export
+        Kookaburra Cut renders deterministically: the same project should export
         byte-identical every time. `docs/determinism.md` explains `Verify ×2`, the
         in-app check that proves it. If this bug is about an export, the fields
         below help narrow it down fast.
   - type: input
-    id: project-aspect
+    id: aspect
     attributes:
-      label: Project and aspect ratio
-      placeholder: "e.g. launch-2026, 16:9"
+      label: Aspect ratio
+      description: "This issue is public: never name a confidential project, product or client."
+      placeholder: "e.g. 16:9"
   - type: input
     id: codec
     attributes:
@@ -78,8 +83,8 @@ body:
     attributes:
       label: Does Verify ×2 pass for this project/aspect?
       options:
-        - "Yes — passes"
-        - "No — fails / hashes differ"
+        - "Yes: passes"
+        - "No: fails, hashes differ"
         - "Haven't run it"
         - Not applicable
   - type: textarea

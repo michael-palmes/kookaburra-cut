@@ -45,11 +45,11 @@ export function TitlebarProjects({
 export function TitlebarIdentity({ name, path }: { name: string; path?: string | null }) {
   return (
     <div className="titlebar-identity" data-tauri-drag-region>
-      <span className="titlebar-name" data-tauri-drag-region>
+      <span className="titlebar-name" title={name} data-tauri-drag-region>
         {name}
       </span>
       {path && (
-        <span className="titlebar-path" data-tauri-drag-region>
+        <span className="titlebar-path" title={path} data-tauri-drag-region>
           {path}
         </span>
       )}

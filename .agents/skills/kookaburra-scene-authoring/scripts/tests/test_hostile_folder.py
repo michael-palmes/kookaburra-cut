@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 import types
 from typing import List
 
@@ -237,6 +238,74 @@ class HostileFolder(KbTestCase):
         exclude.symlink_to(self.victim / "thesis.txt")
         self.assertExit(self.kb(["note", "hello"], cwd=self.project), 0)
         self.untouched()
+
+    def test_a_planted_pre_commit_hook_never_runs_under_a_checkpoint(self) -> None:
+        if not shutil.which("git"):
+            self.skipTest("git is not available")
+        git_init(self.project)
+        marker = self.tmp / "ran"
+        hook = self.project / ".git" / "hooks" / "pre-commit"
+        hook.parent.mkdir(parents=True, exist_ok=True)
+        hook.write_text(f"#!/bin/sh\ntouch '{marker}'\nexit 0\n")
+        hook.chmod(0o755)
+        for name in ("commit-msg", "post-commit", "reference-transaction"):
+            (hook.parent / name).symlink_to(hook)
+        env = dict(os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null", GIT_TERMINAL_PROMPT="0")
+        control = subprocess.run(["git", "-C", str(self.project), "-c", "user.name=T", "-c", "user.email=t@example.com", "commit", "-q", "--allow-empty", "-m", "control"],
+                                 capture_output=True, text=True, env=env)
+        self.assertEqual(control.returncode, 0, control.stderr)
+        self.assertTrue(marker.exists(), "the control commit fires the hook")
+        marker.unlink()
+        (self.project / "scenes" / "01-intro.json").write_text('{"version": 1, "name": "Changed"}\n')
+        self.assertExit(self.kb(["checkpoint", "changed"], cwd=self.project), 0)
+        self.assertFalse(marker.exists(), "a planted hook ran under kb's git")
+        self.untouched()
+
+    def test_a_restore_never_reaches_outside_the_project(self) -> None:
+        archive = self.project / ".kb" / "archive"
+        held = archive / "20260101-000000-000" / "assets" / "restored.png"
+        held.parent.mkdir(parents=True)
+        held.write_bytes(png_bytes())
+        (archive / "20260101-000000-001" / "assets").mkdir(parents=True)
+        (archive / "20260101-000000-001" / "assets" / "linked.png").symlink_to(self.victim / "thesis.txt")
+        (self.project / "assets" / "sub").parent.mkdir(exist_ok=True)
+        (self.project / "assets" / "sub").symlink_to(self.victim / "keep-0")
+        held_rel = held.relative_to(self.project).as_posix()
+        hostile: List[tuple] = [
+            ("../victim/planted.txt", held_rel),
+            ("../victim/thesis.txt", held_rel),
+            (str(self.victim / "absolute.txt"), held_rel),
+            ("assets/sub/doc.txt", held_rel),
+            ("assets/restored.png", "../victim/thesis.txt"),
+            ("assets/restored.png", str(self.victim / "keep-1" / "doc.txt")),
+            ("assets/restored.png", ".kb/archive/20260101-000000-001/assets/linked.png"),
+        ]
+        sibling = self.tmp / "sibling"
+        (sibling / "assets").mkdir(parents=True)
+        (sibling / "project.json").write_text("{}")
+        (sibling / "assets" / "restored.png").write_bytes(png_bytes())
+        archived = sibling / ".kb" / "archive" / "20260103-000000-000" / "assets" / "restored.png"
+        archived.parent.mkdir(parents=True)
+        archived.write_bytes(png_bytes())
+        hostile += [
+            ("assets/restored.png", str(sibling / "assets" / "restored.png"), "sibling"),
+            ("assets/restored.png", str(archived), "20260103-000000-000"),
+        ]
+        for n, (source, to, *named) in enumerate(hostile):
+            with self.subTest(source=source, to=to):
+                ident = named[0] if named else f"20260102-000000-{n:03d}"
+                line = {"atMs": 1, "id": ident, "op": "unused", "from": source, "to": to, "sha256": "0" * 64, "by": None}
+                (archive / "index.jsonl").write_text(json.dumps(line) + "\n")
+                proc = self.kb(["assets", "restore", ident, "--json"], cwd=self.project)
+                self.assertNotEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+                self.assertNotIn("Traceback", proc.stderr)
+                self.assertFalse((self.project / "assets" / "restored.png").exists())
+                self.assertTrue(held.is_file())
+                self.assertFalse((self.victim / "planted.txt").exists())
+                self.assertFalse((self.victim / "absolute.txt").exists())
+                self.assertTrue((sibling / "assets" / "restored.png").is_file())
+                self.assertTrue(archived.is_file())
+                self.untouched()
 
     def test_real_folders_still_work(self) -> None:
         self.assertExit(self.kb(["note", "hello"], cwd=self.project), 0)

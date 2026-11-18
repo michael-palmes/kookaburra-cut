@@ -144,8 +144,13 @@ Translucent white, so a border adapts to whichever surface tier it sits on (crit
 |---|---|---|
 | `--border-subtle` | `rgba(255,255,255,0.06)` | Hairline dividers between rows, internal separators |
 | `--border-default` | `rgba(255,255,255,0.10)` | Panel edges, control outlines, card borders |
-| `--border-strong` | `rgba(255,255,255,0.16)` | Emphasised separators, input borders |
+| `--border-strong` | `rgba(255,255,255,0.16)` | Emphasised separators |
+| `--border-control` | `rgba(255,255,255,0.34)` | Field and select outlines: 3:1 on every surface tier (WCAG 1.4.11) |
 | `--border-window` | `#000000` | 1px outer window line / panel-split lines that read against the desktop |
+
+Fields and selects outline in `--border-control`; a selected chip, card or row borders in solid
+`--accent`, never white, so selection keeps its colour and never reads as an empty field. Both clear
+3:1 on every tier (WCAG 1.4.11); this split is deliberate, not a pending change.
 
 ### 4.3 Text roles
 
@@ -156,13 +161,14 @@ extra weight. Contrast ratios are measured against `--surface-panel` (`#15181F`)
 |---|---|---|---|---|
 | `--text-primary` | `#F0EFEB` | Primary text, values, active labels | ~15.4:1 | AAA |
 | `--text-secondary` | `#ACAFB1` | Labels, secondary info, inactive tabs | ~8.1:1 | AA (clears AAA) |
-| `--text-tertiary` | `#6B737D` | Hints, units, placeholder, ruler ticks | ~3.7:1 | UI/non-essential only |
+| `--text-tertiary` | `#8A929C` | Hints, units, placeholder, ruler ticks | ~5.6:1 | AA (4.7:1 or better on every tier) |
 | `--text-disabled` | `#474D58` | Disabled controls | ~2.1:1 | Decorative only |
 | `--text-on-accent` | `#0B1014` | Text/icon on a filled accent surface | n/a | see §4.6 |
 
-`--text-tertiary` sits right at the UI-component threshold; use it for non-essential metadata (units,
-tick numbers), **never** for primary actions or running labels you need read. `--text-disabled` is
-decorative: disabled controls must also change shape or opacity, never rely on colour alone.
+`--text-tertiary` is the quietest readable tier: it clears 4.5:1 on every surface tier (4.7:1 on
+`--surface-elevated`, the lightest), so it may carry hints, values and metadata, but **never** primary
+actions. `--text-disabled` is for disabled controls only, never running text: disabled controls must
+also change shape or opacity, never rely on colour alone.
 
 ### 4.4 Accent: dusty wing blue
 
@@ -176,7 +182,7 @@ accent**: the buff-gold and sea-blue sets retired with the previous identity.
 | `--accent-hover` | `#82A7BB` | Hover state of accent surfaces |
 | `--accent-pressed` | `#5D8296` | Pressed/active (lifted from the brief's `#587C91` for AA; §4.6) |
 | `--accent-subtle` | `rgba(111,147,168,0.15)` | Subtle fill: selected-row background, active-tab underlay |
-| `--accent-border` | `rgba(111,147,168,0.48)` | Accent outline / selected-block frame |
+| `--accent-border` | `rgba(111,147,168,0.48)` | Decorative accent outline (badges, drop targets); never a selected state |
 | `--accent-text` | `#9EBFD0` | Accent used **as text** (links, active labels); lightened for contrast |
 
 ### 4.5 Semantic colours
@@ -187,7 +193,8 @@ Muted for dark; never candy.
 |---|---|---|
 | `--focus-ring` | `#4C9FEF` | Keyboard focus ring: bright saturated blue, **independent of the accent** |
 | `--selection` | `rgba(76,159,239,0.30)` | Text selection / multi-select range |
-| `--danger` | `#E5654B` | Destructive intent (text/icon/border); text variant `#F07A62` for AA |
+| `--danger` | `#E5654B` | Destructive intent (icon/border; text on anchored panels) |
+| `--danger-text` | `#F07A62` | Danger as text on floating surfaces (dialogs, menus, popovers): 5.4:1 on elevated |
 | `--danger-fill` | `#C8472F` | Destructive button fill (with near-black text) |
 | `--success` | `#5FB87A` | Export complete / valid; text variant `#7AC994` |
 | `--warning` | `#D98C2B` | Non-blocking warnings: amber, clear of both the accent and danger |
@@ -207,8 +214,9 @@ expectation.
   hover, ≈ 4.6:1 on pressed, all AA. (The brief's pressed `#587C91` measured 4.29:1 and was lifted
   to `#5D8296`; keep the pairing AA if you re-tune.)
 - `--focus-ring` (`#4C9FEF`) maintains ≥3:1 against every surface tier (measured 5.3–7.0:1).
-- `--text-tertiary` / `--text-disabled` are non-essential / decorative; never the sole carrier of
-  meaning, never running text.
+- `--text-tertiary` clears 4.5:1 on every tier; `--text-disabled` is for disabled controls only.
+- **Danger as text on a floating surface uses `--danger-text`**: `--danger` reads 4.4:1 on elevated.
+- `src/ui/accessibility.test.tsx` holds these pairings: re-tune a token and the test says whether it still clears.
 
 ### 4.7 Claude guest palette (Edit with Claude only)
 
@@ -259,6 +267,16 @@ let the OS do it. Crisp on Retina, zero load, unmistakably a Mac app.
 | `--text-lg` | 16 / 22 | 590 | Dialog titles |
 | `--text-xl` | 20 / 26 | 620 | Empty-state / first-run headings |
 | `--text-display` | 28 / 34 | 680 | About / first-run hero **only** |
+
+**Text size.** Settings › Accessibility › Text size sets `--text-scale` (1, 1.25, 1.5 or 2) on the
+root, and every `--text-*`, `--lh-*`, `--control-h-*`, `--row-h-list`, `--hit-min` and `--titlebar-h`
+multiplies by it, in every window. A literal size is written `calc(12px * var(--text-scale))`,
+never bare px, and a fixed height or field width that holds text scales the same way. Rails, side
+panels, popovers and card grid minimums use `--panel-scale`, which grows half as fast, so the stage
+keeps its room. At an enlarged size a row that cannot fit wraps or scrolls, and a label that
+ellipsises at Default wraps instead (one `:root[data-text-size]` rule lists them; add new
+ellipsis labels to it). SVG illustration text is in the drawing's own units and keeps fixed sizes.
+Chrome only: the preview and exports never read it.
 
 Weights are SF numeric axes (510 ≈ a touch above Regular for crispness on dark; 590 ≈ Semibold). If
 not using a variable axis, map to 510→Regular/Medium, 590→Semibold, 620/680→Bold. On dark, the
@@ -403,7 +421,7 @@ scene.)*
 - **Playhead**: a 1px vertical line in `--accent` with a small triangular head at the ruler; above all
   blocks. This is one of the few legitimate large uses of the accent.
 - **Scene blocks**: `--radius-xs`, surface `--surface-raised`, `--border-default`. **Selected** =
-  `--accent-border` outline + `--accent-subtle` fill (never a full accent fill). Label `--text-sm`
+  `--accent` outline + `--accent-subtle` fill (never a full accent fill). Label `--text-sm`
   truncated; duration `--text-2xs` tabular. Resize grips appear on hover at the block edges.
 - **Snapping**: a 1px `--focus-ring` snap line while dragging; snap toggle in the timeline header.
 - **Multi-track** (if scenes layer): tracks separated by `--border-subtle`, alternating recessed
@@ -430,7 +448,7 @@ scene.)*
 
 - **Row**: label left (`--text-secondary`, fixed ~96px column), control right, `--border-subtle`
   divider between rows, `--space-5` vertical padding.
-- **Numeric field**: `--surface-recessed` trough, `--border-default`; focus → `--border-strong` +
+- **Numeric field**: `--surface-recessed` trough, `--border-control`; focus → `--text-tertiary` +
   focus ring; value `--text-primary` tabular; unit suffix `--text-tertiary`. **Drag-on-label
   scrubbing** (FCP/Blender style): hovering the label shows `ew-resize`, dragging adjusts the value;
   stepper arrows appear on hover only.
@@ -458,7 +476,9 @@ Resolution (e.g. 4K) sits in an adjacent dropdown. Changing aspect re-letterboxe
 
 - **Card**: `--surface-raised`, `--border-default`, `--radius-sm`; thumbnail (aspect-matched), name
   (`--text-base`, inline-editable), duration (`--text-xs` tabular).
-- **Selected**: `--accent-border` + `--accent-subtle` (consistent with timeline blocks).
+- **Selected**: `--accent` border + `--accent-subtle` (consistent with timeline blocks). A selected
+  border is always solid `--accent` (3.6:1 or better on every tier and its own fill); the translucent
+  `--accent-border` is for decoration that marks no state.
 - **Drag-to-reorder**: grip dots `--text-tertiary` on hover; dragging lifts the card to
   `--surface-elevated` + `--elev-popover`; the drop indicator is a 2px `--accent` insertion line
   between cards.
@@ -555,6 +575,9 @@ confirms). Theme cards and animation segments use it today.
 --hit-min: 28px;       /* minimum interactive hit target */
 ```
 
+Each value above is at the Default text size; an enlarged size multiplies it by `--text-scale`
+(§5.2).
+
 Controls read at 22–28px but always carry a ≥28px hit target: pad the click area beyond the visible
 bounds for tiny controls (timeline grips, stepper arrows).
 
@@ -568,13 +591,17 @@ bounds for tiny controls (timeline grips, stepper arrows).
 - **Colour is never the sole signal**: selected/active states pair the accent with a shape change
   (border, marker, fill); danger/success pair colour with an icon. Survives colour-blindness.
 - **Keyboard**: full transport + timeline map; ⌘K reachable; dialogs trap focus and restore it on
-  close; Esc closes popovers/dialogs.
+  close (every `aria-modal` layer that registers with `useEscapeClose` gets this from
+  `ui/modalFocus.ts`); Esc closes popovers/dialogs; a right-click menu also opens from the menu key
+  or ⇧F10 (`opensContextMenu`). Hidden chrome that stays mounted is `inert`, not just transparent.
 - **Reduced motion**: §9, respected everywhere.
 - **Hit targets**: §11, ≥28px.
 - **Screen reader**: label icon-only buttons (`aria-label`); announce export progress via a polite
   live region; mark the preview canvas region.
 - **Option groups**: use borderless fieldsets for accessible grouping. Any visible container border
   must use an explicit app style, never the browser's default fieldset border.
+- **Conformance**: the WCAG 2.2 AA report, keyboard map and open findings live in
+  [accessibility.md](./accessibility.md).
 - **Definition of done per screen**: AA contrast holds; focus is visible; reduced-motion respected;
   no accent fill competing with content; and (borrowing the old discipline) **remove one decoration
   before shipping.** If a screen reads as generic chrome that distracts from the preview, quiet it.
@@ -653,12 +680,13 @@ wing blue) and no alternate.
   --border-subtle:  rgba(255,255,255,0.06);
   --border-default: rgba(255,255,255,0.10);
   --border-strong:  rgba(255,255,255,0.16);
+  --border-control: rgba(255,255,255,0.34);
   --border-window:  #000000;
 
   /* ── Text (§4.3) ───────────────────────────────────────────── */
   --text-primary:   #F0EFEB;
   --text-secondary: #ACAFB1;
-  --text-tertiary:  #6B737D;
+  --text-tertiary:  #8A929C;
   --text-disabled:  #474D58;
   --text-on-accent: #0B1014;
 
@@ -674,6 +702,7 @@ wing blue) and no alternate.
   --focus-ring:  #4C9FEF;
   --selection:   rgba(76,159,239,0.30);
   --danger:      #E5654B;
+  --danger-text: #F07A62;
   --danger-fill: #C8472F;
   --success:     #5FB87A;
   --warning:     #D98C2B;

@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>PayloadContent</key>
+  <array>
+    <dict>
+      <key>PayloadType</key>
+      <string>com.apple.ManagedClient.preferences</string>
+      <key>PayloadIdentifier</key>
+      <string>com.example.kookaburracut.locked-down.preferences</string>
+      <key>PayloadUUID</key>
+      <string>B502D3FD-C27F-4937-A23A-944C9F712DD8</string>
+      <key>PayloadVersion</key>
+      <integer>1</integer>
+      <key>PayloadDisplayName</key>
+      <string>Kookaburra Cut managed preferences</string>
+      <key>PayloadContent</key>
+      <dict>
+        <key>com.mpalmes.kookaburracut</key>
+        <dict>
+          <key>Forced</key>
+          <array>
+            <dict>
+              <key>mcx_preference_settings</key>
+              <dict>
+                <key>DisableClaude</key>
+                <true/>
+                <key>DisableAgentKit</key>
+                <true/>
+                <key>DisableLiveWebsites</key>
+                <true/>
+                <key>AllowedWebsiteOrigins</key>
+                <array/>
+                <key>AllowedPublisherKeyIds</key>
+                <array/>
+                <key>DisablePackExport</key>
+                <true/>
+                <key>ExportsInProject</key>
+                <true/>
+                <key>WorkspaceRoot</key>
+                <string>~/Kookaburra Cut</string>
+                <key>DisableUpdateCheck</key>
+                <true/>
+                <key>UpdateEndpoint</key>
+                <string>https://updates.example.com/kookaburra-cut/latest.json</string>
+                <key>AuditLogPath</key>
+                <string>/Library/Logs/Kookaburra Cut</string>
+              </dict>
+            </dict>
+          </array>
+        </dict>
+      </dict>
+    </dict>
+  </array>
+  <key>PayloadDisplayName</key>
+  <string>Kookaburra Cut: locked down</string>
+  <key>PayloadDescription</key>
+  <string>No Claude, agent kit, live websites, pack import or export, or update checks. Video and stills exports stay in each project, projects stay in ~/Kookaburra Cut, and the app log is copied to /Library/Logs/Kookaburra Cut.</string>
+  <key>PayloadIdentifier</key>
+  <string>com.example.kookaburracut.locked-down</string>
+  <key>PayloadScope</key>
+  <string>System</string>
+  <key>PayloadType</key>
+  <string>Configuration</string>
+  <key>PayloadUUID</key>
+  <string>7934D11E-F86F-4B4C-83E1-CEA6F89E4FFE</string>
+  <key>PayloadVersion</key>
+  <integer>1</integer>
+</dict>
+</plist>

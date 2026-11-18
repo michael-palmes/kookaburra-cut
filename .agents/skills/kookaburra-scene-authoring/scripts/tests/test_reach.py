@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import unicodedata
+import unittest
 from pathlib import Path
 from typing import Any, Dict
 
-from kblib import reach
+from kblib import reach, util
 from kblib.project import Project
 from kblib.util import KbError, clean_lines, clean_name, clean_text, clean_value
 
@@ -53,6 +56,18 @@ class CleanTextTests(KbTestCase):
         for name in ["id_card.png", "credentials.mp4", "hero.mp4"]:
             self.assertIsNone(reach.denied_reason(work / name), name)
 
+    def test_a_credential_path_in_any_case_is_refused(self) -> None:
+        user = reach.resolve(str(reach.home()))
+        for rel in [".AWS/credentials", ".Docker/config.json", ".ſſh/id_ed25519", "library/keychains/login.keychain-db",
+                    ".claude.json", ".CLAUDE.json", "Library/Application Support/Claude/claude_desktop_config.json",
+                    "library/application support/claude/config.json"]:
+            self.assertIsNotNone(reach.denied_reason(user / rel), rel)
+        work = reach.resolve(str(self.tmp))
+        for name in [".NETRC", "ID_RSA", "Id_Ed25519.pub", ".ENV.local", "Server.PEM", "Credentials.JSON", "Main.TFSTATE"]:
+            self.assertIsNotNone(reach.denied_reason(work / name), name)
+        self.assertIsNone(reach.denied_reason(user / "Library/Application Support/Other/config.json"))
+        self.assertIsNone(reach.denied_reason(work / "Credentials.mp4"))
+
     def test_controls_and_format_characters_become_visible_escapes(self) -> None:
         self.assertEqual(clean_text(OSC52), "Hero\\u001B]52;c;aGVsbG8=\\u0007 title")
         self.assertEqual(clean_text("a‮b​c"), "a\\u202Eb\\u200Bc")
@@ -78,6 +93,36 @@ class CleanTextTests(KbTestCase):
         e = KbError(f"scene {OSC52} is broken", hint="fix \x1b[2J it")
         self.assertNotIn("\x1b", e.message + str(e.hint))
         self.assertIn("\\u001B", e.message)
+
+
+CLEAN_TEXT_RS = Path(__file__).resolve().parents[5] / "src-tauri" / "src" / "clean_text.rs"
+EVERY_CHAR = "".join(map(chr, range(0x110000)))
+REPLACED_UNSAFE = re.compile(
+    "[\u2028\u2029]|[\x00-\x08\x0b-\x1f\x7f-\x9f\u00ad\u0600-\u0605\u061c\u06dd\u070f\u0890\u0891\u08e2\u180e\u200b-\u200f\u202a-\u202e"
+    "\u2060-\u2064\u2066-\u206f\ufeff\ufff9-\ufffb\U000110bd\U000110cd\U00013430-\U0001343f\U0001bca0-\U0001bca3\U0001d173-\U0001d17a"
+    "\U000e0001\U000e0020-\U000e007f]"
+)
+
+
+def escaped_by(pattern: "re.Pattern[str]") -> set:
+    return {ord(c) for c in pattern.findall(EVERY_CHAR)}
+
+
+class UnsafeClassTests(unittest.TestCase):
+    def test_escapes_the_same_characters_as_the_class_it_replaced(self) -> None:
+        self.assertEqual(escaped_by(util._UNSAFE), escaped_by(REPLACED_UNSAFE))
+
+    @unittest.skipUnless(CLEAN_TEXT_RS.is_file(), "not inside the app's repository")
+    def test_escapes_the_same_characters_as_the_bridge(self) -> None:
+        table = CLEAN_TEXT_RS.read_text(encoding="utf-8").split("FORMAT_RANGES")[1].split("];")[0]
+        bridge = {c for c in range(0x110000) if unicodedata.category(chr(c)) == "Cc"} - {0x09, 0x0A}
+        for lo, hi in re.findall(r"\(0x([0-9A-F]+), 0x([0-9A-F]+)\)", table):
+            bridge |= set(range(int(lo, 16), int(hi, 16) + 1))
+        self.assertEqual(escaped_by(util._UNSAFE), bridge)
+
+    def test_escapes_every_format_character_unicode_knows(self) -> None:
+        missing = {c for c in range(0x110000) if unicodedata.category(chr(c)) == "Cf"} - escaped_by(util._UNSAFE)
+        self.assertEqual(sorted(map(hex, missing)), [], f"add these to util._UNSAFE and clean_text.rs (Unicode {unicodedata.unidata_version})")
 
 
 class EscapedOutputTests(KbTestCase):

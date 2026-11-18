@@ -1,3 +1,4 @@
+#![allow(unsafe_code)]
 //! Export health (docs/agent-kit.md, "Health"): the editor's page loads and WebKit memory, and each video export's trace (frames, render rate, memory), kept natively so an export whose page dies still leaves the truth: its failure names the frame, the scene and the render-rate trend, `<export>.health.json` records it, and the heartbeat tells kb when only a restart helps.
 
 use std::path::{Path, PathBuf};
@@ -32,8 +33,9 @@ pub(crate) fn now_ms() -> u64 {
 #[cfg(target_os = "macos")]
 pub(crate) fn footprint(pid: u32) -> Option<u64> {
     let pid = libc::c_int::try_from(pid).ok().filter(|p| *p > 0)?;
-    // SAFETY: the buffer is a zeroed rusage_info_v4, the flavour asked for.
+    // SAFETY: rusage_info_v4 is plain C data, so all zeroes is a valid value.
     let mut info: libc::rusage_info_v4 = unsafe { std::mem::zeroed() };
+    // SAFETY: the buffer is a live rusage_info_v4, the flavour asked for.
     let rc = unsafe {
         libc::proc_pid_rusage(
             pid,
@@ -489,6 +491,7 @@ pub fn export_memory_sample() -> Value {
 fn fetch_gpu_pid(window: &tauri::WebviewWindow) {
     use objc2::runtime::{AnyObject, Bool};
     use objc2::{msg_send, sel};
+    // SAFETY: with_webview runs this on the main thread with Tauri's live WKWebView, and the private selector is sent only once it answers respondsToSelector.
     let _ = window.with_webview(move |webview| unsafe {
         let wk: *mut AnyObject = webview.inner().cast();
         let responds: Bool = msg_send![wk, respondsToSelector: sel!(_gpuProcessIdentifier)];

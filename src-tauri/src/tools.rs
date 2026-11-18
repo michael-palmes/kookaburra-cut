@@ -1,3 +1,4 @@
+#![allow(unsafe_code)]
 //! App-free paths shared by the Tauri commands and the headless `edit` CLI: the app data folder, the bundled ffmpeg/ffprobe sidecars and the hardware-video setting, all resolved without an `AppHandle` so both entry points reach the same files.
 
 use std::path::{Path, PathBuf};
@@ -61,12 +62,30 @@ pub(crate) fn home_dir() -> Result<PathBuf, String> {
     passwd_home().ok_or_else(|| "cannot find the home folder: HOME is not set".to_string())
 }
 
+/// This process's user id.
+pub(crate) fn current_uid() -> u32 {
+    // SAFETY: getuid has no preconditions and cannot fail.
+    unsafe { libc::getuid() }
+}
+
 fn passwd_home() -> Option<PathBuf> {
+    account().map(|account| account.home)
+}
+
+/// This process's account in the password database, never `$USER` or `$HOME`.
+pub(crate) struct Account {
+    pub(crate) name: String,
+    pub(crate) home: PathBuf,
+}
+
+pub(crate) fn account() -> Option<Account> {
     use std::ffi::CStr;
     use std::os::unix::ffi::OsStrExt;
     let mut buf = vec![0 as libc::c_char; 4096];
+    // SAFETY: passwd is plain C data, so all zeroes is a valid value.
     let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
     let mut result: *mut libc::passwd = std::ptr::null_mut();
+    // SAFETY: every pointer is live for the call, and buf's length is passed beside it.
     let rc = unsafe {
         libc::getpwuid_r(
             libc::getuid(),
@@ -76,23 +95,40 @@ fn passwd_home() -> Option<PathBuf> {
             &mut result,
         )
     };
-    if rc != 0 || result.is_null() || pwd.pw_dir.is_null() {
+    if rc != 0 || result.is_null() || pwd.pw_dir.is_null() || pwd.pw_name.is_null() {
         return None;
     }
+    // SAFETY: getpwuid_r succeeded, so pw_dir is a NUL-terminated string inside buf, which outlives dir.
     let dir = unsafe { CStr::from_ptr(pwd.pw_dir) };
-    (!dir.to_bytes().is_empty()).then(|| PathBuf::from(std::ffi::OsStr::from_bytes(dir.to_bytes())))
+    // SAFETY: likewise for pw_name.
+    let name = unsafe { CStr::from_ptr(pwd.pw_name) };
+    (!dir.to_bytes().is_empty()).then(|| Account {
+        name: name.to_string_lossy().into_owned(),
+        home: PathBuf::from(std::ffi::OsStr::from_bytes(dir.to_bytes())),
+    })
 }
 
-/// A bundled sidecar's path, resolved like tauri-plugin-shell's `relative_command_path`: beside the running executable (packaged `Contents/MacOS/ffmpeg`, dev `target/debug/ffmpeg`), stepping out of `deps/` when a test binary runs.
+/// A bundled sidecar's path, resolved like tauri-plugin-shell's `relative_command_path`: beside the running executable (packaged `Contents/MacOS/ffmpeg`, dev `target/debug/ffmpeg`), stepping out to the profile folder when a test binary runs from `deps/` or, from Cargo 1.100, `build/<package>/<hash>/out/`.
 pub(crate) fn sidecar_path(name: &str) -> Result<PathBuf, String> {
     let exe = current_exe().map_err(|e| format!("cannot locate the app binary: {e}"))?;
     let dir = exe.parent().ok_or("the app binary has no parent folder")?;
-    let base = if dir.ends_with("deps") {
-        dir.parent().unwrap_or(dir)
-    } else {
-        dir
-    };
-    Ok(base.join(name))
+    Ok(profile_dir(dir).join(name))
+}
+
+fn profile_dir(dir: &Path) -> &Path {
+    if dir.ends_with("deps") {
+        return dir.parent().unwrap_or(dir);
+    }
+    let mut up = dir.ancestors();
+    match (up.next(), up.nth(2), up.next()) {
+        (Some(out), Some(build), Some(profile))
+            if out.file_name() == Some("out".as_ref())
+                && build.file_name() == Some("build".as_ref()) =>
+        {
+            profile
+        }
+        _ => dir,
+    }
 }
 
 fn current_exe() -> std::io::Result<PathBuf> {
@@ -245,11 +281,33 @@ mod tests {
     fn sidecars_resolve_beside_the_binary_outside_deps() {
         let path = sidecar_path("ffmpeg").unwrap();
         assert_eq!(path.file_name().and_then(|n| n.to_str()), Some("ffmpeg"));
+        let dir = path.parent().unwrap();
         assert!(
-            !path.parent().unwrap().ends_with("deps"),
+            !dir.ends_with("deps") && !dir.ends_with("out"),
             "{}",
             path.display()
         );
+    }
+
+    #[test]
+    fn test_binaries_step_out_to_the_profile_folder() {
+        for (exe_dir, profile) in [
+            ("/t/debug/deps", "/t/debug"),
+            (
+                "/t/debug/build/kookaburra-cut/62d0f61c050abae2/out",
+                "/t/debug",
+            ),
+            ("/t/debug", "/t/debug"),
+            ("/App.app/Contents/MacOS", "/App.app/Contents/MacOS"),
+            ("/x/out", "/x/out"),
+            ("/x/notbuild/p/h/out", "/x/notbuild/p/h/out"),
+        ] {
+            assert_eq!(
+                profile_dir(Path::new(exe_dir)),
+                Path::new(profile),
+                "{exe_dir}"
+            );
+        }
     }
 
     #[test]
@@ -259,9 +317,13 @@ mod tests {
             .iter()
             .map(|(k, _)| k.to_string_lossy().into_owned())
             .collect();
-        assert!(keys.iter().all(|k| SIDECAR_ENV.contains(&k.as_str()) || k.starts_with("LC_")));
+        assert!(keys
+            .iter()
+            .all(|k| SIDECAR_ENV.contains(&k.as_str()) || k.starts_with("LC_")));
         assert!(keys.contains(&"PATH".to_owned()) || std::env::var_os("PATH").is_none());
-        assert!(!keys.iter().any(|k| k.starts_with("CARGO") || k.starts_with("RUST")));
+        assert!(!keys
+            .iter()
+            .any(|k| k.starts_with("CARGO") || k.starts_with("RUST")));
     }
 
     #[test]

@@ -44,10 +44,10 @@ KINDS = ("still", "read", "short", "final-hit", "end")
 
 _WORD_RE = re.compile(r"[^\W_]+(?:['’][^\W_]+)*", re.UNICODE)
 _TOKEN_RE = re.compile(r"[A-Z]?[a-z]+|[A-Z]+(?![a-z])|\d+")
-_EMBEDDED_RE = re.compile(r"""useSceneText\(\s*["']([\w.-]+)["'][^;]*?["']embedded["']""")
+_EMBEDDED_RE = re.compile(r"""useSceneText\(\s*["']([\w.-]+)["'](?:[^;]*?["']embedded(["'])|[^;]*)""")
 _ELEMENT_RE = re.compile(r"<[A-Z][\w.]*\s[^<>]*>")
 _TEXT_KEY_RE = re.compile(r"""\btextKey\s*=\s*(?:\{\s*)?["']([\w.-]+)["']""")
-_FONT_SIZE_RE = re.compile(r"\bfontSize\s*=\s*\{\s*([0-9]*\.?[0-9]+)\s*\}")
+_FONT_SIZE_RE = re.compile(r"\bfontSize\s*=\s*\{\s*([0-9]+(?:\.[0-9]+)?|\.[0-9]+)\s*\}")
 _EMBEDDED_ROLE_RE = re.compile(r"""\bmanagedTextRole\s*=\s*(?:\{\s*)?["']embedded["']""")
 _TSX_MOTION_RE = re.compile(r"\b(?:useTimeline|useBeatGrid|useGroupAnimation|useRigTrack)\s*\(|<(?:AnimatedGroup|AnimatedCounter)\b")
 
@@ -64,7 +64,7 @@ def label_key(key: str) -> bool:
 def tsx_label_keys(tsx: str) -> Set[str]:
     """Keys the TSX renders at label size: embedded `useSceneText` copy, `managedTextRole="embedded"`, or a literal fontSize of 0.18 or less."""
     code = strip_comments(tsx or "")
-    keys = set(_EMBEDDED_RE.findall(code))
+    keys = {key for key, closed in _EMBEDDED_RE.findall(code) if closed}
     for element in _ELEMENT_RE.findall(code):
         key = _TEXT_KEY_RE.search(element)
         if not key:

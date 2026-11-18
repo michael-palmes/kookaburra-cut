@@ -92,6 +92,7 @@ export function LayeredScreenshotPill({
       type="button"
       className={`camera-pill-mode${armedTool === tool ? " active" : ""}`}
       aria-pressed={armedTool === tool}
+      aria-label={label.split(" (")[0]}
       title={label}
       onClick={() => armTool(tool)}
     >
@@ -166,7 +167,7 @@ export function LayeredScreenshotPill({
           Animate stack
         </button>
 
-        <div className="camera-pill-active" aria-hidden={!open}>
+        <div className="camera-pill-active" aria-hidden={!open} inert={!open}>
           {modeButton(
             "rotate",
             "Orbit (O): drag in the preview to tilt the stack (or hold ⌥ while dragging)",

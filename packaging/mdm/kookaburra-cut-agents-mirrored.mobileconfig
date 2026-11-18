@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>PayloadContent</key>
+  <array>
+    <dict>
+      <key>PayloadType</key>
+      <string>com.apple.ManagedClient.preferences</string>
+      <key>PayloadIdentifier</key>
+      <string>com.example.kookaburracut.agents-mirrored.preferences</string>
+      <key>PayloadUUID</key>
+      <string>2618EF8A-9600-4CBA-850C-4EDE9F840BB9</string>
+      <key>PayloadVersion</key>
+      <integer>1</integer>
+      <key>PayloadDisplayName</key>
+      <string>Kookaburra Cut managed preferences</string>
+      <key>PayloadContent</key>
+      <dict>
+        <key>com.mpalmes.kookaburracut</key>
+        <dict>
+          <key>Forced</key>
+          <array>
+            <dict>
+              <key>mcx_preference_settings</key>
+              <dict>
+                <key>DisableLiveWebsites</key>
+                <true/>
+                <key>AllowedPublisherKeyIds</key>
+                <array>
+                  <string>a1b2c3d4e5f60718</string>
+                </array>
+                <key>ExportsInProject</key>
+                <true/>
+                <key>WorkspaceRoot</key>
+                <string>~/Kookaburra Cut</string>
+                <key>UpdateEndpoint</key>
+                <string>https://updates.example.com/kookaburra-cut/latest.json</string>
+              </dict>
+            </dict>
+          </array>
+        </dict>
+      </dict>
+    </dict>
+  </array>
+  <key>PayloadDisplayName</key>
+  <string>Kookaburra Cut: agents allowed, updates mirrored</string>
+  <key>PayloadDescription</key>
+  <string>Claude Code and the agent kit stay on. Updates come from your own server, packs only from approved publishers, no live websites, and exports stay in each project.</string>
+  <key>PayloadIdentifier</key>
+  <string>com.example.kookaburracut.agents-mirrored</string>
+  <key>PayloadScope</key>
+  <string>System</string>
+  <key>PayloadType</key>
+  <string>Configuration</string>
+  <key>PayloadUUID</key>
+  <string>9032D2C1-F931-4545-8580-345F8329B7BD</string>
+  <key>PayloadVersion</key>
+  <integer>1</integer>
+</dict>
+</plist>

@@ -1,6 +1,6 @@
 /** Transition picker: an edit-bar modal editing the transition into the scene at the playhead, with a live-GL preview driven by the real composite shaders (engine/transitionShader.ts) so every type previews faithfully; one small renderer per modal open, disposed on close, never one context per card (WKWebView context pressure); wall-clock use is fine here since the edit bar is unmounted during export/autorun; textures load linear-tagged so they sample raw, like the compositor's display targets, while the browser still converts embedded colour profiles. */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   Camera,
   CanvasTexture,
@@ -53,6 +53,7 @@ import {
 } from "../engine/transitionShader";
 import { ColourPicker } from "./colour/ColourPicker";
 import { ToggleRow } from "./inspector/rows";
+import { reducedMotion } from "./OptionCard";
 import { DebouncedRange } from "./TextAnimationPicker";
 import { TransitionWriteQueue } from "./transitionWriteQueue";
 import { useEscapeClose } from "./useEscapeClose";
@@ -67,6 +68,8 @@ const PREVIEW_H = 180;
 /** One preview cycle: hold A · run the transition · hold B. */
 const HOLD_MS = 450;
 const RUN_MS = 1400;
+const CYCLE_MS = HOLD_MS + RUN_MS + HOLD_MS;
+const MID_RUN_MS = HOLD_MS + RUN_MS / 2;
 
 function makePreviewMaterial(fragment: string, glsl3: boolean): ShaderMaterial {
   return new ShaderMaterial({
@@ -182,11 +185,25 @@ function TransitionPreview({
   const maskUrlRef = useRef(maskUrl);
   maskUrlRef.current = maskUrl;
   const startRef = useRef(performance.now());
+  // Reduce motion starts it paused mid-run, so the still shows the transition rather than a slide.
+  const [paused, setPaused] = useState(reducedMotion);
+  const pausedAtRef = useRef<number | null>(reducedMotion() ? MID_RUN_MS : null);
+  const togglePause = () => {
+    const now = performance.now();
+    if (pausedAtRef.current === null) {
+      pausedAtRef.current = (now - startRef.current) % CYCLE_MS;
+    } else {
+      startRef.current = now - pausedAtRef.current;
+      pausedAtRef.current = null;
+    }
+    setPaused(pausedAtRef.current !== null);
+  };
 
   // A type change (pick or hover) restarts the cycle just before the run so the new transition shows straight away; param edits stay mid-loop.
   // biome-ignore lint/correctness/useExhaustiveDependencies: restart on type change
   useEffect(() => {
     startRef.current = performance.now() - Math.max(0, HOLD_MS - 200);
+    if (pausedAtRef.current !== null) pausedAtRef.current = MID_RUN_MS;
   }, [spec?.type]);
 
   // A fresh canvas + context per effect run, torn down with forceContextLoss on cleanup; never reuse a WebGLRenderer's canvas, since the old GL state vs the new renderer's default caches leaves texture binds stale and every sample reads black (found live under StrictMode's double-mount). Re-runs when the thumb URLs land, so flats render first and loaded thumbs swap in asynchronously.
@@ -256,10 +273,9 @@ function TransitionPreview({
       handles.texB = t;
     });
 
-    const cycle = HOLD_MS + RUN_MS + HOLD_MS;
     const frame = (now: number) => {
       if (handles.disposed) return;
-      const t = Math.max(0, now - startRef.current) % cycle;
+      const t = pausedAtRef.current ?? Math.max(0, now - startRef.current) % CYCLE_MS;
       const progress = t < HOLD_MS ? 0 : t < HOLD_MS + RUN_MS ? (t - HOLD_MS) / RUN_MS : 1;
       const s = specRef.current;
       // None: a hard cut at the midpoint, rendered through the crossfade branch at 0/1.
@@ -316,7 +332,48 @@ function TransitionPreview({
     };
   }, [thumbA, thumbB, fallbackA, fallbackB]);
 
-  return <div ref={containerRef} className="transition-preview" />;
+  return (
+    <div className="transition-preview">
+      <div ref={containerRef} className="transition-preview-stage" />
+      <button
+        type="button"
+        className="transition-preview-pause"
+        aria-label={paused ? "Play preview" : "Pause preview"}
+        title={paused ? "Play preview" : "Pause preview"}
+        onClick={togglePause}
+      >
+        {paused ? <PlayGlyph /> : <PauseGlyph />}
+      </button>
+    </div>
+  );
+}
+
+function PauseGlyph() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M5.5 3.5v9M10.5 3.5v9"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function PlayGlyph() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M5 3.5v9l7.5-4.5z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 /** Progress-feel choices; Linear removes the key so untouched specs keep exact bytes. */
@@ -623,9 +680,13 @@ export function TransitionModal({
   const [durationText, setDurationText] = useState(durationSeconds);
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-seed on type pick
   useEffect(() => setDurationText(durationSeconds), [draft?.type]);
+  const [durationInvalid, setDurationInvalid] = useState(false);
+  const durationHintId = useId();
   const commitDuration = () => {
     const seconds = Number(durationText);
-    if (!Number.isFinite(seconds) || seconds < 0.1 || seconds > 2 || !draft) {
+    const valid = Number.isFinite(seconds) && seconds >= 0.1 && seconds <= 2;
+    setDurationInvalid(!valid);
+    if (!valid || !draft) {
       setDurationText(durationSeconds);
       return;
     }
@@ -710,7 +771,12 @@ export function TransitionModal({
                   value={durationText}
                   inputMode="decimal"
                   aria-label="Transition duration in seconds"
-                  onChange={(e) => setDurationText(e.target.value)}
+                  aria-invalid={durationInvalid || undefined}
+                  aria-describedby={durationInvalid ? durationHintId : undefined}
+                  onChange={(e) => {
+                    setDurationText(e.target.value);
+                    setDurationInvalid(false);
+                  }}
                   onBlur={commitDuration}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") (e.target as HTMLInputElement).blur();
@@ -719,6 +785,11 @@ export function TransitionModal({
                 />
                 s
               </span>
+              {durationInvalid && (
+                <span className="field-error" id={durationHintId} role="alert">
+                  Use 0.1 to 2 seconds
+                </span>
+              )}
 
               {meta?.needsDirection && (
                 <span className="transition-directions">

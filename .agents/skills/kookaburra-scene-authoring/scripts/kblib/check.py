@@ -1174,7 +1174,7 @@ class Checker:
     # ── devices this build renders, and poses a deviceLayout owns ─────────
 
     DEVICE_TAG_RE = re.compile(r"<Device(?![\w$.])")
-    DEVICE_MODEL_RE = re.compile(r"(?<![\w$.])model\s*=\s*\{?\s*([\"'])([\w-]+)\1")
+    DEVICE_MODEL_RE = re.compile(r"(?<![\w$.])model\s*=\s*(?:\{\s*)?([\"'])([\w-]+)\1")
     DEVICE_POSE_RE = re.compile(r"(?<![\w$.])(position|rotationDeg|ground)\s*[:,}]")
 
     @staticmethod

@@ -1,6 +1,6 @@
 name: Audit
 
-# Advisory scanning of the RESIDENT dependency graph. dependency-review.yml inspects a pull request's diff and Dependabot waits out a seven-day cooldown, so neither notices a RUSTSEC or npm advisory published against a crate or package already in the lock files; this job does, on every pull request and once a week.
+# Advisory and policy scanning of the RESIDENT dependency graph. dependency-review.yml inspects a pull request's diff and Dependabot waits out a seven-day cooldown, so neither notices a RUSTSEC or npm advisory published against a crate or package already in the lock files; this job does, on every pull request and once a week. The crate graph is also held to src-tauri/deny.toml: its licence allow list, no wildcard versions (duplicates only warn), crates.io as the only source.
 
 on:
   pull_request:
@@ -39,14 +39,20 @@ jobs:
           node-version-file: package.json
           cache: pnpm
 
-      # No install: pnpm audit reads the lock file, so no package script runs here.
-      - name: pnpm audit
+      # No install: pnpm audit reads the lock file, so no package script runs here. What ships in the app
+      # (the production tree) fails on a moderate advisory; the dev tree never reaches a user's Mac, so it
+      # fails on high only.
+      - name: pnpm audit (shipped packages, moderate)
+        run: pnpm audit --prod --audit-level moderate
+
+      - name: pnpm audit (dev tree, high)
         run: pnpm audit --audit-level high
 
-      # cargo deny reads Cargo.lock against the RustSec advisory database (the same one cargo audit uses).
-      - name: cargo deny check advisories
+      # cargo deny reads Cargo.lock against the RustSec advisory database (the same one cargo audit uses),
+      # then holds the graph to deny.toml's licence, bans and sources policy.
+      - name: cargo deny check advisories licenses bans sources
         uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
-          command: check advisories
+          command: check advisories licenses bans sources
           manifest-path: src-tauri/Cargo.toml
           rust-version: stable

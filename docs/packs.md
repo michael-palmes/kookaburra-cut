@@ -74,7 +74,9 @@ moved machines but did not change still compares identical. Both sides of a
 comparison go through `pack::scan`, which exists to guarantee exactly that.
 
 `modifiedAt` is a file mtime and can be wrong (a restored backup, a skewed
-clock). That is why hash decides first and date is only a tiebreak.
+clock). That is why hash decides first and date is only a tiebreak. A date
+still to come is the author's word alone, so it reads as `unknown-age` and never
+makes Replace the default.
 
 `contents.templates` and `contents.presets` are `PackProject` in both languages:
 a template is a project folder plus `template.json`, a preset a single-scene one
@@ -186,18 +188,23 @@ fingerprint and an imported project has neither. There is a test asserting an
 imported project comes out untrusted. Templates and presets carry scene code the
 same way, and the project a user creates from one is a new project at a new path,
 so it is untrusted for the same reason. A project, template or preset a pack
-lands over an existing slug (added or replaced) loses that slug's stored grant
-and its place in this session's allow set (`workspace::forget_project_trust`,
-called from `apply_import`): the folder now holds a publisher's content, so the
-next open asks again rather than re-stamping. The session allow goes first, so
-a failed settings write still asks. A keep-both lands under a fresh slug no
-grant names.
+lands over (added or replaced) loses every stored grant, session allow and
+website origin grant held for its folder, matched on disk so a slug in another
+case counts (`workspace::forget_trust_at`, called from `apply_import` before the
+first move and again once everything has landed): the folder now holds a
+publisher's content, so the next open asks again rather than re-stamping, even
+for a project open in the editor. The session allow goes first, so a failed
+settings write still asks; a failure before the move refuses the import. A
+keep-both lands under a fresh slug, forgotten in the second pass.
 
 What the trust screen counts and shows as scene code is the set the reader
 built from the signed `files` list (`PackInspection::scene_sources`: every
-`scenes/**/*.tsx` under each project, template or preset root), and the pack is
-refused when an item's `sceneFiles` is not exactly that set
-(`SceneFilesMismatch`). The code viewer lists that set and reads each file
+`*.tsx` under each project, template or preset root, whatever folder holds it,
+since a Mac loads `Scenes/` or a Unicode look-alike as `scenes/`), and the pack
+is refused when an item's `sceneFiles` is not exactly that set
+(`SceneFilesMismatch`). Two paths or item roots that a Mac would store as one
+(NFD plus full case folding, `paths::folded`) are refused at inspect
+(`PathCollision`), so one can't overwrite the other in staging. The code viewer lists that set and reads each file
 through `read_verified_entry`, which refuses bytes that do not match the signed
 hash, so a person never reads code the author described but did not pack, or
 packed under a different hash than they signed.
@@ -236,7 +243,8 @@ Website scene content gets its review before Continue, on the trust screen:
 `read_pack_scene_docs` reads every scene sidecar beside a staged scene source
 straight from the pack, checks each against its signed hash (one mismatch refuses
 the pack) and hands the parsed documents to `src/packs/packReview.ts`, which lists
-every requested Website origin (`websiteReview.ts`). Never the author's manifest,
+every Website origin requested under a lower-case `scenes/` folder
+(`websiteReview.ts`; a `Scenes/` one is not listed but still loads on APFS). Never the author's manifest,
 which is self-declared, and never after the files land. No origin is approved by
 an import (`docs/scene-website.md`). Terminal scene content needs no review: it is
 text and a PNG, and nothing runs (`docs/scene-terminal.md`).
@@ -320,12 +328,12 @@ the path checks above.
 | `identical` | `contentHash` matches | skip |
 | `theirs-newer` | differs, pack is newer | replace |
 | `yours-newer` | differs, local is newer | keep mine |
-| `unknown-age` | differs, no usable local mtime | keep mine |
+| `unknown-age` | differs, no usable mtime on either side, or the pack's is in the future | keep mine |
 
 Templates, presets and brands take the table unchanged: they are folder items
 keyed by slug, exactly like projects. For a project, template or preset,
-`import` and `replace` both drop the slug's F-001 grant and this session's
-allow, so the next open asks (`keep both` lands under a fresh slug no grant
+`import` and `replace` both drop the folder's F-001 grants, this session's
+allow and its website origin grants, so the next open asks (`keep both` lands under a fresh slug no grant
 names, and `skip` leaves the incumbent and its grant alone).
 
 Two per-kind overrides:
@@ -396,7 +404,9 @@ rewriting the author's file before hashing it, would break the rule that
 resolving a closure writes nothing.
 
 A replace moves the existing item to
-`<root>/.kookaburra/import-backup/<runId>/` first. It never deletes inline.
+`<root>/.kookaburra/import-backup/<runId>/` first. It never deletes inline. The
+first launch a day later sweeps backups with staging (`read::sweep_stale`), and
+the conflicts and summary screens say so.
 
 A failure part way through does not roll back: it reports what landed, what did
 not, and where the backups are. Rolling back a half-applied import is more

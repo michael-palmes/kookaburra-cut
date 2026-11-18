@@ -809,7 +809,25 @@ pub(crate) fn check(parked: &Path, shown: &str, ext: &str) -> Result<Checked, Re
             notes,
         });
     }
-    let (args, transforms) = bake_plan(&f, &reasons, lands, shown)?;
+    let (converted, g, transforms) = bake(parked, &f, &reasons, lands, shown)?;
+    notes.extend(look(&converted.0, &g, shown, &look_scratch)?);
+    Ok(Checked {
+        converted: Some(converted),
+        ext: final_ext,
+        transforms,
+        notes,
+    })
+}
+
+/// A copy of `parked` as `lands` with every reason baked in, through `sips`; the copy is read again and refused if anything is left.
+fn bake(
+    parked: &Path,
+    f: &Facts,
+    reasons: &[&str],
+    lands: Format,
+    shown: &str,
+) -> Result<(Scratch, Facts, Vec<Value>), Refused> {
+    let (args, transforms) = bake_plan(f, reasons, lands, shown)?;
     let converted = Scratch(scratch_beside(
         parked,
         &format!("converted.{}", lands.ext()),
@@ -829,13 +847,23 @@ pub(crate) fn check(parked: &Path, shown: &str, ext: &str) -> Result<Checked, Re
             format!("converting it still left {}", left.join(", ")),
         ));
     }
-    notes.extend(look(&converted.0, &g, shown, &look_scratch)?);
-    Ok(Checked {
-        converted: Some(converted),
-        ext: final_ext,
-        transforms,
-        notes,
-    })
+    if g.format != lands {
+        return Err(unreadable(shown, "macOS could not convert it"));
+    }
+    Ok((converted, g, transforms))
+}
+
+/// An app icon always lands as a plain sRGB PNG the stage decodes: checked like any still, baked unless it already is one. `None` when the parked file lands as it is.
+pub(crate) fn check_icon(parked: &Path, shown: &str) -> Result<Option<Scratch>, Refused> {
+    let f = facts(parked, shown)?;
+    let reasons = needs_conform(&f);
+    if f.format == Format::Png && reasons.is_empty() {
+        scan_png(parked, shown)?;
+        return Ok(None);
+    }
+    let (converted, _, _) = bake(parked, &f, &reasons, Format::Png, shown)?;
+    scan_png(&converted.0, shown)?;
+    Ok(Some(converted))
 }
 
 fn scratch_beside(parked: &Path, suffix: &str) -> PathBuf {
@@ -1419,5 +1447,76 @@ mod tests {
         assert!(sips(&["-s", "format", "jpeg"], &flat, &flat_jpeg));
         assert!(check(&flat_jpeg, "flat.jpg", "jpg").unwrap().notes[0].contains("flat colour"));
         assert!(!dir.join("flat.jpg.look.png").exists());
+    }
+
+    #[test]
+    fn an_icon_refuses_what_isnt_an_image_or_is_too_big_and_leaves_nothing() {
+        let dir = scratch("icon-hostile");
+        let mut icns = b"icns".to_vec();
+        icns.extend_from_slice(&16u32.to_be_bytes());
+        icns.extend_from_slice(b"ic07\0\0\0\x08");
+        for (bytes, why) in [
+            (&b"not an image"[..], "first bytes"),
+            (b"", "empty"),
+            (b"<html></html>", "HTML"),
+            (b"<svg xmlns=\"http://www.w3.org/2000/svg\"/>", "SVG"),
+            (b"%PDF-1.7", "PDF"),
+            (b"II*\0\x08\0\0\0", "TIFF"),
+            (b"\0\0\0\x18ftypheic\0\0\0\0", "HEIC"),
+            (&icns, "first bytes"),
+        ] {
+            let path = put(&dir, "parked", bytes);
+            let refused = check_icon(&path, "icon.png").err().unwrap();
+            assert_eq!(refused.code, "unreadable");
+            assert!(refused.message.contains(why), "{}", refused.message);
+        }
+        let whole = checker(64, 64);
+        let cut = put(&dir, "parked", &whole[..whole.len() - 40]);
+        assert_eq!(
+            check_icon(&cut, "cut.png").err().unwrap().code,
+            "unreadable"
+        );
+        let mut bomb = b"\x89PNG\r\n\x1a\n".to_vec();
+        let mut body = b"IHDR".to_vec();
+        body.extend_from_slice(&20000u32.to_be_bytes());
+        body.extend_from_slice(&20000u32.to_be_bytes());
+        body.extend_from_slice(&[8, 6, 0, 0, 0]);
+        bomb.extend_from_slice(&13u32.to_be_bytes());
+        bomb.extend_from_slice(&body);
+        bomb.extend_from_slice(&crc32(&body).to_be_bytes());
+        bomb.extend_from_slice(&0u32.to_be_bytes());
+        bomb.extend_from_slice(b"IDAT");
+        bomb.extend_from_slice(&crc32(b"IDAT").to_be_bytes());
+        let bomb = put(&dir, "parked", &bomb);
+        assert_eq!(
+            check_icon(&bomb, "bomb.png").err().unwrap().code,
+            "too-large"
+        );
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn an_icon_lands_as_a_plain_png_whatever_it_came_in_as() {
+        let dir = scratch("icon-png");
+        let clean = put(&dir, "parked", &checker(8, 8));
+        assert!(check_icon(&clean, "icon.jpg").unwrap().is_none());
+        if !have_sips() {
+            return;
+        }
+        let landed = |path: &Path, shown: &str| {
+            let converted = check_icon(path, shown).unwrap().expect("a converted copy");
+            let g = facts(&converted.0, "o").unwrap();
+            assert_eq!(g.format, Format::Png, "{shown}");
+            assert!(needs_conform(&g).is_empty(), "{shown}");
+            rgba_of(&converted.0)
+        };
+        let jpeg = put(&dir, "icon.jpg", &jpeg_of_four_quadrants(&dir));
+        assert_eq!(landed(&jpeg, "icon.jpg").1, 40);
+        let gif = dir.join("icon.gif");
+        assert!(sips(&["-s", "format", "gif"], &clean, &gif));
+        assert_eq!(landed(&gif, "icon.gif").1, 8);
+        let p3 = p3_png(&dir);
+        assert_eq!(landed(&p3, "icon.png").1, 64);
+        assert!(!dir.join("icon.jpg.converted.png").exists());
     }
 }

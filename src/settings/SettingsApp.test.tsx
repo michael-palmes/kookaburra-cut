@@ -44,6 +44,34 @@ describe("Settings rows a profile governs", () => {
     expect(row(html, "Agent kit")).toContain(">On<");
     expect(row(html, "Save exports to Downloads")).toContain('type="checkbox"');
     expect(row(html, "Check for updates automatically")).toContain("Asks GitHub");
+    expect(row(html, "Live websites")).toContain(">On<");
+  });
+
+  it("locks Live websites and names the list under AllowedWebsiteOrigins", async () => {
+    const html = await render({
+      allowedWebsiteOrigins: ["https://product.example.com", "http://localhost:5173"],
+      forcedKeys: ["AllowedWebsiteOrigins"],
+    });
+    const live = row(html, "Live websites");
+    expect(live).toContain(LOCK);
+    expect(live).toContain("(AllowedWebsiteOrigins)");
+    expect(live).toContain("allows only https://product.example.com, http://localhost:5173");
+    const none = row(
+      await render({ allowedWebsiteOrigins: [], forcedKeys: ["AllowedWebsiteOrigins"] }),
+      "Live websites",
+    );
+    expect(none).toContain("allows no websites");
+  });
+
+  it("locks Live websites under DisableLiveWebsites, whatever the list says", async () => {
+    const html = await render({
+      disableLiveWebsites: true,
+      allowedWebsiteOrigins: ["https://product.example.com"],
+      forcedKeys: ["DisableLiveWebsites", "AllowedWebsiteOrigins"],
+    });
+    const live = row(html, "Live websites");
+    expect(live).toContain("(DisableLiveWebsites)");
+    expect(live).not.toContain("product.example.com");
   });
 
   it("locks the Agent kit row and every Claude row under DisableAgentKit", async () => {
@@ -93,5 +121,50 @@ describe("Settings rows a profile governs", () => {
       expect(row(html, `>${title}<`), title).toContain("(DisablePackExport)");
     }
     expect(html).not.toContain('aria-label="Publisher name"');
+  });
+
+  it("offers Export log on every Mac, managed or not", async () => {
+    for (const forced of [
+      { managed: false },
+      { disableClaude: true, forcedKeys: ["DisableClaude"] },
+    ]) {
+      const exportRow = row(await render(forced), "Export log");
+      expect(exportRow).toContain("Export…");
+      expect(exportRow).toContain("never what is in your files");
+      expect(exportRow).not.toContain(LOCK);
+      expect(exportRow).not.toContain("AuditLogPath");
+    }
+  });
+
+  it("tells the person their organisation keeps a copy under AuditLogPath", async () => {
+    const html = await render({
+      auditLogPath: "/Library/Logs/Kookaburra Cut",
+      forcedKeys: ["AuditLogPath"],
+    });
+    const exportRow = row(html, "Export log");
+    expect(exportRow).toContain(
+      "Your organisation&#x27;s profile asks for a copy of this log (AuditLogPath).",
+    );
+    expect(exportRow).toContain("Export…");
+  });
+});
+
+describe("Settings › Accessibility", () => {
+  it("offers Text size as four options, each with a leading icon", async () => {
+    const html = await render({ managed: false });
+    expect(html).toMatch(/<\/svg>Text size<\/span>/);
+    const size = html.slice(html.indexOf("Text size<"), html.indexOf("Single-key shortcuts<"));
+    expect(size).toContain('role="radiogroup" aria-label="Text size"');
+    for (const label of ["Default", "Large", "Larger", "Largest"]) {
+      expect(size).toMatch(new RegExp(`role="radio"[^>]*>\\s*<svg[^]*?</svg>${label}<`));
+    }
+    expect(size).toContain('aria-checked="true"');
+  });
+
+  it("offers Single-key shortcuts as a switch, on by default", async () => {
+    const html = await render({ managed: false });
+    expect(html).toMatch(/<\/svg>Single-key shortcuts<\/span>/);
+    const keys = row(html, "Single-key shortcuts");
+    expect(keys).toMatch(/type="checkbox" aria-label="Single-key shortcuts" checked=""/);
   });
 });

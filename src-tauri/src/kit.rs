@@ -1,3 +1,4 @@
+#![allow(unsafe_code)]
 //! The Claude Code kit a workspace project carries (docs/agent-kit.md, "Stamping"): the managed skill directories (`SHIPPED_SKILLS`, each with its own `kit.json`), the user's `CLAUDE.md`, and the app-owned `.claude/settings.json`. Every step is idempotent and writes only when something changed. What a project may hold is an allow-list: settings are stripped to the managed set, and every other file Claude Code reads as configuration or instructions (`sweep_agent_files`) moves to `NOTES.md` or aside, is logged and is shown to the person before a session starts.
 
 use std::collections::BTreeMap;
@@ -38,15 +39,37 @@ const PREVIOUS_CLAUDE_MD: [&str; 4] = [
 ];
 pub(crate) const RULES_IMPORT: &str = "@.claude/skills/kookaburra-scene-authoring/RULES.md";
 const MANAGED_HOOK_MARKER: &str = "kookaburra-scene-authoring/scripts/kb.py hook";
+/// Takes the template's git rules' place where `history::agent_git_verdict` withholds the agent's git.
+const AGENT_GIT_DENY: &str = "Bash(git:*)";
+/// Where a hook a folder arrived with goes on its first open: inside `.git`, so packs, the trust hash and the sweep never see it.
+pub(crate) const HOOKS_ASIDE: &str = ".git/hooks.moved-aside";
 /// Credential folders under the home directory, and credential files by name anywhere: `reach.py` refuses the same set, `bridge.rs` never takes these folders as a write root, and the managed deny rules are built from them (a test holds all three together).
-pub(crate) const CREDENTIAL_DIRS: [&str; 9] = [
+pub(crate) const CREDENTIAL_DIRS: [&str; 10] = [
     ".ssh", ".aws", ".config", ".gnupg", "Library/Keychains", ".docker", ".kube", ".azure", ".claude",
+    "Library/Application Support/Claude",
 ];
-const CREDENTIAL_NAMES: [&str; 13] = [
+const CREDENTIAL_NAMES: [&str; 14] = [
     ".netrc", ".bash_history", ".zsh_history", ".zhistory", ".sh_history", ".history",
     ".python_history", ".node_repl_history", ".lesshst", "fish_history",
-    ".git-credentials", ".npmrc", ".pypirc",
+    ".git-credentials", ".npmrc", ".pypirc", ".claude.json",
 ];
+
+/// Whether `path` is `root` or below it, names compared as APFS compares them (case and `ſ` folded), as `reach.py` does.
+pub(crate) fn starts_with_folded(path: &Path, root: &Path) -> bool {
+    let fold = |part: &std::ffi::OsStr| -> String {
+        part.to_string_lossy()
+            .chars()
+            .flat_map(char::to_lowercase)
+            .map(|c| if c == '\u{17F}' { 's' } else { c })
+            .collect()
+    };
+    let mut parts = path.components();
+    root.components().all(|want| {
+        parts
+            .next()
+            .is_some_and(|part| fold(part.as_os_str()) == fold(want.as_os_str()))
+    })
+}
 /// A name, or that name plus any extension.
 const CREDENTIAL_PREFIXES: [&str; 5] = [".env", "id_rsa", "id_ed25519", "id_ecdsa", "id_dsa"];
 const CREDENTIAL_SUFFIXES: [&str; 6] = [".pem", ".p12", ".key", ".jks", ".keystore", ".tfstate"];
@@ -64,6 +87,8 @@ const MAX_NOTE_BYTES: u64 = 256 * 1024;
 const MOVED_LINE_CAP: usize = 160;
 /// `.claude/` folders the app never ships, removed whole.
 const FOREIGN_DIRS: [&str; 2] = ["commands", "agents"];
+/// Enough for agent files nested in folders that were themselves moved aside; whatever is left, the gate refuses.
+const SWEEP_PASSES: usize = 8;
 /// What the two hooks that speak say while the kit is gone, since `kb.py` cannot say it itself.
 const KIT_MISSING_NOTE: &str = "The Kookaburra Cut kit is missing from this project. Ask the person to reopen the project in Kookaburra Cut, which restores it. Do not rebuild ./kb or the kit by hand: the app leaves a hand-made kb alone, so the project would stop healing.";
 /// kb's own state folder; it ignores itself, whichever side makes it first.
@@ -146,7 +171,7 @@ pub(crate) fn stamp_project(
     }
     let mut results = vec![
         stamp_claude_md(dir),
-        stamp_settings(&claude.join("settings.json")),
+        stamp_settings(&claude.join("settings.json"), agent_git_allowed(dir)),
         stamp_kb_state(dir),
         stamp_shim(dir, opts),
     ];
@@ -347,6 +372,14 @@ fn credential_deny_rules() -> Vec<String> {
     rules
 }
 
+/// The bridge keys stay unread and the queue is kb's alone to write, so the agent's own tools can't sign or forge a request or an answer.
+pub(crate) const BRIDGE_DENY_RULES: [&str; 4] = [
+    "Read(~/Kookaburra Cut/_bridge/keys/**)",
+    "Read(//**/Kookaburra Cut/_bridge/keys/**)",
+    "Edit(~/Kookaburra Cut/_bridge/**)",
+    "Edit(//**/Kookaburra Cut/_bridge/**)",
+];
+
 /// The managed keys, exactly as docs/agent-kit.md lists them.
 pub(crate) fn managed_settings() -> Value {
     const KB_PY: &str =
@@ -382,6 +415,9 @@ pub(crate) fn managed_settings() -> Value {
             ],
             "ask": ["WebFetch", "WebSearch"],
             "deny": credential_deny_rules()
+                .into_iter()
+                .chain(BRIDGE_DENY_RULES.map(str::to_owned))
+                .collect::<Vec<_>>()
         },
         "hooks": {
             "SessionStart": [{ "matcher": "startup|resume|clear|compact", "hooks": [speaking_hook("session-start", 20)] }],
@@ -406,13 +442,16 @@ fn is_managed_hook(hook: &Value) -> bool {
         .is_some_and(|command| command.contains(MANAGED_HOOK_MARKER))
 }
 
-/// The permission rules the app owns: the template's git rules and the managed set.
-fn managed_allow_rules() -> Vec<Value> {
-    let template = serde_json::from_str::<Value>(SETTINGS_TEMPLATE).unwrap_or_else(|_| json!({}));
-    let mut rules: Vec<Value> = template["permissions"]["allow"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
+fn template_git_rules() -> Vec<Value> {
+    serde_json::from_str::<Value>(SETTINGS_TEMPLATE)
+        .ok()
+        .and_then(|template| template["permissions"]["allow"].as_array().cloned())
+        .unwrap_or_default()
+}
+
+/// The allow rules the app owns: the template's git rules, only while `agent_git`, then the managed set.
+fn managed_allow_rules(agent_git: bool) -> Vec<Value> {
+    let mut rules = if agent_git { template_git_rules() } else { Vec::new() };
     for rule in managed_settings()["permissions"]["allow"]
         .as_array()
         .into_iter()
@@ -433,10 +472,12 @@ fn short(value: &Value) -> String {
     crate::clean_text::clean_text_with_cap(&text, 120)
 }
 
-/// Keep only the app's own hooks and permission rules, drop every key outside `KEPT_SETTINGS_KEYS`, and re-add the managed set; returns a description of everything removed.
-fn strip_and_merge(root: &mut Value) -> Vec<String> {
+/// Keep only the app's own hooks and permission rules, drop every key outside `KEPT_SETTINGS_KEYS`, and re-add the managed set; returns a description of everything removed. The git rules follow `agent_git` and are never reported, since either set is the app's own.
+fn strip_and_merge(root: &mut Value, agent_git: bool) -> Vec<String> {
     let mut removed = Vec::new();
     let managed = managed_settings();
+    let git_allow = template_git_rules();
+    let git_deny = json!(AGENT_GIT_DENY);
     let Some(obj) = root.as_object_mut() else {
         return removed;
     };
@@ -458,11 +499,20 @@ fn strip_and_merge(root: &mut Value) -> Vec<String> {
     let list = |key: &str| -> Vec<Value> {
         managed["permissions"][key].as_array().cloned().unwrap_or_default()
     };
+    let mut deny = list("deny");
+    if !agent_git {
+        deny.push(git_deny.clone());
+    }
     let managed_lists = [
-        ("allow", managed_allow_rules()),
+        ("allow", managed_allow_rules(agent_git)),
         ("ask", list("ask")),
-        ("deny", list("deny")),
+        ("deny", deny),
     ];
+    let app_git_rule = |key: &str, rule: &Value| match key {
+        "allow" => git_allow.contains(rule),
+        "deny" => *rule == git_deny,
+        _ => false,
+    };
     let mut kept: BTreeMap<&str, Vec<Value>> = BTreeMap::new();
     match obj.remove("permissions") {
         Some(Value::Object(perms)) => {
@@ -483,7 +533,7 @@ fn strip_and_merge(root: &mut Value) -> Vec<String> {
                         if !entry.contains(rule) {
                             entry.push(rule.clone());
                         }
-                    } else {
+                    } else if !app_git_rule(list_key, rule) {
                         removed.push(format!("permissions.{key}: {}", short(rule)));
                     }
                 }
@@ -533,7 +583,7 @@ fn strip_and_merge(root: &mut Value) -> Vec<String> {
 }
 
 /// What `.claude/settings.json` should become (None when unchanged, or not a JSON object), and what the stamp removed.
-pub(crate) fn plan_settings(existing: Option<&str>) -> (Option<String>, Vec<String>) {
+pub(crate) fn plan_settings(existing: Option<&str>, agent_git: bool) -> (Option<String>, Vec<String>) {
     let (mut root, before) = match existing {
         None => (
             serde_json::from_str::<Value>(SETTINGS_TEMPLATE).unwrap_or_else(|_| json!({})),
@@ -544,7 +594,7 @@ pub(crate) fn plan_settings(existing: Option<&str>) -> (Option<String>, Vec<Stri
             _ => return (None, Vec::new()),
         },
     };
-    let removed = strip_and_merge(&mut root);
+    let removed = strip_and_merge(&mut root, agent_git);
     if before.as_ref() == Some(&root) {
         return (None, removed);
     }
@@ -556,16 +606,27 @@ pub(crate) fn plan_settings(existing: Option<&str>) -> (Option<String>, Vec<Stri
 
 #[cfg(test)]
 fn next_settings(existing: Option<&str>) -> Option<String> {
-    plan_settings(existing).0
+    plan_settings(existing, true).0
 }
 
-fn stamp_settings(path: &Path) -> Result<(), String> {
+/// Whether the agent may run its plain `git` in `dir`, logged when not; asked again at every stamp.
+fn agent_git_allowed(dir: &Path) -> bool {
+    match crate::history::agent_git_verdict(dir) {
+        Ok(()) => true,
+        Err(why) => {
+            log::warn!("[kit] {}: the agent's git is turned off: {why}", dir.display());
+            false
+        }
+    }
+}
+
+fn stamp_settings(path: &Path, agent_git: bool) -> Result<(), String> {
     let existing = match std::fs::read_to_string(path) {
         Ok(text) => Some(text),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
         Err(_) => return Ok(()),
     };
-    let (next, removed) = plan_settings(existing.as_deref());
+    let (next, removed) = plan_settings(existing.as_deref(), agent_git);
     if !removed.is_empty() {
         log::warn!(
             "[kit] {}: removed settings that did not come from the app: {}",
@@ -636,7 +697,7 @@ pub(crate) struct AgentSweep {
     pub error: Option<String>,
 }
 
-fn plain_text(path: &Path) -> Option<String> {
+pub(crate) fn plain_text(path: &Path) -> Option<String> {
     let meta = std::fs::symlink_metadata(path).ok()?;
     if !meta.is_file() || meta.len() > MAX_NOTE_BYTES {
         return None;
@@ -682,24 +743,95 @@ fn foreign_in_claude_dir(claude: &Path, out: &mut Vec<Foreign>) {
             out.push(Foreign::Aside(rel.join("skills").join(entry.file_name())));
         }
     }
+    let worktrees = claude.join("worktrees");
+    let listed = is_real_dir(&worktrees).then(|| std::fs::read_dir(&worktrees));
+    for entry in listed.into_iter().flatten().flatten().flatten() {
+        if !is_registered_worktree(&entry.path()) {
+            out.push(Foreign::Aside(
+                rel.join("worktrees").join(entry.file_name()),
+            ));
+        }
+    }
 }
 
-/// Everything in the folder outside the allow-list. A non-default root `CLAUDE.md` only counts on the first open: after that it is the person's. Links are never followed and `.git` is never entered.
+/// Whether `tree` is a checkout this folder's own repository made: its `.git` file names a record in `.git/worktrees` that names it back.
+fn is_registered_worktree(tree: &Path) -> bool {
+    let resolve = |base: &Path, path: &str| std::fs::canonicalize(base.join(path.trim())).ok();
+    let Some(dir) = tree.ancestors().nth(3) else {
+        return false;
+    };
+    let Ok(records) = std::fs::canonicalize(dir.join(".git/worktrees")) else {
+        return false;
+    };
+    let Some(record) = is_real_dir(tree)
+        .then(|| plain_text(&tree.join(".git")))
+        .flatten()
+        .and_then(|text| resolve(tree, text.strip_prefix("gitdir:")?))
+    else {
+        return false;
+    };
+    record.parent() == Some(records.as_path())
+        && plain_text(&record.join("gitdir"))
+            .and_then(|text| resolve(&record, &text))
+            .is_some_and(|back| std::fs::canonicalize(tree.join(".git")).ok() == Some(back))
+}
+
+/// The entry in `dir` that the filesystem opens as `reserved`, by its name on disk. APFS folds case and Unicode (`AGENTſ.md` opens as `AGENTS.md`), so it is asked rather than folding names in code.
+pub(crate) fn entry_opened_as(
+    dir: &Path,
+    reserved: &str,
+) -> std::io::Result<Option<(std::ffi::OsString, std::fs::Metadata)>> {
+    use std::os::unix::fs::MetadataExt;
+    let meta = match std::fs::symlink_metadata(dir.join(reserved)) {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    let mut on_disk = std::ffi::OsString::from(reserved);
+    for entry in std::fs::read_dir(dir)?.flatten() {
+        let name = entry.file_name();
+        let text = name.to_string_lossy();
+        let same_ascii = text.eq_ignore_ascii_case(reserved);
+        if (same_ascii || !text.is_ascii())
+            && entry
+                .metadata()
+                .is_ok_and(|m| m.dev() == meta.dev() && m.ino() == meta.ino())
+        {
+            on_disk = name;
+            if same_ascii {
+                break;
+            }
+        }
+    }
+    Ok(Some((on_disk, meta)))
+}
+
+/// Everything in the folder outside the allow-list, moved-aside folders included. A non-default root `CLAUDE.md` only counts on the first open: after that it is the person's. Links are never followed and `.git` is never entered.
 fn foreign_entries(dir: &Path, first_open: bool) -> Vec<Foreign> {
     let mut out = Vec::new();
     let mut stack = vec![PathBuf::new()];
     while let Some(rel) = stack.pop() {
         let at_root = rel.as_os_str().is_empty();
-        for entry in std::fs::read_dir(dir.join(&rel)).into_iter().flatten().flatten() {
+        let here = dir.join(&rel);
+        let reserved: Vec<_> = std::iter::once(CLAUDE_DIR)
+            .chain(NOTE_FILES)
+            .filter_map(|name| Some((entry_opened_as(&here, name).ok()??.0, name)))
+            .collect();
+        for entry in std::fs::read_dir(&here).into_iter().flatten().flatten() {
             let name = entry.file_name().to_string_lossy().into_owned();
             let lower = name.to_ascii_lowercase();
+            let opened_as = reserved
+                .iter()
+                .find(|(on_disk, _)| *on_disk == entry.file_name())
+                .map(|(_, as_name)| *as_name)
+                .or_else(|| std::iter::once(CLAUDE_DIR).chain(NOTE_FILES).find(|r| *r == lower));
             let child = rel.join(entry.file_name());
-            if name == ".git" || (at_root && (name == CLAUDE_DIR || is_moved_aside(&name))) {
+            if name == ".git" || (at_root && name == CLAUDE_DIR) {
                 continue;
             }
-            if lower == CLAUDE_DIR {
+            if opened_as == Some(CLAUDE_DIR) {
                 out.push(Foreign::Aside(child));
-            } else if NOTE_FILES.contains(&lower.as_str()) {
+            } else if opened_as.is_some() {
                 if !(at_root && name == ROOT_CLAUDE_MD) {
                     out.push(Foreign::Note(child));
                 }
@@ -766,6 +898,26 @@ fn move_rel_aside(dir: &Path, rel: &Path) -> Result<String, String> {
     Err(format!("moving {} aside: every name is taken", rel_label(rel)))
 }
 
+/// Rename a hook to the first free name in `HOOKS_ASIDE`; a link moves as a link.
+fn move_hook_aside(dir: &Path, rel: &Path) -> Result<String, String> {
+    let aside = crate::real_dir::real_dir(dir, HOOKS_ASIDE)
+        .map_err(|e| format!("moving {} aside: {e}", rel_label(rel)))?;
+    let name = rel
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    for n in 1..1000 {
+        let free = if n == 1 { name.clone() } else { format!("{name}-{n}") };
+        if std::fs::symlink_metadata(aside.join(&free)).is_ok() {
+            continue;
+        }
+        std::fs::rename(dir.join(rel), aside.join(&free))
+            .map_err(|e| format!("moving {} aside: {e}", rel_label(rel)))?;
+        return Ok(format!("{HOOKS_ASIDE}/{free}"));
+    }
+    Err(format!("moving {} aside: every name is taken", rel_label(rel)))
+}
+
 /// Server definitions keep their shape, but `env` and `headers` values, where tokens live, stay out of a file that packs and the agent read.
 fn redact_mcp(value: &mut Value) {
     match value {
@@ -821,7 +973,7 @@ fn strip_local_settings(path: &Path) -> Result<(), String> {
         return Ok(());
     };
     let before = root.clone();
-    strip_and_merge(&mut root);
+    strip_and_merge(&mut root, true);
     let Some(obj) = root.as_object_mut() else {
         return Ok(());
     };
@@ -837,7 +989,7 @@ fn strip_local_settings(path: &Path) -> Result<(), String> {
     atomic_write(path, &(text + "\n"))
 }
 
-/// What the stamp would strip from the settings files. Read-only.
+/// What the stamp would strip from the settings files, whatever the agent's git verdict. Read-only.
 fn settings_removals(dir: &Path) -> Vec<String> {
     let claude = dir.join(CLAUDE_DIR);
     let mut out = Vec::new();
@@ -845,19 +997,125 @@ fn settings_removals(dir: &Path) -> Vec<String> {
         let Some(text) = plain_text(&claude.join(name)) else {
             continue;
         };
-        for removed in plan_settings(Some(&text)).1 {
+        for removed in plan_settings(Some(&text), true).1 {
             out.push(format!(".claude/{name}: removed {removed}"));
         }
     }
     out
 }
 
+/// A name folded as APFS opens it: case and the letters that fold onto ASCII (`ſ`, the Kelvin sign).
+fn fold_name(name: &str) -> String {
+    name.chars()
+        .flat_map(char::to_uppercase)
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+/// Whether a path a git tree names (`/`-separated, from the project root) is one an agent reads as its own: anything under a `.claude`, a name the sweep moves to `NOTES.md` and the root `kb`.
+pub(crate) fn steers_agent(rel: &str) -> bool {
+    let parts: Vec<String> = rel.split('/').map(fold_name).collect();
+    let Some(last) = parts.last() else {
+        return false;
+    };
+    parts.iter().any(|part| part == CLAUDE_DIR)
+        || NOTE_FILES.contains(&last.as_str())
+        || (parts.len() == 1 && last == SHIM_NAME)
+}
+
+/// A path the stamp writes, spelt exactly as it writes it.
+pub(crate) fn app_owned(rel: &str) -> bool {
+    matches!(rel, "kb" | ".claude/settings.json" | "CLAUDE.md") || in_shipped_skill(rel)
+}
+
+/// A path inside one of the shipped skills' folders.
+pub(crate) fn in_shipped_skill(rel: &str) -> bool {
+    rel.strip_prefix(".claude/skills/").is_some_and(|inner| {
+        SHIPPED_SKILLS.iter().any(|skill| {
+            inner
+                .strip_prefix(skill)
+                .is_some_and(|rest| rest.starts_with('/'))
+        })
+    })
+}
+
+/// One file the app wrote, bound to its path: the first 128 bits of SHA-256 over the path, a NUL and the bytes.
+pub(crate) fn stamp_key(rel: &str, bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(rel.as_bytes());
+    hasher.update([0]);
+    hasher.update(bytes);
+    crate::hex_digest(&hasher.finalize()[..16])
+}
+
+/// Largest file a stamp key is taken of; the kit's own files are far smaller.
+pub(crate) const STAMP_FILE_MAX: u64 = 4 << 20;
+
+/// The stamp keys of every app-owned file as the stamp left the folder: the `skills` it stamped, `.claude/settings.json`, the app's `kb` and a default root `CLAUDE.md`. Links and oversized files are left out.
+pub(crate) fn own_stamp(dir: &Path, skills: &[&str]) -> Vec<String> {
+    let key_of = |rel: &str| {
+        let path = dir.join(rel);
+        let meta = std::fs::symlink_metadata(&path).ok()?;
+        (meta.is_file() && meta.len() <= STAMP_FILE_MAX)
+            .then(|| std::fs::read(&path).ok())
+            .flatten()
+            .map(|bytes| stamp_key(rel, &bytes))
+    };
+    let mut keys: Vec<String> = Vec::new();
+    for skill in skills {
+        let mut stack = vec![format!(".claude/skills/{skill}")];
+        while let Some(rel) = stack.pop() {
+            if !is_real_dir(&dir.join(&rel)) {
+                continue;
+            }
+            for entry in std::fs::read_dir(dir.join(&rel))
+                .into_iter()
+                .flatten()
+                .flatten()
+            {
+                if skipped(&entry.file_name()) {
+                    continue;
+                }
+                let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+                    continue;
+                };
+                let child = format!("{rel}/{name}");
+                match entry.file_type() {
+                    Ok(kind) if kind.is_dir() => stack.push(child),
+                    Ok(kind) if kind.is_file() => keys.extend(key_of(&child)),
+                    _ => {}
+                }
+            }
+        }
+    }
+    keys.extend(key_of(".claude/settings.json"));
+    if shim_is_ours(dir) {
+        keys.extend(key_of(SHIM_NAME));
+    }
+    if plain_text(&dir.join(ROOT_CLAUDE_MD)).is_some_and(|text| is_default_claude_md(&text)) {
+        keys.extend(key_of(ROOT_CLAUDE_MD));
+    }
+    keys.sort();
+    keys.dedup();
+    keys
+}
+
 /// Files that must not be in the folder when a session starts, by name: the gate behind `sweep_agent_files`, for anything that landed after the stamp or that it could not move. Read-only.
 pub(crate) fn foreign_agent_files(dir: &Path) -> Vec<String> {
-    let mut out: Vec<String> = foreign_entries(dir, false)
-        .iter()
-        .map(|entry| rel_label(foreign_path(entry)))
-        .collect();
+    let mut out: Vec<String> = Vec::new();
+    if std::fs::symlink_metadata(dir.join(SHIM_NAME)).is_ok() && !shim_is_ours(dir) {
+        out.push(SHIM_NAME.to_owned());
+    }
+    let claude = dir.join(CLAUDE_DIR);
+    if std::fs::symlink_metadata(&claude).is_ok() && !is_real_dir(&claude) {
+        out.push(CLAUDE_DIR.to_owned());
+    }
+    out.extend(
+        foreign_entries(dir, false)
+            .iter()
+            .map(|entry| rel_label(foreign_path(entry))),
+    );
     out.extend(settings_removals(dir).into_iter().map(moved_line));
     out
 }
@@ -875,51 +1133,73 @@ pub(crate) fn sweep_agent_files(dir: &Path, first_open: bool) -> AgentSweep {
                 .map(|what| format!(".claude/{what}: removed")),
         );
     }
-    let mut sections = String::new();
-    let mut noted = Vec::new();
-    let mut set_aside = Vec::new();
-    for entry in foreign_entries(dir, first_open) {
-        match entry {
-            Foreign::Aside(rel) => set_aside.push(rel),
-            Foreign::Note(rel) => {
-                let text = plain_text(&dir.join(&rel));
-                let is_mcp = rel.file_name().is_some_and(|n| n.eq_ignore_ascii_case(MCP_FILE));
-                match (text, is_mcp) {
-                    (Some(text), false) => {
-                        if !text.trim().is_empty() {
-                            sections.push_str(&notes_section(&rel, &text));
+    // A folder moved aside can hold agent files of its own, so each pass sweeps what the last one moved.
+    for _ in 0..SWEEP_PASSES {
+        let found = foreign_entries(dir, first_open);
+        if found.is_empty() || !errors.is_empty() {
+            break;
+        }
+        let mut sections = String::new();
+        let mut noted = Vec::new();
+        let mut set_aside = Vec::new();
+        for entry in found {
+            match entry {
+                Foreign::Aside(rel) => set_aside.push(rel),
+                Foreign::Note(rel) => {
+                    let text = plain_text(&dir.join(&rel));
+                    let is_mcp = rel
+                        .parent()
+                        .and_then(|parent| {
+                            entry_opened_as(&dir.join(parent), MCP_FILE).ok().flatten()
+                        })
+                        .is_some_and(|(on_disk, _)| rel.file_name() == Some(on_disk.as_os_str()));
+                    match (text, is_mcp) {
+                        (Some(text), false) => {
+                            if !text.trim().is_empty() {
+                                sections.push_str(&notes_section(&rel, &text));
+                            }
+                            noted.push(rel);
                         }
-                        noted.push(rel);
-                    }
-                    (Some(text), true) => {
-                        if let Ok(mut value) = serde_json::from_str::<Value>(&text) {
-                            redact_mcp(&mut value);
-                            let pretty = serde_json::to_string_pretty(&value).unwrap_or_default();
-                            sections.push_str(&notes_section(&rel, &pretty));
+                        (Some(text), true) => {
+                            if let Ok(mut value) = serde_json::from_str::<Value>(&text) {
+                                redact_mcp(&mut value);
+                                let pretty =
+                                    serde_json::to_string_pretty(&value).unwrap_or_default();
+                                sections.push_str(&notes_section(&rel, &pretty));
+                            }
+                            set_aside.push(rel);
                         }
-                        set_aside.push(rel);
+                        (None, _) => set_aside.push(rel),
                     }
-                    (None, _) => set_aside.push(rel),
                 }
             }
         }
-    }
-    if !sections.is_empty() {
-        if let Err(e) = append_notes(dir, &sections) {
-            errors.push(e);
-            noted.clear();
+        if !sections.is_empty() {
+            if let Err(e) = append_notes(dir, &sections) {
+                errors.push(e);
+                noted.clear();
+            }
+        }
+        for rel in noted {
+            match std::fs::remove_file(dir.join(&rel)) {
+                Ok(()) => moved.push(format!("{} → {NOTES_FILE}", rel_label(&rel))),
+                Err(e) => errors.push(format!("moving {}: {e}", rel_label(&rel))),
+            }
+        }
+        for rel in set_aside {
+            match move_rel_aside(dir, &rel) {
+                Ok(aside) => moved.push(format!("{} → {aside}", rel_label(&rel))),
+                Err(e) => errors.push(e),
+            }
         }
     }
-    for rel in noted {
-        match std::fs::remove_file(dir.join(&rel)) {
-            Ok(()) => moved.push(format!("{} → {NOTES_FILE}", rel_label(&rel))),
-            Err(e) => errors.push(format!("moving {}: {e}", rel_label(&rel))),
-        }
-    }
-    for rel in set_aside {
-        match move_rel_aside(dir, &rel) {
-            Ok(aside) => moved.push(format!("{} → {aside}", rel_label(&rel))),
-            Err(e) => errors.push(e),
+    // After the first open a hook is the person's; one that won't move only keeps the agent's git off.
+    if first_open && is_real_dir(&dir.join(".git")) {
+        for rel in crate::history::live_hooks(dir) {
+            match move_hook_aside(dir, &rel) {
+                Ok(aside) => moved.push(format!("{} → {aside}", rel_label(&rel))),
+                Err(e) => log::warn!("[kit] {}: {e}", dir.display()),
+            }
         }
     }
     moved.extend(settings_removals(dir));
@@ -1075,11 +1355,29 @@ pub(crate) fn is_moved_aside(name: &str) -> bool {
     })
 }
 
-/// Rename `name` in `dir` to the first free `<name>.moved-aside` and log it; a link moves as a link.
+/// Whether the root `kb` is exactly the shim the stamp writes: a plain file, its text and its mode.
+fn shim_is_ours(dir: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    let path = dir.join(SHIM_NAME);
+    std::fs::symlink_metadata(&path).is_ok_and(|meta| {
+        meta.is_file()
+            && meta.permissions().mode() & 0o777 == SHIM_MODE
+            && std::fs::read(&path).is_ok_and(|bytes| bytes == SHIM_TEMPLATE.as_bytes())
+    })
+}
+
+/// Rename `name` in `dir` to the first free `<name>.moved-aside`, or a timestamped one once those run out, and log it; a link moves as a link.
 fn move_aside(dir: &Path, name: &str) -> Result<(), String> {
-    for n in 1..1000 {
+    let stamped = format!(
+        "{name}{ASIDE_SUFFIX}-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_nanos())
+    );
+    for n in 1..=1000 {
         let aside = match n {
             1 => format!("{name}{ASIDE_SUFFIX}"),
+            1000 => stamped.clone(),
             n => format!("{name}{ASIDE_SUFFIX}-{n}"),
         };
         if std::fs::symlink_metadata(dir.join(&aside)).is_ok() {
@@ -1287,6 +1585,7 @@ fn swap_paths(a: &Path, b: &Path) -> std::io::Result<()> {
     let a = CString::new(a.as_os_str().as_bytes())?;
     let b = CString::new(b.as_os_str().as_bytes())?;
     // RENAME_SWAP exchanges both entries in one step, so the skill path never goes missing.
+    // SAFETY: a and b are NUL-terminated paths that outlive the call.
     let rc = unsafe { libc::renamex_np(a.as_ptr(), b.as_ptr(), libc::RENAME_SWAP) };
     if rc == 0 {
         Ok(())
@@ -1406,6 +1705,45 @@ mod tests {
 
     // Changing the default template? Add the old one to templates/claude-md-history first, so projects still on it migrate.
     #[test]
+    fn the_stamp_record_holds_only_what_the_app_wrote() {
+        let dir = std::env::temp_dir().join(format!("kc-own-stamp-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let skill = dir.join(".claude/skills").join(SKILL_NAME);
+        std::fs::create_dir_all(skill.join("scripts/__pycache__")).unwrap();
+        std::fs::write(skill.join("RULES.md"), "rules\n").unwrap();
+        std::fs::write(skill.join("scripts/__pycache__/kb.pyc"), "cache").unwrap();
+        std::fs::write(skill.join(".DS_Store"), "finder").unwrap();
+        std::fs::create_dir_all(dir.join(".claude/skills/someone-else")).unwrap();
+        std::fs::write(dir.join(".claude/skills/someone-else/SKILL.md"), "x").unwrap();
+        std::fs::write(dir.join(".claude/settings.json"), "{}\n").unwrap();
+        std::fs::write(dir.join("kb"), "#!/bin/sh\n").unwrap();
+        std::fs::write(dir.join("CLAUDE.md"), "# Mine\n").unwrap();
+        let rules = format!(".claude/skills/{SKILL_NAME}/RULES.md");
+        let mut expected = vec![
+            stamp_key(&rules, b"rules\n"),
+            stamp_key(".claude/settings.json", b"{}\n"),
+        ];
+        expected.sort();
+        assert_eq!(own_stamp(&dir, &SHIPPED_SKILLS), expected);
+        assert_eq!(
+            own_stamp(&dir, &[]).len(),
+            1,
+            "a skill the stamp skipped is not the app's"
+        );
+        assert_ne!(
+            stamp_key(&rules, b"rules\n"),
+            stamp_key("RULES.md", b"rules\n"),
+            "bound to its path"
+        );
+        assert!(app_owned(&rules) && app_owned("kb") && app_owned(".claude/settings.json"));
+        assert!(
+            !app_owned(".claude/skills/someone-else/SKILL.md")
+                && !app_owned(".claude/commands/x.md")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn current_template_is_pinned_until_its_predecessor_is_archived() {
         let digest = Sha256::digest(normalise(CLAUDE_MD_TEMPLATE).as_bytes());
         let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
@@ -1524,11 +1862,11 @@ mod tests {
                 "Stop": [{ "hooks": [{ "type": "command", "command": "say done" }] }]
             }
         });
-        let (text, removed) = plan_settings(Some(&existing.to_string()));
+        let (text, removed) = plan_settings(Some(&existing.to_string()), true);
         let merged: Value = serde_json::from_str(&text.unwrap()).unwrap();
         assert_eq!(merged["model"], "opus");
         assert!(merged.get("env").is_none() && merged.get("apiKeyHelper").is_none());
-        assert_eq!(merged["permissions"]["allow"], json!(managed_allow_rules()));
+        assert_eq!(merged["permissions"]["allow"], json!(managed_allow_rules(true)));
         assert_eq!(merged["permissions"]["ask"], json!(["WebFetch", "WebSearch"]));
         assert_eq!(merged["permissions"]["deny"], managed_settings()["permissions"]["deny"]);
         assert_eq!(merged["permissions"]["allow"][0], "Bash(git status)");
@@ -1548,7 +1886,7 @@ mod tests {
             ]
         );
         let again = serde_json::to_string_pretty(&merged).unwrap();
-        assert_eq!(plan_settings(Some(&again)), (None, Vec::new()));
+        assert_eq!(plan_settings(Some(&again), true), (None, Vec::new()));
     }
 
     #[test]
@@ -1699,7 +2037,7 @@ mod tests {
         let settings = read_json(&project.join(".claude/settings.json"));
         assert_eq!(settings["model"], "opus");
         assert!(settings.get("env").is_none());
-        assert_eq!(settings["permissions"]["allow"], json!(managed_allow_rules()));
+        assert_eq!(settings["permissions"]["allow"], json!(managed_allow_rules(true)));
         assert_eq!(settings["permissions"]["deny"], managed_settings()["permissions"]["deny"]);
         assert_eq!(settings["hooks"], managed_settings()["hooks"]);
         assert!(!project.join(".claude/commands").exists());
@@ -1843,13 +2181,110 @@ mod tests {
     fn stamping_settings_writes_once() {
         let dir = scratch("settings");
         let path = dir.join(".claude/settings.json");
-        stamp_settings(&path).unwrap();
-        let first = std::fs::metadata(&path).unwrap().modified().unwrap();
-        std::thread::sleep(std::time::Duration::from_millis(20));
-        stamp_settings(&path).unwrap();
-        assert_eq!(std::fs::metadata(&path).unwrap().modified().unwrap(), first);
+        let modified = || std::fs::metadata(&path).unwrap().modified().unwrap();
+        for agent_git in [true, false, true] {
+            stamp_settings(&path, agent_git).unwrap();
+            let first = modified();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            stamp_settings(&path, agent_git).unwrap();
+            assert_eq!(modified(), first, "agent git {agent_git}");
+        }
         assert!(!dir.join(".claude/.settings.json.kit-tmp").exists());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn git_project(tag: &str) -> PathBuf {
+        let project = scratch(tag).join("project");
+        write(&project.join("project.json"), r#"{"name":"Demo"}"#);
+        crate::history::init_repo(&project, "chore: create project").unwrap();
+        project
+    }
+
+    fn plant_hook(project: &Path, name: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let hook = project.join(".git/hooks").join(name);
+        write(&hook, "#!/bin/sh\ntouch \"$0.ran\"\n");
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        hook
+    }
+
+    fn git_rules(settings: &Value) -> (Vec<Value>, bool) {
+        let allow = settings["permissions"]["allow"].as_array().cloned().unwrap_or_default();
+        let deny = settings["permissions"]["deny"].as_array().cloned().unwrap_or_default();
+        let git_allow = template_git_rules().into_iter().filter(|rule| allow.contains(rule)).collect();
+        (git_allow, deny.contains(&json!(AGENT_GIT_DENY)))
+    }
+
+    #[test]
+    fn a_live_hook_moves_aside_on_the_first_open_and_is_listed() {
+        let project = git_project("hook-first-open");
+        plant_hook(&project, "pre-commit");
+        std::os::unix::fs::symlink("/bin/true", project.join(".git/hooks/post-checkout")).unwrap();
+        write(&project.join(".git/hooks.moved-aside/pre-commit"), "kept from before");
+        let moved = swept(&project, true);
+        assert_eq!(
+            moved,
+            [
+                ".git/hooks/post-checkout → .git/hooks.moved-aside/post-checkout",
+                ".git/hooks/pre-commit → .git/hooks.moved-aside/pre-commit-2",
+            ]
+        );
+        let aside = project.join(HOOKS_ASIDE);
+        assert!(std::fs::symlink_metadata(aside.join("post-checkout")).unwrap().file_type().is_symlink());
+        assert_eq!(std::fs::read_to_string(aside.join("pre-commit")).unwrap(), "kept from before");
+        assert_eq!(crate::history::live_hooks(&project), Vec::<PathBuf>::new());
+        assert_eq!(crate::history::agent_git_verdict(&project), Ok(()));
+        assert!(foreign_agent_files(&project).is_empty(), "a hook never holds the session back");
+        assert!(swept(&project, true).is_empty());
+        let _ = std::fs::remove_dir_all(project.parent().unwrap());
+    }
+
+    #[test]
+    fn a_hook_added_after_the_first_open_is_the_persons() {
+        let project = git_project("hook-later");
+        let hook = plant_hook(&project, "pre-commit");
+        assert!(swept(&project, false).is_empty());
+        assert!(hook.is_file(), "the person's hook stays where they put it");
+        stamp_project(&[], &project, &opts("0.19.0", false, 1)).unwrap();
+        let settings = read_json(&project.join(".claude/settings.json"));
+        assert_eq!(git_rules(&settings), (Vec::new(), true), "the agent's git stays off around it");
+        let _ = std::fs::remove_dir_all(project.parent().unwrap());
+    }
+
+    #[test]
+    fn a_refused_repo_gets_a_git_deny_rule_and_no_git_allow_rules() {
+        let project = git_project("git-refused");
+        let path = project.join(".claude/settings.json");
+        stamp_project(&[], &project, &opts("0.19.0", false, 1)).unwrap();
+        assert_eq!(git_rules(&read_json(&path)), (template_git_rules(), false));
+
+        let config = project.join(".git/config");
+        let set = std::process::Command::new("git")
+            .args(["config", "--file"])
+            .arg(&config)
+            .args(["core.fsmonitor", "/bin/true"])
+            .status()
+            .unwrap();
+        assert!(set.success());
+        stamp_project(&[], &project, &opts("0.19.0", false, 2)).unwrap();
+        let settings = read_json(&path);
+        assert_eq!(git_rules(&settings), (Vec::new(), true));
+        let deny = settings["permissions"]["deny"].as_array().unwrap();
+        assert!(deny.len() > 1, "the credential rules stay beside it");
+        assert!(foreign_agent_files(&project).is_empty(), "the app's own git rules are never listed");
+        assert!(swept(&project, false).is_empty());
+
+        let unset = std::process::Command::new("git")
+            .args(["config", "--file"])
+            .arg(&config)
+            .args(["--unset", "core.fsmonitor"])
+            .status()
+            .unwrap();
+        assert!(unset.success());
+        stamp_project(&[], &project, &opts("0.19.0", false, 3)).unwrap();
+        assert_eq!(git_rules(&read_json(&path)), (template_git_rules(), false), "asked again at every stamp");
+        assert!(foreign_agent_files(&project).is_empty());
+        let _ = std::fs::remove_dir_all(project.parent().unwrap());
     }
 
     fn skill_source(dir: &Path) -> PathBuf {
@@ -2292,6 +2727,53 @@ mod tests {
     }
 
     #[test]
+    fn a_planted_kb_never_outlasts_a_folder_that_took_every_aside_name() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = scratch("shim-exhausted");
+        let planted = "#!/bin/sh\necho planted\n";
+        write(&dir.join(SHIM_NAME), planted);
+        std::fs::set_permissions(dir.join(SHIM_NAME), std::fs::Permissions::from_mode(0o755))
+            .unwrap();
+        write(&dir.join("kb.moved-aside"), "");
+        for n in 2..1000 {
+            write(&dir.join(format!("kb.moved-aside-{n}")), "");
+        }
+        assert_eq!(foreign_agent_files(&dir), vec![SHIM_NAME]);
+        stamp_project(&[], &dir, &opts("0.19.0", false, 1)).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join(SHIM_NAME)).unwrap(), SHIM_TEMPLATE);
+        let kept = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .filter(|entry| std::fs::read_to_string(entry.path()).is_ok_and(|t| t == planted))
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(kept.len(), 1, "{kept:?}");
+        assert!(is_moved_aside(&kept[0]), "{kept:?}");
+        assert!(foreign_agent_files(&dir).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_gate_names_any_kb_or_claude_folder_that_is_not_the_apps() {
+        use crate::real_dir::hostile;
+        let dir = scratch("shim-gate");
+        write(&dir.join(SHIM_NAME), "#!/bin/sh\necho planted\n");
+        assert_eq!(foreign_agent_files(&dir), vec![SHIM_NAME]);
+        stamp_shim(&dir, &opts("0.19.0", false, 1)).unwrap();
+        assert!(foreign_agent_files(&dir).is_empty());
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(dir.join(SHIM_NAME), std::fs::Permissions::from_mode(0o777))
+            .unwrap();
+        assert_eq!(foreign_agent_files(&dir), vec![SHIM_NAME]);
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let (project, victim) = hostile::folder("claude-gate");
+        hostile::plant(&project, CLAUDE_DIR, &victim);
+        assert!(foreign_agent_files(&project).contains(&CLAUDE_DIR.to_owned()));
+        hostile::clean_up(&project);
+    }
+
+    #[test]
     fn a_linked_kb_moves_as_a_link_and_its_target_is_never_written() {
         use crate::real_dir::hostile;
         let (project, victim) = hostile::folder("kb-link");
@@ -2459,9 +2941,10 @@ mod tests {
 
     #[test]
     fn settings_json_keeps_only_the_allowed_top_level_keys() {
-        let (next, removed) = plan_settings(Some(
-            r#"{"model":"m","statusLine":{"command":"evil"},"enableAllProjectMcpServers":true}"#,
-        ));
+        let (next, removed) = plan_settings(
+            Some(r#"{"model":"m","statusLine":{"command":"evil"},"enableAllProjectMcpServers":true}"#),
+            true,
+        );
         let next: Value = serde_json::from_str(&next.unwrap()).unwrap();
         assert_eq!(next["model"], "m");
         assert!(next.get("statusLine").is_none());
@@ -2575,6 +3058,91 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// APFS opens these by the agent files' own names.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_name_the_filesystem_folds_onto_an_agent_file_is_swept() {
+        let dir = scratch("folded");
+        let mcp = ".mcp.j\u{17F}on";
+        write(
+            &dir.join(mcp),
+            r#"{"mcpServers":{"x":{"command":"run","env":{"API_KEY":"planted-secret"}}}}"#,
+        );
+        write(&dir.join("AGENT\u{17F}.md"), "folded rule\n");
+        write(&dir.join("scenes/AGENT\u{17F}.md"), "deep folded rule\n");
+        write(&dir.join(".claude.j\u{17F}on"), "{}\n");
+        write(&dir.join("\u{212A}b"), "#!/bin/sh\necho planted\n");
+        assert!(dir.join(".mcp.json").exists(), "the filesystem doesn't fold");
+        let found = foreign_agent_files(&dir);
+        for rel in [SHIM_NAME, mcp, "AGENT\u{17F}.md", "scenes/AGENT\u{17F}.md", ".claude.j\u{17F}on"] {
+            assert!(found.iter().any(|f| f == rel), "{rel} in {found:?}");
+        }
+        assert!(sweep_agent_files(&dir, false).error.is_none());
+        stamp_shim(&dir, &opts("0.19.0", false, 1)).unwrap();
+        for name in [".mcp.json", "AGENTS.md", "scenes/AGENTS.md", ".claude.json"] {
+            assert!(!dir.join(name).exists(), "{name}");
+        }
+        let notes = notes(&dir);
+        assert!(notes.contains("deep folded rule") && notes.contains("\"run\""), "{notes}");
+        assert!(!notes.contains("planted-secret"), "{notes}");
+        assert!(foreign_agent_files(&dir).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn stray_worktrees_and_agent_files_in_moved_aside_folders_are_swept() {
+        let project = git_project("worktrees");
+        let live = project.join(".claude/worktrees/live");
+        let added = std::process::Command::new("git")
+            .args(["-c", "core.hooksPath=/dev/null", "worktree", "add", "-q", "--detach"])
+            .arg(&live)
+            .current_dir(&project)
+            .status()
+            .unwrap();
+        assert!(added.success());
+        write(&live.join("scenes/CLAUDE.md"), "the person's own checkout\n");
+        write(&project.join(".claude/worktrees/stray/CLAUDE.md"), "stray rule\n");
+        write(&project.join(".claude/worktrees/stray/.claude/settings.json"), "{}");
+        write(
+            &project.join(".claude/worktrees/forged/.git"),
+            &format!("gitdir: {}\n", project.join(".git/worktrees/live").display()),
+        );
+        write(&project.join(".claude/worktrees/forged/CLAUDE.md"), "forged rule\n");
+        write(&project.join(".claude.moved-aside-rules/CLAUDE.md"), "aside rule\n");
+        write(&project.join("kb.moved-aside/.claude/skills/x/SKILL.md"), "aside skill\n");
+        write(&project.join(".claude.moved-aside/a/.claude/b/.claude/CLAUDE.md"), "nested rule\n");
+        let found = foreign_agent_files(&project);
+        for rel in [
+            ".claude/worktrees/stray",
+            ".claude/worktrees/forged",
+            ".claude.moved-aside-rules/CLAUDE.md",
+            "kb.moved-aside/.claude",
+            ".claude.moved-aside/a/.claude",
+        ] {
+            assert!(found.iter().any(|f| f == rel), "{rel} in {found:?}");
+        }
+        assert!(!found.iter().any(|f| f.contains("live")), "{found:?}");
+        assert!(sweep_agent_files(&project, false).error.is_none());
+        assert!(foreign_agent_files(&project).is_empty(), "{:?}", foreign_agent_files(&project));
+        assert!(live.join("scenes/CLAUDE.md").is_file());
+        let notes = notes(&project);
+        for rule in ["stray rule", "forged rule", "aside rule", "nested rule"] {
+            assert!(notes.contains(rule), "{rule}: {notes}");
+        }
+        let _ = std::fs::remove_dir_all(project.parent().unwrap());
+    }
+
+    #[test]
+    fn a_linked_worktrees_folder_moves_whole_and_its_target_stays() {
+        use crate::real_dir::hostile;
+        let (project, victim) = hostile::folder("worktrees-link");
+        write(&victim.join("mine/CLAUDE.md"), "mine");
+        hostile::plant(&project, ".claude/worktrees", &victim);
+        assert_eq!(swept(&project, false), vec![".claude/worktrees → .claude.moved-aside-worktrees"]);
+        assert_eq!(std::fs::read_to_string(victim.join("mine/CLAUDE.md")).unwrap(), "mine");
+        hostile::clean_up(&project);
+    }
+
     #[test]
     fn the_claude_folder_keeps_only_the_allow_list() {
         let dir = scratch("claude-dir");
@@ -2593,7 +3161,7 @@ mod tests {
         }
         assert!(!dir.join("scenes/.claude").exists());
         assert!(dir.join(".claude.moved-aside-scenes-.claude/settings.json").is_file());
-        assert!(claude.join("worktrees/a/file").is_file());
+        assert!(dir.join(".claude.moved-aside-worktrees-a/file").is_file(), "git never made it");
         assert!(foreign_agent_files(&dir).is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -2685,10 +3253,15 @@ mod tests {
         ] {
             assert!(deny.contains(&json!(rule)), "{rule}");
         }
+        for rule in BRIDGE_DENY_RULES {
+            assert!(deny.contains(&json!(rule)), "{rule}");
+        }
         for rule in deny.iter().map(|rule| rule.as_str().unwrap()) {
             assert!(!rule.starts_with("Read(~/**"), "{rule} misses a mounted share");
             assert!(!rule.starts_with("Read(~/.claude/**"), "{rule} blocks Claude Code's own files");
-            assert!(!rule.contains("Kookaburra Cut"), "{rule} blocks the workspace");
+            if rule.contains("Kookaburra Cut") {
+                assert!(rule.contains("Kookaburra Cut/_bridge/"), "{rule} blocks the workspace");
+            }
         }
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -2708,7 +3281,7 @@ mod tests {
         tampered["permissions"]["deny"].as_array_mut().unwrap().push(json!("Read(!.env)"));
         write(&path, &serde_json::to_string_pretty(&tampered).unwrap());
         assert_eq!(
-            plan_settings(Some(&std::fs::read_to_string(&path).unwrap())).1,
+            plan_settings(Some(&std::fs::read_to_string(&path).unwrap()), true).1,
             vec!["permissions.deny: Read(!.env)"]
         );
         stamp_project(&[(SKILL_NAME, &src)], &project, &opts("0.19.0", false, 2)).unwrap();
@@ -2724,9 +3297,10 @@ mod tests {
 
     #[test]
     fn the_stamp_keeps_the_managed_ask_and_deny_and_drops_a_folders_own() {
-        let (next, removed) = plan_settings(Some(
-            r#"{"permissions":{"ask":["WebFetch","Bash(rm *)"],"deny":["Read(x)"]}}"#,
-        ));
+        let (next, removed) = plan_settings(
+            Some(r#"{"permissions":{"ask":["WebFetch","Bash(rm *)"],"deny":["Read(x)"]}}"#),
+            true,
+        );
         let next: Value = serde_json::from_str(&next.unwrap()).unwrap();
         assert_eq!(next["permissions"]["ask"], json!(["WebFetch", "WebSearch"]));
         assert_eq!(next["permissions"]["deny"], managed_settings()["permissions"]["deny"]);
@@ -2756,6 +3330,16 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(project.join(".claude/settings.json")).unwrap(),
             settings
+        );
+        crate::history::init_repo(&project, "chore: create project").unwrap();
+        plant_hook(&project, "pre-commit");
+        stamp_project(&[(SKILL_NAME, &src)], &project, &opts("0.19.0", false, 3)).unwrap();
+        let withheld = std::fs::read_to_string(project.join(".claude/settings.json")).unwrap();
+        assert_ne!(withheld, settings);
+        stamp_project(&[(SKILL_NAME, &src)], &project, &opts("0.19.0", false, 4)).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(project.join(".claude/settings.json")).unwrap(),
+            withheld
         );
         let _ = std::fs::remove_dir_all(&dir);
     }

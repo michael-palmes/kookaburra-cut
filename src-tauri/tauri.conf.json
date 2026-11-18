@@ -74,7 +74,8 @@
       "../.agents/skills/kookaburra-brand-packs/scripts/*.py": "claude-skills/kookaburra-brand-packs/scripts/",
       "../.agents/skills/kookaburra-brand-packs/scripts/*.js": "claude-skills/kookaburra-brand-packs/scripts/",
       "resources/models/beat_this_small.onnx": "models/beat_this_small.onnx",
-      "resources/models/mel_spectrogram.onnx": "models/mel_spectrogram.onnx"
+      "resources/models/mel_spectrogram.onnx": "models/mel_spectrogram.onnx",
+      "resources/licenses": "licenses"
     },
     "icon": [
       "icons/32x32.png",

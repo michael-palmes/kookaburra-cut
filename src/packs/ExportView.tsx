@@ -215,13 +215,13 @@ export function ExportView({ onClose }: { onClose: () => void }) {
     const pct = p && p.total > 0 ? Math.round((p.file / p.total) * 100) : 0;
     return (
       <div className="packs-progress">
-        <div style={{ fontSize: 15 }}>
+        <div style={{ fontSize: "calc(15px * var(--text-scale))" }}>
           {p?.stage === "hashing" ? "Checking files" : "Writing the pack"}
         </div>
         <div className="packs-progress-bar">
           <div className="packs-progress-fill" style={{ width: `${pct}%` }} />
         </div>
-        <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
+        <div style={{ marginTop: 10, fontSize: "calc(12px * var(--text-scale))", opacity: 0.7 }}>
           {p && p.total > 0 ? `${p.file} of ${p.total} files` : "Preparing…"}
         </div>
         <div className="packs-actions" style={{ justifyContent: "center", marginTop: 20 }}>

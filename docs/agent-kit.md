@@ -115,13 +115,24 @@ scripts/
   template means archiving the old one first (a test pins its digest).
 - **The allow-list** (`sweep_agent_files`, before everything else on every stamp).
   `CLAUDE.local.md`, `AGENTS.md`, `.claude.json`, `.claude/CLAUDE.md` and any `CLAUDE.md`
-  below the root (case variants too, `.git` skipped, links never followed) move to `## From
+  below the root (any name the filesystem opens as one of these, `AGENTſ.md` included, `.git`
+  skipped, links never followed, folders moved aside walked too) move to `## From
   <path>` sections of `NOTES.md`, fenced, then go. `.mcp.json` lands there with `env` and
   `headers` values removed, and the original moves aside. Anything else in `.claude/` beyond
-  `settings.json`, `settings.local.json`, `skills` and `worktrees`, a nested `.claude`, a link,
+  `settings.json`, `settings.local.json`, `skills` and `worktrees` (each `worktrees/*` a checkout
+  this repository registered), a nested `.claude`, a link,
   a folder, a file over 256 KB or not UTF-8, and a settings file that doesn't parse move aside
   unread. A root `CLAUDE.md` that isn't a shipped default moves only on the first open of a
-  folder; after that it is the person's.
+  folder; after that it is the person's, though a change made outside the app since the last
+  stamp (`claudeMd`, its SHA-256 after each stamp) goes on the review sheet as "CLAUDE.md
+  changed since the last check". A first open is a folder with no finished record, or one whose
+  creation time differs from the recorded `folderCreatedNs` (a folder replaced at the path); a
+  duplicate and a workspace move clear `folderCreatedNs` so the app's own copies adopt theirs.
+  Forget, delete and a pack landing drop the record. The same goes for hooks: on the first open everything
+  in `.git/hooks` but git's `.sample` files (a link moves as a link, and a `.git/hooks` that is
+  a link moves whole) goes to `.git/hooks.moved-aside/<name>` (then `-2`, `-3`), inside `.git` so
+  packs, the trust hash and this sweep never see it, and the review lists it. A hook that won't
+  move is logged and only keeps the agent's git off.
 - **The review** (`src-tauri/src/workspace.rs`). `AppSettings.agentFiles`, by absolute folder
   and outside it so a folder can't mark itself reviewed, records the first sweep, the app
   version and what moved. `review_agent_files_for` shows that on a native sheet (Return is Not
@@ -129,6 +140,21 @@ scripts/
   anything is unreviewed, or a file is still present (`foreign_agent_files`, read-only, also
   catches what landed after the stamp), naming the files and what to do. Stripping a person's own "don't ask again" rule from
   `settings.local.json` shows here once too: the app can't tell it from a planted one.
+  Then `review_committed_agent_files` reads `HEAD` and the index with the app's guarded git
+  (`history::committed_agent_files`), since a Claude worktree or a checkout brings back what
+  was committed: any agent path there (`kit::steers_agent`: under a `.claude`, a `NOTES.md`
+  name or the root `kb`, folded as APFS folds) that is a link, a conflict, or not the swept
+  folder's file byte for byte keeps Claude off and is listed on a sheet whose Save and Start
+  Claude commits the folder's copies of those paths alone (`commit_agent_files`) and checks
+  again. The app's own updates skip the sheet: each stamp records `stamp`, a `kit::stamp_key`
+  for every app-owned file it left (`kit::own_stamp`), moving the keys it replaces to
+  `stampedBefore` (capped); a difference at an `app_owned` path whose committed copy's key is
+  recorded and whose folder copy is in `stamp` (or gone from a shipped skill) is committed
+  without asking. `stampsLate` marks a folder the app had checked before it recorded stamps;
+  until its history first matches (`historySynced`), a sheet of app-owned paths alone says it is
+  a one-off after updating. Only stamped skills are recorded, and committed copies over 4 MiB
+  are never read. A shipped default root `CLAUDE.md` and gitlinks pass; a refused `.git` or a git
+  error refuses the handoff.
 - `./kb`: the shim (`stamp_shim`), written from `src-tauri/templates/project-kb.sh` with mode
   0755 when missing, and rewritten (content or mode) while it carries the marker. Any other
   `kb` at the project root (a file, folder or link) arrived with the folder and would run with
@@ -147,6 +173,14 @@ scripts/
   configure the agent; what the person wants the agent told goes in `CLAUDE.md` once the
   folder is open, which Claude Code reads as instructions and the stamp leaves alone past
   the RULES import.
+- **The agent's git** (`history::agent_git_verdict`, asked at every stamp). Plain `git` runs the
+  folder's hooks and the programs its `.git/config` names, so the template's five git rules stay
+  only while the app would run git there itself, no live hook remains and no other `.git` sits below
+  the root (git run in that folder would use its own hooks). Otherwise they go and
+  `deny` gains `Bash(git:*)`, with one `[kit]` line naming why; either set is the app's own, so
+  the swap is never listed for review. kb's `bash-pre` refuses any command that runs git under
+  the same verdict, checked live (`hookfast.git_withheld`), and names `./kb checkpoint`,
+  `./kb history` and `./kb diff`, which never run hooks.
 
 Managed settings:
 
@@ -163,7 +197,9 @@ Managed settings:
       "Read(//Applications/Kookaburra Cut.app/Contents/Resources/**)"
     ],
     "ask": ["WebFetch", "WebSearch"],
-    "deny": ["Read(~/.ssh/**)", "Read(**/.env)", "Read(//**/.env)", "..."]
+    "deny": ["Read(~/.ssh/**)", "Read(**/.env)", "Read(//**/.env)", "...",
+      "Read(~/Kookaburra Cut/_bridge/keys/**)", "Read(//**/Kookaburra Cut/_bridge/keys/**)",
+      "Edit(~/Kookaburra Cut/_bridge/**)", "Edit(//**/Kookaburra Cut/_bridge/**)"]
   },
   "hooks": {
     "SessionStart": [{ "matcher": "startup|resume|clear|compact", "hooks": [
@@ -282,10 +318,11 @@ As built (`scripts/kblib/`):
   are silent inside the workspace, announced on stderr with the resolved path and size
   outside it (`kb: reading /Users/x/Desktop/deck.csv (812 bytes) from outside the
   workspace`), and refused outright for `~/.ssh`, `~/.aws`, `~/.config`, `~/.gnupg`,
-  `~/Library/Keychains`, `~/.docker`, `~/.kube`, `~/.azure`, `~/.claude`, `.env*`, `.netrc`,
+  `~/Library/Keychains`, `~/.docker`, `~/.kube`, `~/.azure`, `~/.claude`,
+  `~/Library/Application Support/Claude`, `.claude.json`, `.env*`, `.netrc`,
   `.git-credentials`, `.npmrc`, `.pypirc`, `id_rsa*`, `id_ed25519*`, `id_ecdsa*`, `id_dsa*`,
   `credentials*.json`, `*.pem`, `*.p12`, `*.key`, `*.jks`, `*.keystore`, `*.tfstate` and shell
-  history files. `kit.rs` `CREDENTIAL_*` is the same list for the managed `Read` deny rules
+  history files, names compared in any case as APFS does. `kit.rs` `CREDENTIAL_*` is the same list for the managed `Read` deny rules
   and the folders `bridge.rs` never takes as a write root, and a test holds them together. The
   deny rules name only the secrets in `~/.claude`, since Claude Code tells the agent to read
   its saved results and memory there. Folders are `Read(~/<dir>/**)`; a file name gets
@@ -1362,9 +1399,13 @@ throttled while the app is hidden), removed on exit; autorun instances never wri
   },
   "exportJob": null,
   "health": null,
-  "pickedDirs": ["/Users/x/Desktop/review"]
+  "pickedDirs": ["/Users/x/Desktop/review"],
+  "auth": 1
 }
 ```
+
+`auth` is `1` while the instance signs ("Signing"); a passive instance and an app before
+0.23.0 leave it out.
 
 `pickedDirs` lists the folders the app's own dialogs returned this session ("kb reach").
 Two more fields locate the presets: `presetsDir` (holds `<slug>/`) and
@@ -1410,9 +1451,10 @@ lands in `responses/<id>.json`. A request without `kind` is a v1 capture.
   "preset": "title", "position": 4, "name": "Highlights" }
 ```
 
-`requestedAtMs` is optional (the file's age stands in), `scene` is an index or a file
-stem, and an unparseable request gets an immediate error response from a serving
-instance. A request without `kind` and with `version` below 2 is answered as
+`requestedAtMs` is optional for an unsigned request (the file's age stands in) and
+required for a signed one, `scene` is an index or a file stem, and an unparseable request
+signed with the instance's key gets an immediate error response (any other waits out the
+120 s prune). A request without `kind` and with `version` below 2 is answered as
 `version: 1`, so old kits keep working. The address fields are optional (old kits send
 none); kb adds `workspaceRoot` to every request, `projectPath` when the request is about
 its own project, `instancePid` unless the elected app is an older one, and `client` (the
@@ -1509,6 +1551,50 @@ waits until it times out.
   served here, from the reported censuses and an event to the main window;
   `lose-context` on the render window (the default) and the dev-only `spawn-contexts`
   (`n`, at most 32) go to the render window. Details in "The capture service".
+
+### Signing
+
+Since 0.23.0 (`src-tauri/src/bridge_auth.rs`, `kblib/bridgeauth.py`). A serving instance
+draws 32 random bytes at bridge init and writes them as hex to `_bridge/keys/<pid>.key`
+(folder 0700, file 0600, created new, a link at that name removed first); it is removed on
+exit and pruned with dead heartbeats. An instance that can't write its key does not serve
+(`bridge.reason` says why); a passive one writes none. Its heartbeat says `"auth": 1`.
+
+- **Requests.** When the elected instance signs (its heartbeat says `auth: 1` or its key file
+  exists), kb reads `keys/<pid>.key` (a 0600 regular file this user owns, never through a link)
+  and appends `"auth":{"v":1,"mac":"<64 hex>"}`. The mac is HMAC-SHA256 over the file's EXACT
+  bytes with its own 64 digits read as zeros, so it covers every field with no canonical JSON.
+- **Claims.** `claim_next_ordered`, the one claim path for the render window and the native
+  loop, checks a request addressed to this instance after its freshness. A wrong mac (tampered,
+  forged or signed with another instance's key), an id that differs from the file name, no
+  `requestedAtMs`, one sent more than a minute ahead, or an id this key already accepted is
+  deleted and logged (`[bridge] dropped request "<id>": <reason>`, never the bytes) with no
+  answer. An accepted id is held until its signed deadline (`deadlineAtMs`, else
+  `requestedAtMs` + 120 s, capped at an hour), after which the request is stale anyway; a
+  request from an earlier session fails the key. No counter. The capture service's triage (throttled, too large,
+  wedged), its queue depth and the render pending count see only what a claim would serve,
+  so neither path answers or counts a request the claim would drop.
+- **`kit-outdated`.** A request with no `auth` at all (a kit stamped before 0.23.0, or v1
+  `capture.py`) gets one fixed answer, `{ ok: false, code: "kit-outdated", error: "... open the
+  project in Kookaburra Cut once to update its kit, then rerun" }`, so it fails fast instead of
+  waiting out its timeout. Opening the project restamps the kit.
+- **Answers.** `write_response_value`, the single writer, signs every JSON answer the same way
+  and adds `auth.files: { "<name>.png": "<sha256>" }` for each PNG directly inside
+  `responses/` that the answer names. kb verifies the mac and every named frame before it
+  reports a path (and again on the copy it makes into `.kb/captures/`); an unsigned or wrong
+  answer or frame exits 2 (`bad-signature`) whenever the instance signs. kb drops `auth` from
+  the answer it reports. Progress files (`<id>.progress.json`) stay unsigned: they only move a
+  progress bar.
+- **Agent tools.** The stamp denies `Read` of `_bridge/keys/**` and `Edit` of `_bridge/**`
+  (`kit.rs`, `BRIDGE_DENY_RULES`); `reach.py` refuses a path in `_bridge/keys` and the bash-pre
+  hook a command naming it (`hookfast.names_bridge_keys`, best effort). kb, run through Bash, is
+  unaffected.
+- **Version skew.** A new kb and an older app (no `auth`, no key file): kb sends unsigned, as
+  before. An older kb and a new app: `kit-outdated`. Headless runs (`<exe> edit|media|song|check|trust`,
+  `kb export --headless`) are process runs, not the queue, and are unchanged; `kb video`'s
+  `openEdit` and `mediaChanged` go through the queue and sign. Live edits never touch the queue.
+
+What it closes and what it does not: SECURITY.md ("What reaches your agent", "Not yet").
 
 ### Export health
 
@@ -1813,7 +1899,8 @@ Types: `src/engine/loadDiagnostics.ts`; `LoadedProject.sceneErrors`,
   it changed ("App edits"), and a
   kb write landing while the project is open and trusted in this app session re-stamps on
   the reload (Rust recomputes the hash in `check_project_trust`). Content that changed
-  while the project was closed asks again through the native sheet on the next open.
+  while the project was closed asks again through the native sheet on the next launch;
+  a project allowed earlier in this launch re-stamps instead.
 - Edit documents work the same way. `save_edit` carries the base hash and refuses a
   stale one; the editor window polls its doc's stamp (1 s and on focus, applied once two
   polls agree) and takes an outside change as ONE "Claude edit" undo step, merging any

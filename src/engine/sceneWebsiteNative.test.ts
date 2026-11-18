@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
 
 import {
+  clearProjectWebsiteData,
   clearWebsiteData,
   grantWebsiteOrigin,
   importWebsiteImage,
@@ -67,6 +68,7 @@ describe("Website native command surface", () => {
     await listWebsiteData();
     await clearWebsiteData("example.com");
     await clearWebsiteData();
+    await clearProjectWebsiteData(request.projectPath);
     expect(mocks.invoke.mock.calls).toEqual([
       ["website_open", { request }],
       ["website_show", { viewId: "view-1" }],
@@ -78,6 +80,7 @@ describe("Website native command surface", () => {
       ["website_list_data"],
       ["website_clear_data", { displayName: "example.com" }],
       ["website_clear_data", { displayName: null }],
+      ["website_clear_project_data", { projectPath: request.projectPath }],
     ]);
   });
 });

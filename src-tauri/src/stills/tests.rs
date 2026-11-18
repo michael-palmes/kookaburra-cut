@@ -983,6 +983,7 @@ fn video_and_stills_never_cancel_each_other() {
         partial: dir.join(".out.part.mp4"),
         mezz_dir: None,
         audio_snapshot: None,
+        landed: (String::new(), String::new()),
     });
     state.stills.cancel();
     assert!(!state.stills.busy());

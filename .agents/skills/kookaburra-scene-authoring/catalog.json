@@ -14301,6 +14301,393 @@
         ]
       },
       {
+        "id": "gallery",
+        "label": "Gallery",
+        "family": "deco",
+        "familyLabel": "Deco and architecture",
+        "lit": false,
+        "colorSlots": [
+          {
+            "label": "Plaster",
+            "fallback": "#3b3530"
+          },
+          {
+            "label": "Oak",
+            "fallback": "#4a2f22"
+          },
+          {
+            "label": "Shade",
+            "fallback": "#15120f"
+          },
+          {
+            "label": "Brass",
+            "fallback": "#705c3b"
+          },
+          {
+            "label": "Lamp",
+            "fallback": "#a8895c",
+            "glow": true
+          }
+        ],
+        "params": [
+          {
+            "id": "bayWidth",
+            "label": "Bay width",
+            "default": 9,
+            "min": 6,
+            "max": 14,
+            "step": 0.5
+          },
+          {
+            "id": "pierDepth",
+            "label": "Pier depth",
+            "default": 0.6,
+            "min": 0.2,
+            "max": 1.2,
+            "step": 0.05
+          },
+          {
+            "id": "lampHeight",
+            "label": "Lamp height",
+            "default": 2.6,
+            "min": 1.5,
+            "max": 4.5,
+            "step": 0.1
+          },
+          {
+            "id": "pools",
+            "label": "Picture lights",
+            "default": 0.85,
+            "min": 0,
+            "max": 1,
+            "step": 0.01
+          },
+          {
+            "id": "daylight",
+            "label": "Daylight",
+            "default": 0.25,
+            "min": 0,
+            "max": 1,
+            "step": 0.01
+          },
+          {
+            "id": "clouds",
+            "label": "Passing cloud",
+            "default": 0.4,
+            "min": 0,
+            "max": 1,
+            "step": 0.01
+          },
+          {
+            "id": "boards",
+            "label": "Board width",
+            "default": 0.42,
+            "min": 0.25,
+            "max": 0.8,
+            "step": 0.01
+          }
+        ],
+        "presets": [
+          {
+            "id": "p1",
+            "label": "Tasmanian Oak",
+            "colors": ["#c9bbb1", "#b49579", "#a99c94", "#bfa06e", "#ffe8c4"],
+            "backing": "#e2d8cd",
+            "speed": 1,
+            "params": {
+              "bayWidth": 9,
+              "pierDepth": 0.6,
+              "lampHeight": 2.6,
+              "pools": 1,
+              "daylight": 0.6,
+              "clouds": 0.5,
+              "boards": 0.42
+            },
+            "mode": "light",
+            "textColor": "#000000",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.7,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": 0,
+                "elevationDeg": 68,
+                "intensity": 1.8,
+                "kelvin": 3800,
+                "angularDeg": 4
+              },
+              "ambient": 0.5
+            }
+          },
+          {
+            "id": "p2",
+            "label": "Celery Top",
+            "colors": ["#ddd3c3", "#c9a774", "#b3a690", "#c6a466", "#fff3d8"],
+            "backing": "#ece5d9",
+            "speed": 0.9,
+            "params": {
+              "bayWidth": 9,
+              "pierDepth": 0.45,
+              "lampHeight": 2.6,
+              "pools": 0.65,
+              "daylight": 0.8,
+              "clouds": 0.65,
+              "boards": 0.34
+            },
+            "mode": "light",
+            "textColor": "#000000",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.7,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": 0,
+                "elevationDeg": 68,
+                "intensity": 1.7,
+                "kelvin": 4400,
+                "angularDeg": 4
+              },
+              "ambient": 0.5
+            }
+          },
+          {
+            "id": "p3",
+            "label": "Spotted Gum",
+            "colors": ["#c4c3bf", "#b0a593", "#a3a3a2", "#b9a073", "#f6f3ec"],
+            "backing": "#e1e0dd",
+            "speed": 1.1,
+            "params": {
+              "bayWidth": 9,
+              "pierDepth": 0.85,
+              "lampHeight": 2.6,
+              "pools": 0.8,
+              "daylight": 0.45,
+              "clouds": 0.35,
+              "boards": 0.55
+            },
+            "mode": "light",
+            "textColor": "#000000",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.7,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": 0,
+                "elevationDeg": 68,
+                "intensity": 1.6,
+                "kelvin": 5000,
+                "angularDeg": 4
+              },
+              "ambient": 0.5
+            }
+          },
+          {
+            "id": "p4",
+            "label": "Blackbutt",
+            "colors": ["#bcc2b0", "#c4a988", "#a2a796", "#c3a46c", "#fbf3df"],
+            "backing": "#e3e6dc",
+            "speed": 1,
+            "params": {
+              "bayWidth": 9,
+              "pierDepth": 0.35,
+              "lampHeight": 2.6,
+              "pools": 0.55,
+              "daylight": 0.9,
+              "clouds": 0.75,
+              "boards": 0.65
+            },
+            "mode": "light",
+            "textColor": "#000000",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.7,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": 0,
+                "elevationDeg": 68,
+                "intensity": 1.7,
+                "kelvin": 4800,
+                "angularDeg": 4
+              },
+              "ambient": 0.5
+            }
+          },
+          {
+            "id": "p5",
+            "label": "Silky Oak",
+            "colors": ["#d8c1b8", "#c49d86", "#b39d96", "#c09b70", "#ffeedd"],
+            "backing": "#eadcd6",
+            "speed": 0.85,
+            "params": {
+              "bayWidth": 9,
+              "pierDepth": 1,
+              "lampHeight": 2.6,
+              "pools": 1,
+              "daylight": 0.35,
+              "clouds": 0.4,
+              "boards": 0.46
+            },
+            "mode": "light",
+            "textColor": "#000000",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.7,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": 0,
+                "elevationDeg": 68,
+                "intensity": 1.8,
+                "kelvin": 3500,
+                "angularDeg": 4
+              },
+              "ambient": 0.5
+            }
+          },
+          {
+            "id": "p6",
+            "label": "Rosewood",
+            "colors": ["#3b3530", "#4a2f22", "#15120f", "#705c3b", "#a8895c"],
+            "backing": "#110f0d",
+            "speed": 1,
+            "params": {
+              "bayWidth": 9,
+              "pierDepth": 0.6,
+              "lampHeight": 2.6,
+              "pools": 0.85,
+              "daylight": 0.25,
+              "clouds": 0.4,
+              "boards": 0.42
+            },
+            "mode": "dark",
+            "textColor": "#ffffff",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.3,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": 0,
+                "elevationDeg": 68,
+                "intensity": 1.2,
+                "kelvin": 3000,
+                "angularDeg": 4
+              },
+              "ambient": 0.2
+            }
+          },
+          {
+            "id": "p7",
+            "label": "Buloke",
+            "colors": ["#2f3540", "#3a2e26", "#111317", "#6c5839", "#a0875f"],
+            "backing": "#0d0f12",
+            "speed": 0.9,
+            "params": {
+              "bayWidth": 9,
+              "pierDepth": 0.8,
+              "lampHeight": 2.6,
+              "pools": 0.75,
+              "daylight": 0.35,
+              "clouds": 0.3,
+              "boards": 0.36
+            },
+            "mode": "dark",
+            "textColor": "#ffffff",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.3,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": 0,
+                "elevationDeg": 68,
+                "intensity": 1.1,
+                "kelvin": 3400,
+                "angularDeg": 4
+              },
+              "ambient": 0.2
+            }
+          },
+          {
+            "id": "p8",
+            "label": "Gidgee",
+            "colors": ["#2b322c", "#2f231b", "#0e110e", "#66523a", "#a5845a"],
+            "backing": "#0b0d0b",
+            "speed": 1.1,
+            "params": {
+              "bayWidth": 9,
+              "pierDepth": 0.4,
+              "lampHeight": 2.6,
+              "pools": 1,
+              "daylight": 0.15,
+              "clouds": 0.2,
+              "boards": 0.6
+            },
+            "mode": "dark",
+            "textColor": "#ffffff",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.3,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": 0,
+                "elevationDeg": 68,
+                "intensity": 1,
+                "kelvin": 2800,
+                "angularDeg": 4
+              },
+              "ambient": 0.2
+            }
+          },
+          {
+            "id": "p9",
+            "label": "Red Gum",
+            "colors": ["#42292a", "#4d2c22", "#170e0e", "#74583b", "#a78560"],
+            "backing": "#130c0c",
+            "speed": 0.95,
+            "params": {
+              "bayWidth": 9,
+              "pierDepth": 1,
+              "lampHeight": 2.6,
+              "pools": 0.9,
+              "daylight": 0.3,
+              "clouds": 0.5,
+              "boards": 0.5
+            },
+            "mode": "dark",
+            "textColor": "#ffffff",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.3,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": 0,
+                "elevationDeg": 68,
+                "intensity": 1.15,
+                "kelvin": 3200,
+                "angularDeg": 4
+              },
+              "ambient": 0.2
+            }
+          }
+        ]
+      },
+      {
         "id": "iris-screen",
         "label": "Iris screen",
         "family": "deco",
@@ -17674,6 +18061,418 @@
                 "intensity": 1.7,
                 "kelvin": 2800
               }
+            }
+          }
+        ]
+      },
+      {
+        "id": "sunroom",
+        "label": "Sunroom",
+        "family": "atmosphere",
+        "familyLabel": "Texture and atmosphere",
+        "lit": false,
+        "colorSlots": [
+          {
+            "label": "Plaster",
+            "fallback": "#2b221c"
+          },
+          {
+            "label": "Sunlight",
+            "fallback": "#795b3e"
+          },
+          {
+            "label": "Floor",
+            "fallback": "#1f1914"
+          }
+        ],
+        "params": [
+          {
+            "id": "sunSide",
+            "label": "Sun side",
+            "default": -30,
+            "min": -70,
+            "max": 70,
+            "step": 1
+          },
+          {
+            "id": "sunHeight",
+            "label": "Sun height",
+            "default": 24,
+            "min": 14,
+            "max": 50,
+            "step": 1
+          },
+          {
+            "id": "drift",
+            "label": "Drift",
+            "default": 2,
+            "min": 0,
+            "max": 8,
+            "step": 0.1
+          },
+          {
+            "id": "patch",
+            "label": "Light patch",
+            "default": -0.25,
+            "min": -1,
+            "max": 1,
+            "step": 0.01
+          },
+          {
+            "id": "slatPitch",
+            "label": "Slat pitch",
+            "default": 0.68,
+            "min": 0.25,
+            "max": 0.9,
+            "step": 0.01
+          },
+          {
+            "id": "opening",
+            "label": "Slat opening",
+            "default": 0.66,
+            "min": 0.3,
+            "max": 0.85,
+            "step": 0.01
+          },
+          {
+            "id": "panes",
+            "label": "Window panes",
+            "default": 3,
+            "min": 1,
+            "max": 4,
+            "step": 1
+          },
+          {
+            "id": "softness",
+            "label": "Softness",
+            "default": 1.3,
+            "min": 0.3,
+            "max": 3,
+            "step": 0.05
+          },
+          {
+            "id": "wallDistance",
+            "label": "Wall distance",
+            "default": 9,
+            "min": 7,
+            "max": 14,
+            "step": 0.5
+          }
+        ],
+        "presets": [
+          {
+            "id": "p1",
+            "label": "Bangalow",
+            "colors": ["#d0bfb5", "#fff4ea", "#c9b7ab"],
+            "backing": "#efe6de",
+            "speed": 1,
+            "params": {
+              "sunSide": -22,
+              "sunHeight": 24,
+              "drift": 2,
+              "patch": -0.25,
+              "slatPitch": 0.68,
+              "opening": 0.66,
+              "panes": 3,
+              "softness": 1.3,
+              "wallDistance": 9
+            },
+            "mode": "light",
+            "textColor": "#000000",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.65,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": -22,
+                "elevationDeg": 24,
+                "intensity": 2.2,
+                "kelvin": 3800,
+                "angularDeg": 1.5
+              },
+              "ambient": 0.45
+            }
+          },
+          {
+            "id": "p2",
+            "label": "Newrybar",
+            "colors": ["#b9bcc0", "#f6f6f1", "#b3b2ad"],
+            "backing": "#e3e5e6",
+            "speed": 1,
+            "params": {
+              "sunSide": 45,
+              "sunHeight": 32,
+              "drift": 2,
+              "patch": 0.35,
+              "slatPitch": 0.45,
+              "opening": 0.55,
+              "panes": 2,
+              "softness": 1,
+              "wallDistance": 10
+            },
+            "mode": "light",
+            "textColor": "#000000",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.65,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": 45,
+                "elevationDeg": 32,
+                "intensity": 2.2,
+                "kelvin": 5200,
+                "angularDeg": 1.5
+              },
+              "ambient": 0.45
+            }
+          },
+          {
+            "id": "p3",
+            "label": "Tintenbar",
+            "colors": ["#b4bba6", "#f5f2e2", "#b8b09c"],
+            "backing": "#e3e5d9",
+            "speed": 1.1,
+            "params": {
+              "sunSide": -55,
+              "sunHeight": 20,
+              "drift": 3,
+              "patch": -0.2,
+              "slatPitch": 0.66,
+              "opening": 0.68,
+              "panes": 4,
+              "softness": 1.7,
+              "wallDistance": 8
+            },
+            "mode": "light",
+            "textColor": "#000000",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.65,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": -55,
+                "elevationDeg": 20,
+                "intensity": 2.2,
+                "kelvin": 4400,
+                "angularDeg": 1.5
+              },
+              "ambient": 0.45
+            }
+          },
+          {
+            "id": "p4",
+            "label": "Lennox Head",
+            "colors": ["#d1ad9f", "#fde9dc", "#c9a594"],
+            "backing": "#f0dcd2",
+            "speed": 0.9,
+            "params": {
+              "sunSide": 30,
+              "sunHeight": 38,
+              "drift": 2,
+              "patch": 0.1,
+              "slatPitch": 0.48,
+              "opening": 0.5,
+              "panes": 1,
+              "softness": 1.1,
+              "wallDistance": 11
+            },
+            "mode": "light",
+            "textColor": "#000000",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.65,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": 30,
+                "elevationDeg": 38,
+                "intensity": 2.2,
+                "kelvin": 3400,
+                "angularDeg": 1.5
+              },
+              "ambient": 0.45
+            }
+          },
+          {
+            "id": "p5",
+            "label": "Brunswick Heads",
+            "colors": ["#cdbb98", "#fdf3d8", "#c2ae8c"],
+            "backing": "#ece2cc",
+            "speed": 1,
+            "params": {
+              "sunSide": -25,
+              "sunHeight": 30,
+              "drift": 2.5,
+              "patch": 0.25,
+              "slatPitch": 0.6,
+              "opening": 0.62,
+              "panes": 3,
+              "softness": 1.4,
+              "wallDistance": 12
+            },
+            "mode": "light",
+            "textColor": "#000000",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.65,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": -25,
+                "elevationDeg": 30,
+                "intensity": 2.2,
+                "kelvin": 4000,
+                "angularDeg": 1.5
+              },
+              "ambient": 0.45
+            }
+          },
+          {
+            "id": "p6",
+            "label": "Nightcap",
+            "colors": ["#2b221c", "#795b3e", "#1f1914"],
+            "backing": "#130f0c",
+            "speed": 1,
+            "params": {
+              "sunSide": -40,
+              "sunHeight": 22,
+              "drift": 2.5,
+              "patch": -0.35,
+              "slatPitch": 0.55,
+              "opening": 0.55,
+              "panes": 3,
+              "softness": 1.3,
+              "wallDistance": 9
+            },
+            "mode": "dark",
+            "textColor": "#ffffff",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.3,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": -40,
+                "elevationDeg": 22,
+                "intensity": 2,
+                "kelvin": 2900,
+                "angularDeg": 1.5
+              },
+              "ambient": 0.2
+            }
+          },
+          {
+            "id": "p7",
+            "label": "Border Ranges",
+            "colors": ["#161b26", "#566279", "#121621"],
+            "backing": "#0a0d14",
+            "speed": 0.9,
+            "params": {
+              "sunSide": 50,
+              "sunHeight": 34,
+              "drift": 1.5,
+              "patch": 0.3,
+              "slatPitch": 0.48,
+              "opening": 0.45,
+              "panes": 2,
+              "softness": 0.9,
+              "wallDistance": 10
+            },
+            "mode": "dark",
+            "textColor": "#ffffff",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.3,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": 50,
+                "elevationDeg": 34,
+                "intensity": 2,
+                "kelvin": 7500,
+                "angularDeg": 1.5
+              },
+              "ambient": 0.2
+            }
+          },
+          {
+            "id": "p8",
+            "label": "Minyon",
+            "colors": ["#261a20", "#7a5464", "#1d1418"],
+            "backing": "#110b0e",
+            "speed": 1.1,
+            "params": {
+              "sunSide": -60,
+              "sunHeight": 18,
+              "drift": 3,
+              "patch": -0.1,
+              "slatPitch": 0.64,
+              "opening": 0.62,
+              "panes": 4,
+              "softness": 1.8,
+              "wallDistance": 8
+            },
+            "mode": "dark",
+            "textColor": "#ffffff",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.3,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": -60,
+                "elevationDeg": 18,
+                "intensity": 2,
+                "kelvin": 3100,
+                "angularDeg": 1.5
+              },
+              "ambient": 0.2
+            }
+          },
+          {
+            "id": "p9",
+            "label": "Terania",
+            "colors": ["#18201b", "#55684f", "#141a15"],
+            "backing": "#0b100c",
+            "speed": 1,
+            "params": {
+              "sunSide": 25,
+              "sunHeight": 28,
+              "drift": 2,
+              "patch": 0.2,
+              "slatPitch": 0.58,
+              "opening": 0.58,
+              "panes": 1,
+              "softness": 1.5,
+              "wallDistance": 12
+            },
+            "mode": "dark",
+            "textColor": "#ffffff",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.3,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": 25,
+                "elevationDeg": 28,
+                "intensity": 2,
+                "kelvin": 3600,
+                "angularDeg": 1.5
+              },
+              "ambient": 0.2
             }
           }
         ]

@@ -4,8 +4,11 @@
 mod acl;
 mod asset_meta;
 mod asset_reach;
+mod audit;
+mod audit_mirror;
 mod brands;
 mod bridge;
+mod bridge_auth;
 mod bridge_export;
 mod bridge_health;
 mod bridge_range;
@@ -89,13 +92,14 @@ use encode::{
 };
 
 #[tauri::command]
+#[allow(unsafe_code)]
 fn show_character_palette(app: AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         app.run_on_main_thread(|| {
             use objc2_app_kit::NSApp;
             use objc2_foundation::MainThreadMarker;
-            // run_on_main_thread guarantees the marker required by AppKit.
+            // SAFETY: run_on_main_thread runs this closure on the main thread.
             let mtm = unsafe { MainThreadMarker::new_unchecked() };
             NSApp(mtm).orderFrontCharacterPalette(None);
         })
@@ -116,6 +120,7 @@ fn srgb_hex(red: f64, green: f64, blue: f64) -> String {
 
 /// The eyedropper: AppKit's screen colour sampler (no Screen Recording permission, unlike a screen capture), resolved to sRGB hex; `None` means the user cancelled. Async because the sampler returns at once and the user may take seconds to click.
 #[tauri::command]
+#[allow(unsafe_code)]
 async fn sample_screen_colour(app: AppHandle) -> Result<Option<String>, String> {
     #[cfg(target_os = "macos")]
     {
@@ -126,6 +131,7 @@ async fn sample_screen_colour(app: AppHandle) -> Result<Option<String>, String> 
             use objc2_app_kit::{NSColor, NSColorSampler, NSColorSpace};
             let sampler = NSColorSampler::new();
             let handler = RcBlock::new(move |colour: *mut NSColor| {
+                // SAFETY: the sampler passes a live NSColor for this call, or null when the person cancels.
                 let hex = unsafe { colour.as_ref() }.and_then(|colour| {
                     // A sampled NSColor carries the display's space (often Display P3), so convert.
                     let srgb = colour.colorUsingColorSpace(&NSColorSpace::sRGBColorSpace())?;
@@ -139,6 +145,7 @@ async fn sample_screen_colour(app: AppHandle) -> Result<Option<String>, String> 
                     let _ = tx.send(hex);
                 }
             });
+            // SAFETY: a main-thread call, and the handler holds only a Mutex-guarded sender, so any thread may call it.
             unsafe { sampler.showSamplerWithSelectionHandler(&handler) };
         })
         .map_err(|error| error.to_string())?;
@@ -302,11 +309,13 @@ fn export_flash_report(state: State<'_, FlashState>) -> Option<FlashOutcome> {
 
 /// Kills the WKWebView's own white pre-paint layer: Tauri's `backgroundColor` covers only the NSWindow on macOS, so the flash on window open is the webview painting white before first content; sets `underPageBackgroundColor` (public API) plus the `drawsBackground` KVC flag (private-API-adjacent, fine for direct distribution, revisit only if App Store ever matters), async on the main thread.
 #[cfg(target_os = "macos")]
+#[allow(unsafe_code)]
 pub(crate) fn deflash_webview(window: &tauri::WebviewWindow) {
     use objc2::msg_send;
     use objc2::runtime::AnyObject;
     use objc2_app_kit::NSColor;
     use objc2_foundation::{ns_string, NSNumber};
+    // SAFETY: with_webview runs this on the main thread with Tauri's live WKWebView, which answers both setters.
     let _ = window.with_webview(|webview| unsafe {
         // --surface-window (#0d1016) from the design tokens.
         let wk: *mut AnyObject = webview.inner().cast();
@@ -333,6 +342,8 @@ struct ExportRun {
     mezz_dir: Option<PathBuf>,
     /// The soundtrack copy ffmpeg reads, so an edit to the music mid-export can't reach the film.
     audio_snapshot: Option<PathBuf>,
+    /// The project and `video <aspect> <format>`, for the log line once the film is in place.
+    landed: (String, String),
 }
 
 impl ExportRun {
@@ -426,9 +437,17 @@ impl ExportState {
     }
 }
 
+#[allow(unsafe_code)]
 fn kill_pid(pid: u32) {
+    let Ok(pid) = libc::pid_t::try_from(pid) else {
+        return;
+    };
+    if pid <= 0 {
+        return;
+    }
+    // SAFETY: kill takes plain integers and touches no memory; a positive pid signals one process, never a group.
     unsafe {
-        libc::kill(pid as libc::pid_t, libc::SIGKILL);
+        libc::kill(pid, libc::SIGKILL);
     }
 }
 
@@ -620,6 +639,13 @@ fn start_export(
         partial,
         mezz_dir: run_mezz_dir,
         audio_snapshot,
+        landed: (
+            options
+                .project_slug
+                .clone()
+                .unwrap_or_else(|| options.project_id.clone()),
+            format!("video {} {ext}", options.aspect),
+        ),
     });
     *state.active.lock().map_err(|_| "export state poisoned")? = Some(ActiveExport {
         child,
@@ -869,6 +895,10 @@ async fn finish_export(
         flash.set(None);
     }
     result?;
+    log::info!(
+        "{}",
+        audit::export_line(&run.landed.0, &run.landed.1, &run.output)
+    );
     history.note(&run.output);
     let (report, unavailable) = finish_flash_tap(detector);
     write_flash_report(&run.output, report.as_ref());
@@ -964,10 +994,13 @@ async fn run_ffmpeg_to_completion(
 pub(crate) const DISK_FLOOR: u64 = 2 * 1024 * 1024 * 1024;
 
 /// Free bytes on the volume holding `path` (macOS statvfs): the mezzanine, clip-extraction and pack-staging disk guards.
+#[allow(unsafe_code)]
 pub(crate) fn free_disk_bytes(path: &std::path::Path) -> Result<u64, String> {
     use std::os::unix::ffi::OsStrExt;
     let c = std::ffi::CString::new(path.as_os_str().as_bytes()).map_err(|e| e.to_string())?;
+    // SAFETY: statvfs is plain C data, so all zeroes is a valid value.
     let mut vfs: libc::statvfs = unsafe { std::mem::zeroed() };
+    // SAFETY: c is a NUL-terminated path, and vfs is a live statvfs for the call to fill.
     if unsafe { libc::statvfs(c.as_ptr(), &mut vfs) } != 0 {
         return Err(format!("statvfs failed for {}", path.display()));
     }
@@ -1575,6 +1608,7 @@ macro_rules! kookaburra_handler {
             claude_app::open_claude_download,
             claude_app::open_privacy_page,
             managed::managed_policy,
+            audit::export_app_log,
             media::import_media,
             media::import_media_bytes,
             media::list_conform_jobs,
@@ -1603,6 +1637,10 @@ macro_rules! kookaburra_handler {
             settings_win::set_clip_cache_cap,
             settings_win::sidecar_versions,
             settings_win::hardware_video_support,
+            settings_win::forget_allowed_project,
+            settings_win::clear_app_data,
+            settings_win::reveal_app_logs,
+            settings_win::reveal_licences,
             updater::check_for_update,
             updater::set_update_consent,
             updater::install_update_and_relaunch,
@@ -1658,6 +1696,7 @@ macro_rules! kookaburra_handler {
             website::website_import_image,
             website::website_list_data,
             website::website_clear_data,
+            website::website_clear_project_data,
             website::website_hide,
             website::website_close,
             $($dev,)*
@@ -1738,8 +1777,19 @@ pub fn run() {
                     park_background_window(&main);
                 }
             }
+            let app_data = app.path().app_data_dir().ok();
+            let mirror = audit::mirror_at_launch();
+            let copy = mirror
+                .as_ref()
+                .and_then(|opened| opened.as_ref().ok().cloned());
+            if let Err(e) = app
+                .handle()
+                .plugin(audit::builder(app_data.as_deref(), copy).build())
+            {
+                eprintln!("[audit] the app log could not start: {e}");
+            }
             // Confidential work on disk is the user's alone: the app's own folders go owner-only before anything writes.
-            if let Ok(app_data) = app.path().app_data_dir() {
+            if let Some(app_data) = app_data {
                 let sinks = app
                     .path()
                     .home_dir()
@@ -1751,6 +1801,8 @@ pub fn run() {
                 privacy::seal_at_startup(app_data, sinks);
             }
             managed::log_at_boot();
+            audit::log_mirror_at_boot(&mirror);
+            website::retire_shared_store(app.handle());
             asset_reach::init(app.handle());
             bridge::init(app.handle());
             bridge::spawn_heartbeat(app.handle().clone());
@@ -1770,13 +1822,6 @@ pub fn run() {
             // Staging and backup trees from a crashed or killed import; harmless but they accumulate.
             if let Ok(root) = workspace::require_root(&app.handle().clone(), &app.state()) {
                 pack::read::sweep_stale(&root);
-            }
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
             }
             // Native menu: the stock menus (Edit must stay, webview copy/paste rides on it) plus a Project menu whose "Edit with Claude" toggles the Claude launcher, and "⚙ Settings…" (⌘,) in the app submenu's native spot (after About + ─).
             {
@@ -2155,6 +2200,7 @@ mod tests {
             partial: PathBuf::from("/d/.out.part.mp4"),
             mezz_dir: None,
             audio_snapshot: None,
+            landed: (String::new(), String::new()),
         }
     }
 

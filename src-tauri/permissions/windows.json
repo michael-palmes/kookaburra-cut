@@ -59,6 +59,7 @@
           "website_grant_origin",
           "website_revoke_origin",
           "website_list_grants",
+          "website_clear_project_data",
           "website_resume_pending",
           "website_set_bounds",
           "website_set_zoom",

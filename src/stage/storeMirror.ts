@@ -21,9 +21,17 @@ function dataFields(state: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
+/** Narrows a patch from the other realm to the fields this side lets it write, given this side's current state. */
+export type MirrorFilter = (
+  name: MirroredStore,
+  patch: Record<string, unknown>,
+  current: Record<string, unknown>,
+) => Record<string, unknown>;
+
 export function mirrorStores(
   stores: Partial<Record<MirroredStore, AnyStore>>,
   send: (name: MirroredStore, patch: Record<string, unknown>) => void,
+  accept: MirrorFilter = (_, patch) => patch,
 ): StoreMirror {
   const applying = new Set<MirroredStore>();
   const offs: (() => void)[] = [];
@@ -47,13 +55,15 @@ export function mirrorStores(
     apply(name, patch) {
       const store = stores[name];
       if (!store) return;
+      const allowed = accept(name, patch, store.getState());
+      if (Object.keys(allowed).length === 0) return;
       applying.add(name);
       try {
         try {
-          store.setState(patch);
+          store.setState(allowed);
         } catch {
           // React's nested-update limit can trip on a patch during a fast scrub; it resets as it throws, so one retry reaches the listeners it skipped.
-          store.setState(patch);
+          store.setState(allowed);
         }
       } finally {
         applying.delete(name);

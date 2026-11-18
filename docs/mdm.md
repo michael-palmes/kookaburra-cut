@@ -20,6 +20,41 @@ Two rules hold throughout:
 The policy is read once per launch (`src-tauri/src/managed.rs`); a profile
 installed or removed while the app runs takes effect at the next launch.
 
+## Installing with the pkg
+
+From 0.23.0 each release carries `KookaburraCut-<version>.pkg` beside the DMG,
+for an MDM to install with no prompts: Jamf, Kandji, Mosyle and Intune take
+it as it is, and `docs/fleet-deployment.md` has a recipe for each. It installs
+one thing, `Kookaburra Cut.app`, into `/Applications`, owned by `root:wheel`,
+with no install scripts; only into the system domain, only on macOS 26.0+ on
+Apple Silicon; and it is not relocatable, so Installer writes `/Applications`
+rather than a stray copy of the app elsewhere. It is signed with a Developer ID
+Installer certificate from the app's team, notarised and stapled
+(`scripts/sign-and-notarize.sh`); `scripts/verify-release.sh` checks each of
+these on every release, and `SECURITY.md` ("Release integrity", "Installer
+package") lists the commands to check a download yourself. The receipt is
+`com.mpalmes.kookaburracut` (`pkgutil --pkg-info com.mpalmes.kookaburracut`).
+
+- **Upgrades.** The next release's pkg replaces the bundle in place. Projects,
+  settings and app data live outside it (`~/Kookaburra Cut` and
+  `~/Library/Application Support/com.mpalmes.kookaburracut`), so they stay. The
+  package is version checked (`bundle-version` in its `PackageInfo`), so a pkg
+  older than the installed app leaves the app alone.
+- **The in-app updater** still runs on a pkg install, but it cannot replace a
+  root-owned bundle as the user, so it asks for an administrator's password
+  (`install_update_and_relaunch` in `src-tauri/src/updater.rs` hands the swap
+  to `tauri-plugin-updater`, which falls back to an authorised move). A
+  standard user cannot finish it, and an update that does finish leaves the
+  bundle owned by the user who ran it until the next pkg, while the receipt
+  still names the version the pkg installed. On a fleet, push each release's
+  pkg and force `DisableUpdateCheck`, or `UpdateEndpoint` to keep in-app
+  updates from your own mirror.
+- **Removing it.** Delete `/Applications/Kookaburra Cut.app`, then
+  `sudo pkgutil --forget com.mpalmes.kookaburracut`; the two folders above
+  stay until someone deletes them. `packaging/mdm/uninstall-kookaburra-cut.sh`,
+  run as root, does both and clears each account's app data, leaving projects
+  and the Keychain key (`docs/fleet-deployment.md`, "Remove it").
+
 ## Keys
 
 | Key | Type | When forced |
@@ -33,6 +68,8 @@ installed or removed while the app runs takes effect at the next launch.
 | `DisablePackExport` | boolean | `true` removes File ▸ Export Pack…, and `open_pack_export`, `build_pack` and `rotate_publisher_key` refuse before any dialog, so the app never creates a pack signing key in the Keychain (`pack/commands.rs`, `pack/publisher.rs`). Settings ▸ Publisher shows locked rows. Imports stay with `AllowedPublisherKeyIds` |
 | `ExportsInProject` | boolean | `true` keeps every video and stills export started in the app in the project's `exports/` folder: a request for Downloads is routed there rather than refused (`export_dir_kind` in `lib.rs`), `set_export_to_downloads` records off whatever it is asked, and Settings ▸ Video locks Save exports to Downloads. `.kbpack` files keep their Save dialog; terminal and bridge runs already use the project |
 | `UpdateEndpoint` | string | An `https` URL of the update manifest your organisation serves, with no query, fragment, login or `{{…}}` template. A release build's `check_for_update` asks it instead of GitHub (`updater.rs`). The archive's signature is still checked against the key pinned in the app (`plugins.updater.pubkey` in `tauri.conf.json`), so a mirror can serve only builds this project signed; the manifest's `platforms.darwin-aarch64.url` must point at the mirror's copy of the archive. A malformed value means no check at all, never a fallback to GitHub: Check for Updates is gone and Settings ▸ Updates shows the lock with the reason. `DisableUpdateCheck` still wins |
+| `AllowedWebsiteOrigins` | array of strings | Live websites open only from these origins: `https://host`, `https://host:port`, or `http://localhost:port` (also `127.0.0.1` and `[::1]`), with no path, login or `*`. Scheme, host and port match exactly, as the browser compares origins, so `https://example.com` does not cover `https://www.example.com` or `http://example.com`; list each one. `website_open`, every navigation, `website_grant_origin` and `website_resume_pending` refuse any other origin in Rust (`deny_website_origin` in `managed.rs`), before a grant counts and before any sheet asks. A grant a person made before the profile stays on the Mac but does nothing, the inspector stops listing it, and it returns only if the profile is lifted. An empty forced array, or anything but an array, means no live websites; a malformed entry allows nothing. `DisableLiveWebsites` wins over it. Settings ▸ Website data shows the list with a lock, and the editor's website panel shows the lock for a site off it |
+| `AuditLogPath` | string | An absolute folder outside every home folder, such as `/Library/Logs/Kookaburra Cut`. The app also appends every line of its log to `<folder>/<login>.log`, the login name read from the password database (`audit::mirror_at_launch`), so a collector running as root (Jamf, Kandji, Intune, a SIEM forwarder) can pick it up. The copy is 0600, owned by the person, and rotates like `app.log` at 1 MiB with two older files kept (`audit_mirror.rs`). A missing folder is made 0700, which suits a Mac with one account; see "A copy for your collector" for shared Macs. A relative, `~`, `.` or `..` path, a home-folder path, a folder the account can't write or list, or a file there that is a link, a hard link or another account's means no copy and one `[managed]` line, never a failed launch, and the local log carries on either way. Settings ▸ About ▸ Export log tells the person their organisation's profile asks for a copy |
 
 No pack imports at all is `AllowedPublisherKeyIds` forced to an empty array;
 there is no separate switch (`deny_publisher_in` in `managed.rs`).
@@ -59,6 +96,10 @@ Two keys change where things land rather than removing them: under
 `ExportsInProject` the export's toast names the project's `exports/` folder,
 and under `DisableAgentKit` a new project opens without `./kb`, `.kb/`,
 `.claude/` or `CLAUDE.md` (`stamp_claude_provisioning` in `workspace.rs`).
+`AuditLogPath` removes nothing: Settings ▸ About ▸ Export log adds "Your
+organisation's profile asks for a copy of this log (AuditLogPath)."
+(`src/settings/SettingsApp.tsx`), shown whenever the value is well formed,
+including when the copy could not start.
 
 ## A sample profile
 
@@ -138,6 +179,80 @@ and add `UpdateEndpoint` beside the other keys:
 <string>https://updates.example.com/kookaburra-cut/latest.json</string>
 ```
 
+To keep live websites but only from your own sites, leave `DisableLiveWebsites`
+out and add `AllowedWebsiteOrigins`:
+
+```xml
+<key>AllowedWebsiteOrigins</key>
+<array>
+  <string>https://www.example.com</string>
+  <string>https://docs.example.com</string>
+</array>
+```
+
+To keep a copy of the app log where your collector reads it, add
+`AuditLogPath` the same way:
+
+```xml
+<key>AuditLogPath</key>
+<string>/Library/Logs/Kookaburra Cut</string>
+```
+
+## A copy for your collector
+
+The app's own log is `~/Library/Application Support/com.mpalmes.kookaburracut/logs/app.log`
+(`src-tauri/src/audit.rs`), owner-only, so a collector running as root can
+already read it per user. `AuditLogPath` puts a copy at one path you choose
+instead. Besides trust, websites, pack imports, updates and refusals, it
+records the moments work leaves the app: each Edit with Claude handoff
+(`[claude]`), each finished video or stills export and the file it wrote
+(`[export]`) and each pack export with its key id (`[pack]`), by name and path
+only.
+
+On a Mac with more than one account, create the folder in your deployment (a
+package postinstall or an MDM script) before anyone launches the app, so each
+account can add its own file and none can remove another's:
+
+```bash
+sudo mkdir -p "/Library/Logs/Kookaburra Cut"
+sudo chown root:wheel "/Library/Logs/Kookaburra Cut"
+sudo chmod 1777 "/Library/Logs/Kookaburra Cut"
+```
+
+The sticky bit stops one account renaming or removing another's files, and
+each file is 0600, so accounts see one another's file names but never their
+lines. The folder must stay listable (not 1733), because rotation removes the
+oldest copy by name (`remove_old` in `audit_mirror.rs`). A copy is the
+person's own file, so it is a record, not tamper-proof: a forwarder that tails
+it ships each line within seconds. In a folder every account can write,
+another account can also take a name first (`<login>.log` before that person's
+first launch): the app then refuses the file, keeps no copy and says so in that
+person's own log (`open_file` in `audit_mirror.rs`), so have your collector
+flag an account with no file. Where that matters, create each person's empty
+file ahead of time, owned by them and 0600.
+
+Each line is one event (`audit::line`):
+
+```
+[2026-11-09T03:15:22.123Z][kookaburra_cut_lib::workspace][INFO] [trust] product-tour: allowed (/Users/x/Kookaburra Cut/product-tour)
+```
+
+The time is UTC in ISO 8601 with milliseconds, then the Rust module, the level
+(`INFO` or `WARN`) and the message, which most often starts with an area tag
+(`[trust]`, `[pack]`, `[managed]`, `[kit]`, `[workspace]`, `[website]`,
+`[claude]`, `[export]`, `[update]`, `[history]`, `[privacy]`, `[audit]`). Every control character in a
+message is escaped as `\u000A` and the like, so a file or folder name can never
+start a line of its own. The message is prose, not key=value pairs; this
+pattern splits a line for a SIEM:
+
+```
+^\[(?<time>[^\]]+)\]\[(?<module>[^\]]+)\]\[(?<level>[A-Z]+)\] (?:\[(?<area>[a-z-]+)\] )?(?<message>.*)$
+```
+
+Lines name projects, folders, media files, packs, publishers and websites, and
+never hold what is in a file (`SECURITY.md`, "On the Mac"). With
+`AuditLogPath` forced, those names reach whoever reads the folder.
+
 ## Verifying
 
 1. On the Mac, `defaults read com.mpalmes.kookaburracut DisableClaude` prints
@@ -145,9 +260,12 @@ and add `UpdateEndpoint` beside the other keys:
 2. Launch the app. Settings ▸ Claude shows locked rows, the titlebar has no
    Edit with Claude, the Project menu has no Edit with Claude item, and a new
    project opens without the launcher.
-3. In a dev build, the terminal that runs `pnpm tauri dev` shows
-   `[managed] configuration profile forces: DisableClaude` at boot, plus one
-   line per malformed key.
+3. `~/Library/Application Support/com.mpalmes.kookaburracut/logs/app.log`
+   shows `[managed] configuration profile forces: DisableClaude` at boot, plus
+   one line per malformed key and a `[managed] refused:` line naming the key
+   the first time it refuses a command in a launch (`src-tauri/src/managed.rs`,
+   `refusal`, written by `audit.rs`). A dev build prints the same lines in the terminal that runs
+   `pnpm tauri dev`.
 4. Under `DisableAgentKit`, a project created after launch has no `./kb`,
    `.kb/`, `.claude/` or `CLAUDE.md`, and `ls ~/"Kookaburra Cut"/_bridge` finds
    nothing (on a Mac that never ran the app or kb unmanaged; the app leaves an
@@ -161,7 +279,17 @@ and add `UpdateEndpoint` beside the other keys:
 7. Under a malformed `UpdateEndpoint`, Settings ▸ Updates shows the lock and
    the reason. A well-formed one only shows in a release build, since a dev
    build answers every check "Not available in a dev build".
-8. The negative check: without a profile,
+8. Under `AuditLogPath`, `app.log` shows `[managed] AuditLogPath: copying this
+   log to /Library/Logs/Kookaburra Cut/<login>.log`, `sudo ls -l` on the
+   folder shows that file as `-rw-------` owned by the person, its newest lines
+   match the end of `app.log`, and Settings ▸ About ▸ Export log carries the
+   note. A malformed or unusable value leaves one `[managed] AuditLogPath ...
+   keeping no copy of the app log` line instead (`audit::log_mirror_at_boot`).
+9. Under `AllowedWebsiteOrigins`, Settings ▸ Website data shows the list with
+   the lock, a scene whose website is off the list shows the lock in place of
+   Open live website, and a link on a listed site to any other origin stays
+   blocked without a sheet.
+10. The negative check: without a profile,
    `defaults write com.mpalmes.kookaburracut DisableClaude -bool true` changes
    nothing, because the key is set but not forced. `defaults delete` it
    afterwards.
@@ -195,11 +323,12 @@ sudo rm "/Library/Managed Preferences/$USER/com.mpalmes.kookaburracut.plist"
 ## For contributors
 
 - Every guard lives in `src-tauri/src/managed.rs`: `deny_claude`,
-  `deny_live_websites`, `deny_update_check`, `deny_workspace_change`,
+  `deny_live_websites`, `deny_website_origin`, `deny_update_check`, `deny_workspace_change`,
   `deny_publisher`, `deny_agent_kit`, `deny_pack_export`,
-  `managed_update_endpoint` and `exports_in_project`, each a one-line call at
-  the top of the command it governs; `every_governed_command_calls_its_guard`
-  fails when one goes missing. A new managed key adds a `Key`, a field on
+  `managed_update_endpoint`, `exports_in_project` and `audit_log_dir`, each a
+  one-line call at the top of the command it governs (`audit_log_dir` in
+  `audit::mirror_at_launch`, read once before the log starts);
+  `every_governed_command_calls_its_guard` fails when one goes missing. A new managed key adds a `Key`, a field on
   `ManagedPolicy`, a parse arm in `from_source`, a guard, a row in that test,
   a row here and a unit test.
 - The webviews read the effective policy through `managed_policy` (the

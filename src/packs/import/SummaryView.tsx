@@ -101,7 +101,8 @@ export function SummaryView({
 
         {outcome.backupDir && (
           <div className="packs-note">
-            What you had before was moved to a backup.{" "}
+            What you had before is in a backup for a day, then goes the next time Kookaburra Cut
+            opens. Copy out anything you want to keep.{" "}
             <button
               type="button"
               className="btn"

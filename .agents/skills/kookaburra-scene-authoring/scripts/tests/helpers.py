@@ -379,7 +379,8 @@ def run_git(project: Path, args: List[str]) -> str:
     env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
     for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
         env.pop(key, None)
-    proc = subprocess.run(["git", "-C", str(project)] + args, capture_output=True, text=True, env=env)
+    # A commit's detached auto maintenance would outlive this call and prune through links a test plants in .git.
+    proc = subprocess.run(["git", "-c", "maintenance.auto=false", "-C", str(project)] + args, capture_output=True, text=True, env=env)
     if proc.returncode != 0:
         raise AssertionError(f"git {args} failed: {proc.stderr}")
     return proc.stdout
@@ -564,7 +565,8 @@ class FakeApp:
 
     def __init__(self, bridge: Path, handler: Callable[[Dict[str, Any]], Optional[Dict[str, Any]]], kinds: Optional[List[str]] = None, *,
                  pid: Optional[int] = None, root: Optional[Path] = None, serving: bool = True, legacy: bool = False,
-                 serve_filter: Optional[Callable[[Dict[str, Any]], bool]] = None, **heartbeat: Any) -> None:
+                 serve_filter: Optional[Callable[[Dict[str, Any]], bool]] = None, key: Optional[bytes] = None,
+                 tamper: Optional[Callable[[Path], None]] = None, **heartbeat: Any) -> None:
         self.bridge = bridge
         self.handler = handler
         self.kinds = kinds if kinds is not None else ["capture", "check", "fonts", "insertPreset", "mediaChanged", "openEdit"]
@@ -574,6 +576,10 @@ class FakeApp:
         self.serving = serving
         self.legacy = legacy
         self.serve_filter = serve_filter
+        # key: the app signs (`auth: 1`, keys/<pid>.key, signed answers, unsigned requests answered kit-outdated); tamper(answer) runs on each answer before it lands.
+        self.key = key
+        self.tamper = tamper
+        self.refused: List[str] = []
         self.started_at_ms = int(time.time() * 1000)
         self.requests: List[Dict[str, Any]] = []
         self._stop = threading.Event()
@@ -592,6 +598,8 @@ class FakeApp:
                 "checkout": None, "rootSource": "settings", "primary": self.serving, "exportJob": None, "health": None,
                 "bridge": {"serving": self.serving, "reason": None if self.serving else "workspace root overridden by KOOKABURRA_WORKSPACE_ROOT"},
             })
+        if self.key is not None:
+            body["auth"] = 1
         body.update(self.heartbeat)
         return body
 
@@ -623,7 +631,38 @@ class FakeApp:
             return _same_dir(body["workspaceRoot"], self.root)
         return True
 
+    def write_key(self) -> None:
+        keys = self.bridge / "keys"
+        keys.mkdir(parents=True, exist_ok=True, mode=0o700)
+        path = keys / f"{self.pid}.key"
+        fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(self.key.hex())  # type: ignore[union-attr]
+
+    def signed_answer(self, answer: Dict[str, Any]) -> str:
+        from kblib import bridgeauth
+
+        files = {}
+        for path in bridgeauth.named_pngs(answer, self.bridge / "responses"):
+            digest = bridgeauth.file_sha256(path)
+            if digest:
+                files[os.path.basename(path)] = digest
+        return bridgeauth.sign_text(self.key, json.dumps(answer), '"files":' + json.dumps(files, sort_keys=True))  # type: ignore[arg-type]
+
+    def verdict(self, text: str) -> str:
+        """good, absent or bad, as the app's `check_mac` decides."""
+        from kblib import bridgeauth
+        from kblib.util import KbError
+
+        try:
+            bridgeauth.check_mac(self.key, text.encode("utf-8"))  # type: ignore[arg-type]
+        except KbError as e:
+            return "absent" if "unsigned" in e.message else "bad"
+        return "good"
+
     def __enter__(self) -> "FakeApp":
+        if self.key is not None:
+            self.write_key()
         self.write_heartbeat()
         self._thread.start()
         return self
@@ -643,7 +682,8 @@ class FakeApp:
             if requests.is_dir() and (self.serving or self.serve_filter is not None):
                 for path in sorted(requests.glob("*.json")):
                     try:
-                        body = json.loads(path.read_text(encoding="utf-8"))
+                        text = path.read_text(encoding="utf-8")
+                        body = json.loads(text)
                     except (OSError, ValueError):
                         continue
                     if not isinstance(body, dict) or not self.claims(body):
@@ -654,8 +694,13 @@ class FakeApp:
                         os.replace(path, claimed / path.name)
                     except OSError:
                         continue
+                    verdict = self.verdict(text) if self.key is not None else "good"
+                    if verdict == "bad":
+                        self.refused.append(body.get("id"))
+                        continue
                     self.requests.append(body)
-                    answer = self.handler(body)
+                    answer = self.handler(body) if verdict == "good" else {
+                        "ok": False, "code": "kit-outdated", "error": "open the project in Kookaburra Cut once to update its kit"}
                     if answer is None:
                         continue
                     answer = dict({"version": 2, "id": body["id"]}, **answer)
@@ -663,6 +708,9 @@ class FakeApp:
                         answer.setdefault("servedBy", self.served_by())
                     responses.mkdir(parents=True, exist_ok=True)
                     tmp = responses / f"{body['id']}.json.tmp"
-                    tmp.write_text(json.dumps(answer), encoding="utf-8")
+                    text = self.signed_answer(answer) if self.key is not None else json.dumps(answer)
+                    tmp.write_text(text, encoding="utf-8")
+                    if self.tamper is not None:
+                        self.tamper(tmp)
                     os.replace(tmp, responses / f"{body['id']}.json")
             time.sleep(0.05)

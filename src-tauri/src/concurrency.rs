@@ -1,3 +1,4 @@
+#![allow(unsafe_code)]
 //! Caps bulk background ffmpeg work (thumbnails, clip extraction) so it can't saturate every core; exports and the user-attended editor render stay uncapped and at normal priority.
 
 use std::sync::Arc;
@@ -27,6 +28,7 @@ impl BackgroundLimiter {
 /// Drop a spawned sidecar's scheduling priority so foreground work wins under contention.
 #[cfg(target_os = "macos")]
 pub(crate) fn lower_priority(pid: u32) {
+    // SAFETY: setpriority takes plain integers and touches no memory; a failure is ignored.
     unsafe {
         libc::setpriority(libc::PRIO_PROCESS, pid, 10);
     }

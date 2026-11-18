@@ -18,6 +18,15 @@ import {
   sidecarVersions,
 } from "../engine/appCache";
 import {
+  type AllowedProjectRow,
+  allowedProjectRows,
+  clearAppData,
+  forgetAllowedProject,
+  revealAppLogs,
+  revealLicences,
+} from "../engine/appData";
+import { exportAppLog } from "../engine/appLog";
+import {
   claudeAppInstalled,
   openClaudeDownload,
   openPrivacyPage,
@@ -52,7 +61,16 @@ import {
   userHomeDir,
 } from "../engine/workspace";
 import { ClaudeSpark } from "../ui/ClaudeLauncher";
-import { ManagedLock } from "../ui/ManagedLock";
+import {
+  setSingleKeyShortcuts,
+  setTextSize,
+  TEXT_SIZES,
+  type TextSize,
+  useSingleKeyShortcuts,
+  useTextSize,
+} from "../ui/chromePrefs";
+import { SegmentedRow } from "../ui/inspector/rows";
+import { LockGlyph, ManagedLock } from "../ui/ManagedLock";
 import { UpdateAvailableDialog } from "../ui/updateDialogs";
 import { useNativeTextUndo } from "../ui/useNativeTextUndo";
 import { PublisherPane } from "./PublisherPane";
@@ -131,11 +149,41 @@ function PrivacyIcon() {
   );
 }
 
+function ExportLogIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M8.5 1.5h-5v13h9V8M5.5 7h3M5.5 9.5h4.5M5.5 12h4.5M9.5 6.5l5-5M11 1.5h3.5V5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function AgentKitIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
       <path
         d="M2.5 5.5h11v7.5h-11zM6 5.5V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M2.5 8.5h11M8 7.5v2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function LiveWebsiteIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M8 2.5a5.5 5.5 0 1 0 0 11a5.5 5.5 0 1 0 0-11M2.5 8h11M8 2.5c-1.6 1.6-2.2 3.4-2.2 5.5s.6 3.9 2.2 5.5M8 2.5c1.6 1.6 2.2 3.4 2.2 5.5s-.6 3.9-2.2 5.5"
         fill="none"
         stroke="currentColor"
         strokeWidth="1.35"
@@ -176,6 +224,158 @@ function ConformIcon() {
   );
 }
 
+function AllowedIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M8 1.5 3 3.5v4c0 3 2.2 5.4 5 6.5 2.8-1.1 5-3.5 5-6.5v-4L8 1.5ZM5.8 8l1.6 1.6 3-3.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ForgetIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M8 1.5 3 3.5v4c0 3 2.2 5.4 5 6.5 2.8-1.1 5-3.5 5-6.5v-4L8 1.5ZM6 6l4 4m0-4-4 4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function OpenNowIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M2.5 3.5h11v9h-11zM2.5 6h11M6.5 8l2.5 1.5-2.5 1.5z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ResetAllIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M3 8a5 5 0 1 0 1.5-3.6M3 2.5v2.4h2.4M6.5 6.5l3 3m0-3-3 3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ActivityLogIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M3.5 1.5h6l3 3v10h-9zM9.5 1.5v3h3M5.5 7.5h5M5.5 10h5M5.5 12.5h3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function AcknowledgementsIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M8 4c-1.5-1.2-3.5-1.5-5.5-1v10c2-.5 4-.2 5.5 1 1.5-1.2 3.5-1.5 5.5-1V3c-2-.5-4-.2-5.5 1zM8 4v10"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function FinderIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M1.5 4.5v8h13v-6.5H7.5L6 4.5zM1.5 4.5V3h4l1 1.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function TextSizeIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M2.5 13 6 3.5 9.5 13M3.8 9.8h4.4M10.5 13l2-5.5 2 5.5M11.2 11.3h2.6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function LetterIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M3.5 13.5 8 2.5l4.5 11M5.2 9.5h5.6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={16 / size}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function KeycapIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M3.5 2.5h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1ZM6 10.5l2-5 2 5M6.8 8.6h2.4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+const TEXT_SIZE_ICON: Record<TextSize, number> = { default: 9, large: 11, larger: 13, largest: 15 };
+
 /** The Settings window: native titlebar, opened via the app menu (⌘,). Cache management (media previews + clip extractions), the workspace location (the only place it can be changed, since first run no longer asks), the opt-in update lane (toggle + Check now), and read-only info (sidecar versions, app version). */
 
 export function SettingsApp() {
@@ -193,6 +393,8 @@ export function SettingsApp() {
   const [appVersion, setAppVersion] = useState("");
   const [busy, setBusy] = useState<"media" | "clips" | "workspace" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [exportingLog, setExportingLog] = useState(false);
+  const [logSaved, setLogSaved] = useState<string | null>(null);
   const [hwEnabled, setHwEnabled] = useState<boolean | null>(null);
   const [hwSupport, setHwSupport] = useState<HardwareVideoSupport | null>(null);
   const [lagWarning, setLagWarning] = useState<LagWarningMode | null>(null);
@@ -203,6 +405,12 @@ export function SettingsApp() {
   const [websiteData, setWebsiteData] = useState<WebsiteDataRecord[] | null>(null);
   const [websiteDataBusy, setWebsiteDataBusy] = useState<string | null>(null);
   const [clipsClearDeferred, setClipsClearDeferred] = useState(false);
+  const [allowed, setAllowed] = useState<AllowedProjectRow[] | null>(null);
+  const [forgetting, setForgetting] = useState<string | null>(null);
+  const [clearingAll, setClearingAll] = useState(false);
+  const [publisherEpoch, setPublisherEpoch] = useState(0);
+  const textSize = useTextSize();
+  const singleKeyShortcuts = useSingleKeyShortcuts();
 
   const refreshStats = useCallback(() => {
     cacheStats()
@@ -219,12 +427,7 @@ export function SettingsApp() {
       });
   }, []);
 
-  useEffect(() => {
-    refreshStats();
-    refreshWebsiteData();
-    sidecarVersions()
-      .then(setVersions)
-      .catch(() => setVersions(null));
+  const loadSettings = useCallback(() => {
     getSettings()
       .then((s) => {
         setWorkspace(s.workspaceRoot ?? null);
@@ -235,6 +438,30 @@ export function SettingsApp() {
         setClaudeFirstOpen(!s.disableClaudeFirstOpen);
       })
       .catch(() => setWorkspace(null));
+  }, []);
+
+  // Re-read on focus too: the main window opens and closes projects while this one waits.
+  const refreshAllowed = useCallback(() => {
+    getSettings()
+      .then((s) =>
+        setAllowed(allowedProjectRows(s.trustedProjects, s.lastProject, home, Date.now())),
+      )
+      .catch(() => setAllowed([]));
+  }, [home]);
+
+  useEffect(() => {
+    refreshAllowed();
+    window.addEventListener("focus", refreshAllowed);
+    return () => window.removeEventListener("focus", refreshAllowed);
+  }, [refreshAllowed]);
+
+  useEffect(() => {
+    refreshStats();
+    refreshWebsiteData();
+    sidecarVersions()
+      .then(setVersions)
+      .catch(() => setVersions(null));
+    loadSettings();
     defaultWorkspaceRoot()
       .then(setDefaultRoot)
       .catch(() => setDefaultRoot(null));
@@ -247,7 +474,59 @@ export function SettingsApp() {
     getVersion()
       .then(setAppVersion)
       .catch(() => setAppVersion(""));
-  }, [refreshStats, refreshWebsiteData]);
+  }, [refreshStats, refreshWebsiteData, loadSettings]);
+
+  // Every window's localStorage is this one origin's, so one clear here covers them all.
+  useEffect(() => {
+    const unlisten = listen("kookaburra://app-data-cleared", () => {
+      try {
+        localStorage.clear();
+      } catch {}
+      loadSettings();
+      refreshAllowed();
+      refreshStats();
+      refreshWebsiteData();
+      setClipsClearDeferred(false);
+      setPublisherEpoch((n) => n + 1);
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [loadSettings, refreshAllowed, refreshStats, refreshWebsiteData]);
+
+  const forget = useCallback(
+    (key: string) => {
+      setForgetting(key);
+      setError(null);
+      forgetAllowedProject(key)
+        .catch((e) => setError(String(e)))
+        .finally(() => {
+          setForgetting(null);
+          void refreshAllowed();
+          void refreshWebsiteData();
+        });
+    },
+    [refreshAllowed, refreshWebsiteData],
+  );
+
+  const clearAll = useCallback(() => {
+    setClearingAll(true);
+    setError(null);
+    clearAppData()
+      .catch((e) => setError(String(e)))
+      .finally(() => setClearingAll(false));
+  }, []);
+
+  const exportLog = useCallback(() => {
+    setExportingLog(true);
+    setError(null);
+    exportAppLog()
+      .then((name) => {
+        if (name) setLogSaved(name);
+      })
+      .catch((e) => setError(String(e)))
+      .finally(() => setExportingLog(false));
+  }, []);
 
   const toggleHardware = useCallback((enabled: boolean) => {
     setHwEnabled(enabled);
@@ -365,7 +644,7 @@ export function SettingsApp() {
 
   const clearStoredWebsiteData = useCallback(
     async (displayName?: string) => {
-      const target = displayName ? ` for ${displayName}` : " for every site";
+      const target = displayName ? ` for ${displayName} in every project` : " for every project";
       const accepted = await ask(
         `Clear Website data${target}? This signs the affected sites out, but does not change project origin approvals.`,
         {
@@ -402,6 +681,19 @@ export function SettingsApp() {
     ? "A configuration profile turns Claude off (DisableClaude)."
     : "A configuration profile turns the agent kit off, and Claude with it (DisableAgentKit).";
   const exportsPinned = managed?.exportsInProject ?? false;
+  const websitesOff = managed?.disableLiveWebsites ?? false;
+  const websiteList = managed?.allowedWebsiteOrigins ?? null;
+  const websitesLocked = websitesOff || websiteList !== null;
+  const websitesDetail = websitesOff
+    ? "Turned off by your organisation. Scenes show their captured image."
+    : websiteList === null
+      ? "Each project asks before a website opens live in its scenes."
+      : websiteList.length === 0
+        ? "Turned off by your organisation: its list allows no websites."
+        : `Your organisation allows only ${websiteList.join(", ")}.`;
+  const websitesLockDetail = websitesOff
+    ? "A configuration profile turns live websites off (DisableLiveWebsites)."
+    : "A configuration profile allows only the websites it lists (AllowedWebsiteOrigins).";
   const updatesLocked = updates.managed || (managed !== null && updateChecksLocked(managed));
   const updateServerBroken = managed !== null && updateEndpointUnusable(managed);
   const updateServer = managed ? updateServerHost(managed) : null;
@@ -466,6 +758,103 @@ export function SettingsApp() {
               </>
             )}
           </div>
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <h2>Allowed projects</h2>
+        {allowed?.length === 0 && (
+          <div className="settings-row">
+            <div className="settings-row-text">
+              <span className="muted settings-row-detail">
+                Projects you allow to run show here. Forget one and it asks again on its next open,
+                websites included, and its sign-ins go.
+              </span>
+            </div>
+          </div>
+        )}
+        {allowed?.map((row) => (
+          <div className="settings-row" key={row.key}>
+            <div className="settings-row-text">
+              <span
+                className="settings-row-title"
+                style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+              >
+                <AllowedIcon />
+                {row.name}
+              </span>
+              <span className="muted settings-row-detail settings-path" title={row.path}>
+                {row.detail}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn"
+              disabled={row.open || forgetting !== null || clearingAll}
+              onClick={() => forget(row.key)}
+              title={
+                row.open
+                  ? "Close it in Kookaburra Cut first, then forget it here"
+                  : "Asks again before its scenes or websites run next time"
+              }
+            >
+              {row.open ? <OpenNowIcon /> : <ForgetIcon />}
+              {row.open ? "Open now" : forgetting === row.key ? "Forgetting…" : "Forget"}
+            </button>
+          </div>
+        ))}
+      </section>
+
+      <section className="settings-section">
+        <h2>Accessibility</h2>
+        <div className="settings-row stacked">
+          <div className="settings-row-text">
+            <span
+              className="settings-row-title"
+              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+            >
+              <TextSizeIcon />
+              Text size
+            </span>
+            <span className="muted settings-row-detail">
+              Sizes the words and controls in every window. Your preview and exports stay exactly as
+              they are.
+            </span>
+          </div>
+          <div className="settings-row-actions">
+            <SegmentedRow
+              className="settings-segments"
+              ariaLabel="Text size"
+              value={textSize}
+              onChange={setTextSize}
+              options={TEXT_SIZES.map((s) => ({
+                value: s.id,
+                label: s.label,
+                icon: <LetterIcon size={TEXT_SIZE_ICON[s.id]} />,
+              }))}
+            />
+          </div>
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span
+              className="settings-row-title"
+              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+            >
+              <KeycapIcon />
+              Single-key shortcuts
+            </span>
+            <span className="muted settings-row-detail">
+              Letter keys such as S to split and O for Orbit. Turn them off if you use voice control
+              or often brush a key; every action keeps its button.
+            </span>
+          </div>
+          <input
+            type="checkbox"
+            aria-label="Single-key shortcuts"
+            checked={singleKeyShortcuts}
+            onChange={(e) => setSingleKeyShortcuts(e.target.checked)}
+          />
         </div>
       </section>
 
@@ -621,13 +1010,54 @@ export function SettingsApp() {
             </button>
           </div>
         </div>
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span
+              className="settings-row-title"
+              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+            >
+              <ResetAllIcon />
+              Clear all app data
+            </span>
+            <span className="muted settings-row-detail">
+              Every cache, Website data, the projects and websites you allowed, recent projects and
+              preferences. Your projects, workspace and pack signing key stay.
+            </span>
+          </div>
+          <button
+            type="button"
+            className="btn"
+            disabled={clearingAll || busy !== null || forgetting !== null}
+            onClick={clearAll}
+          >
+            <ClearDataIcon />
+            {clearingAll ? "Clearing…" : "Clear all…"}
+          </button>
+        </div>
       </section>
 
       <section className="settings-section">
         <h2>Website data</h2>
         <div className="settings-row">
           <div className="settings-row-text">
-            <span className="settings-row-title">Dedicated browser profile</span>
+            <span
+              className="settings-row-title"
+              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+            >
+              <LiveWebsiteIcon />
+              Live websites
+            </span>
+            <span className="muted settings-row-detail">{websitesDetail}</span>
+          </div>
+          {websitesLocked ? (
+            <ManagedLock detail={websitesLockDetail} />
+          ) : (
+            <span className="muted">On</span>
+          )}
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span className="settings-row-title">One browser profile per project</span>
             <span className="muted settings-row-detail">
               {websiteData === null
                 ? "Loading…"
@@ -818,7 +1248,7 @@ export function SettingsApp() {
         </div>
       </section>
 
-      <PublisherPane />
+      <PublisherPane key={publisherEpoch} />
 
       <section className="settings-section">
         <h2>About</h2>
@@ -836,6 +1266,80 @@ export function SettingsApp() {
           >
             <PrivacyIcon />
             What leaves your Mac
+          </button>
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span
+              className="settings-row-title"
+              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+            >
+              <ActivityLogIcon />
+              Activity log
+            </span>
+            <span className="muted settings-row-detail">
+              What the app did: projects and websites you allowed, packs, updates. Names and
+              folders, never what is in your files, and the app never sends it anywhere.
+            </span>
+          </div>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => void revealAppLogs().catch((e) => setError(String(e)))}
+          >
+            <FinderIcon />
+            Show in Finder
+          </button>
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span
+              className="settings-row-title"
+              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+            >
+              <ExportLogIcon />
+              Export log
+            </span>
+            <span className="muted settings-row-detail">
+              {logSaved
+                ? `Saved as ${logSaved}.`
+                : "What the app did, as one file for support or your IT team. It names projects and folders, never what is in your files."}
+            </span>
+            {managed?.auditLogPath && (
+              <span
+                className="muted settings-row-detail"
+                style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+              >
+                <LockGlyph size={12} />
+                Your organisation&apos;s profile asks for a copy of this log (AuditLogPath).
+              </span>
+            )}
+          </div>
+          <button type="button" className="btn" disabled={exportingLog} onClick={exportLog}>
+            <DownloadIcon />
+            {exportingLog ? "Exporting…" : "Export…"}
+          </button>
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span
+              className="settings-row-title"
+              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+            >
+              <AcknowledgementsIcon />
+              Acknowledgements
+            </span>
+            <span className="muted settings-row-detail">
+              The open source software and assets inside Kookaburra Cut, with their licences.
+            </span>
+          </div>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => void revealLicences().catch((e) => setError(String(e)))}
+          >
+            <FinderIcon />
+            Show in Finder
           </button>
         </div>
         <div className="settings-row">

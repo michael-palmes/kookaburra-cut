@@ -1,3 +1,4 @@
+#![allow(unsafe_code)]
 //! The capture service behind the hidden render window (docs/agent-kit.md, "The capture service"): what a request costs, the fair order the render window claims in, throttling, the GPU stall recycle state machine and its watchdog, response retention, and the `health` block of the serving heartbeat. The pure parts take their state explicitly and are tested below; the app glue reads one process-wide `SERVICE`.
 
 use std::collections::VecDeque;
@@ -1241,8 +1242,11 @@ fn verdict_body(request: &BridgeRequest, p: &RequestPeek, verdict: &Verdict) -> 
 /// The native loop's triage of this instance's pending render requests: wedged, too large and throttled ones are answered at once (claimed first, so the render window never serves them too). Returns how many are left for the render window.
 pub(crate) fn triage(app: &AppHandle, root: &Path, pid: u32) -> usize {
     let now = now_ms();
+    let Some(auth) = crate::bridge::auth() else {
+        return 0;
+    };
     let own = crate::bridge::own_workspace_root(app);
-    let pending = crate::bridge::pending_claimable_requests(root, own.as_deref(), pid, now);
+    let pending = crate::bridge::pending_claimable_requests(root, own.as_deref(), pid, now, auth);
     if pending.is_empty() {
         return 0;
     }
@@ -1269,6 +1273,9 @@ pub(crate) fn triage(app: &AppHandle, root: &Path, pid: u32) -> usize {
         let from = requests.join(format!("{}.json", request.id));
         if std::fs::rename(&from, claimed.join(format!("{}.json", request.id))).is_err() {
             continue;
+        }
+        if let Ok(deadline) = auth.deadline(request, now) {
+            auth.accept(&request.id, deadline);
         }
         write_answer(app, &request.id, verdict_body(request, p, verdict));
     }
@@ -1475,6 +1482,7 @@ pub(crate) fn fetch_web_content_pid(
 ) {
     use objc2::runtime::{AnyObject, Bool};
     use objc2::{msg_send, sel};
+    // SAFETY: with_webview runs this on the main thread with Tauri's live WKWebView, and the private selector is sent only once it answers respondsToSelector.
     let _ = window.with_webview(move |webview| unsafe {
         let wk: *mut AnyObject = webview.inner().cast();
         let responds: Bool = msg_send![wk, respondsToSelector: sel!(_webProcessIdentifier)];

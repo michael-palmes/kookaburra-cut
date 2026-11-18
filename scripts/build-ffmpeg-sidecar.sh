@@ -5,35 +5,40 @@
 # Every shipped byte comes from pinned source: the ffmpeg tarball is checked against
 # FFMPEG_SHA256, x264 against a commit, x265 against its release tarball's SHA-256.
 # Build tools (nasm, cmake) never ship: CI pins them (install-build-tools.sh), locally Homebrew will do.
-# Output: src-tauri/bin/ffmpeg-aarch64-apple-darwin and ffprobe-aarch64-apple-darwin.
+# Output: src-tauri/bin/ffmpeg-aarch64-apple-darwin and ffprobe-aarch64-apple-darwin, and their
+# licence texts out of the same sources, which the app bundles (verify-release.sh requires them).
 #
 #   pnpm setup:ffmpeg:release              # GPL build (libx264 + libx265 + VideoToolbox + ProRes)
 #   LICENSE=lgpl pnpm setup:ffmpeg:release # LGPL build (drops libx264 and libx265)
+#   SIDECAR_SOURCES=<dir> ...              # also keep the exact source archives built from (release assets)
+#   SIDECAR_LICENCES=<dir> ...             # where the licence texts go (default src-tauri/resources/licenses/sidecar)
 #   build-ffmpeg-sidecar.sh --print-pins   # the pins as KEY=VALUE lines, nothing built
 #
 # Bumping a pin: change the version, run once, paste the hash the script reports.
 # The release workflow builds this exact recipe on a clean runner.
 #
-# GPL note (decided 2026-07-02): libx264 makes this binary GPL. It ships as a separate
-# arm's-length sidecar PROCESS and the app is local-only, so this is fine today; for
-# public distribution build with LICENSE=lgpl (loses the deterministic libx264 default)
-# or revisit.
+# GPL note: libx264 makes this binary GPL. It ships as a separate sidecar process, and
+# every release attaches the source archives SIDECAR_SOURCES keeps (docs/decisions.md).
 #
 set -euo pipefail
 
 FFMPEG_VERSION="8.1"
 FFMPEG_SHA256="b072aed6871998cce9b36e7774033105ca29e33632be5b6347f3206898e0756a"
+FFMPEG_URL="https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz"
 # x264 has no releases; Homebrew's r3222 is this commit.
 X264_COMMIT="b35605ace3ddf7c1a5d67a2eb553f034aef41d55"
 X264_URL="https://code.videolan.org/videolan/x264.git"
 # libx264 stamps this into every H.264 stream's SEI, so it is part of the export bytes.
 X264_SEI="x264 - core 165 r3222 b35605a"
+# The source archive a release attaches: `git archive` of that commit, uncompressed, so its bytes are git's alone.
+X264_SOURCE_SHA256="df62afece4eecef8ddf196f115dfec6e936a21b04ec2117a0f4e412de29b20e5"
 X265_VERSION="4.3"
 X265_SHA256="83c53e4c8bbb8f1e33ed59e10a7d621d1d7801ca853910c3eb41f038b8ffb121"
+X265_URL="https://github.com/Multicorewareinc/x265/releases/download/$X265_VERSION/x265_$X265_VERSION.tar.gz"
 
 if [[ "${1:-}" == "--print-pins" ]]; then
-  printf 'FFMPEG_VERSION=%s\nFFMPEG_SHA256=%s\nX264_COMMIT=%s\nX264_SEI=%s\nX265_VERSION=%s\nX265_SHA256=%s\n' \
-    "$FFMPEG_VERSION" "$FFMPEG_SHA256" "$X264_COMMIT" "$X264_SEI" "$X265_VERSION" "$X265_SHA256"
+  printf 'FFMPEG_VERSION=%s\nFFMPEG_SHA256=%s\nFFMPEG_URL=%s\nX264_COMMIT=%s\nX264_URL=%s\nX264_SEI=%s\nX264_SOURCE_SHA256=%s\nX265_VERSION=%s\nX265_SHA256=%s\nX265_URL=%s\n' \
+    "$FFMPEG_VERSION" "$FFMPEG_SHA256" "$FFMPEG_URL" "$X264_COMMIT" "$X264_URL" "$X264_SEI" "$X264_SOURCE_SHA256" "$X265_VERSION" "$X265_SHA256" "$X265_URL"
   exit 0
 fi
 
@@ -71,6 +76,11 @@ if [[ "$LICENSE" == "gpl" ]]; then
   git -C "$WORK/x264" fetch -q origin master "$X264_COMMIT"
   git -C "$WORK/x264" -c advice.detachedHead=false checkout -q "$X264_COMMIT"
   [[ "$(git -C "$WORK/x264" rev-parse HEAD)" == "$X264_COMMIT" ]] || die "x264 checkout is not $X264_COMMIT"
+  if [[ -n "${SIDECAR_SOURCES:-}" ]]; then
+    git -C "$WORK/x264" -c tar.umask=0002 archive --format=tar --prefix="x264-$X264_COMMIT/" "$X264_COMMIT" >"$WORK/x264.tar"
+    got="$(shasum -a 256 "$WORK/x264.tar" | cut -d' ' -f1)"
+    [[ "$got" == "$X264_SOURCE_SHA256" ]] || die "x264's source archive is sha256 $got, pinned $X264_SOURCE_SHA256 (has git's tar output changed?)"
+  fi
   echo "[sidecar] building x264…"
   (
     cd "$WORK/x264"
@@ -80,8 +90,7 @@ if [[ "$LICENSE" == "gpl" ]]; then
     make -j"$JOBS" install >"$WORK/x264-make.log" 2>&1 || { tail -30 "$WORK/x264-make.log" >&2; exit 1; }
   )
 
-  fetch_pinned "https://github.com/Multicorewareinc/x265/releases/download/$X265_VERSION/x265_$X265_VERSION.tar.gz" \
-    "$WORK/x265.tar.gz" "$X265_SHA256"
+  fetch_pinned "$X265_URL" "$WORK/x265.tar.gz" "$X265_SHA256"
   mkdir -p "$WORK/x265"
   tar -xzf "$WORK/x265.tar.gz" -C "$WORK/x265" --strip-components=1
   # Homebrew's multilib recipe: 10- and 12-bit cores linked into the 8-bit library, one libx265.a.
@@ -107,7 +116,7 @@ if [[ "$LICENSE" == "gpl" ]]; then
   )
 fi
 
-fetch_pinned "https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz" "$WORK/src.tar.xz" "$FFMPEG_SHA256"
+fetch_pinned "$FFMPEG_URL" "$WORK/src.tar.xz" "$FFMPEG_SHA256"
 tar -xf "$WORK/src.tar.xz" -C "$WORK"
 cd "$WORK/ffmpeg-$FFMPEG_VERSION"
 
@@ -161,6 +170,29 @@ mkdir -p "$(dirname "$DEST")"
 cp ffmpeg "$DEST"
 cp ffprobe "$PROBE_DEST"
 chmod +x "$DEST" "$PROBE_DEST"
+
+LICENCES="${SIDECAR_LICENCES:-$ROOT/src-tauri/resources/licenses/sidecar}"
+rm -rf "$LICENCES"
+mkdir -p "$LICENCES"
+cp "$WORK/ffmpeg-$FFMPEG_VERSION/LICENSE.md" "$LICENCES/ffmpeg-LICENSE.md"
+if [[ "$LICENSE" == "gpl" ]]; then
+  cp "$WORK/ffmpeg-$FFMPEG_VERSION/COPYING.GPLv2" "$LICENCES/ffmpeg-COPYING.GPLv2"
+  cp "$WORK/x264/COPYING" "$LICENCES/x264-COPYING"
+  cp "$WORK/x265/COPYING" "$LICENCES/x265-COPYING"
+else
+  cp "$WORK/ffmpeg-$FFMPEG_VERSION/COPYING.LGPLv2.1" "$LICENCES/ffmpeg-COPYING.LGPLv2.1"
+fi
+echo "[sidecar] licence texts in $LICENCES"
+
+if [[ -n "${SIDECAR_SOURCES:-}" ]]; then
+  mkdir -p "$SIDECAR_SOURCES"
+  cp "$WORK/src.tar.xz" "$SIDECAR_SOURCES/ffmpeg-$FFMPEG_VERSION.tar.xz"
+  if [[ "$LICENSE" == "gpl" ]]; then
+    cp "$WORK/x264.tar" "$SIDECAR_SOURCES/x264-$X264_COMMIT.tar"
+    cp "$WORK/x265.tar.gz" "$SIDECAR_SOURCES/x265_$X265_VERSION.tar.gz"
+  fi
+  echo "[sidecar] source archives kept in $SIDECAR_SOURCES"
+fi
 
 echo "[sidecar] ready: $DEST"
 "$DEST" -version | head -1

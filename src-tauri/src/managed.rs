@@ -1,3 +1,4 @@
+#![allow(unsafe_code)]
 //! Managed preferences: what an administrator's configuration profile forces on the app's preference domain, read once per process and honoured only while macOS reports the key as forced (`CFPreferencesAppValueIsForced`), so a plain `defaults write` changes nothing. A forced key of the wrong shape fails closed: the feature it governs is treated as turned off, and a `[managed]` log line names the key. The key table and a sample profile live in docs/mdm.md.
 
 use std::collections::HashMap;
@@ -56,10 +57,12 @@ pub enum Key {
     DisablePackExport,
     ExportsInProject,
     UpdateEndpoint,
+    AuditLogPath,
+    AllowedWebsiteOrigins,
 }
 
 impl Key {
-    pub const ALL: [Key; 9] = [
+    pub const ALL: [Key; 11] = [
         Key::DisableClaude,
         Key::DisableLiveWebsites,
         Key::AllowedPublisherKeyIds,
@@ -69,6 +72,8 @@ impl Key {
         Key::DisablePackExport,
         Key::ExportsInProject,
         Key::UpdateEndpoint,
+        Key::AuditLogPath,
+        Key::AllowedWebsiteOrigins,
     ];
 
     pub fn name(self) -> &'static str {
@@ -82,6 +87,8 @@ impl Key {
             Key::DisablePackExport => "DisablePackExport",
             Key::ExportsInProject => "ExportsInProject",
             Key::UpdateEndpoint => "UpdateEndpoint",
+            Key::AuditLogPath => "AuditLogPath",
+            Key::AllowedWebsiteOrigins => "AllowedWebsiteOrigins",
         }
     }
 
@@ -99,6 +106,10 @@ impl Key {
             Key::DisablePackExport => "Pack export is turned off by your organisation",
             Key::ExportsInProject => "Your organisation keeps exports in the project folder",
             Key::UpdateEndpoint => "Your organisation's update server address can't be used",
+            Key::AuditLogPath => "Your organisation keeps a copy of the app log",
+            Key::AllowedWebsiteOrigins => {
+                "Your organisation only allows the live websites it lists"
+            }
         }
     }
 
@@ -107,6 +118,8 @@ impl Key {
             Key::AllowedPublisherKeyIds => "an array of strings",
             Key::WorkspaceRoot => "an absolute path",
             Key::UpdateEndpoint => "an https URL",
+            Key::AuditLogPath => "an absolute folder path",
+            Key::AllowedWebsiteOrigins => "an array of origins",
             _ => "a boolean",
         }
     }
@@ -135,6 +148,10 @@ pub struct ManagedPolicy {
     pub update_endpoint: Option<String>,
     /// True whenever UpdateEndpoint is forced, usable or not: an unusable one means no check at all.
     pub update_endpoint_locked: bool,
+    /// The folder a copy of the app log goes to when the forced value was usable; the local log stays either way.
+    pub audit_log_path: Option<String>,
+    /// Origins (`https://host[:port]`) a live website may open or navigate to; `None` when unmanaged, an empty list means none.
+    pub allowed_website_origins: Option<Vec<String>>,
     /// The forced keys by name, for the lock rows and the log.
     pub forced_keys: Vec<String>,
     /// What was wrong with a forced key, one line each; logged, never shown.
@@ -179,6 +196,12 @@ impl ManagedPolicy {
                 Key::UpdateEndpoint => {
                     policy.update_endpoint_locked = true;
                     policy.update_endpoint = policy.endpoint_or_closed(&value);
+                }
+                Key::AuditLogPath => {
+                    policy.audit_log_path = policy.audit_dir_or_none(&value, &homes());
+                }
+                Key::AllowedWebsiteOrigins => {
+                    policy.allowed_website_origins = Some(policy.origins_or_closed(&value))
                 }
             }
         }
@@ -240,6 +263,36 @@ impl ManagedPolicy {
         ids
     }
 
+    /// The allow-list as browser origins; a malformed entry is dropped (it allows nothing), anything but an array allows no live website.
+    fn origins_or_closed(&mut self, value: &PrefValue) -> Vec<String> {
+        let PrefValue::Array(items) = value else {
+            self.note(Key::AllowedWebsiteOrigins, value, "allowing no live websites");
+            return Vec::new();
+        };
+        let mut origins = Vec::new();
+        for item in items {
+            let PrefValue::String(raw) = item else {
+                self.issues.push(format!(
+                    "AllowedWebsiteOrigins holds {} where an origin string belongs; ignoring that entry",
+                    item.kind()
+                ));
+                continue;
+            };
+            match normalise_origin(raw) {
+                Some(origin) => {
+                    if !origins.contains(&origin) {
+                        origins.push(origin);
+                    }
+                }
+                None => self.issues.push(format!(
+                    "AllowedWebsiteOrigins entry {} is not an https origin (or http on localhost with a port) without a path, login or wildcard; ignoring it",
+                    crate::audit::field(raw)
+                )),
+            }
+        }
+        origins
+    }
+
     /// The forced root when it is an absolute path (a leading `~/` expands against `home`); anything else locks relocation without pinning a path.
     fn root_or_closed(&mut self, value: &PrefValue, home: Option<&Path>) -> Option<String> {
         let PrefValue::String(raw) = value else {
@@ -276,6 +329,39 @@ impl ManagedPolicy {
         }
         usable
     }
+
+    /// The forced folder when `usable_audit_dir` accepts it; anything else means no copy, and the local log carries on.
+    fn audit_dir_or_none(&mut self, value: &PrefValue, homes: &[PathBuf]) -> Option<String> {
+        let PrefValue::String(raw) = value else {
+            self.note(Key::AuditLogPath, value, "keeping no copy of the app log");
+            return None;
+        };
+        let usable = usable_audit_dir(raw, homes);
+        if usable.is_none() {
+            self.issues.push(format!(
+                "AuditLogPath {} is not an absolute folder outside the home folder; keeping no copy of the app log",
+                crate::audit::field(raw)
+            ));
+        }
+        usable.map(|dir| dir.to_string_lossy().into_owned())
+    }
+}
+
+/// Absolute, free of `.` and `..`, not the root and not inside a home folder (the local log already lives there, and a home folder can sync off the Mac). Compared without case, as APFS does by default; `audit_mirror` checks the real folder again once it exists.
+fn usable_audit_dir(raw: &str, homes: &[PathBuf]) -> Option<PathBuf> {
+    let raw = raw.trim();
+    let path = PathBuf::from(raw);
+    let plain = raw.split('/').all(|part| part != "." && part != "..");
+    if !(raw.starts_with('/') && plain && path.file_name().is_some()) {
+        return None;
+    }
+    let lower = raw.to_lowercase();
+    let inside = homes.iter().any(|home| {
+        let home = home.to_string_lossy().to_lowercase();
+        let home = home.trim_end_matches('/');
+        !home.is_empty() && (lower == home || lower.starts_with(&format!("{home}/")))
+    });
+    (!inside).then_some(path)
 }
 
 /// `https`, a host, and nothing that could carry more than the address: no login, query, fragment or `{{…}}` template (the updater expands `{{current_version}}`, which would put the version in the request).
@@ -293,6 +379,28 @@ fn usable_endpoint(raw: &str) -> Option<String> {
         && url.fragment().is_none()
         && !url.as_str().to_ascii_lowercase().contains("%7b%7b");
     plain.then(|| url.into())
+}
+
+/// One origin as the browser serialises it: scheme, host and port compared exactly, so `https://example.com` never covers `https://www.example.com`, `http://example.com` or `https://example.com:8443`. `https` anywhere, `http` only on a loopback host with a port (the only http a scene may open); no path beyond `/`, login, query, fragment or `*`.
+fn normalise_origin(raw: &str) -> Option<String> {
+    let raw = raw.trim();
+    if raw.contains('*') {
+        return None;
+    }
+    let url = tauri::Url::parse(raw).ok()?;
+    let host = url.host_str().filter(|host| !host.is_empty())?;
+    let loopback = matches!(host, "localhost" | "127.0.0.1" | "[::1]");
+    let scheme = match url.scheme() {
+        "https" => true,
+        "http" => loopback && url.port().is_some(),
+        _ => false,
+    };
+    let bare = url.username().is_empty()
+        && url.password().is_none()
+        && url.path() == "/"
+        && url.query().is_none()
+        && url.fragment().is_none();
+    (scheme && bare).then(|| url.origin().ascii_serialization())
 }
 
 /// `a1b2 c3d4 e5f6 0718` and `A1B2C3D4E5F60718` both read as the stored id.
@@ -327,6 +435,17 @@ fn home_dir() -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
+/// `$HOME` and the account's own home folder, which differ when the app is launched with another `HOME`.
+pub(crate) fn homes() -> Vec<PathBuf> {
+    let mut homes: Vec<PathBuf> = home_dir().into_iter().collect();
+    if let Some(account) = crate::tools::account().map(|account| account.home) {
+        if !homes.contains(&account) {
+            homes.push(account);
+        }
+    }
+    homes
+}
+
 // ── The process-wide policy ─────────────────────────────────────────
 
 static POLICY: OnceLock<ManagedPolicy> = OnceLock::new();
@@ -346,24 +465,34 @@ fn system_source() -> impl PreferenceSource {
     HashMap::<&'static str, PrefValue>::new()
 }
 
-/// One `[managed]` line for the forced keys and one per malformed one, at boot; stderr like the other modules' lines, so a packaged app reports it too.
+/// One `[managed]` line for the forced keys and one per malformed one, at boot, in the app log.
 pub fn log_at_boot() {
     let policy = policy();
     if !policy.managed {
         return;
     }
-    eprintln!(
+    log::info!(
         "[managed] configuration profile forces: {}",
         policy.forced_keys.join(", ")
     );
     for issue in &policy.issues {
-        eprintln!("[managed] {issue}");
+        log::warn!("[managed] {issue}");
     }
 }
 
-/// The error a refused command returns: the reason, then the key, so support can find the profile.
+/// The error a refused command returns: the reason, then the key, so support can find the profile. Every refusal passes here, and the first for each key in a launch is logged, since the bridge and heartbeat probe the guards on every tick.
 pub fn refusal(key: Key) -> String {
+    log_refusal_once(key);
     format!("{REASON_PREFIX} {} ({}).", key.reason(), key.name())
+}
+
+fn log_refusal_once(key: Key) {
+    static LOGGED: std::sync::Mutex<Vec<Key>> = std::sync::Mutex::new(Vec::new());
+    let mut logged = LOGGED.lock().unwrap_or_else(|p| p.into_inner());
+    if !logged.contains(&key) {
+        logged.push(key);
+        log::warn!("[managed] refused: {} (logged once a launch)", key.name());
+    }
 }
 
 // ── Guards: each command that a key governs calls one of these first ─
@@ -414,6 +543,36 @@ pub fn deny_publisher_in(policy: &ManagedPolicy, key_id: Option<&str>) -> Result
     Err(refusal(Key::AllowedPublisherKeyIds))
 }
 
+/// Whether a live website may open or navigate to `origin`: never under `DisableLiveWebsites`, and only an exact match when `AllowedWebsiteOrigins` is forced. Checked before a grant counts, so a grant made before the profile stops working without being deleted.
+pub fn deny_website_origin_in(policy: &ManagedPolicy, origin: &str) -> Result<(), String> {
+    deny_live_websites_in(policy)?;
+    let Some(allowed) = &policy.allowed_website_origins else {
+        return Ok(());
+    };
+    if allowed.is_empty() {
+        log_refusal_once(Key::AllowedWebsiteOrigins);
+        return Err(format!(
+            "{REASON_PREFIX} Your organisation doesn't allow live websites ({}).",
+            Key::AllowedWebsiteOrigins.name()
+        ));
+    }
+    if normalise_origin(origin).is_some_and(|origin| allowed.contains(&origin)) {
+        return Ok(());
+    }
+    Err(refusal(Key::AllowedWebsiteOrigins))
+}
+
+/// The same answer as `deny_website_origin_in` without logging a refusal, for paths that only look.
+pub fn website_origin_allowed_in(policy: &ManagedPolicy, origin: &str) -> bool {
+    if policy.disable_live_websites {
+        return false;
+    }
+    match &policy.allowed_website_origins {
+        None => true,
+        Some(allowed) => normalise_origin(origin).is_some_and(|origin| allowed.contains(&origin)),
+    }
+}
+
 pub fn deny_agent_kit_in(policy: &ManagedPolicy) -> Result<(), String> {
     if policy.disable_agent_kit {
         return Err(refusal(Key::DisableAgentKit));
@@ -460,12 +619,29 @@ pub fn deny_agent_kit() -> Result<(), String> {
     deny_agent_kit_in(policy())
 }
 
+pub fn deny_website_origin(origin: &str) -> Result<(), String> {
+    deny_website_origin_in(policy(), origin)
+}
+
+pub fn website_origin_allowed(origin: &str) -> bool {
+    website_origin_allowed_in(policy(), origin)
+}
+
 pub fn deny_pack_export() -> Result<(), String> {
     deny_pack_export_in(policy())
 }
 
 pub fn managed_update_endpoint() -> Result<Option<String>, String> {
     managed_update_endpoint_in(policy())
+}
+
+/// The folder a profile asks the app log to be copied to; `None` keeps only the local log.
+pub fn audit_log_dir_in(policy: &ManagedPolicy) -> Option<PathBuf> {
+    policy.audit_log_path.as_deref().map(PathBuf::from)
+}
+
+pub fn audit_log_dir() -> Option<PathBuf> {
+    audit_log_dir_in(policy())
 }
 
 /// Whether an app-triggered export must stay in the project, whatever the Downloads switch says.
@@ -552,10 +728,13 @@ mod tests {
         assert!(deny_workspace_change_in(&policy).is_ok());
         assert!(deny_publisher_in(&policy, Some("a1b2c3d4e5f60718")).is_ok());
         assert!(deny_publisher_in(&policy, None).is_ok());
+        assert!(audit_log_dir_in(&policy).is_none());
         assert!(deny_agent_kit_in(&policy).is_ok());
         assert!(deny_pack_export_in(&policy).is_ok());
         assert_eq!(managed_update_endpoint_in(&policy), Ok(None));
         assert!(!policy.exports_in_project);
+        assert!(deny_website_origin_in(&policy, "https://example.com").is_ok());
+        assert!(deny_website_origin_in(&policy, "http://localhost:5173").is_ok());
     }
 
     #[test]
@@ -692,6 +871,129 @@ mod tests {
     }
 
     #[test]
+    fn website_origins_match_scheme_host_and_port_exactly() {
+        let policy = forced(&[(
+            "AllowedWebsiteOrigins",
+            strings(&[
+                " https://Product.Example.com/ ",
+                "https://product.example.com:443",
+                "http://localhost:5173",
+                "https://docs.example.com:8443",
+            ]),
+        )]);
+        assert_eq!(
+            policy.allowed_website_origins,
+            Some(vec![
+                "https://product.example.com".to_owned(),
+                "http://localhost:5173".to_owned(),
+                "https://docs.example.com:8443".to_owned(),
+            ])
+        );
+        assert!(policy.issues.is_empty(), "{:?}", policy.issues);
+        for allowed in [
+            "https://product.example.com",
+            "https://PRODUCT.example.com",
+            "http://localhost:5173",
+            "https://docs.example.com:8443",
+        ] {
+            assert!(deny_website_origin_in(&policy, allowed).is_ok(), "{allowed}");
+        }
+        for refused in [
+            "https://www.product.example.com",
+            "https://evilproduct.example.com",
+            "https://product.example.com.evil.test",
+            "https://example.com",
+            "http://product.example.com",
+            "https://product.example.com:8443",
+            "https://docs.example.com",
+            "http://localhost:5174",
+            "http://127.0.0.1:5173",
+            "not an origin",
+            "",
+        ] {
+            let message = deny_website_origin_in(&policy, refused).unwrap_err();
+            assert!(message.starts_with(REASON_PREFIX), "{refused}: {message}");
+            assert!(message.contains("AllowedWebsiteOrigins"), "{refused}");
+            assert!(!website_origin_allowed_in(&policy, refused), "{refused}");
+        }
+        assert!(website_origin_allowed_in(&policy, "https://product.example.com"));
+        assert!(website_origin_allowed_in(&ManagedPolicy::default(), "https://a.test"));
+        let empty = forced(&[("AllowedWebsiteOrigins", strings(&[]))]);
+        assert!(!website_origin_allowed_in(&empty, "https://a.test"));
+        let off = forced(&[("DisableLiveWebsites", PrefValue::Bool(true))]);
+        assert!(!website_origin_allowed_in(&off, "https://a.test"));
+    }
+
+    #[test]
+    fn website_origin_entries_that_could_widen_the_list_are_dropped() {
+        let policy = forced(&[(
+            "AllowedWebsiteOrigins",
+            PrefValue::Array(vec![
+                PrefValue::String("https://*.example.com".into()),
+                PrefValue::String("*".into()),
+                PrefValue::String("example.com".into()),
+                PrefValue::String("https://example.com/path".into()),
+                PrefValue::String("https://example.com/?q=1".into()),
+                PrefValue::String("https://example.com/#top".into()),
+                PrefValue::String("https://user@example.com".into()),
+                PrefValue::String("http://example.com".into()),
+                PrefValue::String("http://localhost".into()),
+                PrefValue::String("file:///Users/x".into()),
+                PrefValue::Bool(true),
+                PrefValue::String("https://ok.example.com".into()),
+            ]),
+        )]);
+        assert_eq!(
+            policy.allowed_website_origins,
+            Some(vec!["https://ok.example.com".to_owned()])
+        );
+        assert_eq!(policy.issues.len(), 11, "{:?}", policy.issues);
+        assert!(policy
+            .issues
+            .iter()
+            .all(|issue| issue.starts_with("AllowedWebsiteOrigins")));
+        assert!(deny_website_origin_in(&policy, "https://a.example.com").is_err());
+        assert!(deny_website_origin_in(&policy, "https://example.com").is_err());
+    }
+
+    #[test]
+    fn an_empty_or_wrong_typed_website_list_allows_no_live_websites() {
+        let empty = forced(&[("AllowedWebsiteOrigins", strings(&[]))]);
+        assert_eq!(empty.allowed_website_origins, Some(Vec::new()));
+        let refused = deny_website_origin_in(&empty, "https://example.com").unwrap_err();
+        assert!(refused.starts_with(REASON_PREFIX));
+        assert!(refused.contains("doesn't allow live websites"));
+
+        for wrong in [
+            PrefValue::String("https://example.com".into()),
+            PrefValue::Bool(false),
+            PrefValue::Other("a number"),
+        ] {
+            let policy = forced(&[("AllowedWebsiteOrigins", wrong.clone())]);
+            assert_eq!(policy.allowed_website_origins, Some(Vec::new()), "{wrong:?}");
+            assert!(policy.issues[0].starts_with("AllowedWebsiteOrigins is forced but is"));
+            assert!(deny_website_origin_in(&policy, "https://example.com").is_err());
+        }
+    }
+
+    #[test]
+    fn disabling_live_websites_wins_over_the_website_list() {
+        let policy = forced(&[
+            ("DisableLiveWebsites", PrefValue::Bool(true)),
+            ("AllowedWebsiteOrigins", strings(&["https://example.com"])),
+        ]);
+        let refused = deny_website_origin_in(&policy, "https://example.com").unwrap_err();
+        assert!(refused.contains("DisableLiveWebsites"), "{refused}");
+
+        let open = forced(&[
+            ("DisableLiveWebsites", PrefValue::Bool(false)),
+            ("AllowedWebsiteOrigins", strings(&["https://example.com"])),
+        ]);
+        assert!(deny_website_origin_in(&open, "https://example.com").is_ok());
+        assert!(deny_website_origin_in(&open, "https://other.example.com").is_err());
+    }
+
+    #[test]
     fn workspace_root_pins_an_absolute_path_and_locks_on_anything_else() {
         let pinned = forced(&[(
             "WorkspaceRoot",
@@ -770,6 +1072,62 @@ mod tests {
     }
 
     #[test]
+    fn audit_log_path_takes_an_absolute_folder_outside_the_home_folder() {
+        let policy = forced(&[(
+            "AuditLogPath",
+            PrefValue::String(" /Library/Logs/Kookaburra Cut ".into()),
+        )]);
+        assert_eq!(
+            audit_log_dir_in(&policy),
+            Some(PathBuf::from("/Library/Logs/Kookaburra Cut"))
+        );
+        assert!(policy.issues.is_empty());
+        assert_eq!(policy.forced_keys, ["AuditLogPath"]);
+
+        let homes = [PathBuf::from("/Users/x")];
+        for refused in [
+            "logs",
+            "Library/Logs",
+            "~/Library/Logs",
+            "~",
+            "/",
+            "",
+            "/Library/Logs/../../Users/x",
+            "/Library/./Logs",
+            "/Users/x",
+            "/Users/x/",
+            "/Users/x/Library/Logs/KC",
+            "/users/X/Library/Logs",
+        ] {
+            assert_eq!(usable_audit_dir(refused, &homes), None, "{refused:?}");
+        }
+        for usable in [
+            "/Library/Logs/Kookaburra Cut",
+            "/Users/x-logs",
+            "/var/log/kookaburra-cut",
+        ] {
+            assert_eq!(
+                usable_audit_dir(usable, &homes),
+                Some(PathBuf::from(usable)),
+                "{usable:?}"
+            );
+        }
+
+        for value in [
+            PrefValue::String("relative/logs".into()),
+            PrefValue::Bool(true),
+            strings(&["/Library/Logs"]),
+        ] {
+            let policy = forced(&[("AuditLogPath", value)]);
+            assert!(policy.managed);
+            assert!(audit_log_dir_in(&policy).is_none());
+            assert_eq!(policy.issues.len(), 1, "{:?}", policy.issues);
+            assert!(policy.issues[0].starts_with("AuditLogPath"));
+            assert!(policy.issues[0].ends_with("keeping no copy of the app log"));
+        }
+    }
+
+    #[test]
     fn tilde_roots_expand_against_the_home_folder_only() {
         let mut policy = ManagedPolicy::default();
         let home = Path::new("/Users/x");
@@ -802,6 +1160,7 @@ mod tests {
             ("DisablePackExport", PrefValue::Bool(true)),
             ("UpdateEndpoint", PrefValue::String("http://example.com".into())),
         ]);
+        let listed = forced(&[("AllowedWebsiteOrigins", strings(&["https://example.com"]))]);
         let refusals = [
             (deny_claude_in(&policy), "DisableClaude"),
             (deny_live_websites_in(&policy), "DisableLiveWebsites"),
@@ -816,6 +1175,10 @@ mod tests {
             (
                 managed_update_endpoint_in(&policy).map(|_| ()),
                 "UpdateEndpoint",
+            ),
+            (
+                deny_website_origin_in(&listed, "https://other.example.com"),
+                "AllowedWebsiteOrigins",
             ),
         ];
         for (outcome, key) in refusals {
@@ -981,6 +1344,42 @@ mod tests {
                 "set_update_consent",
                 "managed_update_endpoint",
             ),
+            (
+                include_str!("audit.rs"),
+                "mirror_at_launch",
+                "audit_log_dir",
+            ),
+            (include_str!("lib.rs"), "run", "audit::mirror_at_launch"),
+            (
+                include_str!("website.rs"),
+                "website_open",
+                "deny_website_origin",
+            ),
+            (
+                include_str!("website.rs"),
+                "website_grant_origin",
+                "deny_website_origin",
+            ),
+            (
+                include_str!("website.rs"),
+                "website_resume_pending",
+                "deny_website_origin",
+            ),
+            (
+                include_str!("website.rs"),
+                "navigation_allowed",
+                "deny_website_origin",
+            ),
+            (
+                include_str!("website.rs"),
+                "origin_granted",
+                "website_origin_allowed",
+            ),
+            (
+                include_str!("website.rs"),
+                "website_list_grants",
+                "website_origin_allowed",
+            ),
         ];
         for (src, command, guard) in guarded {
             assert!(
@@ -1015,6 +1414,8 @@ mod tests {
         assert_eq!(json["exportsInProject"], false);
         assert_eq!(json["updateEndpoint"], serde_json::Value::Null);
         assert_eq!(json["updateEndpointLocked"], false);
+        assert_eq!(json["auditLogPath"], serde_json::Value::Null);
+        assert_eq!(json["allowedWebsiteOrigins"], serde_json::Value::Null);
         assert_eq!(
             json["forcedKeys"],
             serde_json::json!(["DisableClaude", "AllowedPublisherKeyIds"])

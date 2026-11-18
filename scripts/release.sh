@@ -8,9 +8,9 @@
 #        release.sh --adhoc    local rehearsal: build, sign ad hoc, plain DMG, verify; no tag
 #
 # Bump "version" in src-tauri/tauri.conf.json first and merge it; the tag step refuses unless
-# SECURITY.md names that version and the checkout is main, equal to origin/main after a fetch,
-# with that version still untagged. It prints what changed since the previous tag and asks y/N
-# before signing.
+# SECURITY.md names that version, CHANGELOG.md has its section (the release body) and the checkout
+# is main, equal to origin/main after a fetch, with that version still untagged. It prints what
+# changed since the previous tag and asks y/N before signing.
 #
 set -euo pipefail
 
@@ -52,6 +52,10 @@ fi
 # People read SECURITY.md as a description of the app they installed; 0.21.1 lacked most of what it listed.
 AS_OF=$(sed -nE '1,5s/^\*\*As of version ([^ ]+)\.\*\*.*/\1/p' "$ROOT/SECURITY.md")
 [[ "$AS_OF" == "$VERSION" ]] || die "SECURITY.md describes version '${AS_OF:-none}', not $VERSION; re-read it against main and update its first lines."
+
+# The release body is built from CHANGELOG.md, so a tag without its section would publish an empty page.
+bash "$ROOT/scripts/changelog-section.sh" "$VERSION" >/dev/null 2>&1 \
+  || die "CHANGELOG.md has no entry for $VERSION; move Unreleased under \"## [$VERSION] - $(date +%F)\" and merge it first."
 
 [[ -z "$(git status --porcelain)" ]] || die "working tree is dirty; commit first."
 [[ "$(git branch --show-current)" == "main" ]] || die "release from main, not '$(git branch --show-current)'."

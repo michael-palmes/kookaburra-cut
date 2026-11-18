@@ -94,13 +94,18 @@ export function formatUpdateStatus(s: UpdateStatusInput): string {
 
 /** Relative "Last checked …" wording, same buckets as Welcome's formatLastOpened. */
 export function formatCheckedAgo(ms: number, nowMs: number): string {
+  return `Last checked ${formatAgo(ms, nowMs)}`;
+}
+
+/** "just now", "5 minutes ago", "yesterday": minutes, then hours, then days. */
+export function formatAgo(ms: number, nowMs: number): string {
   const minutes = Math.round((nowMs - ms) / 60_000);
-  if (minutes < 1) return "Last checked just now";
+  if (minutes < 1) return "just now";
   const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
-  if (minutes < 60) return `Last checked ${rtf.format(-minutes, "minute")}`;
+  if (minutes < 60) return rtf.format(-minutes, "minute");
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `Last checked ${rtf.format(-hours, "hour")}`;
-  return `Last checked ${rtf.format(-Math.round(hours / 24), "day")}`;
+  if (hours < 24) return rtf.format(-hours, "hour");
+  return rtf.format(-Math.round(hours / 24), "day");
 }
 
 // ── Per-window hook ────────────────────────────────────────────────────────

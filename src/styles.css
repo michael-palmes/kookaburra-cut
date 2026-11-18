@@ -22,12 +22,13 @@
   --border-subtle: rgba(255, 255, 255, 0.06);
   --border-default: rgba(255, 255, 255, 0.1);
   --border-strong: rgba(255, 255, 255, 0.16);
+  --border-control: rgba(255, 255, 255, 0.34);
   --border-window: #000000;
 
   /* ── Text (§4.3) ───────────────────────────────────────────── */
   --text-primary: #f0efeb;
   --text-secondary: #acafb1;
-  --text-tertiary: #6b737d;
+  --text-tertiary: #8a929c;
   --text-disabled: #474d58;
   --text-on-accent: #0b1014;
 
@@ -43,30 +44,35 @@
   --focus-ring: #4c9fef;
   --selection: rgba(76, 159, 239, 0.3);
   --danger: #e5654b;
+  --danger-text: #f07a62;
   --danger-fill: #c8472f;
   --success: #5fb87a;
   --warning: #d98c2b;
   --info: #4c9fef;
 
   /* ── Typography (§5) ───────────────────────────────────────── */
+  /* Settings › Text size scales type and control heights through this one factor. */
+  --text-scale: 1;
+  /* Rails and side panels grow half as fast as the text, so wrapped rows stay readable without starving the stage. */
+  --panel-scale: calc(1 + (var(--text-scale) - 1) / 2);
   --font-ui: -apple-system, "SF Pro Text", "SF Pro Display", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, monospace;
-  --text-2xs: 10px;
-  --lh-2xs: 14px;
-  --text-xs: 11px;
-  --lh-xs: 16px;
-  --text-sm: 12px;
-  --lh-sm: 16px;
-  --text-base: 13px;
-  --lh-base: 18px;
-  --text-md: 14px;
-  --lh-md: 20px;
-  --text-lg: 16px;
-  --lh-lg: 22px;
-  --text-xl: 20px;
-  --lh-xl: 26px;
-  --text-display: 28px;
-  --lh-display: 34px;
+  --text-2xs: calc(10px * var(--text-scale));
+  --lh-2xs: calc(14px * var(--text-scale));
+  --text-xs: calc(11px * var(--text-scale));
+  --lh-xs: calc(16px * var(--text-scale));
+  --text-sm: calc(12px * var(--text-scale));
+  --lh-sm: calc(16px * var(--text-scale));
+  --text-base: calc(13px * var(--text-scale));
+  --lh-base: calc(18px * var(--text-scale));
+  --text-md: calc(14px * var(--text-scale));
+  --lh-md: calc(20px * var(--text-scale));
+  --text-lg: calc(16px * var(--text-scale));
+  --lh-lg: calc(22px * var(--text-scale));
+  --text-xl: calc(20px * var(--text-scale));
+  --lh-xl: calc(26px * var(--text-scale));
+  --text-display: calc(28px * var(--text-scale));
+  --lh-display: calc(34px * var(--text-scale));
 
   /* ── Spacing / radii (§6.2) ────────────────────────────────── */
   --space-1: 2px;
@@ -95,12 +101,12 @@
   --dur-slow: 240ms;
 
   /* ── Density / sizing (§11) ────────────────────────────────── */
-  --control-h-sm: 22px;
-  --control-h-md: 28px;
-  --control-h-lg: 34px;
-  --row-h-list: 28px;
-  --hit-min: 28px;
-  --titlebar-h: 46px; /* v13 · M2 (approved §15 amendment — was 40px) */
+  --control-h-sm: calc(22px * var(--text-scale));
+  --control-h-md: calc(28px * var(--text-scale));
+  --control-h-lg: calc(34px * var(--text-scale));
+  --row-h-list: calc(28px * var(--text-scale));
+  --hit-min: calc(28px * var(--text-scale));
+  --titlebar-h: calc(46px * var(--text-scale)); /* v13 · M2 (approved §15 amendment, was 40px) */
 
   /* ── Gizmos ────────────────────────────────────────────────── */
   /* One palette for every gizmo, 2D and 3D. The canvas-side mirror is src/engine/gizmoTokens.ts. */
@@ -141,6 +147,45 @@
   line-height: var(--lh-base);
 }
 
+:root[data-text-size="large"] {
+  --text-scale: 1.25;
+}
+
+:root[data-text-size="larger"] {
+  --text-scale: 1.5;
+}
+
+:root[data-text-size="largest"] {
+  --text-scale: 2;
+}
+
+/* Enlarged text wraps labels that cut themselves off at Default: names, details, paths, error lines. */
+:root[data-text-size]
+  :is(
+    .settings-path,
+    .project-card-name,
+    .inspector-drill-current,
+    .device-editor-media-detail,
+    .device-editor-arrangement-copy > span:last-child,
+    .load-notice-list li,
+    .theme-card-meta,
+    .add-scene-cat-label,
+    .add-scene-mine-label,
+    .add-scene-card-name,
+    .template-card-name,
+    .media-name,
+    .media-card-foot .media-meta-line
+  ) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+:root[data-text-size] .inspector-drill-header {
+  height: auto;
+  min-height: calc(40px * var(--text-scale));
+}
+
 * {
   box-sizing: border-box;
 }
@@ -176,6 +221,11 @@ body {
 :focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
+}
+
+/* A modal layer holds focus itself until Tab moves into it (ui/modalFocus.ts); the container draws no ring. */
+[aria-modal="true"][tabindex="-1"]:focus {
+  outline: none;
 }
 
 /* macOS overlay scrollbars: thin + lightly tinted, never forced visible (§13). */
@@ -283,16 +333,26 @@ body {
   text-overflow: ellipsis;
 }
 
+/* Enlarged text: the project name wraps to two lines rather than lose its end; the folder keeps its tooltip. */
+:root[data-text-size] .titlebar-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 /* The ⌘K launcher: a recessed field-shaped button with a trailing keycap. */
 .palette-trigger {
   display: flex;
   flex: none;
   align-items: center;
   gap: var(--space-4);
-  height: 32px;
+  height: calc(32px * var(--text-scale));
   padding: 0 11px;
   font: inherit;
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--text-scale));
   color: var(--text-tertiary);
   background: var(--surface-recessed);
   border: 1px solid var(--border-default);
@@ -311,7 +371,7 @@ body {
 .palette-trigger-key {
   padding: 1px 5px;
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--text-scale));
   color: var(--text-tertiary);
   background: var(--surface-raised);
   border: 1px solid var(--border-subtle);
@@ -330,7 +390,7 @@ body {
 .titlebar-export,
 .titlebar-present,
 .titlebar-cancel {
-  height: 32px;
+  height: calc(32px * var(--text-scale));
   gap: 7px;
 }
 
@@ -341,10 +401,10 @@ body {
   flex: none;
   align-items: center;
   gap: 7px;
-  height: 30px;
+  height: calc(30px * var(--text-scale));
   padding: 0 10px 0 9px;
   font: inherit;
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--text-scale));
   font-weight: 590;
   color: var(--text-primary);
   background: var(--surface-raised);
@@ -401,6 +461,19 @@ body {
   width: 400px;
 }
 
+/* Enlarged text: the launcher scrolls inside the window, so its More menu opens upward to stay inside it. */
+:root[data-text-size] .claude-launcher {
+  max-height: calc(100vh - var(--titlebar-h) - 12px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+:root[data-text-size] .claude-launcher-menu {
+  top: auto;
+  bottom: calc(100% + 6px);
+  width: calc(240px * var(--panel-scale));
+}
+
 @keyframes claude-launcher-in {
   from {
     opacity: 0;
@@ -411,7 +484,7 @@ body {
 .claude-launcher h2 {
   margin: 0;
   font-family: var(--font-claude-display);
-  font-size: 19px;
+  font-size: calc(19px * var(--text-scale));
   font-weight: 500;
   line-height: 1.25;
 }
@@ -474,7 +547,7 @@ body {
 }
 
 .claude-launcher-title h2 {
-  font-size: 22px;
+  font-size: calc(22px * var(--text-scale));
 }
 
 .claude-launcher-title p {
@@ -507,9 +580,9 @@ body {
   justify-content: center;
   gap: 9px;
   width: 100%;
-  height: 44px;
+  height: calc(44px * var(--text-scale));
   font: inherit;
-  font-size: 14.5px;
+  font-size: calc(14.5px * var(--text-scale));
   font-weight: 650;
   color: var(--claude-ink);
   background: var(--claude-clay);
@@ -536,7 +609,7 @@ body {
 .claude-launcher-label {
   display: block;
   padding: 0 var(--space-3) var(--space-4);
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--text-scale));
   font-weight: 600;
   color: var(--claude-text-tertiary);
 }
@@ -555,7 +628,7 @@ body {
   gap: 7px;
   padding: 10px var(--space-2) 9px;
   font: inherit;
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--text-scale));
   font-weight: 590;
   color: var(--claude-text-secondary);
   background: var(--claude-raised);
@@ -635,7 +708,7 @@ body {
   justify-content: center;
   height: 30px;
   font: inherit;
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--text-scale));
   font-weight: 510;
   color: var(--claude-text-secondary);
   background: transparent;
@@ -685,7 +758,7 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  height: 32px;
+  height: calc(32px * var(--text-scale));
   padding: 0 10px;
   font: inherit;
   font-size: var(--text-base);
@@ -738,13 +811,13 @@ body {
 /* Toggle-style buttons (transition direction/ease, aria-pressed rows): the chip.selected look. */
 .btn.selected {
   color: var(--text-primary);
-  border-color: var(--accent-border);
+  border-color: var(--accent);
   background: var(--accent-subtle);
 }
 
 .btn.selected:hover:not(:disabled) {
   background: var(--accent-subtle);
-  border-color: var(--accent-border);
+  border-color: var(--accent);
 }
 
 .btn:active:not(:disabled) {
@@ -812,7 +885,7 @@ body {
   font-size: var(--text-sm);
   color: var(--text-primary);
   background: var(--surface-raised);
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-xs);
 }
 
@@ -877,7 +950,7 @@ body {
 /* Selected state for chip-styled choices (wizard duration presets). */
 .chip.selected {
   color: var(--text-primary);
-  border-color: var(--accent-border);
+  border-color: var(--accent);
   background: var(--accent-subtle);
 }
 
@@ -1462,7 +1535,7 @@ body {
 .media-menu-btn {
   flex-shrink: 0;
   width: 24px;
-  height: 20px;
+  height: calc(20px * var(--text-scale));
   border: none;
   border-radius: var(--radius-xs);
   background: transparent;
@@ -1952,7 +2025,7 @@ body {
   left: 50%;
   transform: translate(-50%, -50%);
   padding: 1px 8px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   color: var(--text-tertiary);
   background: color-mix(in srgb, var(--surface-panel) 85%, transparent);
   border: none;
@@ -1983,7 +2056,7 @@ button.beat-status {
   flex-basis: 0;
   min-width: 0;
   overflow: hidden;
-  font-size: 9px;
+  font-size: calc(9px * var(--text-scale));
   color: var(--text-secondary);
   text-align: center;
   text-overflow: ellipsis;
@@ -2000,9 +2073,9 @@ button.beat-status {
   box-sizing: border-box;
   flex-basis: 0;
   min-width: 0;
-  height: 18px;
+  height: calc(18px * var(--text-scale));
   padding: 0 4px;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   text-align: center;
 }
 
@@ -2029,7 +2102,7 @@ button.beat-status {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  height: 20px;
+  height: calc(20px * var(--text-scale));
   padding: 0 var(--space-3);
   font-size: var(--text-xs);
   color: var(--text-secondary);
@@ -2050,10 +2123,10 @@ button.beat-status {
 }
 
 .pb-new-scene {
-  height: 24px;
+  height: calc(24px * var(--text-scale));
   padding: 0 10px;
   font: inherit;
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--text-scale));
   color: var(--text-secondary);
   background: transparent;
   border: 1px dashed var(--border-strong);
@@ -2148,7 +2221,10 @@ button.beat-status {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  max-width: min(30rem, calc(100% - 2rem));
+  max-width: min(calc(30rem * var(--text-scale)), calc(100% - 2rem));
+  max-height: calc(100% - 2 * var(--space-6));
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .load-notice {
@@ -2233,7 +2309,7 @@ button.beat-status {
 }
 
 .editor-window {
-  --chrome-top: 52px; /* .editor-topbar */
+  --chrome-top: calc(52px * var(--text-scale)); /* .editor-topbar */
 }
 
 .modal-overlay {
@@ -2245,6 +2321,9 @@ button.beat-status {
   z-index: 20;
   display: grid;
   place-items: center;
+  /* A dialog taller than the window (Larger text, a short window) scrolls instead of clipping. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--surface-overlay);
 }
 
@@ -2324,17 +2403,25 @@ button.beat-status {
   font: inherit;
   color: var(--text-primary);
   background: var(--surface-recessed);
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-xs);
 }
 
 .modal-input:focus {
-  border-color: var(--border-strong);
+  border-color: var(--text-tertiary);
 }
 
 .modal-error {
-  color: var(--danger);
+  color: var(--danger-text);
   font-size: var(--text-sm);
+}
+
+/* Why a typed value reverted, under or beside its field. */
+.field-error {
+  margin: 0;
+  padding: 0 8px 4px;
+  color: var(--danger-text);
+  font-size: var(--text-xs);
 }
 
 .modal-hint {
@@ -2443,7 +2530,7 @@ button.beat-status {
 .recommended-badge {
   display: inline-flex;
   align-items: center;
-  height: 20px;
+  height: calc(20px * var(--text-scale));
   padding: 0 var(--space-4);
   font-size: var(--text-2xs);
   font-weight: 590;
@@ -2479,7 +2566,7 @@ button.beat-status {
 }
 
 .template-card.selected {
-  border-color: var(--accent-border);
+  border-color: var(--accent);
   background: var(--accent-subtle);
   color: var(--text-primary);
 }
@@ -2544,6 +2631,12 @@ button.beat-status {
   font-size: var(--text-xs);
   line-height: var(--lh-xs);
   color: var(--text-secondary);
+}
+
+/* Larger text keeps whole sentences rather than cutting them off. */
+:root[data-text-size] :is(.template-card-tagline, .theme-card-use-label) {
+  -webkit-line-clamp: unset;
+  line-clamp: none;
 }
 
 .template-card-meta {
@@ -2821,7 +2914,7 @@ button.beat-status {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  height: 22px;
+  height: calc(22px * var(--text-scale));
   padding: 0 var(--space-4) 0 var(--space-3);
   font-size: var(--text-xs);
   font-weight: 590;
@@ -2951,7 +3044,7 @@ button.beat-status {
 .new-project-name-input {
   box-sizing: border-box;
   inline-size: 100%;
-  height: 56px;
+  height: calc(56px * var(--text-scale));
   padding: 0 var(--space-6);
   font-size: var(--text-xl);
   font-weight: 590;
@@ -2962,7 +3055,7 @@ button.beat-status {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  height: 36px;
+  height: calc(36px * var(--text-scale));
   padding: 0 var(--space-4);
   font: inherit;
   text-align: left;
@@ -3224,7 +3317,7 @@ button.beat-status {
 }
 
 .theme-browser-chip.active {
-  border-color: var(--accent-border);
+  border-color: var(--accent);
 }
 
 .theme-browser-empty {
@@ -3270,7 +3363,7 @@ button.beat-status {
 }
 
 .theme-card.selected {
-  border-color: var(--accent-border);
+  border-color: var(--accent);
   background: var(--accent-subtle);
   color: var(--text-primary);
 }
@@ -3341,7 +3434,7 @@ button.beat-status {
   left: var(--space-3);
   display: inline-flex;
   align-items: center;
-  height: 18px;
+  height: calc(18px * var(--text-scale));
   padding: 0 var(--space-3);
   font-size: var(--text-2xs);
   font-weight: 590;
@@ -3443,7 +3536,7 @@ button.beat-status {
 
 .theme-library-modal .theme-browser-body {
   flex: 1;
-  grid-template-columns: 200px minmax(0, 1fr);
+  grid-template-columns: calc(200px * var(--panel-scale)) minmax(0, 1fr);
   gap: 0;
 }
 
@@ -3460,7 +3553,7 @@ button.beat-status {
 
 .theme-library-modal .theme-grid {
   max-height: none;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(calc(150px * var(--panel-scale)), 1fr));
   gap: 10px;
   padding: 0;
 }
@@ -3908,13 +4001,13 @@ button.beat-status {
 }
 .group-chip.selected {
   color: var(--text-primary);
-  border-color: var(--accent-border);
+  border-color: var(--accent);
   background: var(--surface-hover);
 }
 
 .project-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(calc(230px * var(--panel-scale)), 1fr));
   gap: var(--space-6);
   margin-bottom: var(--space-8);
 }
@@ -4010,7 +4103,7 @@ button.beat-status {
   left: var(--space-4);
   display: inline-flex;
   align-items: center;
-  height: 20px;
+  height: calc(20px * var(--text-scale));
   padding: 0 var(--space-4);
   font-size: var(--text-xs);
   font-weight: 590;
@@ -4132,14 +4225,14 @@ button.beat-status {
 .welcome-legal {
   margin: 0;
   font-size: var(--text-2xs);
-  color: var(--text-disabled);
+  color: var(--text-tertiary);
   user-select: none;
 }
 
 .version-label {
   font: inherit;
   font-size: var(--text-2xs);
-  color: var(--text-disabled);
+  color: var(--text-tertiary);
   background: transparent;
   border: 0;
   cursor: default;
@@ -4165,7 +4258,7 @@ button.beat-status {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-5);
-  height: 52px;
+  height: calc(52px * var(--text-scale));
   /* Overlay titlebar (M5.2): traffic lights occupy the top-left ~78px (same reserve as
      the main window's titlebar). The bar is the drag region. */
   padding: 0 var(--space-6) 0 78px;
@@ -4336,7 +4429,7 @@ button.beat-status {
 }
 
 .tap-settings-chevron {
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   color: var(--text-secondary);
 }
 
@@ -4788,6 +4881,7 @@ button.beat-status {
 .editor-toolbar {
   flex: 0 0 auto;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
@@ -4815,7 +4909,7 @@ button.beat-status {
 }
 
 .editor-hold-input {
-  width: 60px;
+  width: calc(60px * var(--text-scale));
   height: var(--control-h-md);
   padding: 0 8px;
   font-size: var(--text-sm);
@@ -4823,7 +4917,7 @@ button.beat-status {
   color: var(--text-primary);
   text-align: right;
   background: var(--surface-recessed);
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-md);
 }
 
@@ -4878,6 +4972,10 @@ button.beat-status {
   background: var(--surface-panel);
   border-right: 1px solid var(--border-default);
   overflow: hidden;
+}
+
+:root[data-text-size] .editor-media-panel {
+  overflow-y: auto;
 }
 
 .editor-timecode {
@@ -5061,7 +5159,7 @@ button.beat-status {
 }
 
 .timeline-zoom .btn {
-  height: 20px;
+  height: calc(20px * var(--text-scale));
   padding: 0 var(--space-3);
   font-size: var(--text-2xs);
 }
@@ -5079,7 +5177,7 @@ button.beat-status {
 
 .timeline-ruler {
   position: relative;
-  height: 26px;
+  height: calc(26px * var(--text-scale));
   cursor: ew-resize;
   border-bottom: 1px solid var(--border-subtle);
   /* The ruler is the seek surface — keep every px hittable. */
@@ -5334,6 +5432,12 @@ button.beat-status {
   max-width: none;
 }
 
+.inspector-subtabs.settings-segments {
+  flex-wrap: wrap;
+  max-width: 100%;
+  margin: 0;
+}
+
 .settings-row-actions {
   display: flex;
   flex-wrap: wrap;
@@ -5437,7 +5541,7 @@ button.beat-status {
 }
 
 .device-card.selected {
-  border-color: var(--accent-border);
+  border-color: var(--accent);
 }
 
 .device-card-main {
@@ -5486,6 +5590,17 @@ button.beat-status {
   border: 0;
 }
 
+/* A hovered or selected row's wash drops tertiary hints under 4.5:1 on raised tiers. */
+.font-picker-row:is(:hover, .selected) .font-picker-style,
+.theme-browser-collection:is(:hover, .active) .theme-browser-collection-count,
+.action-row:hover:not(:disabled) :is(.action-row-value, .action-row-chevron),
+.toggle-row:hover .toggle-row-desc,
+.stills-row:hover .stills-row-value,
+.template-card:is(:hover, .selected) .template-card-meta,
+.text-motion-preset-card:is(:hover, .selected):not(:disabled) small {
+  color: var(--text-secondary);
+}
+
 .swatch {
   width: 18px;
   height: 18px;
@@ -5528,7 +5643,7 @@ button.beat-status {
 }
 
 .scene-card.selected {
-  border-color: var(--accent-border);
+  border-color: var(--accent);
   background: var(--accent-subtle);
 }
 
@@ -5684,7 +5799,7 @@ button.beat-status {
 
 /* The playhead scene: an accent frame and foot, and a badge in the band above the card. */
 .insert-card.current .insert-card-thumb {
-  border-color: var(--accent-border);
+  border-color: var(--accent);
 }
 
 .insert-card.current .insert-card-thumb::after {
@@ -5700,8 +5815,8 @@ button.beat-status {
 .insert-card-name {
   min-width: 0;
   padding: 0 1px;
-  font-size: 10.5px;
-  line-height: 14px;
+  font-size: calc(10.5px * var(--text-scale));
+  line-height: calc(14px * var(--text-scale));
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -5717,8 +5832,8 @@ button.beat-status {
   top: 4px;
   right: 0;
   left: 0;
-  font-size: 9px;
-  line-height: 12px;
+  font-size: calc(9px * var(--text-scale));
+  line-height: calc(12px * var(--text-scale));
   text-align: center;
   color: var(--accent-text);
   white-space: nowrap;
@@ -5849,7 +5964,7 @@ button.beat-status {
 
 .add-scene-search .modal-input {
   width: 100%;
-  height: 30px;
+  height: calc(30px * var(--text-scale));
   padding: 0 var(--space-5) 0 30px;
   border-radius: var(--radius-full);
 }
@@ -5858,7 +5973,7 @@ button.beat-status {
   display: grid;
   flex: 1;
   grid-template-rows: minmax(0, 1fr);
-  grid-template-columns: 200px minmax(0, 1fr);
+  grid-template-columns: calc(200px * var(--panel-scale)) minmax(0, 1fr);
   min-height: 300px;
 }
 
@@ -5889,10 +6004,10 @@ button.beat-status {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  height: 28px;
+  height: calc(28px * var(--text-scale));
   padding: 0 10px;
   font: inherit;
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--text-scale));
   text-align: left;
   color: var(--text-secondary);
   background: transparent;
@@ -5978,7 +6093,7 @@ button.beat-status {
 
 .add-scene-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(calc(150px * var(--panel-scale)), 1fr));
   align-content: start;
   gap: 10px;
 }
@@ -6002,7 +6117,7 @@ button.beat-status {
 
 .add-scene-card.selected {
   background: var(--accent-subtle);
-  border-color: var(--accent-border);
+  border-color: var(--accent);
 }
 
 .add-scene-card-thumb {
@@ -6045,7 +6160,7 @@ button.beat-status {
 .add-scene-card-name {
   flex: 1;
   min-width: 0;
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--text-scale));
   font-weight: 590;
   color: var(--text-primary);
   white-space: nowrap;
@@ -6192,7 +6307,7 @@ button.beat-status {
 /* Align the Present-loop toggle + mode chips under the Animate-scene row label (8px pad + 17px icon + 11px gap). */
 .popover-group-label {
   min-width: 82px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-secondary);
@@ -6218,12 +6333,12 @@ button.beat-status {
   box-sizing: border-box;
   /* A FIXED width, not min-width: an <input> has a large intrinsic default width that
      min-width won't shrink, so the display button and edit field must be pinned equal. */
-  width: 52px;
+  width: calc(52px * var(--text-scale));
   flex-shrink: 0;
   padding: 2px 4px;
   margin: 0;
   font: inherit;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   font-variant-numeric: tabular-nums;
   text-align: right;
   color: var(--text-secondary);
@@ -6236,9 +6351,8 @@ button.beat-status {
 .range-value-edit {
   color: var(--text-primary);
   background: var(--surface-recessed);
-  border-color: var(--border-default);
+  border-color: var(--border-control);
   cursor: text;
-  outline: none;
   user-select: text;
 }
 .range-value-edit:focus {
@@ -6283,7 +6397,7 @@ button.beat-status {
   border-color: var(--accent);
 }
 .chip-icon-tile.emoji {
-  font-size: 20px;
+  font-size: calc(20px * var(--text-scale));
   line-height: 1;
 }
 /* One decoration's editor: a bordered card grouping its image, position, size, shape and layer. */
@@ -6341,14 +6455,14 @@ button.beat-status {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   color: var(--text-secondary);
 }
 .popover-inline.popover-disabled {
   opacity: 0.45;
 }
 .popover-blurb {
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   color: var(--text-secondary);
   opacity: 0.8;
 }
@@ -6434,8 +6548,8 @@ button.beat-status {
   display: block;
   max-width: 100%;
   overflow: hidden;
-  font-size: 11px;
-  line-height: 16px;
+  font-size: calc(11px * var(--text-scale));
+  line-height: calc(16px * var(--text-scale));
   color: var(--text-secondary);
   text-align: center;
   text-overflow: ellipsis;
@@ -6455,12 +6569,17 @@ button.beat-status {
   margin-bottom: var(--space-2);
 }
 .gradient-angle {
-  width: 72px;
+  width: calc(72px * var(--text-scale));
 }
 /* ── Keyboard-shortcut sheet (v12 · M2 B3) ─────────────────────────────────── */
 
 .shortcuts-sheet {
-  width: min(34rem, calc(100vw - 4rem));
+  width: min(calc(34rem * var(--text-scale)), calc(100vw - 4rem));
+}
+.shortcuts-note {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
 }
 .shortcuts-group h3 {
   margin: var(--space-3) 0 var(--space-1);
@@ -6480,7 +6599,7 @@ button.beat-status {
   padding: 2px 0;
 }
 .shortcuts-row dt {
-  flex: 0 0 8rem;
+  flex: 0 0 calc(8rem * var(--text-scale));
 }
 .shortcuts-row dd {
   margin: 0;
@@ -6502,7 +6621,7 @@ button.beat-status {
   border-color: var(--danger);
 }
 .dropdown-item.danger {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 /* ── Animation lane (v13 · M7 — the restyled camera mini-timeline) ─────────── */
@@ -6805,7 +6924,7 @@ button.beat-status {
 /* The scene-length half of the readout doubles as the edit affordance; button and input share one fixed box so editing never resizes it. */
 .anim-duration {
   box-sizing: border-box;
-  width: 68px;
+  width: calc(68px * var(--text-scale));
   padding: 0 4px;
   color: inherit;
   font: inherit;
@@ -6822,7 +6941,7 @@ button.beat-status {
 
 .anim-duration-input {
   box-sizing: border-box;
-  width: 68px;
+  width: calc(68px * var(--text-scale));
   padding: 0 4px;
   /* The one editable island in a select-none row. */
   user-select: text;
@@ -6831,7 +6950,7 @@ button.beat-status {
   text-align: left;
   color: var(--text-primary);
   background: var(--surface-recessed);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-xs);
 }
 
@@ -6891,7 +7010,7 @@ button.beat-status {
   position: relative;
   /* Absolute layers cannot size the pill, so each state names its width: idle 392, then Orbit's three tools, then Free's six plus the always-on fov stepper. */
   width: 392px;
-  height: 38px;
+  height: calc(38px * var(--text-scale));
   background: var(--surface-elevated);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-full);
@@ -6924,7 +7043,7 @@ button.beat-status {
   width: 100%;
   padding: 0;
   font: inherit;
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--text-scale));
   font-weight: 590;
   color: var(--text-primary);
   background: transparent;
@@ -6960,7 +7079,7 @@ button.beat-status {
   align-items: center;
   justify-content: center;
   width: 30px;
-  height: 30px;
+  height: calc(30px * var(--text-scale));
   flex: none;
   color: var(--text-secondary);
   background: transparent;
@@ -7003,13 +7122,37 @@ button.beat-status {
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--text-scale));
   color: var(--text-secondary);
   white-space: nowrap;
   text-overflow: ellipsis;
   /* Pill copy is furniture: a drag over it must never paint a selection. */
   user-select: none;
   -webkit-user-select: none;
+}
+
+/* Enlarged text: the pill sizes to its tools instead of a fixed width, so only the shown layer stays in flow. */
+:root[data-text-size] .camera-pill {
+  width: auto;
+  max-width: 100%;
+}
+
+:root[data-text-size] :is(.camera-pill-idle, .camera-pill-active) {
+  position: static;
+  height: 100%;
+}
+
+:root[data-text-size] .camera-pill-idle {
+  padding: 0 calc(24px * var(--text-scale));
+}
+
+:root[data-text-size] .camera-pill.active .camera-pill-idle,
+:root[data-text-size] .camera-pill:not(.active) .camera-pill-active {
+  display: none;
+}
+
+:root[data-text-size] .camera-pill-blurb {
+  flex: 0 1 auto;
 }
 
 /* Content-sized: the pill's per-mode width owns the layout, so the stepper never shrinks into the clip. */
@@ -7025,7 +7168,7 @@ button.beat-status {
   align-items: center;
   justify-content: center;
   width: 22px;
-  height: 22px;
+  height: calc(22px * var(--text-scale));
   flex: none;
   font: inherit;
   font-size: var(--text-md);
@@ -7201,7 +7344,7 @@ button.beat-status {
 
 /* The lane's Resize… modal: one seconds field, sized to its digits rather than the modal width. */
 .resize-anim-field {
-  width: 120px;
+  width: calc(120px * var(--text-scale));
 }
 
 /* The rig's segment extras: smoothing, then the three channel eases behind a disclosure. */
@@ -7524,12 +7667,12 @@ button.beat-status {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   font-weight: 600;
 }
 
 .ls-builder-hint {
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   font-weight: 400;
 }
 
@@ -7537,7 +7680,7 @@ button.beat-status {
   display: flex;
   gap: 8px;
   align-items: center;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
 }
 
 .ls-builder-spread > .popover-inline {
@@ -7588,13 +7731,13 @@ button.beat-status {
 .ls-layer-name {
   flex: 1;
   overflow: hidden;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .ls-layer-count {
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   opacity: 0.6;
 }
 
@@ -7605,7 +7748,7 @@ button.beat-status {
 
 .ls-layer-tool {
   padding: 1px 5px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   color: inherit;
   cursor: pointer;
   background: none;
@@ -7645,7 +7788,7 @@ button.beat-status {
   justify-content: center;
   padding: 2px;
   overflow: visible;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   cursor: pointer;
   background: var(--surface-panel);
   border: 1px solid var(--border-strong);
@@ -7683,8 +7826,8 @@ button.beat-status {
   width: 16px;
   height: 16px;
   padding: 0;
-  font-size: 10px;
-  line-height: 14px;
+  font-size: calc(10px * var(--text-scale));
+  line-height: calc(14px * var(--text-scale));
   color: var(--accent-text);
   cursor: pointer;
   background: var(--accent);
@@ -7733,11 +7876,11 @@ button.beat-status {
   display: flex;
   gap: 6px;
   align-items: center;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
 }
 
 .ls-builder-field .modal-input {
-  width: 72px;
+  width: calc(72px * var(--text-scale));
 }
 
 /* ── Motion floor (§9): reduced motion collapses all transitions ───────────── */
@@ -7847,12 +7990,39 @@ button.beat-status {
 }
 
 .transition-preview {
+  position: relative;
   width: 100%;
   aspect-ratio: 16 / 9;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
   background: var(--surface-recessed);
   overflow: hidden;
+}
+
+.transition-preview-stage {
+  width: 100%;
+  height: 100%;
+}
+
+.transition-preview-pause {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--hit-min);
+  height: var(--hit-min);
+  padding: 0;
+  color: var(--text-primary);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+
+.transition-preview-pause:hover {
+  background: var(--surface-elevated);
 }
 
 .transition-preview-canvas {
@@ -8190,7 +8360,7 @@ button.beat-status {
 }
 
 .export-danger {
-  color: #e05c5c;
+  color: var(--danger-text);
   border-color: #e05c5c;
 }
 
@@ -8326,7 +8496,7 @@ button.beat-status {
 }
 
 .palette-input {
-  height: 44px;
+  height: calc(44px * var(--text-scale));
   flex: none;
   margin: var(--space-4);
   padding: 0 var(--space-5);
@@ -8334,13 +8504,12 @@ button.beat-status {
   font-size: var(--text-md);
   color: var(--text-primary);
   background: var(--surface-recessed);
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-md);
 }
 
 .palette-input:focus {
-  border-color: var(--border-strong);
-  outline: none;
+  border-color: var(--text-tertiary);
 }
 
 .palette-input::placeholder {
@@ -8367,7 +8536,7 @@ button.beat-status {
   display: flex;
   align-items: center;
   gap: var(--space-5);
-  height: 34px;
+  height: calc(34px * var(--text-scale));
   padding: 0 var(--space-5);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
@@ -8413,7 +8582,7 @@ button.beat-status {
   display: flex;
   flex-direction: column;
   flex: none;
-  width: 342px;
+  width: calc(342px * var(--panel-scale));
   min-height: 0;
   overflow: hidden;
   background: var(--surface-panel);
@@ -8440,7 +8609,7 @@ button.beat-status {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 26px;
+  height: calc(26px * var(--text-scale));
   font: inherit;
   font-size: var(--text-sm);
   font-weight: 500;
@@ -8776,7 +8945,7 @@ button.beat-status {
   display: flex;
   align-items: center;
   width: 100%;
-  height: 30px;
+  height: calc(30px * var(--text-scale));
   padding: 0 var(--space-5);
   font: inherit;
   font-size: var(--text-base);
@@ -8814,7 +8983,7 @@ button.beat-status {
 }
 
 .inspector-popover-item.danger {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 /* Slowdown badge: live fps stacked in an amber warning triangle (SVG shape, rounded points), bottom-right of the stage during lag. */
@@ -8828,7 +8997,7 @@ button.beat-status {
   align-items: center;
   justify-content: flex-end;
   width: 46px;
-  height: 40px;
+  height: calc(40px * var(--text-scale));
   padding: 0 0 5px;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
@@ -8847,14 +9016,14 @@ button.beat-status {
 
 .lag-badge-fps {
   position: relative;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   font-weight: 700;
   line-height: 1;
 }
 
 .lag-badge-unit {
   position: relative;
-  font-size: 7px;
+  font-size: calc(7px * var(--text-scale));
   letter-spacing: 0.08em;
   line-height: 1.5;
 }
@@ -8936,7 +9105,7 @@ button.beat-status {
 }
 
 .brand-choice.active {
-  border-color: var(--accent-border);
+  border-color: var(--accent);
   background: var(--accent-subtle);
   box-shadow: inset 2px 0 0 var(--accent);
 }
@@ -9052,7 +9221,7 @@ button.beat-status {
   flex: none;
   padding: 3px 8px;
   font: inherit;
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--text-scale));
   color: var(--text-secondary);
   background: transparent;
   border: none;
@@ -9100,7 +9269,7 @@ img.inspector-scene-thumb {
 .inspector-scene-overview > .inspector-scene-identity {
   gap: var(--space-4);
   width: 100%;
-  height: 42px;
+  height: calc(42px * var(--text-scale));
   padding: 4px 10px;
 }
 
@@ -9131,6 +9300,18 @@ img.inspector-scene-thumb {
   padding-bottom: 8px;
 }
 
+/* Enlarged text has no room to pin the settings list under a scrolling content list, so the whole overview scrolls. */
+:root[data-text-size] .inspector-scene-overview {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+:root[data-text-size]
+  :is(.inspector-scene-overview-content, .inspector-scene-overview-content-scroll) {
+  flex: none;
+  overflow-y: visible;
+}
+
 .inspector-scene-overview-section {
   padding: 0 8px 8px;
 }
@@ -9148,11 +9329,11 @@ img.inspector-scene-thumb {
   display: flex;
   align-items: center;
   min-width: 0;
-  height: 24px;
+  height: calc(24px * var(--text-scale));
 }
 
 .inspector-scene-overview-section-header {
-  height: 32px;
+  height: calc(32px * var(--text-scale));
   padding: 4px 2px 4px 6px;
 }
 
@@ -9313,7 +9494,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   display: flex;
   align-items: stretch;
   min-width: 0;
-  height: 26px;
+  height: calc(26px * var(--text-scale));
   color: var(--text-secondary);
   background: transparent;
   border-radius: var(--radius-sm);
@@ -9404,7 +9585,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   align-items: center;
   gap: var(--space-3);
   width: 100%;
-  height: 28px;
+  height: calc(28px * var(--text-scale));
   min-width: 0;
   padding: 0 6px;
   font: inherit;
@@ -9442,7 +9623,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 }
 
 .inspector-scene-overview-duration {
-  height: 30px;
+  height: calc(30px * var(--text-scale));
   min-width: 0;
 }
 
@@ -9576,7 +9757,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   align-items: center;
   flex: none;
   width: 100%;
-  height: 40px;
+  height: calc(40px * var(--text-scale));
   padding-right: 8px;
   color: var(--text-secondary);
   background: var(--surface-raised);
@@ -9869,7 +10050,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 }
 
 .scene-pick-row.selected .scene-pick-check {
-  border-color: var(--accent-border);
+  border-color: var(--accent);
 }
 
 .project-copy-thumb {
@@ -9959,7 +10140,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 24px;
+  height: calc(24px * var(--text-scale));
   padding: 0 12px;
   white-space: nowrap;
   font: inherit;
@@ -10018,9 +10199,9 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 
 /* Pill scale: the camera pill runs the same control at a smaller size. */
 .camera-pill-modes .inspector-subtab {
-  height: 20px;
+  height: calc(20px * var(--text-scale));
   padding: 0 8px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 
 /* Reusable: a bordered container whose segmented toggle (.inspector-subtabs) straddles its top edge, centred. */
@@ -10093,7 +10274,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 }
 
 .inspector-num {
-  height: 32px;
+  height: calc(32px * var(--text-scale));
   font-family: var(--font-mono);
   font-size: var(--text-base);
   font-variant-numeric: tabular-nums;
@@ -10150,7 +10331,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 
 .scene-manager-grip {
   flex: none;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   color: var(--text-tertiary);
 }
 
@@ -10184,7 +10365,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 
 .scene-manager-edit-duration {
   flex: none;
-  width: 64px;
+  width: calc(64px * var(--text-scale));
   font-size: var(--text-xs);
 }
 
@@ -10253,7 +10434,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   gap: 4px;
   align-items: center;
   justify-content: space-between;
-  height: 32px;
+  height: calc(32px * var(--text-scale));
   padding: 0 8px;
   font-size: var(--text-sm);
   color: var(--text-secondary);
@@ -10320,7 +10501,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 }
 
 .inspector-seconds {
-  width: 78px;
+  width: calc(78px * var(--text-scale));
   flex: none;
 }
 
@@ -10334,13 +10515,13 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 }
 
 .inspector-scene-overview-duration .inspector-duration-row {
-  height: 30px;
+  height: calc(30px * var(--text-scale));
   padding: 2px 6px;
 }
 
 .inspector-scene-overview-duration .inspector-seconds {
-  width: 78px;
-  height: 22px;
+  width: calc(78px * var(--text-scale));
+  height: calc(22px * var(--text-scale));
 }
 
 .inspector-error {
@@ -10396,7 +10577,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   justify-content: center;
   flex: none;
   width: 24px;
-  height: 24px;
+  height: calc(24px * var(--text-scale));
   padding: 0;
   color: var(--text-secondary);
   background: transparent;
@@ -10448,7 +10629,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   justify-content: center;
   width: 22px;
   min-width: 22px;
-  height: 22px;
+  height: calc(22px * var(--text-scale));
   padding: 0;
 }
 
@@ -10716,7 +10897,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 .device-editor-pose-choice.selected {
   color: var(--text-primary);
   background: var(--accent-subtle);
-  border-color: var(--accent-border);
+  border-color: var(--accent);
 }
 
 .device-editor-reset-position {
@@ -11128,7 +11309,7 @@ textarea.text-inspector-copy-input {
 .text-inspector-icon-recent-grid button[aria-pressed="true"] {
   color: var(--text-primary);
   background: var(--accent-subtle);
-  border-color: var(--accent-border);
+  border-color: var(--accent);
 }
 
 .text-inspector-icon-preview {
@@ -11254,7 +11435,7 @@ textarea.text-inspector-copy-input {
 
 .text-motion-preset-card.selected {
   background: var(--accent-subtle);
-  border-color: var(--accent-border);
+  border-color: var(--accent);
 }
 
 .text-motion-preset-card small {
@@ -11728,7 +11909,7 @@ textarea.text-inspector-copy-input {
   display: flex;
   flex: none;
   gap: 2px;
-  height: 30px;
+  height: calc(30px * var(--text-scale));
   margin: 10px 12px;
   padding: 2px;
   background: var(--surface-recessed);
@@ -11757,7 +11938,7 @@ textarea.text-inspector-copy-input {
 .bg-type-strip-tab.selected {
   color: var(--text-primary);
   background: var(--surface-raised);
-  border-color: var(--border-strong);
+  border-color: var(--border-control);
 }
 
 .bg-type-strip-tab:focus-visible {
@@ -11796,8 +11977,8 @@ textarea.text-inspector-copy-input {
   z-index: 1;
   display: flex;
   align-items: center;
-  height: 28px;
-  font-size: 10.5px;
+  height: calc(28px * var(--text-scale));
+  font-size: calc(10.5px * var(--text-scale));
   font-weight: 590;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -11829,7 +12010,7 @@ textarea.text-inspector-copy-input {
 
 .theme-card.compact.selected {
   background: var(--accent-subtle);
-  border-color: var(--accent-border);
+  border-color: var(--accent);
 }
 
 /* Inset, so a family's sticky header never paints over a first-row tile's ring. */
@@ -11847,8 +12028,8 @@ textarea.text-inspector-copy-input {
   display: block;
   padding: 0 2px 1px;
   overflow: hidden;
-  font-size: 10.5px;
-  line-height: 13px;
+  font-size: calc(10.5px * var(--text-scale));
+  line-height: calc(13px * var(--text-scale));
   color: var(--text-secondary);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -11870,12 +12051,12 @@ textarea.text-inspector-copy-input {
   gap: 8px;
   height: 13px;
   margin-bottom: 9px;
-  line-height: 13px;
+  line-height: calc(13px * var(--text-scale));
 }
 
 .bg-preset-strip-title {
   flex: 1;
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--text-scale));
   font-weight: 590;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -11946,8 +12127,8 @@ textarea.text-inspector-copy-input {
   display: flex;
   flex-direction: column;
   flex: none;
-  height: 43px;
-  min-height: 43px;
+  height: calc(42px * var(--text-scale) + 1px);
+  min-height: calc(42px * var(--text-scale) + 1px);
   max-height: calc(100% - 66px - 120px);
   overflow: hidden;
   background: var(--surface-panel-alt);
@@ -11965,7 +12146,7 @@ textarea.text-inspector-copy-input {
   flex: none;
   gap: 8px;
   width: 100%;
-  height: 42px;
+  height: calc(42px * var(--text-scale));
   padding: 0 10px 0 8px;
   font: inherit;
   text-align: left;
@@ -12061,13 +12242,13 @@ textarea.text-inspector-copy-input {
 
 .bg-sheet-row {
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr);
+  grid-template-columns: calc(76px * var(--text-scale)) minmax(0, 1fr);
   align-items: center;
   gap: 8px;
 }
 
 .bg-sheet-row.has-trailing {
-  grid-template-columns: 76px minmax(0, 1fr) 22px;
+  grid-template-columns: calc(76px * var(--text-scale)) minmax(0, 1fr) 22px;
 }
 
 /* Backing: segments size to their content so all three fit beside the label and swatch. */
@@ -12076,7 +12257,7 @@ textarea.text-inspector-copy-input {
   align-self: stretch;
   gap: 2px;
   min-width: 0;
-  height: 24px;
+  height: calc(24px * var(--text-scale));
   margin: 0;
   padding: 2px;
   background: var(--surface-recessed);
@@ -12089,7 +12270,7 @@ textarea.text-inspector-copy-input {
   justify-content: center;
   gap: 3px;
   min-width: 0;
-  height: 18px;
+  height: calc(18px * var(--text-scale));
   padding: 0 2px;
   font-size: var(--text-xs);
   color: var(--text-tertiary);
@@ -12105,7 +12286,7 @@ textarea.text-inspector-copy-input {
   font-weight: 500;
   color: var(--text-primary);
   background: var(--surface-raised);
-  border-color: var(--border-strong);
+  border-color: var(--border-control);
 }
 
 .bg-sheet-segmented .inspector-subtab svg {
@@ -12116,7 +12297,7 @@ textarea.text-inspector-copy-input {
 /* Colours: slots two per row in the same columns, the odd ones (even children) starting each row. */
 .bg-sheet-colours {
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: calc(76px * var(--text-scale)) minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
   gap: 8px;
 }
@@ -12143,10 +12324,13 @@ textarea.text-inspector-copy-input {
 /* Motion sliders: DebouncedRange restyled in place, its span dissolved into the row's grid. */
 .bg-sheet-slider {
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr) 44px;
+  grid-template-columns: calc(76px * var(--text-scale)) minmax(0, 1fr) calc(
+      44px *
+      var(--text-scale)
+    );
   align-items: center;
   column-gap: 8px;
-  height: 24px;
+  height: calc(24px * var(--text-scale));
 }
 
 .bg-sheet-slider > .bg-sheet-label {
@@ -12220,7 +12404,7 @@ textarea.text-inspector-copy-input {
 .bg-sheet-slider .range-value {
   grid-row: 1;
   grid-column: 3;
-  width: 44px;
+  width: calc(44px * var(--text-scale));
   padding: 2px 0;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
@@ -12262,7 +12446,7 @@ textarea.text-inspector-copy-input {
   flex: none;
   gap: 8px;
   width: auto;
-  height: 28px;
+  height: calc(28px * var(--text-scale));
   margin-inline: -6px;
   padding: 0 6px;
 }
@@ -12423,10 +12607,16 @@ textarea.text-inspector-copy-input {
 }
 
 .theme-card-thumb video {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  display: block;
+  opacity: 0;
+}
+
+.theme-card-thumb video.ready {
+  opacity: 1;
 }
 
 /* Text-motion cards: tighter meta (3-up leaves ~90px per card). */
@@ -12490,7 +12680,7 @@ textarea.text-inspector-copy-input {
 .media-drill-identity > .wizard-presets .chip {
   width: 22px;
   min-width: 22px;
-  height: 22px;
+  height: calc(22px * var(--text-scale));
   padding: 0;
 }
 
@@ -12527,7 +12717,7 @@ textarea.text-inspector-copy-input {
 
 .inspector-scene-rename {
   width: 100%;
-  height: 26px;
+  height: calc(26px * var(--text-scale));
   padding: 0 6px;
   font: inherit;
   font-size: var(--text-base);
@@ -12549,6 +12739,9 @@ textarea.text-inspector-copy-input {
   position: fixed;
   z-index: 30;
   min-width: 180px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 4px;
   background: var(--surface-elevated);
   border: 1px solid var(--border-default);
@@ -12560,7 +12753,7 @@ textarea.text-inspector-copy-input {
   display: flex;
   align-items: center;
   width: 100%;
-  height: 30px;
+  height: calc(30px * var(--text-scale));
   padding: 0 var(--space-5);
   font: inherit;
   font-size: var(--text-base);
@@ -12582,7 +12775,7 @@ textarea.text-inspector-copy-input {
 }
 
 .context-menu-item.danger {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 .context-menu-item-icon {
@@ -12728,7 +12921,7 @@ textarea.text-inspector-copy-input {
   position: fixed;
   /* Above .modal-overlay (20), below .context-menu (30) so chip menus stack on top. */
   z-index: 22;
-  width: 288px;
+  width: calc(288px * var(--panel-scale));
   padding: 0;
   background: var(--surface-elevated);
   border: 1px solid var(--border-default);
@@ -12791,8 +12984,8 @@ textarea.text-inspector-copy-input {
 
 .colour-popover-error {
   margin: 0 0 var(--space-3);
-  color: var(--danger);
-  font-size: 11px;
+  color: var(--danger-text);
+  font-size: calc(11px * var(--text-scale));
 }
 
 .colour-popover-disclosure {
@@ -12822,7 +13015,7 @@ textarea.text-inspector-copy-input {
 }
 
 .colour-popover-hex-input {
-  width: 84px;
+  width: calc(84px * var(--text-scale));
   font-family: var(--font-mono);
   font-size: var(--text-sm);
 }
@@ -12871,7 +13064,7 @@ textarea.text-inspector-copy-input {
 }
 
 .colour-popover-preview-details {
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   color: var(--text-secondary);
 }
 
@@ -12970,7 +13163,7 @@ textarea.text-inspector-copy-input {
 }
 
 .camera-preset-desc {
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   line-height: 1.35;
   color: var(--text-secondary);
 }
@@ -13194,7 +13387,7 @@ textarea.text-inspector-copy-input {
    a compact stepper, the series list and the read-only values table. */
 .chart-tier-label {
   padding: var(--space-2) 8px 0;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   color: var(--text-tertiary);
 }
 
@@ -13204,7 +13397,7 @@ textarea.text-inspector-copy-input {
 
 .chart-type-grid .bg-type-tile {
   padding: var(--space-2) 2px;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   line-height: 1.2;
   text-align: center;
 }
@@ -13224,7 +13417,7 @@ textarea.text-inspector-copy-input {
   gap: 5px;
   padding: var(--space-2);
   font: inherit;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   color: var(--text-secondary);
   text-align: left;
   cursor: pointer;
@@ -13262,7 +13455,7 @@ textarea.text-inspector-copy-input {
 
 .chart-stepper button {
   width: 22px;
-  height: 22px;
+  height: calc(22px * var(--text-scale));
   font: inherit;
   color: inherit;
   cursor: pointer;
@@ -13278,7 +13471,7 @@ textarea.text-inspector-copy-input {
 
 .chart-stepper-value {
   min-width: 42px;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
@@ -13306,10 +13499,10 @@ textarea.text-inspector-copy-input {
 .chart-series-name {
   flex: 1;
   min-width: 0;
-  height: 24px;
+  height: calc(24px * var(--text-scale));
   padding: 0 var(--space-2);
   font: inherit;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   color: var(--text-primary);
   background: transparent;
   border: 1px solid transparent;
@@ -13323,7 +13516,6 @@ textarea.text-inspector-copy-input {
 .chart-series-name:focus {
   background: var(--surface-recessed);
   border-color: var(--border-default);
-  outline: none;
 }
 
 .chart-series-tools {
@@ -13333,7 +13525,7 @@ textarea.text-inspector-copy-input {
 
 .chart-series-tools button {
   padding: 1px 5px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   color: inherit;
   cursor: pointer;
   background: none;
@@ -13353,7 +13545,7 @@ textarea.text-inspector-copy-input {
   padding: 0 8px;
   margin: 0;
   list-style: none;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   color: var(--text-secondary);
 }
 
@@ -13390,7 +13582,7 @@ textarea.text-inspector-copy-input {
   width: auto;
 }
 .chart-drill .range-value {
-  width: 44px;
+  width: calc(44px * var(--text-scale));
 }
 .chart-drill .popover-row > input {
   flex: 1 1 0;
@@ -13495,9 +13687,14 @@ textarea.text-inspector-copy-input {
 
 .theme-editor-body {
   display: grid;
-  grid-template-columns: 190px minmax(0, 1fr) minmax(320px, 420px);
+  grid-template-columns: calc(190px * var(--panel-scale)) minmax(0, 1fr) minmax(320px, 420px);
   flex: 1;
   min-height: 0;
+}
+
+/* Enlarged text: the form takes the room the specimen would grow into. */
+:root[data-text-size] .theme-editor-body {
+  grid-template-columns: calc(190px * var(--panel-scale)) minmax(0, 1fr) 320px;
 }
 
 .theme-editor-nav {
@@ -13533,7 +13730,7 @@ textarea.text-inspector-copy-input {
 .theme-editor-nav-item.active {
   color: var(--text-primary);
   background: var(--accent-subtle);
-  box-shadow: inset 0 0 0 1px var(--accent-border);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .theme-editor-nav-note {
@@ -13634,7 +13831,7 @@ textarea.text-inspector-copy-input {
 }
 
 .theme-editor-number input {
-  width: 92px;
+  width: calc(92px * var(--text-scale));
   font-variant-numeric: tabular-nums;
 }
 
@@ -13659,7 +13856,7 @@ textarea.text-inspector-copy-input {
 }
 
 .theme-editor-tag-input {
-  width: 140px;
+  width: calc(140px * var(--text-scale));
 }
 
 .theme-editor-colour {
@@ -13685,6 +13882,7 @@ textarea.text-inspector-copy-input {
 
 .theme-editor-swatch-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
 }
@@ -14111,7 +14309,7 @@ textarea.text-inspector-copy-input {
 
 .library-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(calc(230px * var(--panel-scale)), 1fr));
   align-content: start;
   gap: var(--space-5);
   min-width: 0;
@@ -14342,13 +14540,13 @@ textarea.text-inspector-copy-input {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 24px;
+  height: calc(24px * var(--text-scale));
   padding: 0 8px;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-full);
   background: var(--surface-raised);
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   cursor: pointer;
   pointer-events: auto;
 }
@@ -14390,7 +14588,7 @@ textarea.text-inspector-copy-input {
   margin-top: 5px;
   overflow-wrap: anywhere;
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
 }
 
 .scene-website-consent-actions {
@@ -14419,7 +14617,7 @@ textarea.text-inspector-copy-input {
   border-radius: var(--radius-full);
   background: var(--surface-raised);
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
 }
 
 .scene-website-present-status span {

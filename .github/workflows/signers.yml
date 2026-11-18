@@ -60,10 +60,15 @@ jobs:
             rust-toolchain.toml
             scripts/build-ffmpeg-sidecar.sh
             scripts/bundle-digest.sh
+            scripts/changelog-section.sh
             scripts/check-licensed-models.sh
             scripts/install-build-tools.sh
+            scripts/licence-notices.mjs
+            scripts/licences
             scripts/make-dmg.sh
+            scripts/release-sums.sh
             scripts/release.sh
+            scripts/sbom.mjs
             scripts/seed-cargo-target.sh
             scripts/setup-models.sh
             scripts/sidecar-digest.sh

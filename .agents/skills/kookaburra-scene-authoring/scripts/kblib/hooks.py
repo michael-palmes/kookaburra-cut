@@ -156,7 +156,7 @@ def checked_source(rel: str) -> bool:
 def baseline_path(project: Project, rel: str, payload: Dict[str, Any]) -> Path:
     """Where pre-edit leaves the edited file's existing errors for post-edit; keyed by the tool call both hooks share."""
     call = payload.get("tool_use_id") or payload.get("session_id") or ""
-    key = hashlib.sha1(f"{os.path.realpath(str(project.root))}\0{rel}\0{call}".encode("utf-8")).hexdigest()
+    key = hashlib.sha256(f"{os.path.realpath(str(project.root))}\0{rel}\0{call}".encode("utf-8")).hexdigest()
     return Path(tempfile.gettempdir()) / "kb-hooks" / f"{key}.json"
 
 
