@@ -53,7 +53,8 @@
 #                  text layers and metadata (a PNG zip must also match byte for byte; a PDF's
 #                  file hash is advisory)
 #         --size   4k|1080p|720p  (stills/stillsverify only, default 1080p) page short edge
-#         --lever  <L>  (memory only) the one change this run measures: clip-cache=N
+#         --lever  <L>  (memory only) the one change this run measures: clip-cache=N or
+#                  scene-release=off
 #         --foreground  launch the app normally instead of in the background (no-focus-steal)
 #                  mode; always on for --action perf, which needs an honest visible window
 #         --cold   hold the preview stand-down from boot, so no preview frame draws before the

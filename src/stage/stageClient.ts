@@ -627,6 +627,9 @@ export class StageClient implements StageHandle {
   setClipCacheCapacity(n: number): void {
     this.send({ type: "clipCacheCapacity", n });
   }
+  memoryLever(lever: string): void {
+    this.send({ type: "memoryLever", lever });
+  }
   pointer(event: StagePointerEvent): void {
     this.send({ type: "pointer", event });
   }

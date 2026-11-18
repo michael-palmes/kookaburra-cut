@@ -13,7 +13,11 @@ export function applyMemoryLever(lever: string | undefined): void {
     stage().setClipCacheCapacity(Number(cache[1]));
     return;
   }
-  throw new Error(`unknown memory lever "${lever}" (expected clip-cache=N)`);
+  if (lever === "scene-release=off") {
+    stage().memoryLever(lever);
+    return;
+  }
+  throw new Error(`unknown memory lever "${lever}" (expected clip-cache=N or scene-release=off)`);
 }
 
 export interface MemoryPoint {

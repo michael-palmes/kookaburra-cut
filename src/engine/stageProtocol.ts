@@ -218,6 +218,7 @@ export type WindowNotice =
       hardwareVideo?: boolean;
     }
   | { type: "clipCacheCapacity"; n: number }
+  | { type: "memoryLever"; lever: string }
   | { type: "portProgress"; id: number; value: unknown }
   | { type: "reply"; id: number; ok: true; value: unknown }
   | { type: "reply"; id: number; ok: false; error: string };
