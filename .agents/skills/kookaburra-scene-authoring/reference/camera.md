@@ -62,6 +62,12 @@ Set `"cameraMode": "rig"`. A pose is a position plus an aim:
 | segment `smooth` | Absent means the path curves through neighbouring keys; `false` is a straight dolly |
 | segment `easePosition`, `easeRotation`, `easeLens`, `easeDof` | Per-channel ease overrides (a dolly zoom lags its lens) |
 
+A run of cuts in one rig (a montage): give every moving segment `"smooth": false` and no
+orbit, one straight push per cut at one pace (about 6% of the distance a second). A curved
+segment bends towards the keys of the shots either side, and a few degrees of orbit a cut
+changes side from shot to shot, so the picture sways left and right (20 to 110 px of
+drift inside a cut, measured).
+
 `<DepthStage>` (reference/scenes.md) gives a rig layers to fly through.
 
 ## Screen portal
@@ -151,7 +157,9 @@ the scene's; blur animates, the mode does not.
 | `lens` | A real lens: blur from the f-stop and true depth | `fStop` 0.7..64, `focus`, `sensorMm` 2..70 (24 full frame), `focalMm` 4..1200, `blur` 0..1 (starts at 1), `squeeze` |
 
 - `focus` absent or `"auto"` follows the aim distance (orbit: the distance to target),
-  so the subject stays sharp through a move.
+  so the subject stays sharp through a move. It follows the aim, not what sits in front
+  of it: for a subject off the aim (a card lifted above a screen), key `focus` to the
+  subject's own distance on every camera key, or it softens as the camera travels.
 - Prefer `lens` for product and device shots. `depth`'s `blur` is an arbitrary
   amount, so a macro reads as a half-resolution smear; `lens` keeps the focus band
   at full resolution and its bokeh round and bright. One unit is ~56 mm (a phone is

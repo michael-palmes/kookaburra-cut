@@ -25,7 +25,9 @@ they say just start, propose a one-line brief from what is in the folder and con
 
 ## Principles
 
-1. One idea per scene. If a scene needs two sentences to describe, split it.
+1. One idea per scene. If a scene needs two sentences to describe, split it. Each scene
+   shows something new: a close look after a proof moves to another part of the product,
+   never the same card nearer.
 2. One hero per frame: a headline, a device, a number or a chart. Everything else
    supports it, smaller and quieter.
 3. Restraint. One accent colour moment per scene, two type sizes, at most two things
@@ -39,6 +41,8 @@ they say just start, propose a one-line brief from what is in the folder and con
    a build), so nothing reads as a slideshow or PowerPoint, a deck included. Bullets stay
    at two or three short lines; a longer list becomes beats, one point per scene.
 7. Legibility first: every word readable on a phone, in both aspects, for long enough.
+8. Plain words. A claim says what the product does the way a customer would: "Plans your
+   week for you." beats "Plans itself."; "Share with one tap." beats "Shared in a tap."
 
 ## Pacing
 
@@ -256,6 +260,8 @@ focus plane.
 - Data and finance: `graph-grid`, `horizon-grid`, `contour-field`.
 - Moving cameras: 3D looks, so the background parallaxes.
 - Use the same spec on consecutive scenes; shaders flow continuously across cuts.
+- A text card between staged scenes stays in their world: the same stage and light family,
+  with the light from a different side on each card, never a flat card on its own backdrop.
 
 ## Recipes
 
@@ -271,7 +277,9 @@ with real recordings and one-line captions, `feature-compare` for the key improv
 expanding to isometric, `hero-device` scenes cut on the beat, `comparison` with a
 `toe-in` layout, `chart-reveal` or `stat-counter`, `appversion`, `closing-cta`. Dark
 theme (`kookaburra-onyx`, `kookaburra-afterglow`, `kookaburra-night-drive`), music
-with beats. Templates: `whats-new-social-cut`, `redesign-reveal`.
+with beats. Templates: `whats-new-social-cut`, `redesign-reveal`. Name and icon appear once,
+on the closing lockup: give the last product shot a slogan instead, and carry its light
+across the cut (the lockup's glow opening behind the product) so the two read as one move.
 
 **Presentation deck.** A deck is a film that waits for the speaker: Present holds each
 scene at its settled moment until they advance, so every slide still needs a moving

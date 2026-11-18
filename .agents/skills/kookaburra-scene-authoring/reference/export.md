@@ -35,7 +35,9 @@ the user's own Cancel.
   memory, and the error names the frame, scene and render rate. Don't change the project to
   work around it and don't rerun as is: ask the user to quit and reopen Kookaburra Cut, then
   rerun. `exports/<name>.health.json` keeps the details; `./kb status` shows the editor's memory
-  and says when it has reloaded (any reload means restart before a long export).
+  and says when it has reloaded (any reload means restart before a long export). A locked
+  screen or a sleeping display does the same about a minute into a large film, because macOS
+  gives a hidden window far less memory: ask the user to keep the Mac unlocked and awake.
 - Every export saves a record kb reads back, so `./kb verify-export` knows what was asked for.
 - Never record a baseline or compare hashes from `./kb export` against the app's own: a
   headless run and the editor may differ at glyph edges.
@@ -53,6 +55,9 @@ the user's own Cancel.
 ./kb verify --last                           the last verdict, exiting with its code
 ```
 
+- Build with frames and spans (`./kb capture`, `./kb preview --range`, the ranged check) and
+  keep `./kb export` for the finished film: exports run one at a time on a Mac, and
+  `supersample` multiplies their time (a 60 s 4K film at 16 took about half an hour).
 - The ranged check renders the span in the running app at 360p and 30 fps through the export
   path and runs the export's own flash detector. The editor stays usable. Check each bright
   or fast moment as you make it (fly-throughs, flashes of white, cuts on the beat); polishing

@@ -53,6 +53,7 @@ that a coming update changes; the fix here is the one that works today.
 | A flat brand hex renders off (a light grey reads several steps darker) | Once any effect exists (a theme, scene or manifest vignette or bloom), every frame goes through one tone-map pass, `toneMapped={false}` surfaces and the clear colour included | For exact flat colour set `render.toneMapping` to `"linear"` in `project.json`, then capture a lit device frame to check it still looks right. `./kb check film colour` warns about this; `./kb capture --probe X,Y` reads the exact pixel |
 | A translucent shadow or rule looks paler than its CSS spec | Blending happens in linear light | Tune by capture. Starting points: shadow opacity about 0.30 on light backgrounds, 0.42 on saturated ones; 0.78 for dashed rules |
 | White UI or white text glows in a dark scene | The default bloom threshold (0.82) sits below white | Set that scene's `effects.bloom.luminanceThreshold` to about 1.2 (its `project.json` entry, a hand edit), and push only the colour that should glow above 1 |
+| A metal edge or highlight crawls in motion, even at `supersample` 16 | A light far brighter than white and thinner than a pixel in its reflection (a small, very hot strip, fixture or free light) cannot be averaged away | Make the light larger and dimmer for the same fill, then set `"specularAA": true` and raise `supersample` (reference/lighting.md) |
 
 ## Exports
 

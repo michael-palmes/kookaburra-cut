@@ -114,6 +114,8 @@ rules (four aspects, the old bands). A version 2 template must:
 - carry a song exactly when it carries audio, with the grid (and its `source`),
   sections and cues intact through `sanitiseAudioMusic`, and the song's BPM the grid's
 - name only visible bundled themes as looks, with no scene sidecar pinning `themeId`
+  (the test cannot see legibility: render a text scene in each look first, since a light
+  theme's text colour disappears on a dark staged film)
 - list something to bring, and a loop window inside the film
 
 A song ships as FLAC in the template's own `assets/`, copied on create. Shared
