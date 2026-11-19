@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { collectParseWarnings } from "../engine/parseWarnings";
 import { parseSatinBackdrop } from "./satinBackdrop";
 import { parseBackdropSpec } from "./schema";
 
@@ -62,5 +63,16 @@ describe("parseSatinBackdrop", () => {
     expect(v?.pools).toHaveLength(4);
     expect(parseSatinBackdrop({ color: "walnut" }, "t")).toBeUndefined();
     expect(parseSatinBackdrop({ color: "#FFF" }, "t")?.color).toBe("#fff");
+  });
+
+  it("warns in the house spelling", () => {
+    const { warnings } = collectParseWarnings(() => {
+      parseSatinBackdrop({ color: "walnut" }, "t");
+      parseSatinBackdrop({ color: "#101010", pools: [{ at: [0, 0] }] }, "t");
+    });
+    expect(warnings).toEqual([
+      "[theme] t: a satin backdrop needs a hex colour, dropped",
+      "[theme] t: a satin pool needs at, radius, a hex colour and intensity, dropped",
+    ]);
   });
 });

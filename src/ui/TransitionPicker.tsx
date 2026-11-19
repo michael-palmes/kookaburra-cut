@@ -53,10 +53,10 @@ import {
 } from "../engine/transitionShader";
 import { ColourPicker } from "./colour/ColourPicker";
 import { ToggleRow } from "./inspector/rows";
-import { reducedMotion } from "./OptionCard";
 import { DebouncedRange } from "./TextAnimationPicker";
 import { TransitionWriteQueue } from "./transitionWriteQueue";
 import { useEscapeClose } from "./useEscapeClose";
+import { prefersReducedMotion } from "./usePrefersReducedMotion";
 
 function sceneStem(project: LoadedProject, i: number): string {
   const base = (project.sceneFiles[i] ?? "").split("/").pop() ?? "";
@@ -186,8 +186,8 @@ function TransitionPreview({
   maskUrlRef.current = maskUrl;
   const startRef = useRef(performance.now());
   // Reduce motion starts it paused mid-run, so the still shows the transition rather than a slide.
-  const [paused, setPaused] = useState(reducedMotion);
-  const pausedAtRef = useRef<number | null>(reducedMotion() ? MID_RUN_MS : null);
+  const [paused, setPaused] = useState(prefersReducedMotion);
+  const pausedAtRef = useRef<number | null>(prefersReducedMotion() ? MID_RUN_MS : null);
   const togglePause = () => {
     const now = performance.now();
     if (pausedAtRef.current === null) {

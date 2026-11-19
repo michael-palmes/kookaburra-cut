@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import type { TemplateEntry } from "../engine/templates";
 import {
   availableLooks,
+  CLAUDE_START_ID,
   claudeStartMatches,
   DEFAULT_THEME_ID,
   defaultProjectName,
@@ -9,6 +11,7 @@ import {
   lookChoices,
   lookSelection,
   selectionAfterFilter,
+  startAfterSearch,
   startGridStep,
 } from "./newProjectFlow";
 import type { ThemeChoice } from "./ThemePicker";
@@ -114,6 +117,57 @@ describe("selectionAfterFilter", () => {
 
   it("keeps the pick when nothing is listed", () => {
     expect(selectionAfterFilter("c", [])).toBe("c");
+  });
+});
+
+describe("startAfterSearch", () => {
+  const entry = (id: string, category: TemplateEntry["category"], haystack: string) =>
+    ({ id, source: "bundled", category, tier: "free", haystack }) as unknown as TemplateEntry;
+  const entries = [
+    entry("product-tour", "feature", "product tour walkthrough"),
+    entry("release-notes", "update", "release notes changelog"),
+    entry("launch-teaser", "launch", "launch teaser countdown"),
+  ];
+
+  it("moves the selection off a template the search hides", () => {
+    expect(startAfterSearch(entries, null, "release", "product-tour", false)).toEqual({
+      chip: null,
+      selected: "release-notes",
+    });
+  });
+
+  it("keeps a selection the search still shows", () => {
+    expect(startAfterSearch(entries, null, "tour", "product-tour", true)).toEqual({
+      chip: null,
+      selected: "product-tour",
+    });
+  });
+
+  it("returns the chips to All while typing and follows the wider listing", () => {
+    expect(startAfterSearch(entries, "feature", "teaser", "product-tour", false)).toEqual({
+      chip: null,
+      selected: "launch-teaser",
+    });
+  });
+
+  it("keeps the chip when the search clears", () => {
+    expect(startAfterSearch(entries, "update", "", "release-notes", false)).toEqual({
+      chip: "update",
+      selected: "release-notes",
+    });
+  });
+
+  it("lands on Create with Claude when the search still matches it", () => {
+    expect(startAfterSearch(entries, null, "blank", "product-tour", true)).toEqual({
+      chip: null,
+      selected: CLAUDE_START_ID,
+    });
+  });
+
+  it("keeps the pick when nothing matches", () => {
+    expect(startAfterSearch(entries, null, "zzz", "product-tour", true).selected).toBe(
+      "product-tour",
+    );
   });
 });
 

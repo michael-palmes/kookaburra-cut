@@ -11,6 +11,7 @@ import {
 } from "react";
 import { type InspectorState, useUiStore } from "../../store/uiStore";
 import { useEscapeClose } from "../useEscapeClose";
+import { prefersReducedMotion } from "../usePrefersReducedMotion";
 
 interface FocusLocator {
   element: HTMLElement | null;
@@ -176,10 +177,6 @@ export function inspectorRouteSignature(
   inspector: InspectorState = useUiStore.getState().inspector,
 ): string {
   return [inspector.tab, inspector.drillStack.join("/")].join("|");
-}
-
-function animationDisabled(): boolean {
-  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 }
 
 /** True while a layer above the inspector owns the keyboard: a modal, a colour popover, a context menu or the media preview. */
@@ -404,7 +401,7 @@ export function InspectorNavigationShell({
       const outgoing = stableSnapshotRef.current;
       const entry = pageHistoryRef.current.pop() ?? null;
       signaturesRef.current.pop();
-      if (outgoing && !animationDisabled()) {
+      if (outgoing && !prefersReducedMotion()) {
         showSnapshot(overlayRef.current, outgoing);
         runAnimation(outgoing, "inspector-nav-exiting", () =>
           overlayRef.current?.replaceChildren(),
@@ -424,7 +421,7 @@ export function InspectorNavigationShell({
         opener,
       });
       signaturesRef.current.push(nextSignature);
-      if (!animationDisabled()) {
+      if (!prefersReducedMotion()) {
         showSnapshot(overlayRef.current, parentSnapshot);
         runAnimation(page, "inspector-nav-entering", () => overlayRef.current?.replaceChildren());
       }
@@ -460,7 +457,7 @@ export function InspectorNavigationShell({
           backInFlightRef.current = false;
         }, 0);
       };
-      if (animationDisabled()) {
+      if (prefersReducedMotion()) {
         commit();
         return;
       }

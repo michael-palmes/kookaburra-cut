@@ -1,4 +1,10 @@
 import { nameCollision } from "../engine/nameCollision";
+import {
+  BLANK_TEMPLATE_ID,
+  searchTemplates,
+  type TemplateCategoryId,
+  type TemplateEntry,
+} from "../engine/templates";
 import type { ThemeChoice } from "./ThemePicker";
 
 /** The wizard's first card: creates from the blank template. */
@@ -71,6 +77,39 @@ export function startGridStep(
 /** A filter chip never leaves the selection hidden: it keeps the pick when still listed, else moves to the first card shown. */
 export function selectionAfterFilter(selected: string, visibleIds: readonly string[]): string {
   return visibleIds.includes(selected) || visibleIds.length === 0 ? selected : visibleIds[0];
+}
+
+export const MINE_CHIP = "mine";
+export type StartChip = TemplateCategoryId | typeof MINE_CHIP | null;
+
+/** The cards one chip and search show. Create with Claude is pinned into every category, as Blank once was, so a chip never hides the default; only My templates leaves it out. Where a profile turns Claude off, Blank takes its place in the catalogue. */
+export function startCards(
+  entries: readonly TemplateEntry[],
+  chip: StartChip,
+  query: string,
+  claudeStart: boolean,
+) {
+  const templates = (
+    chip === MINE_CHIP
+      ? searchTemplates(entries, { query, source: "user" })
+      : searchTemplates(entries, { query, category: chip })
+  ).filter((entry) => !claudeStart || entry.id !== BLANK_TEMPLATE_ID);
+  const withClaude = claudeStart && chip !== MINE_CHIP && claudeStartMatches(query);
+  const ids = [...(withClaude ? [CLAUDE_START_ID] : []), ...templates.map((entry) => entry.id)];
+  return { templates, withClaude, ids };
+}
+
+/** Search is global, so typing returns the chips to All; the selection follows the cards still shown, as a chip moves it. */
+export function startAfterSearch(
+  entries: readonly TemplateEntry[],
+  chip: StartChip,
+  query: string,
+  selected: string,
+  claudeStart: boolean,
+): { chip: StartChip; selected: string } {
+  const nextChip = query ? null : chip;
+  const { ids } = startCards(entries, nextChip, query, claudeStart);
+  return { chip: nextChip, selected: selectionAfterFilter(selected, ids) };
 }
 
 export type LookFilter = "all" | "yours" | "light" | "dark";
