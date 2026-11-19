@@ -31,6 +31,7 @@ import { registerSceneText } from "../../engine/sceneTextRegistry";
 import { reportTextDerivedPending } from "../../engine/textDerivedState";
 import { useTextKeyRegistry } from "../../engine/textKeyRegistry";
 import { useTextMotionRegistry } from "../../engine/textMotionRegistry";
+import { textStyleValue } from "../../engine/textStyleResolve";
 import { MotionBlurContext, useTimeline } from "../../engine/timeline";
 import { useTheme } from "../../theme";
 import { formatFontString } from "../../theme/fontRef";
@@ -51,9 +52,11 @@ import {
 import { EmphasisPills, pillMotionsFromUnits } from "./EmphasisPills";
 import {
   computeEmphasisRects,
+  type EmphasisShape,
   emphasisPillEndMs,
   emphasisPillPhase,
   padEmphasisRanges,
+  parseEmphasisValue,
   type ResolvedEmphasis,
   resolveEmphasis,
 } from "./emphasis";
@@ -356,10 +359,20 @@ function DepthHeadline({ depth, ...props }: AnimatedHeadlineProps) {
   );
 }
 
+/** The copy a hit counts units on: the padded string a shaped emphasis typesets, else the stripped copy. */
+function hitUnitText(raw: string, shape: EmphasisShape | undefined): string {
+  if (shape) {
+    const prepared = prepareDisplayText(raw);
+    if (prepared.emphasis.length > 0) return padEmphasisRanges(prepared, shape).text;
+  }
+  return parseEmphasisMarkup(raw).text;
+}
+
 /** Moves the window so the motion lands on `hitAt`. The v0 linear ramp lands where it ends. */
 export function withHitAt(
   props: HeadlineRenderProps,
   anim: ResolvedTextAnimation | null,
+  shape?: EmphasisShape,
 ): HeadlineRenderProps {
   const hitAt = props.hitAt as number;
   const from = props.from ?? 0;
@@ -370,7 +383,7 @@ export function withHitAt(
     return { ...props, from: start, to: start + (to - from) };
   }
   const end = pinned === undefined ? textAnimationWindowToMs(from, to, anim) : from + pinned;
-  const units = impactUnitCount(anim, parseEmphasisMarkup(props.text).text);
+  const units = impactUnitCount(anim, hitUnitText(props.text, shape));
   const start = hitWindow(hitAt, anim, from, end, units).from;
   return { ...props, from: start, to: start + (to - from) };
 }
@@ -386,7 +399,9 @@ function AnimatedHeadlineRenderer(rawProps: HeadlineRenderProps) {
     doc,
     rawProps.motionKey ?? rawProps.textKey,
   );
-  const props = rawProps.hitAt === undefined ? rawProps : withHitAt(rawProps, anim);
+  const hitKey = rawProps.styleKey ?? rawProps.textKey;
+  const hitShape = parseEmphasisValue(textStyleValue(doc, hitKey, "Emphasis"))?.shape;
+  const props = rawProps.hitAt === undefined ? rawProps : withHitAt(rawProps, anim, hitShape);
   // Report coded motion to the registry; the Text-motion panel warns and offers the sidecar force override instead of silently losing the user's pick.
   const coded = hasOwnAnimationProps(props);
   useEffect(() => {
@@ -693,7 +708,7 @@ function AnimatedHeadlineRenderer(rawProps: HeadlineRenderProps) {
     // 3D looks re-render as an extruded twin; motion degrades to whole-block transforms from the unit-0 sample (legacyMotion keeps the v0 linear ramp on material opacity).
     return (
       <LookText3D
-        text={prepared.text}
+        text={shapedText.text}
         look={look}
         theme={theme}
         anim={legacyMotion ? null : anim}
