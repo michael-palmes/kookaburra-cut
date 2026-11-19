@@ -2157,6 +2157,12 @@ Verify ×2 here (the 2026-10-23 note):
 > Proof: Unveil 16:9 Verify ×2 EQUAL `2c1fdbf3…`; `showcase-tour` and
 > `ws:launch-2026` EQUAL against their baselines.
 
+> **2026-11-19 (Unveil at merge, no baseline row):** `template:unveil` 16:9 at
+> 4K, Verify ×2 EQUAL `bfbfa68d…`, the same bytes as before the scene release
+> and the pre-merge review fixes, so neither moves its pixels. Later look rounds
+> moved the film off `2c1fdbf3…` above. It stays out of the table: a run takes
+> about half an hour and needs the screen unlocked (see "What breaks it").
+
 > **2026-11-14 (troika 0.53.1: hash-neutral):** troika-three-text and
 > troika-three-utils move to `0.53.1`. The only code change is `BatchedText`'s
 > fallback colour lookup, which neither the app nor drei uses; the utils build
