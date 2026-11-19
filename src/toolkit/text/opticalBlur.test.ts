@@ -1,3 +1,4 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import type { Theme } from "../../theme/tokens";
 import {
@@ -12,6 +13,7 @@ import {
   OPTICAL_MAX_SUPERSAMPLE,
   OPTICAL_MAX_TARGET,
   OPTICAL_PAD_SIGMAS,
+  OPTICAL_ROLL_REACH_EM,
   OPTICAL_SIGMA_PER_SOFT,
   OPTICAL_SOFT_EPS_EM,
   type OpticalBlurPlan,
@@ -189,11 +191,58 @@ describe("planOpticalBlur", () => {
   });
 });
 
+/** The order captures were planned with before: offset, then scale. */
+function offsetThenScale(
+  rest: Rect,
+  centre: readonly [number, number],
+  s: TextUnitSample,
+  fontSize: number,
+): Rect {
+  const grow =
+    (s.rotZRad !== 0 ? OPTICAL_ROLL_REACH_EM * fontSize : 0) +
+    (Math.max(0, s.weightEm) + Math.abs(s.chromaEm)) * fontSize;
+  const dx = s.dxEm * fontSize;
+  const dy = s.dyEm * fontSize;
+  const sx = Math.abs(s.scale * s.scaleX);
+  const sy = Math.abs(s.scale * s.scaleY);
+  const x0 = centre[0] + (rest[0] - grow + dx - centre[0]) * sx;
+  const x1 = centre[0] + (rest[2] + grow + dx - centre[0]) * sx;
+  const y0 = centre[1] + (rest[1] - grow + dy - centre[1]) * sy;
+  const y1 = centre[1] + (rest[3] + grow + dy - centre[1]) * sy;
+  return [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)];
+}
+
 describe("movedRect", () => {
-  it("scales about the unit centre after the offset", () => {
+  it("scales about the unit centre, then offsets, as the vertex shader does", () => {
     const rest: Rect = [-1, -1, 1, 1];
     const s = { ...samplesAt("tracking", 2000)[0], dxEm: 1, scale: 2 };
-    expect(movedRect(rest, [0, 0], s, 0.5)).toEqual([-1, -2, 3, 2]);
+    expect(movedRect(rest, [0, 0], s, 0.5)).toEqual([-1.5, -2, 2.5, 2]);
+  });
+
+  it("keeps an unscaled or unmoved rect exactly as it was planned before", () => {
+    const n = fc.double({ min: -8, max: 8, noNaN: true });
+    const unit = fc.record({
+      rest: fc.tuple(n, n, n, n),
+      centre: fc.tuple(n, n),
+      d: fc.tuple(n, n),
+      s: fc.tuple(n, n, n),
+      grow: fc.tuple(fc.double({ min: 0, max: 0.2, noNaN: true }), fc.boolean()),
+      fontSize: fc.double({ min: 0.05, max: 2, noNaN: true }),
+    });
+    const base = samplesAt("tracking", 2000)[0];
+    const plain = (r: Rect) => r.map((v) => v + 0);
+    fc.assert(
+      fc.property(unit, ({ rest, centre, d, s, grow, fontSize }) => {
+        const extra = { weightEm: grow[0], chromaEm: grow[0] / 2, rotZRad: grow[1] ? 0.1 : 0 };
+        const unscaled = { ...base, ...extra, dxEm: d[0], dyEm: d[1] };
+        const unmoved = { ...base, ...extra, scale: s[0], scaleX: s[1], scaleY: s[2] };
+        for (const sample of [unscaled, unmoved]) {
+          expect(plain(movedRect(rest, centre, sample, fontSize))).toEqual(
+            plain(offsetThenScale(rest, centre, sample, fontSize)),
+          );
+        }
+      }),
+    );
   });
 
   it("reaches the chromatic echoes", () => {

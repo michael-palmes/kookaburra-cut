@@ -74,7 +74,7 @@ export function unitRestRects(
   return rects;
 }
 
-/** Where a unit's ink can reach this frame: its rest rect through the pack's planar terms (roll, offset, weight and chroma echo, then the unit-centre scale). */
+/** Where a unit's ink can reach this frame: its rest rect grown by roll, weight and chroma echo, scaled about the unit centre, then offset (the vertex shader's order). */
 export function movedRect(
   rest: Rect,
   centre: readonly [number, number],
@@ -88,10 +88,11 @@ export function movedRect(
   const dy = s.dyEm * fontSize;
   const sx = Math.abs(s.scale * s.scaleX);
   const sy = Math.abs(s.scale * s.scaleY);
-  const x0 = centre[0] + (rest[0] - grow + dx - centre[0]) * sx;
-  const x1 = centre[0] + (rest[2] + grow + dx - centre[0]) * sx;
-  const y0 = centre[1] + (rest[1] - grow + dy - centre[1]) * sy;
-  const y1 = centre[1] + (rest[3] + grow + dy - centre[1]) * sy;
+  // Equal to centre + (rest − centre)·s + d, written so a unit scale or a zero offset keeps the earlier rect bit for bit.
+  const x0 = centre[0] + (rest[0] - grow + dx - centre[0]) * sx + dx * (1 - sx);
+  const x1 = centre[0] + (rest[2] + grow + dx - centre[0]) * sx + dx * (1 - sx);
+  const y0 = centre[1] + (rest[1] - grow + dy - centre[1]) * sy + dy * (1 - sy);
+  const y1 = centre[1] + (rest[3] + grow + dy - centre[1]) * sy + dy * (1 - sy);
   return [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)];
 }
 
