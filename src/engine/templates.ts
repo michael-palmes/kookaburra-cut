@@ -640,12 +640,11 @@ export function loopRangeInSlots(
   return endMs <= totalMs ? { startMs, endMs } : null;
 }
 
-/** Project times for a card loop at `TEMPLATE_LOOP_FPS`, start inclusive, end exclusive. */
+/** Project times for a card loop at `TEMPLATE_LOOP_FPS`, start inclusive, end exclusive; unrounded, as `exportFrameTimeMs` steps, so clip frames advance evenly. */
 export function templateLoopTimes(range: { startMs: number; endMs: number }): number[] {
   const times: number[] = [];
   const count = Math.round(((range.endMs - range.startMs) * TEMPLATE_LOOP_FPS) / 1000);
-  for (let i = 0; i < count; i++)
-    times.push(Math.round(range.startMs + (i * 1000) / TEMPLATE_LOOP_FPS));
+  for (let i = 0; i < count; i++) times.push(range.startMs + i * (1000 / TEMPLATE_LOOP_FPS));
   return times;
 }
 
