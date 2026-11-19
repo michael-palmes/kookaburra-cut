@@ -157,6 +157,16 @@ export function emphasisPillPhase(
   };
 }
 
+/** When a shaped emphasis started at `startMs` has drawn on and filled, so Present and the automatic still hold past it; null where no pill draws (plain emphasis, depth under-layers). */
+export function emphasisPillEndMs(
+  emphasis: ResolvedEmphasis | null,
+  underLayer: boolean | undefined,
+  startMs: number,
+): number | null {
+  if (!emphasis?.shape || underLayer) return null;
+  return startMs + Math.max(PILL_DRAW_MS, PILL_FILL_DELAY_MS + PILL_FILL_MS);
+}
+
 /** A shaped emphasis needs room inside the line: one space either side of every range, two after a battery for its terminal (none at a line's start or end), with the ranges and emoji clusters moved to match. Only shaped emphasis calls it, so plain text keeps its exact layout. */
 export function padEmphasisRanges(
   prepared: PreparedDisplayText,

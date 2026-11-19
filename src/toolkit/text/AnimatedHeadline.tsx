@@ -51,6 +51,7 @@ import {
 import { EmphasisPills, pillMotionsFromUnits } from "./EmphasisPills";
 import {
   computeEmphasisRects,
+  emphasisPillEndMs,
   emphasisPillPhase,
   padEmphasisRanges,
   parseEmphasisValue,
@@ -834,6 +835,20 @@ function emphasisShapeFrame(
 const SHAPE_GLYPH = new Color();
 const SHAPE_FILLED = new Color();
 
+/** Registers a shaped emphasis's end with the Present timing, so holds and automatic stills see the pill drawn and filled. Inert without a pill. */
+function useEmphasisPresentTiming(
+  emphasis: ResolvedEmphasis | null,
+  underLayer: boolean | undefined,
+  startMs: number,
+): void {
+  const sceneIndex = useSceneContext()?.index;
+  const toMs = emphasisPillEndMs(emphasis, underLayer, startMs);
+  useEffect(() => {
+    if (sceneIndex === undefined || toMs === null) return;
+    return registerPresentTiming(sceneIndex, { kind: "text", toMs });
+  }, [sceneIndex, toMs]);
+}
+
 /** Type a typewriter preset through the mask on every holder: the head after this frame's keystroke count, from the typeset's carets. Returns the last shown code unit (the emoji quads' twin), or null when the mask is off. */
 function useTypewriter(
   holders: readonly (StaggerTextMaterial | null | undefined)[],
@@ -920,7 +935,9 @@ function LegacyHeadline(
   useEffect(() => () => holder?.dispose(), [holder]);
   if (holder) writeShineBand(holder, foldBandToChild(group, position));
   const emphasised = useEmphasis(emphasis, prepared, carets);
-  const shaped = emphasisShapeFrame(emphasis, props.underLayer, localMs, props.pillAtMs ?? to);
+  const pillStartMs = props.pillAtMs ?? to;
+  const shaped = emphasisShapeFrame(emphasis, props.underLayer, localMs, pillStartMs);
+  useEmphasisPresentTiming(emphasis, props.underLayer, pillStartMs);
   if (holder && emphasis) {
     writeEmphasisUniforms(
       holder,
@@ -1077,12 +1094,9 @@ function BlockHeadline(
     else writeShineBand(holder, foldBandToChild(group, position));
   }
   const emphasised = useEmphasis(emphasis, prepared, carets);
-  const shaped = emphasisShapeFrame(
-    emphasis,
-    props.underLayer,
-    localMs,
-    props.pillAtMs ?? textAnimationEndMs(from, to, anim),
-  );
+  const pillStartMs = props.pillAtMs ?? textAnimationEndMs(from, to, anim);
+  const shaped = emphasisShapeFrame(emphasis, props.underLayer, localMs, pillStartMs);
+  useEmphasisPresentTiming(emphasis, props.underLayer, pillStartMs);
   if (holder && emphasis) {
     writeEmphasisUniforms(
       holder,
@@ -1526,12 +1540,9 @@ function StaggeredHeadline(
   // Emphasis on every layer (the offset under-layer keeps its own colour, gaining only the weight); the typewriter head masks them all alike.
   const emphasised = useEmphasis(emphasis, prepared, carets);
   // A shaped emphasis draws once the whole line has landed, the last unit included, unless `emphasisAt` places it.
-  const shaped = emphasisShapeFrame(
-    emphasis,
-    props.underLayer,
-    localMs,
-    props.pillAtMs ?? settleToMs + (spreadMs ?? 0),
-  );
+  const pillStartMs = props.pillAtMs ?? settleToMs + (spreadMs ?? 0);
+  const shaped = emphasisShapeFrame(emphasis, props.underLayer, localMs, pillStartMs);
+  useEmphasisPresentTiming(emphasis, props.underLayer, pillStartMs);
   if (emphasis) {
     const weight = emphasis.weightEm * fontSize;
     const glyph = shaped?.glyph ?? emphasised.colour;
