@@ -1,3 +1,4 @@
+import { GRAIN_HOLD_MAX } from "../../engine/effectParams";
 import { Field, IconToggle, NumberField, Section, TextField } from "./fields";
 import type { ThemeEditorIconName } from "./icons";
 import {
@@ -55,7 +56,7 @@ const EFFECTS: Record<
     hint: "Film grain, seeded from the frame index so it stays deterministic. Hold keeps each pattern for that many frames, a hand-made boil.",
     fields: [
       { key: "intensity", label: "Intensity", min: 0, max: 1, step: 0.01 },
-      { key: "hold", label: "Hold", min: 1, max: 12, step: 1 },
+      { key: "hold", label: "Hold", min: 1, max: GRAIN_HOLD_MAX, step: 1 },
     ],
   },
 };
