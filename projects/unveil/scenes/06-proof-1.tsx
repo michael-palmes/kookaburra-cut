@@ -23,12 +23,13 @@ export default defineScene({
   id: "unveil-06-proof-1",
   durationMs: 3750,
   Scene() {
-    const [hero] = useSceneDevices();
+    const devices = useSceneDevices();
+    const hero = devices.find((d) => d.id === "hero") ?? devices[0];
     const { localMs } = useTimeline();
     const grid = useBeatGrid();
     const at = (bar: number, beat = 1) =>
       grid ? grid.bar(bar, beat) : ((bar - FIRST_BAR) * 4 + beat - 1) * 468.75;
-    if (!hero) return null;
+    if (!hero) return <SceneStage floorY={-1.905} />;
     const [u0, v0] = mediaPixelToScreenUv(hero.model, [CARD_PX[0], CARD_PX[1]], MEDIA);
     const [u1, v1] = mediaPixelToScreenUv(hero.model, [CARD_PX[2], CARD_PX[3]], MEDIA);
     const liftAt = at(14, 3);
@@ -50,6 +51,7 @@ export default defineScene({
             glassEdge={0.04}
           />
         </Device>
+        {devices.map((d) => (d === hero ? null : <Device key={d.id} {...d} />))}
       </SceneStage>
     );
   },

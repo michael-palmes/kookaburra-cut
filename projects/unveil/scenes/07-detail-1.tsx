@@ -20,9 +20,10 @@ export default defineScene({
   id: "unveil-07-detail-1",
   durationMs: 1875,
   Scene() {
-    const [hero] = useSceneDevices();
+    const devices = useSceneDevices();
+    const hero = devices.find((d) => d.id === "hero") ?? devices[0];
     const { localMs } = useTimeline();
-    if (!hero) return null;
+    if (!hero) return <SceneStage floorY={-1.905} />;
     const [u0, v0] = mediaPixelToScreenUv(hero.model, [CARD_PX[0], CARD_PX[1]], MEDIA);
     const [u1, v1] = mediaPixelToScreenUv(hero.model, [CARD_PX[2], CARD_PX[3]], MEDIA);
     const lift = LIFT[0] + (LIFT[1] - LIFT[0]) * ramp(localMs, 0, 1875, "linear");
@@ -42,6 +43,7 @@ export default defineScene({
             glassEdge={0.04}
           />
         </Device>
+        {devices.map((d) => (d === hero ? null : <Device key={d.id} {...d} />))}
       </SceneStage>
     );
   },
