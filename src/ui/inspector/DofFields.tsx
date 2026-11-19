@@ -373,6 +373,7 @@ export function DofFields({
             ariaLabel="Sensor size"
             options={SENSORS.map((o) => ({ ...o, icon: <DofIcon id="sensor" /> }))}
             value={String(shown.sensorMm)}
+            disabled={shown.focalMm !== null}
             onChange={(next) => commit(patch({ sensorMm: Number(next) }))}
           />
           <div className="inspector-note">

@@ -74,3 +74,35 @@ describe("DofFields carry", () => {
     expect(html).toContain("f-stop");
   });
 });
+
+describe("DofFields sensor size", () => {
+  const render = (dof: SceneDocDof) =>
+    renderToStaticMarkup(
+      createElement(DofFields, {
+        keys: track(dof),
+        targetKeyId: "k1",
+        authored: dof,
+        autoDistance: 4,
+        autoLabel: "the aim",
+        preview: () => {},
+        commit: () => {},
+        commitAll: () => {},
+      }),
+    );
+  const sensorButtons = (html: string) =>
+    html.match(/<button[^>]*role="radio"[^>]*title="[\d.]+ mm:[^>]*>/g) ?? [];
+
+  it("stays live while the focal length follows the fov", () => {
+    const buttons = sensorButtons(render({ mode: "lens" }));
+    expect(buttons).toHaveLength(3);
+    expect(buttons.every((b) => !b.includes("disabled"))).toBe(true);
+  });
+
+  it("locks while a focal length is authored, and says why", () => {
+    const html = render({ mode: "lens", focalMm: 50 });
+    const buttons = sensorButtons(html);
+    expect(buttons).toHaveLength(3);
+    expect(buttons.every((b) => b.includes("disabled"))).toBe(true);
+    expect(html).toContain("A 50 mm lens; the fov sets the sensor.");
+  });
+});
