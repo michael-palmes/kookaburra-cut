@@ -1560,11 +1560,11 @@ fn templates_and_presets_round_trip_into_another_workspace() {
 
 /// Export leaves a project's acceptances in place and out of the pack, and the project still reads identical to that pack.
 #[test]
-fn accepted_flash_warnings_never_travel_and_stay_home() {
+fn accepted_warnings_never_travel_and_stay_home() {
     use super::conflicts::plan_conflicts;
     use super::deps::{resolve_closure, PackSelection};
     use super::model::{ConflictState, ItemKind};
-    use super::scan::ACCEPTED_FLASHES_FILE;
+    use super::scan::ACCEPTED_WARNING_FILES;
 
     let author = TempDir::new("accepted-author");
     let out = TempDir::new("accepted-out");
@@ -1578,27 +1578,30 @@ fn accepted_flash_warnings_never_travel_and_stay_home() {
         b"export default defineScene({});\n",
     );
     let mine = br#"{"version":1,"accepted":[{"id":"5e6f7a8b","why":"a slow glint, checked by eye"}]}"#;
-    write_file(&project.join(ACCEPTED_FLASHES_FILE), mine);
+    for file in ACCEPTED_WARNING_FILES {
+        write_file(&project.join(file), mine);
+    }
 
     let selection = PackSelection {
         projects: vec!["acme-promo".into()],
         ..Default::default()
     };
     let closure = resolve_closure(author.path(), &selection).expect("closure");
-    assert!(closure
-        .files
-        .iter()
-        .all(|f| !f.archive_path.ends_with(ACCEPTED_FLASHES_FILE)));
     let archive = out.path().join("acme-promo.kbpack");
     write_pack_from(&closure, &archive);
-    assert_eq!(std::fs::read(project.join(ACCEPTED_FLASHES_FILE)).unwrap(), mine);
-
     let inspection = inspect(&archive).expect("inspect");
-    assert!(inspection
-        .manifest
-        .files
-        .iter()
-        .all(|f| !f.path.ends_with(ACCEPTED_FLASHES_FILE)));
+    for file in ACCEPTED_WARNING_FILES {
+        assert!(closure
+            .files
+            .iter()
+            .all(|f| !f.archive_path.ends_with(file)));
+        assert_eq!(std::fs::read(project.join(file)).unwrap(), mine);
+        assert!(inspection
+            .manifest
+            .files
+            .iter()
+            .all(|f| !f.path.ends_with(file)));
+    }
     let staged = stage(
         &archive,
         author.path(),
@@ -1618,18 +1621,20 @@ fn accepted_flash_warnings_never_travel_and_stay_home() {
 
 /// A signed, hand-built pack gets the file past the reader, under any name the volume folds onto it; apply leaves nothing for `kb`.
 #[test]
-fn a_hand_built_pack_cannot_land_accepted_flash_warnings() {
+fn a_hand_built_pack_cannot_land_accepted_warnings() {
     use super::apply::apply_import;
     use super::deps::item_key;
     use super::model::{ItemKind, Resolution};
-    use super::scan::ACCEPTED_FLASHES_FILE;
+    use super::scan::{ACCEPTED_FLASHES_FILE, ACCEPTED_PACING_FILE};
     use std::collections::HashMap;
 
-    for (at, name) in [
-        ACCEPTED_FLASHES_FILE,
-        "FLASHES.ACCEPTED.JSON",
-        "fla\u{17F}hes.accepted.json",
-        "\u{FB02}ashes.accepted.json",
+    for (at, (name, landed_as)) in [
+        (ACCEPTED_FLASHES_FILE, ACCEPTED_FLASHES_FILE),
+        ("FLASHES.ACCEPTED.JSON", ACCEPTED_FLASHES_FILE),
+        ("fla\u{17F}hes.accepted.json", ACCEPTED_FLASHES_FILE),
+        ("\u{FB02}ashes.accepted.json", ACCEPTED_FLASHES_FILE),
+        (ACCEPTED_PACING_FILE, ACCEPTED_PACING_FILE),
+        ("PACING.ACCEPTED.JSON", ACCEPTED_PACING_FILE),
     ]
     .into_iter()
     .enumerate()
@@ -1667,7 +1672,7 @@ fn a_hand_built_pack_cannot_land_accepted_flash_warnings() {
         assert_eq!(outcome.stopped_at, None, "{name}: {:?}", outcome.results);
         let landed = workspace.root().join("acme");
         assert!(landed.join("project.json").is_file(), "{name}");
-        assert!(!landed.join(ACCEPTED_FLASHES_FILE).exists(), "{name} landed");
+        assert!(!landed.join(landed_as).exists(), "{name} landed");
     }
 }
 

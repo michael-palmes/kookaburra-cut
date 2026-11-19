@@ -1939,10 +1939,7 @@ pub fn create_project(
     }
     let pretty = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
     std::fs::write(dir.join(MANIFEST_FILENAME), pretty + "\n").map_err(|e| e.to_string())?;
-    // Templates name the shared samples without shipping them; seeding reads the copied project, so it runs once the manifest is in place, and a miss is healed on load rather than failing the create.
-    if let Err(e) = copy_missing_sample_assets(&samples_root(&app), &dir) {
-        log::warn!("[samples] {slug}: seeding deferred to the first load: {e}");
-    }
+    seed_created_project(&samples_root(&app), &dir)?;
 
     // Claude Code provisioning, shared with the per-open re-stamp (see `stamp_claude_provisioning`).
     stamp_claude_provisioning(&app, &dir)?;
@@ -2522,6 +2519,16 @@ pub(crate) fn copy_missing_sample_assets(
         }
     }
     Ok(())
+}
+
+/// Seed a just-written project before its first commit, so that commit holds what the first load would restore. Seeding reads the copied project, so it runs once the manifest is in place; a failure (after one retry) removes that manifest, leaving the name free to try again.
+fn seed_created_project(source_assets: &Path, dir: &Path) -> Result<(), String> {
+    copy_missing_sample_assets(source_assets, dir)
+        .or_else(|_| copy_missing_sample_assets(source_assets, dir))
+        .map_err(|e| {
+            let _ = std::fs::remove_file(dir.join(MANIFEST_FILENAME));
+            format!("could not copy the sample media into the new project: {e}")
+        })
 }
 
 /// Restore the pool samples a workspace project names when they are missing (deleted outside the app, or named by a scene written outside it); the frontend calls it on every project load.
@@ -4653,6 +4660,39 @@ mod tests {
         copy_missing_sample_assets(&source, &project).unwrap();
         assert!(dest.join("named-sample.jpg").is_file());
         assert!(!dest.join("unnamed-sample.jpg").exists());
+        let _ = std::fs::remove_dir_all(&source);
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn a_created_projects_first_commit_holds_what_its_first_load_restores() {
+        let source = scratch_dir();
+        std::fs::write(source.join("named-sample.jpg"), b"named").unwrap();
+        let project = sample_naming_project(&[], &["assets/named-sample.jpg"], &[]);
+        seed_created_project(&source, &project).unwrap();
+        crate::history::init_repo(&project, "chore: create project").unwrap();
+
+        copy_missing_sample_assets(&source, &project).unwrap();
+        let status = std::process::Command::new("git")
+            .args(["status", "--porcelain"])
+            .current_dir(&project)
+            .output()
+            .unwrap();
+        assert!(status.status.success());
+        assert_eq!(String::from_utf8_lossy(&status.stdout), "");
+        let _ = std::fs::remove_dir_all(&source);
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn a_create_whose_seeding_fails_says_so_and_frees_the_name() {
+        let source = scratch_dir();
+        std::fs::write(source.join("named-sample.jpg"), b"named").unwrap();
+        let project = sample_naming_project(&[], &["assets/named-sample.jpg"], &[]);
+        std::fs::write(project.join("assets"), b"not a folder").unwrap();
+        let error = seed_created_project(&source, &project).unwrap_err();
+        assert!(error.contains("sample media"), "{error}");
+        assert!(!project.join(MANIFEST_FILENAME).exists());
         let _ = std::fs::remove_dir_all(&source);
         let _ = std::fs::remove_dir_all(&project);
     }

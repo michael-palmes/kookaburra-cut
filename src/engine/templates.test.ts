@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { BUILTIN_THEME_CATALOGUE, filterThemeCatalogue } from "../theme/catalogue";
+import { clipFrameIndex } from "./clipFrame";
 import { FORMATS } from "./format";
 import { type ProjectManifest, sanitiseAudioMusic } from "./project";
 import { parseSceneDoc, type SceneDoc } from "./sceneDocSchema";
@@ -511,8 +512,14 @@ describe("template loop window", () => {
     const times = templateLoopTimes({ startMs: 4000, endMs: 10_000 });
     expect(times).toHaveLength(180);
     expect(times[0]).toBe(4000);
-    expect(times[1]).toBe(4033);
-    expect(times.at(-1)).toBe(9967);
+    expect(times[1]).toBe(4000 + 1000 / 30);
+    expect(times.at(-1)).toBe(4000 + 179 * (1000 / 30));
+  });
+
+  it("steps a 60 fps clip evenly, not 1, 3, 2 frames", () => {
+    const times = templateLoopTimes({ startMs: 0, endMs: 1000 });
+    const clipFrames = times.slice(0, 6).map((t) => clipFrameIndex(t, 0, 60, 600));
+    expect(clipFrames).toEqual([0, 2, 4, 6, 8, 10]);
   });
 });
 

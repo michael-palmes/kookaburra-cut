@@ -2,7 +2,14 @@ import { createHash } from "node:crypto";
 import { PerspectiveCamera, Vector3 } from "three";
 import { describe, expect, it } from "vitest";
 import { createSeededRandom } from "../../../engine/rng";
-import { type GrateSpec, grateBars, grateCrossing, rasterGrate, type SpotFrame } from "./grate";
+import {
+  type GrateSpec,
+  grateBars,
+  grateCrossing,
+  mergedBars,
+  rasterGrate,
+  type SpotFrame,
+} from "./grate";
 
 const sha = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 
@@ -92,5 +99,33 @@ describe("grate", () => {
     }
     expect(total).toBeGreaterThan(100);
     expect(agree / total).toBeGreaterThan(0.97);
+  });
+
+  it("merges nested and overlapping hand-placed bars, so none leaks light", () => {
+    const raster = (...bars: [number, number][]) => sha(rasterGrate({ ...SPEC, bars }, FRAME, 64));
+    const outer = raster([-5, 5]);
+    expect(raster([-5, 5], [-1, -0.5])).toBe(outer);
+    expect(raster([-1, -0.5], [-5, 0], [-0.2, 5])).toBe(outer);
+    const merged = mergedBars([
+      [2, 3],
+      [-5, 5],
+      [-1, -0.5],
+      [6, 7],
+    ] as [number, number][]);
+    expect(merged).toEqual([
+      [-5, 5],
+      [6, 7],
+    ] as [number, number][]);
+  });
+
+  it("leaves separate and touching hand-placed bars as they were, only sorted", () => {
+    const bars: [number, number][] = [
+      [0.5, 0.9],
+      [-2, -1],
+      [-1, -0.4],
+      [1.2, 1.25],
+    ];
+    expect(mergedBars(bars)).toEqual([...bars].sort((a, b) => a[0] - b[0]));
+    expect(bars[0]).toEqual([0.5, 0.9]);
   });
 });

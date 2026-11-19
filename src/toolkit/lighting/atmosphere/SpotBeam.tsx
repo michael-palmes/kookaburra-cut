@@ -25,11 +25,11 @@ import { spotHalfAngleRad } from "../../../engine/sceneLighting";
 import { useTimeline } from "../../../engine/timeline";
 import type { LightSpec, LightVolumetricSpec } from "../../../theme/tokens";
 import { useStageFloorY } from "../../stage/context";
+import { BEAM_DUST_DEFAULTS, BEAM_SMOKE_DEFAULTS } from "./beamDefaults";
 import { createBeamDust, createBeamMaterial } from "./beamParts";
 import { createGrateTexture, type GrateSpec } from "./grate";
-import { BEAM_DUST_DEFAULTS, BEAM_SMOKE_DEFAULTS } from "./VolumetricSpot";
 
-/** A sidecar spot's visible beam (`volumetric`): the research VolumetricSpot's haze, smoke and dust on the stage's own spot light, read live on every draw so keys, light spaces and the shadow budget all reach the shafts. */
+/** A sidecar spot's visible beam (`volumetric`): haze, smoke and dust on the stage's own spot light, read live on every draw so keys, light spaces and the shadow budget all reach the shafts. */
 
 type Vec3 = [number, number, number];
 

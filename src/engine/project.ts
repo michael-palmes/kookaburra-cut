@@ -7,6 +7,7 @@ import { parseFontString } from "../theme/fontRef";
 import { vetProjectFonts } from "../theme/fontSafety";
 import { collectThemeFontRefs, preloadAppFonts } from "../theme/fonts";
 import { memoThemeReader, resolveThemeReport, WORKSPACE_THEME_PREFIX } from "../theme/registry";
+import { parseSceneEffectsOverride } from "../theme/schema";
 import type {
   EffectsConfig,
   EffectsOverride,
@@ -1485,7 +1486,11 @@ export async function loadProject(
   // Collect per-scene effect overrides (sparse, only scenes that declare `effects`), with any LUT urls resolved from project-relative to their project asset keys.
   const effectOverrides: Record<number, EffectsOverride> = {};
   manifest.scenes.forEach((entry, i) => {
-    if (entry.effects) effectOverrides[i] = resolveLutUrls(id, entry.effects);
+    const effects = entry.effects;
+    if (!effects) return;
+    const source = `${projectSource} scene ${i + 1}`;
+    const parsed = parseManifest(() => parseSceneEffectsOverride(effects, source));
+    effectOverrides[i] = resolveLutUrls(id, parsed);
   });
   let effects = resolveLutUrls(id, theme.effects ?? {});
 

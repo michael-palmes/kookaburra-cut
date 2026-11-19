@@ -230,14 +230,16 @@ what the author wanted the agent told and moves what they agree with into
 `CLAUDE.md` themselves. The stamped RULES.md tells the agent `NOTES.md` is
 notes, not rules.
 
-Accepted flash warnings never land. `flashes.accepted.json` (`docs/agent-kit.md`,
-"Accepted flash warnings") is one person's decision about their own film, and
-a warning it matches stops reading as a warning, so nobody else's may arrive in
-a pack. Export leaves it out. Apply removes it from anything a hand-built pack
-carried and says so on the summary, and the film's flash checks show those
-moments as warnings. A project keeps its own file: export never touches it, it does
-not count towards `contentHash` (so the project still reads `identical` to its
-own pack), and a `replace` moves it to the backup with the rest of the old film.
+Accepted warnings never land. `flashes.accepted.json` (`docs/agent-kit.md`,
+"Accepted flash warnings") and `pacing.accepted.json` (kept pacing warnings,
+with their reasons) are one person's decision about their own film, and a
+warning either matches stops reading as a warning, so nobody else's may arrive
+in a pack. Export leaves both out. Apply removes them from anything a hand-built
+pack carried and says so on the summary, and the film's flash and pacing checks
+show those moments as warnings. A project keeps its own files: export never
+touches them, they do not count towards `contentHash` (so the project still
+reads `identical` to its own pack), and a `replace` moves them to the backup
+with the rest of the old film.
 
 Website scene content gets its review before Continue, on the trust screen:
 `read_pack_scene_docs` reads every scene sidecar beside a staged scene source
@@ -305,8 +307,9 @@ test per item in `pack::tests`. Limits live in `pack::limits`.
     mismatch aborts the whole import.
 15. Only then resolve and move. `StagedPack` implements `Drop`, so every failure
     path removes the tree.
-16. Before the first move, remove `flashes.accepted.json` from each landing
-    project, template and preset, and name it on the summary. By path, never by
+16. Before the first move, remove `flashes.accepted.json` and
+    `pacing.accepted.json` from each landing project, template and preset, and
+    name each on the summary. By path, never by
     matching the name: the volume decides what reads as that file (APFS folds
     `FLASHES.ACCEPTED.JSON` and `ﬂashes.accepted.json` onto it). One that will
     not delete stops the import.
@@ -422,8 +425,9 @@ Excluded, because it is generated (`pack::scan::is_excluded`, extending
 folders, so the same list applies to them; the unused-file review is not offered
 for either, because a template or preset carries only what it was saved with.
 
-Excluded, because it is a person's decision and not the film's:
-`flashes.accepted.json` ("Pack trust is not code trust").
+Excluded, because they are a person's decisions and not the film's:
+`flashes.accepted.json` and `pacing.accepted.json` ("Pack trust is not code
+trust").
 
 Excluded, because it names what a person imported: `assets/_meta.json`
 (provenance: `origin.sourceName`, and `origin.from` under `.originals`). A
