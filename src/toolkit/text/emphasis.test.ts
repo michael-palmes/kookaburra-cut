@@ -1,10 +1,12 @@
 import { Color, type Vector3 } from "three";
 import { describe, expect, it } from "vitest";
+import { derivePresentHold } from "../../engine/presentHoldPoint";
 import { pillMotionsFromUnits } from "./EmphasisPills";
 import {
   computeEmphasisRects,
   EMPHASIS_WEIGHT_EM,
   EMPHASIS_WEIGHT_MAX_EM,
+  emphasisPillEndMs,
   emphasisPillPhase,
   emphasisPills,
   MAX_EMPHASIS_RECTS,
@@ -16,6 +18,7 @@ import {
   padEmphasisRanges,
   parseEmphasisValue,
   resolveEmphasis,
+  shapedMeasureText,
 } from "./emphasis";
 import { EDGE_SENTINEL, type TextUnitSample } from "./presets";
 import {
@@ -196,6 +199,23 @@ describe("shaped emphasis", () => {
     });
   });
 
+  it("holds Present and the automatic still on a drawn, filled pill", () => {
+    const pill = resolveEmphasis(themed, "accent pill", 400);
+    const end = emphasisPillEndMs(pill, false, 1000);
+    expect(end).not.toBeNull();
+    const line = { kind: "text" as const, toMs: 1000 };
+    const without = derivePresentHold([line], 10_000).holdMs;
+    expect(emphasisPillPhase(without, 1000).fill).toBe(0);
+    const { holdMs } = derivePresentHold([line, { kind: "text", toMs: end ?? 0 }], 10_000);
+    expect(emphasisPillPhase(holdMs, 1000)).toEqual({ draw: 1, fill: 1 });
+  });
+
+  it("registers nothing where no pill draws", () => {
+    expect(emphasisPillEndMs(null, false, 1000)).toBeNull();
+    expect(emphasisPillEndMs(resolveEmphasis(themed, "accent", 400), false, 1000)).toBeNull();
+    expect(emphasisPillEndMs(resolveEmphasis(themed, "accent pill", 400), true, 1000)).toBeNull();
+  });
+
   it("makes room either side of each range inside a line, moving ranges and emoji", () => {
     const padded = padEmphasisRanges({
       text: "up to 24 hours of\nX",
@@ -215,6 +235,14 @@ describe("shaped emphasis", () => {
     expect(edges.text).toBe("24 hours\nleft");
     const plain = { text: "plain", emphasis: [], clusters: [] };
     expect(padEmphasisRanges(plain)).toBe(plain);
+  });
+
+  it("measures the padded string a shaped headline typesets, and plain copy as given", () => {
+    expect(shapedMeasureText("a *24h* b", "pill")).toBe("a  24h  b");
+    expect(shapedMeasureText("a *24h* b", "battery")).toBe("a  24h   b");
+    const raw = "a *24h* b";
+    expect(shapedMeasureText(raw, undefined)).toBe(raw);
+    expect(shapedMeasureText("no markup", "pill")).toBe("no markup");
   });
 });
 

@@ -31,6 +31,7 @@ import { registerSceneText } from "../../engine/sceneTextRegistry";
 import { reportTextDerivedPending } from "../../engine/textDerivedState";
 import { useTextKeyRegistry } from "../../engine/textKeyRegistry";
 import { useTextMotionRegistry } from "../../engine/textMotionRegistry";
+import { textStyleValue } from "../../engine/textStyleResolve";
 import { MotionBlurContext, useTimeline } from "../../engine/timeline";
 import { useTheme } from "../../theme";
 import { formatFontString } from "../../theme/fontRef";
@@ -51,6 +52,8 @@ import {
 import { EmphasisPills, pillMotionsFromUnits } from "./EmphasisPills";
 import {
   computeEmphasisRects,
+  type EmphasisShape,
+  emphasisPillEndMs,
   emphasisPillPhase,
   padEmphasisRanges,
   parseEmphasisValue,
@@ -305,18 +308,7 @@ export function AnimatedHeadline(props: AnimatedHeadlineProps) {
 /** `fit="width"`: measures the block from the parsed face, the same maths troika typesets with, and hands the renderer the size that fits; captures wait for the measure, so no frame sees the unfitted size. A face that can't parse keeps the authored size. */
 function FittedHeadline({ fit: _fit, maxWidth, ...props }: AnimatedHeadlineProps) {
   const format = useFormat();
-  const doc = useContext(SceneDocContext);
-  const styleKey = props.styleKey ?? props.textKey;
-  const shaped = parseEmphasisValue(
-    styleKey ? doc?.textStyle?.[`${styleKey}Emphasis`] : undefined,
-  )?.shape;
-  // A shaped emphasis typesets with room either side of its words, so the fit measures that string.
-  const measured = useMemo(() => {
-    if (!shaped) return props.text;
-    const { text, ranges } = parseEmphasisMarkup(props.text);
-    return padEmphasisRanges({ text, emphasis: ranges, clusters: [] }, shaped).text;
-  }, [shaped, props.text]);
-  const metrics = useTextMetrics(props.textKey, measured, {
+  const metrics = useTextMetrics(props.textKey, props.text, {
     fontSize: props.fontSize,
     face: props.face,
     fontRef: props.fontRef,
@@ -367,10 +359,20 @@ function DepthHeadline({ depth, ...props }: AnimatedHeadlineProps) {
   );
 }
 
+/** The copy a hit counts units on: the padded string a shaped emphasis typesets, else the stripped copy. */
+function hitUnitText(raw: string, shape: EmphasisShape | undefined): string {
+  if (shape) {
+    const prepared = prepareDisplayText(raw);
+    if (prepared.emphasis.length > 0) return padEmphasisRanges(prepared, shape).text;
+  }
+  return parseEmphasisMarkup(raw).text;
+}
+
 /** Moves the window so the motion lands on `hitAt`. The v0 linear ramp lands where it ends. */
 export function withHitAt(
   props: HeadlineRenderProps,
   anim: ResolvedTextAnimation | null,
+  shape?: EmphasisShape,
 ): HeadlineRenderProps {
   const hitAt = props.hitAt as number;
   const from = props.from ?? 0;
@@ -381,7 +383,7 @@ export function withHitAt(
     return { ...props, from: start, to: start + (to - from) };
   }
   const end = pinned === undefined ? textAnimationWindowToMs(from, to, anim) : from + pinned;
-  const units = impactUnitCount(anim, parseEmphasisMarkup(props.text).text);
+  const units = impactUnitCount(anim, hitUnitText(props.text, shape));
   const start = hitWindow(hitAt, anim, from, end, units).from;
   return { ...props, from: start, to: start + (to - from) };
 }
@@ -397,7 +399,9 @@ function AnimatedHeadlineRenderer(rawProps: HeadlineRenderProps) {
     doc,
     rawProps.motionKey ?? rawProps.textKey,
   );
-  const props = rawProps.hitAt === undefined ? rawProps : withHitAt(rawProps, anim);
+  const hitKey = rawProps.styleKey ?? rawProps.textKey;
+  const hitShape = parseEmphasisValue(textStyleValue(doc, hitKey, "Emphasis"))?.shape;
+  const props = rawProps.hitAt === undefined ? rawProps : withHitAt(rawProps, anim, hitShape);
   // Report coded motion to the registry; the Text-motion panel warns and offers the sidecar force override instead of silently losing the user's pick.
   const coded = hasOwnAnimationProps(props);
   useEffect(() => {
@@ -704,7 +708,7 @@ function AnimatedHeadlineRenderer(rawProps: HeadlineRenderProps) {
     // 3D looks re-render as an extruded twin; motion degrades to whole-block transforms from the unit-0 sample (legacyMotion keeps the v0 linear ramp on material opacity).
     return (
       <LookText3D
-        text={prepared.text}
+        text={shapedText.text}
         look={look}
         theme={theme}
         anim={legacyMotion ? null : anim}
@@ -834,6 +838,20 @@ function emphasisShapeFrame(
 const SHAPE_GLYPH = new Color();
 const SHAPE_FILLED = new Color();
 
+/** Registers a shaped emphasis's end with the Present timing, so holds and automatic stills see the pill drawn and filled. Inert without a pill. */
+function useEmphasisPresentTiming(
+  emphasis: ResolvedEmphasis | null,
+  underLayer: boolean | undefined,
+  startMs: number,
+): void {
+  const sceneIndex = useSceneContext()?.index;
+  const toMs = emphasisPillEndMs(emphasis, underLayer, startMs);
+  useEffect(() => {
+    if (sceneIndex === undefined || toMs === null) return;
+    return registerPresentTiming(sceneIndex, { kind: "text", toMs });
+  }, [sceneIndex, toMs]);
+}
+
 /** Type a typewriter preset through the mask on every holder: the head after this frame's keystroke count, from the typeset's carets. Returns the last shown code unit (the emoji quads' twin), or null when the mask is off. */
 function useTypewriter(
   holders: readonly (StaggerTextMaterial | null | undefined)[],
@@ -920,7 +938,9 @@ function LegacyHeadline(
   useEffect(() => () => holder?.dispose(), [holder]);
   if (holder) writeShineBand(holder, foldBandToChild(group, position));
   const emphasised = useEmphasis(emphasis, prepared, carets);
-  const shaped = emphasisShapeFrame(emphasis, props.underLayer, localMs, props.pillAtMs ?? to);
+  const pillStartMs = props.pillAtMs ?? to;
+  const shaped = emphasisShapeFrame(emphasis, props.underLayer, localMs, pillStartMs);
+  useEmphasisPresentTiming(emphasis, props.underLayer, pillStartMs);
   if (holder && emphasis) {
     writeEmphasisUniforms(
       holder,
@@ -1077,12 +1097,9 @@ function BlockHeadline(
     else writeShineBand(holder, foldBandToChild(group, position));
   }
   const emphasised = useEmphasis(emphasis, prepared, carets);
-  const shaped = emphasisShapeFrame(
-    emphasis,
-    props.underLayer,
-    localMs,
-    props.pillAtMs ?? textAnimationEndMs(from, to, anim),
-  );
+  const pillStartMs = props.pillAtMs ?? textAnimationEndMs(from, to, anim);
+  const shaped = emphasisShapeFrame(emphasis, props.underLayer, localMs, pillStartMs);
+  useEmphasisPresentTiming(emphasis, props.underLayer, pillStartMs);
   if (holder && emphasis) {
     writeEmphasisUniforms(
       holder,
@@ -1282,8 +1299,8 @@ function StaggeredHeadline(
   const highlighting = usesPreset(HIGHLIGHT_PRESETS, anim);
   const underlining = usesPreset(UNDERLINE_PRESETS, anim);
   const exact = useExactText();
-  // Optical text blur rides the pack's soften, so it mounts only there (frosted's constant soften stays an edge look).
-  const optical = useOpticalTextBlur() && pack && !lookFrosted;
+  // Optical text blur rides the pack's soften, so it mounts only there (frosted's constant soften stays an edge look, and arc's bend lands outside the capture).
+  const optical = useOpticalTextBlur() && pack && !lookFrosted && !lookArc;
   const opticalRoot = useRef<Group>(null);
   const opticalFrame = useRef<OpticalBlurFrame>({
     serial: 0,
@@ -1526,12 +1543,9 @@ function StaggeredHeadline(
   // Emphasis on every layer (the offset under-layer keeps its own colour, gaining only the weight); the typewriter head masks them all alike.
   const emphasised = useEmphasis(emphasis, prepared, carets);
   // A shaped emphasis draws once the whole line has landed, the last unit included, unless `emphasisAt` places it.
-  const shaped = emphasisShapeFrame(
-    emphasis,
-    props.underLayer,
-    localMs,
-    props.pillAtMs ?? settleToMs + (spreadMs ?? 0),
-  );
+  const pillStartMs = props.pillAtMs ?? settleToMs + (spreadMs ?? 0);
+  const shaped = emphasisShapeFrame(emphasis, props.underLayer, localMs, pillStartMs);
+  useEmphasisPresentTiming(emphasis, props.underLayer, pillStartMs);
   if (emphasis) {
     const weight = emphasis.weightEm * fontSize;
     const glyph = shaped?.glyph ?? emphasised.colour;

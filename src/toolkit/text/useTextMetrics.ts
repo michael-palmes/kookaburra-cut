@@ -13,6 +13,7 @@ import {
   type TextMetrics,
 } from "../../theme/fontMetrics";
 import type { FontRef } from "../../theme/tokens";
+import { parseEmphasisValue, shapedMeasureText } from "./emphasis";
 import { resolveHeadlineType } from "./headlineType";
 
 /** The AnimatedHeadline props that shape the measured block; pass the same values the headline gets. The anchors and `textAlign` only place the glyph boxes. */
@@ -50,7 +51,10 @@ export function useTextMetrics(
   const doc = useContext(SceneDocContext);
   useSyncExternalStore(subscribeFontMetrics, fontMetricsVersion, fontMetricsVersion);
   const type = resolveHeadlineType(theme, doc, { ...opts, textKey: key });
-  const metrics = measureText(text, {
+  const styleKey = opts.styleKey ?? key;
+  const shape = parseEmphasisValue(textStyleValue(doc, styleKey, "Emphasis"))?.shape;
+  const measured = shapedMeasureText(text, shape);
+  const metrics = measureText(measured, {
     font: type.fontRef,
     fontSize: type.fontSize,
     letterSpacing: opts.letterSpacing,
@@ -64,7 +68,6 @@ export function useTextMetrics(
     if (pending) void preloadFontMetrics([type.font]);
   }, [pending, type.font]);
   useLayoutEffect(() => (pending ? reportTextDerivedPending() : undefined), [pending]);
-  const styleKey = opts.styleKey ?? key;
   const offX = textStyleValue(doc, styleKey, "OffsetX");
   const offY = textStyleValue(doc, styleKey, "OffsetY");
   const shifted =
@@ -78,7 +81,7 @@ export function useTextMetrics(
           ),
         }
       : metrics;
-  return measuredText(shifted, text, opts.fontSize ?? 0.6);
+  return measuredText(shifted, measured, opts.fontSize ?? 0.6);
 }
 
 /** Glyph boxes moved by a sidecar offset, as the headline moves its text. */
