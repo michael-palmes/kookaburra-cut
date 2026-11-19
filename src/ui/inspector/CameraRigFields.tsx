@@ -271,7 +271,7 @@ export function CameraRigFields({
           commitRig({
             ...rig,
             keys: rig.keys.map((key) => {
-              const dof = map(key.pose.dof);
+              const dof = map(key.pose.dof, key.id);
               const nextPose = { ...key.pose };
               if (dof) nextPose.dof = dof;
               else delete nextPose.dof;

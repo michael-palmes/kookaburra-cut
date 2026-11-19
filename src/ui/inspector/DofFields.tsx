@@ -183,11 +183,31 @@ const DEPTH_PRESETS: { icon: string; label: string; title: string; blur: number;
     { icon: "macro", label: "Macro", title: "Razor-thin focus", blur: 0.9, range: 0.5 },
   ];
 
-/** A key as the dof carry walk sees it. */
+/** A camera or rig track key, as the dof carry walk reads it. */
 export interface DofKeyView {
   id: string;
   tMs: number;
-  dof?: SceneDocDof;
+  pose: { dof?: SceneDocDof };
+}
+
+/** The scene-wide family switch. Blur scales the lens aperture, so a switch into lens drops depth's blur and range; a switch out drops the lens fields and gives only the first dof key a fallback blur, so later keys keep inheriting. */
+export function dofModeSwitch(
+  keys: readonly DofKeyView[],
+  next: DofMode,
+): (dof: SceneDocDof | undefined, keyId: string) => SceneDocDof | undefined {
+  const first = [...keys].sort((a, b) => a.tMs - b.tMs).find((k) => k.pose.dof);
+  const fromLens = first?.pose.dof?.mode === "lens";
+  return (dof, keyId) => {
+    if (!dof) return dof;
+    if (next === "lens") {
+      const { blur: _blur, range: _range, ...rest } = dof;
+      return { ...rest, mode: next };
+    }
+    const { fStop: _fStop, focalMm: _focalMm, sensorMm: _sensorMm, ...rest } = dof;
+    return fromLens && keyId === first?.id
+      ? { ...rest, blur: dof.blur ?? 0.5, mode: next }
+      : { ...rest, mode: next };
+  };
 }
 
 /** An effective dof rewritten as a full authored block (the "Set on this key" write). */
@@ -234,18 +254,20 @@ export function DofFields({
   preview: (next: SceneDocDof | undefined) => void;
   commit: (next: SceneDocDof | undefined) => void;
   /** Rewrite every key's dof in one commit (scene-wide off, family switches). */
-  commitAll: (map: (dof: SceneDocDof | undefined) => SceneDocDof | undefined) => void;
+  commitAll: (
+    map: (dof: SceneDocDof | undefined, keyId: string) => SceneDocDof | undefined,
+  ) => void;
 }) {
   const sorted = [...keys].sort((a, b) => a.tMs - b.tMs);
   const targetIndex = targetKeyId ? sorted.findIndex((k) => k.id === targetKeyId) : -1;
-  const firstDof = sorted.find((k) => k.dof)?.dof;
+  const firstDof = sorted.find((k) => k.pose.dof)?.pose.dof;
   const sceneMode = firstDof ? (firstDof.mode ?? "depth") : undefined;
   let carriedBefore: EffectiveDof | null = null;
   for (let i = 0; i < (targetIndex < 0 ? sorted.length : targetIndex); i++) {
-    carriedBefore = carryDof(carriedBefore, sorted[i].dof, sceneMode);
+    carriedBefore = carryDof(carriedBefore, sorted[i].pose.dof, sceneMode);
   }
   const effective = carryDof(carriedBefore, authored, sceneMode ?? authored?.mode);
-  const sceneHasDof = !!authored || sorted.some((k) => k.dof);
+  const sceneHasDof = !!authored || sorted.some((k) => k.pose.dof);
   const mode = sceneHasDof ? (sceneMode ?? authored?.mode ?? "depth") : "off";
   const shown = effective ?? (mode === "lens" ? LENS_DOF_DEFAULTS : DOF_DEFAULTS);
   const manual = shown.focus !== null;
@@ -269,18 +291,7 @@ export function DofFields({
       );
       return;
     }
-    commitAll((dof) => {
-      if (!dof) return dof;
-      // Blur scales the lens aperture, so a switch into lens drops depth's blur and range; a switch out drops the lens fields.
-      if (next === "lens") {
-        const { blur: _blur, range: _range, ...rest } = dof;
-        return { ...rest, mode: next };
-      }
-      const { fStop: _fStop, focalMm: _focalMm, sensorMm: _sensorMm, ...rest } = dof;
-      return sceneMode === "lens"
-        ? { ...rest, blur: dof.blur ?? 0.5, mode: next }
-        : { ...rest, mode: next };
-    });
+    commitAll(dofModeSwitch(keys, next));
   };
 
   const depthFamily = mode === "depth" || mode === "split";
