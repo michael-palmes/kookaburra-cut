@@ -78,7 +78,13 @@ def accept(ctx: Any) -> int:
             raise KbError(f"{a.scene} is the {kind} warning on {stem}, not {a.kind}; drop --kind", EXIT_ENV, kind="usage")
         kinds = [kind]
     else:
-        _idx, stem = ctx.project.resolve(a.scene)
+        try:
+            _idx, stem = ctx.project.resolve(a.scene)
+        except KbError:
+            if not pc.looks_like_id(a.scene):
+                raise
+            raise KbError(f"no scene or pacing warning has the id {a.scene}", EXIT_PROBLEMS, kind="invalid",
+                          hint="./kb check film pacing prints each open warning's id") from None
         kinds, where = ([a.kind], None) if a.kind else open_kinds(ctx.project, stem)
     by = getattr(ctx.caller, "name", None)
     rows: List[Dict[str, Any]] = [{"id": pc.issue_id(k, stem), "kind": k, "scene": stem, "why": why, "by": by, "atMs": now_ms()} for k in kinds]

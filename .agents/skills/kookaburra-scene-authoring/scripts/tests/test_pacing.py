@@ -209,6 +209,9 @@ class PacingCommandTests(KbTestCase):
         ident = pc.issue_id("still", "01-s1")
         self.assertIn(f"warn  {ident}  01-s1, still: 8.0s where", self.kb(["check", "film", "pacing"], cwd=project).stdout)
         self.assertExit(self.kb(["pacing", "accept", ident, "--kind", "read", "--why", "a held breath"], cwd=project), 2)
+        unknown = self.kb(["pacing", "accept", "deadbeef", "--why", "a held breath"], cwd=project)
+        self.assertExit(unknown, 1)
+        self.assertIn("no scene or pacing warning has the id deadbeef", unknown.stderr)
         self.assertExit(self.kb(["pacing", "accept", ident, "--why", "a held breath"], cwd=project), 0)
         rows = read_json(project / pc.ACCEPTED_FILE)["accepted"]
         self.assertEqual([(r["id"], r["kind"], r["scene"]) for r in rows], [(ident, "still", "01-s1")])

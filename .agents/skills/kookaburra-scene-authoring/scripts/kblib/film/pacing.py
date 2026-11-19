@@ -427,9 +427,13 @@ def issue_id(kind: str, scene: Optional[str]) -> str:
     return hashlib.sha1(f"{kind}|{scene or ''}".encode("utf-8")).hexdigest()[:8]
 
 
+def looks_like_id(text: Any) -> bool:
+    return isinstance(text, str) and _ID_RE.fullmatch(text) is not None
+
+
 def issue_for_id(project: Project, ident: Any) -> Optional[Tuple[str, str]]:
     """(kind, scene) a warning id names, found by trying every scene and kind; None when it names none."""
-    if not isinstance(ident, str) or not _ID_RE.fullmatch(ident):
+    if not looks_like_id(ident):
         return None
     return next(((kind, stem) for stem in project.stems() for kind in KINDS if issue_id(kind, stem) == ident), None)
 
