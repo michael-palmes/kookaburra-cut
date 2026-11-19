@@ -48,7 +48,7 @@ export function parseSatinBackdrop(
   source: string,
 ): SatinBackdropSpec | undefined {
   if (!isHex(v.color)) {
-    parseWarn(`[theme] ${source}: a satin backdrop needs a hex color, dropped`);
+    parseWarn(`[theme] ${source}: a satin backdrop needs a hex colour, dropped`);
     return undefined;
   }
   const out: SatinBackdropSpec = { type: "satin", color: v.color.toLowerCase() };
@@ -94,7 +94,7 @@ export function parseSatinBackdrop(
     const pools = v.pools.map(parsePool).filter((p): p is Pool => !!p);
     if (pools.length < v.pools.length) {
       parseWarn(
-        `[theme] ${source}: a satin pool needs at, radius, a hex color and intensity, dropped`,
+        `[theme] ${source}: a satin pool needs at, radius, a hex colour and intensity, dropped`,
       );
     }
     if (pools.length > SATIN_MAX_POOLS) {
