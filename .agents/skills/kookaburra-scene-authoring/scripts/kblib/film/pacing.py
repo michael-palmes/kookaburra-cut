@@ -49,6 +49,7 @@ _ELEMENT_RE = re.compile(r"<[A-Z][\w.]*\s[^<>]*>")
 _TEXT_KEY_RE = re.compile(r"""\btextKey\s*=\s*(?:\{\s*)?["']([\w.-]+)["']""")
 _FONT_SIZE_RE = re.compile(r"\bfontSize\s*=\s*\{\s*([0-9]+(?:\.[0-9]+)?|\.[0-9]+)\s*\}")
 _EMBEDDED_ROLE_RE = re.compile(r"""\bmanagedTextRole\s*=\s*(?:\{\s*)?["']embedded["']""")
+_ID_RE = re.compile(r"[0-9a-f]{8}")
 _TSX_MOTION_RE = re.compile(r"\b(?:useTimeline|useBeatGrid|useGroupAnimation|useRigTrack)\s*\(|<(?:AnimatedGroup|AnimatedCounter|VideoClip|VideoWindow)\b")
 
 
@@ -390,7 +391,7 @@ def still_issues(shape: Dict[str, Any], spans: List[Tuple[float, float]], slots:
                     why += ", and never more than 2.4 s"
         if b - a > allowed + slack:
             stems = scenes_in(slots, a, b)
-            out.append({"kind": "still", "scene": scene_at(slots, (a + b) / 2), "atMs": int(round(a)), "toMs": int(round(b)),
+            out.append({"kind": "still", "scene": scene_at(slots, (a + b) / 2), "scenes": stems, "atMs": int(round(a)), "toMs": int(round(b)),
                         "message": f"{(b - a) / 1000:.1f}s where {what} ({_span(shape, a, b)}, {', '.join(str(s) for s in stems)}): "
                                    f"{why}. Land a line, a camera key or a kick inside it, or cut sooner{unseen}"})
     return out
@@ -423,6 +424,13 @@ def ending_issues(shape: Dict[str, Any], slots: List[Dict[str, Any]], changes: O
 
 def issue_id(kind: str, scene: Optional[str]) -> str:
     return hashlib.sha1(f"{kind}|{scene or ''}".encode("utf-8")).hexdigest()[:8]
+
+
+def issue_for_id(project: Project, ident: Any) -> Optional[Tuple[str, str]]:
+    """(kind, scene) a warning id names, found by trying every scene and kind; None when it names none."""
+    if not isinstance(ident, str) or not _ID_RE.fullmatch(ident):
+        return None
+    return next(((kind, stem) for stem in project.stems() for kind in KINDS if issue_id(kind, stem) == ident), None)
 
 
 def load_accepted(project: Project) -> List[Dict[str, Any]]:

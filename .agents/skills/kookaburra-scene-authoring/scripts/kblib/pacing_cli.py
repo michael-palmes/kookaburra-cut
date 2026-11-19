@@ -11,13 +11,14 @@ from .util import EXIT_ENV, EXIT_OK, EXIT_PROBLEMS, KbError, emit, now_ms
 
 EPILOG = """\
   ./kb pacing                                              the warnings the person kept
-  ./kb pacing accept 04-question --why "they want the question to breathe"
+  ./kb pacing accept 3f2a91c0 --why "they want the question to breathe"
   ./kb pacing accept 18-lockup --kind end --why "the logo holds over the song's tail"
-  ./kb pacing forget 04-question                           the next check raises it again
+  ./kb pacing forget 3f2a91c0                              the next check raises it again
 
 The pacing rules are defaults and the person decides. When they keep something
-./kb check film pacing warns about, accept it with their reason. It holds per scene and
-kind (still, read, short, final-hit, end), every kind when --kind is left out."""
+./kb check film pacing warns about, accept it with their reason, by the id the check prints
+beside it. It holds per scene and kind (still, read, short, final-hit, end); a scene with no
+--kind keeps every kind."""
 
 
 def cmd_pacing(ctx: Any) -> int:
@@ -44,12 +45,19 @@ def accept(ctx: Any) -> int:
 
     a = ctx.args
     if not a.scene:
-        raise KbError('accept needs a scene, e.g. ./kb pacing accept 04-question --why "..."', EXIT_ENV, kind="usage")
+        raise KbError('accept needs a warning id or a scene, e.g. ./kb pacing accept 04-question --kind read --why "..."', EXIT_ENV, kind="usage")
     why = (a.why or "").strip()
     if not why:
         raise KbError("accept needs the person's reason: --why \"...\"", EXIT_ENV, kind="usage")
-    _idx, stem = ctx.project.resolve(a.scene)
-    kinds = [a.kind] if a.kind else list(pc.KINDS)
+    named = pc.issue_for_id(ctx.project, a.scene)
+    if named:
+        kind, stem = named
+        if a.kind and a.kind != kind:
+            raise KbError(f"{a.scene} is the {kind} warning on {stem}, not {a.kind}; drop --kind", EXIT_ENV, kind="usage")
+        kinds = [kind]
+    else:
+        _idx, stem = ctx.project.resolve(a.scene)
+        kinds = [a.kind] if a.kind else list(pc.KINDS)
     by = getattr(ctx.caller, "name", None)
     rows: List[Dict[str, Any]] = [{"id": pc.issue_id(k, stem), "kind": k, "scene": stem, "why": why, "by": by, "atMs": now_ms()} for k in kinds]
     if not a.dry_run:
@@ -94,7 +102,7 @@ def register(sub: Any, common: argparse.ArgumentParser, Formatter: Any) -> None:
                        description="pacing warnings a person kept, with their reason; later checks show them as kept",
                        epilog=EPILOG, formatter_class=Formatter, parents=[common])
     s.add_argument("op", nargs="?", choices=["list", "accept", "forget"], help="list (default), accept or forget")
-    s.add_argument("scene", nargs="?", metavar="S", help="the scene (index or stem), or a kept id for forget")
+    s.add_argument("scene", nargs="?", metavar="S|ID", help="the scene (index or stem), or a warning's id as the check or ./kb pacing prints it")
     s.add_argument("--kind", choices=list(pc.KINDS), help="one kind of warning (default: every kind)")
     s.add_argument("--why", metavar="TEXT", help="accept: the person's reason, in a sentence (required)")
     s.add_argument("--dry-run", action="store_true", help="list what this would change; write nothing")

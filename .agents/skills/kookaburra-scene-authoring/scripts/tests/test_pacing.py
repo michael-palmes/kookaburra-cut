@@ -204,6 +204,27 @@ class PacingCommandTests(KbTestCase):
         self.assertEqual(read_json(project / pc.ACCEPTED_FILE)["accepted"], [])
         self.assertExit(self.kb(["pacing", "forget", "01-s1"], cwd=project), 1)
 
+    def test_each_warning_names_its_scene_and_id_and_accept_takes_the_id(self) -> None:
+        project = song_project(self.tmp, stems(2), [8000, 2000])
+        ident = pc.issue_id("still", "01-s1")
+        self.assertIn(f"warn  {ident}  01-s1, still: 8.0s where", self.kb(["check", "film", "pacing"], cwd=project).stdout)
+        self.assertExit(self.kb(["pacing", "accept", ident, "--kind", "read", "--why", "a held breath"], cwd=project), 2)
+        self.assertExit(self.kb(["pacing", "accept", ident, "--why", "a held breath"], cwd=project), 0)
+        rows = read_json(project / pc.ACCEPTED_FILE)["accepted"]
+        self.assertEqual([(r["id"], r["kind"], r["scene"]) for r in rows], [(ident, "still", "01-s1")])
+        checked = self.kb(["check", "film", "pacing"], cwd=project).stdout
+        self.assertNotIn(f"warn  {ident}", checked)
+        self.assertIn("1 kept by the person", checked)
+        self.assertExit(self.kb(["pacing", "forget", ident], cwd=project), 0)
+        self.assertEqual(read_json(project / pc.ACCEPTED_FILE)["accepted"], [])
+
+    def test_a_still_over_several_scenes_is_keyed_to_its_middle(self) -> None:
+        project = song_project(self.tmp, stems(3), [2000, 2000, 16000])
+        p = Project(project)
+        out = pc.check(p, tl.project_slots(p), {"spans": [(1000, 6000)], "changes": [62000]})
+        still = next(i for i in out["issues"] if i["kind"] == "still")
+        self.assertEqual((still["scene"], still["scenes"], still["id"]), ("02-s2", stems(3), pc.issue_id("still", "02-s2")))
+
 
 class BeatsPlanTests(KbTestCase):
     def plan(self, project: Path, *args: str, code: int = 0) -> Dict[str, Any]:

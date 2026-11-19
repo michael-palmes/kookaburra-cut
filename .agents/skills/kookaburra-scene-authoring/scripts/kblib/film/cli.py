@@ -275,7 +275,13 @@ def pacing_lines(pace: Dict[str, Any], film: bool) -> List[str]:
         read = f", read in {r['readMs'] / 1000:.1f}s" if r.get("readMs") else ""
         lines.append(f"  {r['stem']}: {r['words']} words in {r['durationMs'] / 1000:.1f}s{read}"
                      + (f", {r['labelWords']} label words left out" if r.get("labelWords") else "") + (f"  !! {r['flag']}" if r.get("flag") else ""))
-    lines += [f"  warn  {w}" for w in pace["warnings"]]
+    for issue in pace["issues"]:
+        scene = str(issue.get("scene") or "")
+        message = issue["message"]
+        message = message[len(scene) + 2:] if scene and message.startswith(f"{scene}: ") else message
+        lines.append(f"  warn  {issue['id']}  {scene}, {issue['kind']}: {message}")
+    if pace["issues"]:
+        lines.append('  to keep one the person wants: ./kb pacing accept ID --why "..."')
     if pace.get("accepted"):
         lines.append(f"  {len(pace['accepted'])} kept by the person (./kb pacing lists them)")
     return lines

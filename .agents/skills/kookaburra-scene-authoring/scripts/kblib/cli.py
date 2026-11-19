@@ -86,7 +86,7 @@ the cwd, or uses $CLAUDE_PROJECT_DIR.
                     [--verify] [--headless] [--allow-flashes] [--timeout S] [--progress-every S]
              verify-export FILE [--no-sheet] [--no-flashes] [--allow-flashes] [--loudness-target LUFS]
              check film [flashes colour handoffs pacing] [--file F] [--standard wcag|itu|both]
-             pacing [accept S --why TEXT [--kind K] | forget S]   (pacing warnings the person kept)
+             pacing [accept ID|S --why TEXT [--kind K] | forget ID|S]   (pacing warnings the person kept)
              sync-check FILE [--bpm N [--offset MS]] [--poster-frame auto|on|off]
   History    checkpoint [MESSAGE] [--scene S]... [--files P]... | history [--scene S]
              undo [REV] [--scene S | --all] | diff [REV] [--scene S] | plan COMMAND ...
