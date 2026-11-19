@@ -16,8 +16,9 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from ..beats import pulse
 from ..media_input import input_args
 from ..project import Project
+from ..realdir import no_follow, real_dir
 from ..tsx import strip_comments
-from ..util import EXIT_ENV, KbError, is_number
+from ..util import EXIT_ENV, KbError, atomic_write_json, is_number, now_ms
 
 MIN_SCENE_MS = 334
 KEYED_BLOCKS = ("camera", "cameraRig", "deviceTrack", "lighting")
@@ -431,6 +432,30 @@ def issue_for_id(project: Project, ident: Any) -> Optional[Tuple[str, str]]:
     if not isinstance(ident, str) or not _ID_RE.fullmatch(ident):
         return None
     return next(((kind, stem) for stem in project.stems() for kind in KINDS if issue_id(kind, stem) == ident), None)
+
+
+def last_path(project: Project) -> Path:
+    from .. import lock
+
+    return real_dir(lock.kb_dir(project), "pacing", make=False) / "last.json"
+
+
+def save_last(project: Project, pace: Dict[str, Any], source: str, film: Optional[Path] = None) -> None:
+    """Keeps the check's open warnings as the last check (`kb pacing accept S` keeps only these kinds)."""
+    rows = [{k: i[k] for k in ("id", "kind", "scene", "scenes", "atMs") if k in i} for i in pace.get("issues") or []]
+    try:
+        atomic_write_json(last_path(project), {"version": 1, "atMs": now_ms(), "source": source, "file": str(film) if film else None, "issues": rows})
+    except (KbError, OSError):
+        pass
+
+
+def load_last(project: Project) -> Optional[Dict[str, Any]]:
+    try:
+        with open(last_path(project), encoding="utf-8", opener=no_follow) as f:
+            doc = json.load(f)
+    except (KbError, OSError, ValueError):
+        return None
+    return doc if isinstance(doc, dict) and isinstance(doc.get("issues"), list) else None
 
 
 def load_accepted(project: Project) -> List[Dict[str, Any]]:

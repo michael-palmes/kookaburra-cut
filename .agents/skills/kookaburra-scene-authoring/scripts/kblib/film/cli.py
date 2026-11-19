@@ -417,6 +417,7 @@ def run(kbctx: Any, rest: List[str]) -> int:
     if "pacing" in wanted:
         motion = pc.film_motion(tools.ffmpeg, film, ctx["fps"], ctx["offset"], slots) if film and tools and ctx else None
         pace = pc.check(project, slots, motion)
+        pc.save_last(project, pace, "film" if motion is not None else "static", film if motion is not None else None)
         payload["pacing"] = pace
         warnings += pace["warnings"]
         lines += pacing_lines(pace, motion is not None)

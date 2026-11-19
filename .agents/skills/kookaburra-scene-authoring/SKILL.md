@@ -242,7 +242,7 @@ scenes under the app's Resources folder (`./kb status` prints it):
 | `./kb plan <command ...>` | What a structural command would write or refuse; writes nothing |
 | `./kb checkpoint [MSG] [--scene S]`, `history`, `undo [REV] [--scene S]`, `diff` | Git safety net |
 | `./kb lease S`, `leases`, `note TEXT [--scene S]`, `notes`, `events [--follow]` | Several agents: who edits what, messages, the event feed |
-| `./kb export [--aspect A] [--preset ID]`, `./kb verify-export FILE`, `./kb check film`, `./kb pacing accept S --why T` | The finished film and its checks; a pacing warning the person keeps (reference/export.md) |
+| `./kb export [--aspect A] [--preset ID]`, `./kb verify-export FILE`, `./kb check film`, `./kb pacing accept S --kind K --why T` | The finished film and its checks; a pacing warning the person keeps (reference/export.md) |
 | `./kb song analyse [--accept] [--lyrics]` | The soundtrack's tempo fit, downbeat, sections (reference/beats.md) |
 | `./kb beats [--scene S]`, `plan [--scenes N] [--apply]`, `set-grid`, `set-downbeat`, `clear-grid`, `cue`, `section`, `resolve` | The beat grid, a scene plan drafted from the song, cues, sections, positions |
 | `./kb chart ...` | Chart data and keys |

@@ -4,7 +4,8 @@ instead of repeating them (DESIGN.md, "Pacing")."""
 from __future__ import annotations
 
 import argparse
-from typing import Any, Dict, List
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
 
 from .film import pacing as pc
 from .util import EXIT_ENV, EXIT_OK, EXIT_PROBLEMS, KbError, emit, now_ms
@@ -17,8 +18,28 @@ EPILOG = """\
 
 The pacing rules are defaults and the person decides. When they keep something
 ./kb check film pacing warns about, accept it with their reason, by the id the check prints
-beside it. It holds per scene and kind (still, read, short, final-hit, end); a scene with no
---kind keeps every kind."""
+beside it or by scene and --kind (still, read, short, final-hit, end). A scene with no --kind
+keeps only the kinds open on it in the last check, so a new warning there still shows."""
+
+
+def open_kinds(project: Any, stem: str) -> Tuple[List[str], str]:
+    """The kinds open on a scene in the last pacing check (a static check now when none ran), and which check that was."""
+    from .film import timeline as tl
+
+    last = pc.load_last(project)
+    if last is not None:
+        film = last.get("file")
+        issues, where = last["issues"], "the last check" + (f" of {Path(film).name}" if isinstance(film, str) else "")
+    else:
+        issues, where = pc.check(project, tl.project_slots(project))["issues"], "a static check now"
+    issues = [i for i in issues if isinstance(i, dict)]
+    kinds = [k for k in pc.KINDS if any(i.get("kind") == k and i.get("scene") == stem for i in issues)]
+    if kinds:
+        return kinds, where
+    over = next((i for i in issues if stem in (i.get("scenes") or []) and isinstance(i.get("id"), str)), None)
+    hint = (f'its {over.get("kind")} warning is keyed to {over.get("scene")}: ./kb pacing accept {over["id"]} --why "..."' if over
+            else "./kb check film pacing lists the open ones; --kind K keeps one anyway")
+    raise KbError(f"no open pacing warning on {stem} in {where}", EXIT_PROBLEMS, kind="invalid", hint=hint)
 
 
 def cmd_pacing(ctx: Any) -> int:
@@ -50,6 +71,7 @@ def accept(ctx: Any) -> int:
     if not why:
         raise KbError("accept needs the person's reason: --why \"...\"", EXIT_ENV, kind="usage")
     named = pc.issue_for_id(ctx.project, a.scene)
+    where = None
     if named:
         kind, stem = named
         if a.kind and a.kind != kind:
@@ -57,15 +79,15 @@ def accept(ctx: Any) -> int:
         kinds = [kind]
     else:
         _idx, stem = ctx.project.resolve(a.scene)
-        kinds = [a.kind] if a.kind else list(pc.KINDS)
+        kinds, where = ([a.kind], None) if a.kind else open_kinds(ctx.project, stem)
     by = getattr(ctx.caller, "name", None)
     rows: List[Dict[str, Any]] = [{"id": pc.issue_id(k, stem), "kind": k, "scene": stem, "why": why, "by": by, "atMs": now_ms()} for k in kinds]
     if not a.dry_run:
         lock.mutate_json(ctx.project, pc.ACCEPTED_FILE, lambda doc: pc.accepted_merge(doc, rows), op="kb pacing accept", caller=ctx.caller, wait=a.wait)
     if ctx.json:
-        ctx.out({"accepted": rows, "file": pc.ACCEPTED_FILE, "dryRun": bool(a.dry_run)})
+        ctx.out({"accepted": rows, "file": pc.ACCEPTED_FILE, "dryRun": bool(a.dry_run), "openIn": where})
         return EXIT_OK
-    emit(f"{'would keep' if a.dry_run else 'kept'} {stem} ({', '.join(kinds)}): {why}")
+    emit(f"{'would keep' if a.dry_run else 'kept'} {stem} ({', '.join(kinds)}{', open in ' + where if where else ''}): {why}")
     return EXIT_OK
 
 
@@ -103,7 +125,7 @@ def register(sub: Any, common: argparse.ArgumentParser, Formatter: Any) -> None:
                        epilog=EPILOG, formatter_class=Formatter, parents=[common])
     s.add_argument("op", nargs="?", choices=["list", "accept", "forget"], help="list (default), accept or forget")
     s.add_argument("scene", nargs="?", metavar="S|ID", help="the scene (index or stem), or a warning's id as the check or ./kb pacing prints it")
-    s.add_argument("--kind", choices=list(pc.KINDS), help="one kind of warning (default: every kind)")
+    s.add_argument("--kind", choices=list(pc.KINDS), help="one kind of warning (default: the kinds open on the scene in the last check)")
     s.add_argument("--why", metavar="TEXT", help="accept: the person's reason, in a sentence (required)")
     s.add_argument("--dry-run", action="store_true", help="list what this would change; write nothing")
     s.add_argument("--wait", type=float, nargs="?", const=600.0, default=None, metavar="SECONDS", help="wait for another kb write to finish (default 10 s)")

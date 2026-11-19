@@ -102,10 +102,13 @@ the user's own Cancel.
   screens, `media`, a video background, `VideoClip`, `VideoWindow`); it can't see lines
   landing through text animation. `--file` measures the film itself (a slow drift or a
   looping background is not a change), so check the export.
-- Pacing warnings are advice and the person decides. When they keep something it flags,
-  `./kb pacing accept S --why "..."` keeps it with their reason (per scene; `--kind still`,
-  `read`, `short`, `final-hit` or `end` for one kind), and later checks list it as kept.
-  `./kb pacing` lists them; `./kb pacing forget S` drops one.
+- Pacing warnings are advice and the person decides. Each warning line starts with its id
+  and the scene it is keyed to. When they keep something it flags,
+  `./kb pacing accept ID --why "..."` keeps that warning with their reason, and later
+  checks list it as kept. `./kb pacing accept S --kind still --why "..."` does the same by
+  scene and kind (`still`, `read`, `short`, `final-hit` or `end`); a scene with no `--kind`
+  keeps only the kinds open on it in the last check. `./kb pacing` lists them;
+  `./kb pacing forget ID` drops one.
 - `sync-check` times cuts and big picture changes as a player shows them, poster frame
   taken off. 0 to one frame late (33 ms at 30 fps, 17 at 60) is the frame grid: a cut on a
   beat shows on the first frame at or after it. Never nudge the beat grid to close that; a

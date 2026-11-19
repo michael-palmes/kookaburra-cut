@@ -218,6 +218,57 @@ class PacingCommandTests(KbTestCase):
         self.assertExit(self.kb(["pacing", "forget", ident], cwd=project), 0)
         self.assertEqual(read_json(project / pc.ACCEPTED_FILE)["accepted"], [])
 
+    def test_accept_without_a_kind_keeps_only_the_open_ones(self) -> None:
+        project = song_project(self.tmp, stems(2), [8000, 2000])
+        self.kb(["check", "film", "pacing"], cwd=project)
+        proc = self.kb(["pacing", "accept", "01-s1", "--why", "a held breath"], cwd=project)
+        self.assertExit(proc, 0)
+        self.assertIn("kept 01-s1 (still, open in the last check)", proc.stdout)
+        self.assertEqual([r["kind"] for r in read_json(project / pc.ACCEPTED_FILE)["accepted"]], ["still"])
+        write_json(project / "scenes" / "01-s1.json", {"version": 1, "text": {"title": " ".join(["word"] * 40)}})
+        out = json.loads(self.kb(["check", "film", "pacing", "--json"], cwd=project).stdout)["pacing"]
+        self.assertEqual([(i["kind"], i["scene"]) for i in out["issues"]], [("read", "01-s1")])
+        self.assertEqual([i["kind"] for i in out["accepted"]], ["still"])
+
+    def test_accept_without_a_check_runs_a_static_one(self) -> None:
+        project = song_project(self.tmp, stems(2), [8000, 2000])
+        proc = self.kb(["pacing", "accept", "01-s1", "--why", "a held breath", "--json"], cwd=project)
+        self.assertExit(proc, 0)
+        body = json.loads(proc.stdout)
+        self.assertEqual(([r["kind"] for r in body["accepted"]], body["openIn"]), (["still"], "a static check now"))
+        self.assertIn("no open pacing warning on 02-s2", self.kb(["pacing", "accept", "02-s2", "--why", "x", "--json"], cwd=project).stdout)
+
+    def test_accept_names_the_scene_a_still_over_it_is_keyed_to(self) -> None:
+        project = song_project(self.tmp, stems(3), [2000, 2000, 16000])
+        p = Project(project)
+        pc.save_last(p, pc.check(p, tl.project_slots(p), {"spans": [(1000, 6000)], "changes": [62000]}), "film", self.tmp / "cut.mp4")
+        proc = self.kb(["pacing", "accept", "01-s1", "--why", "a held breath", "--json"], cwd=project)
+        self.assertExit(proc, 1)
+        body = json.loads(proc.stdout)
+        self.assertIn("in the last check of cut.mp4", body["error"])
+        self.assertIn(f"keyed to 02-s2: ./kb pacing accept {pc.issue_id('still', '02-s2')}", body["hint"])
+        self.assertFalse((project / pc.ACCEPTED_FILE).exists())
+
+    def test_an_older_accepted_file_still_loads(self) -> None:
+        project = song_project(self.tmp, stems(2), [8000, 2000])
+        rows = [{"id": pc.issue_id(k, "01-s1"), "kind": k, "scene": "01-s1", "why": "a held breath", "by": None, "atMs": 1} for k in pc.KINDS]
+        write_json(project / pc.ACCEPTED_FILE, {"version": 1, "accepted": rows})
+        self.assertEqual(len(pc.load_accepted(Project(project))), 5)
+        out = json.loads(self.kb(["check", "film", "pacing", "--json"], cwd=project).stdout)["pacing"]
+        self.assertEqual(([i["kind"] for i in out["accepted"]], out["issues"]), (["still"], []))
+        self.assertIn("01-s1, end: a held breath", self.kb(["pacing"], cwd=project).stdout)
+
+    def test_a_linked_last_check_folder_is_never_written_or_read(self) -> None:
+        project = song_project(self.tmp, stems(2), [8000, 2000])
+        victim = self.tmp / "victim"
+        victim.mkdir()
+        (victim / "last.json").write_text(json.dumps({"issues": [{"kind": "read", "scene": "01-s1"}]}))
+        (project / ".kb").mkdir()
+        (project / ".kb" / "pacing").symlink_to(victim)
+        self.assertExit(self.kb(["check", "film", "pacing"], cwd=project), 0)
+        self.assertEqual(sorted(p.name for p in victim.iterdir()), ["last.json"])
+        self.assertIsNone(pc.load_last(Project(project)))
+
     def test_a_still_over_several_scenes_is_keyed_to_its_middle(self) -> None:
         project = song_project(self.tmp, stems(3), [2000, 2000, 16000])
         p = Project(project)
