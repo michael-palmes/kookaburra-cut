@@ -173,19 +173,7 @@ export function rasterGrate(spec: GrateSpec, frame: SpotFrame, size = GRATE_SIZE
   return out;
 }
 
-const cache = new Map<string, DataTexture>();
-
-/** One cookie per grate and pose, shared by the light (surface pools) and the beam (the shafts in the air). */
-export function grateTexture(spec: GrateSpec, frame: SpotFrame, size = GRATE_SIZE): DataTexture {
-  const key = JSON.stringify([spec, frame, size]);
-  const hit = cache.get(key);
-  if (hit) return hit;
-  const tex = createGrateTexture(spec, frame, size);
-  cache.set(key, tex);
-  return tex;
-}
-
-/** An uncached cookie the caller owns and disposes: an edited light bakes a new one per change. */
+/** A cookie the caller owns and disposes, shared by the light (surface pools) and the beam (the shafts in the air): an edited light bakes a new one per change. */
 export function createGrateTexture(
   spec: GrateSpec,
   frame: SpotFrame,
