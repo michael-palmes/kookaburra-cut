@@ -49,6 +49,10 @@ export function stripsSourceKey(spec: InlineStrips): string {
   return `${KEY_PREFIX}${JSON.stringify(spec)}`;
 }
 
+export function isInlineStripsKey(key: string): boolean {
+  return key.startsWith(KEY_PREFIX);
+}
+
 export function inlineStripsFromKey(key: string): InlineStrips | undefined {
   if (!key.startsWith(KEY_PREFIX)) return undefined;
   try {

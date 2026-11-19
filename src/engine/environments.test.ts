@@ -14,7 +14,9 @@ import {
   resolveSceneEnvironment,
   SOFTBOX_SOURCE,
 } from "./environments";
+import { withExporting } from "./exportState";
 import { setProjectAssetRevision } from "./projectAssetRevision";
+import { stripsSourceKey } from "./stripSpec";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -95,6 +97,44 @@ describe("environment cache", () => {
     expect(getLoadedEnvironment(second, SOFTBOX_SOURCE)).toBeInstanceOf(Texture);
     expect(getLoadedEnvironment(second, SOFTBOX_SOURCE)).not.toBe(baked);
     expect(getLoadedEnvironment(first, SOFTBOX_SOURCE)).toBe(baked);
+  });
+
+  const stripKey = (intensity: number) =>
+    stripsSourceKey({
+      strips: [
+        {
+          azimuthDeg: 0,
+          elevationDeg: 10,
+          lengthDeg: 60,
+          widthDeg: 4,
+          color: "#ffffff",
+          intensity,
+        },
+      ],
+    });
+
+  it("drops an edited strip spec's old bake, keeping every key the project still names", async () => {
+    const gl = {} as WebGLRenderer;
+    const [first, second, kept] = [stripKey(1), stripKey(2), stripKey(3)];
+    await preloadEnvironments(gl, [SOFTBOX_SOURCE, first, kept]);
+    const old = getLoadedEnvironment(gl, first);
+    const held = getLoadedEnvironment(gl, kept);
+    const dispose = vi.spyOn(old as Texture, "dispose");
+    await preloadEnvironments(gl, [second, kept]);
+    expect(getLoadedEnvironment(gl, first)).toBeNull();
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(getLoadedEnvironment(gl, kept)).toBe(held);
+    expect(getLoadedEnvironment(gl, second)).toBeInstanceOf(Texture);
+    expect(getLoadedEnvironment(gl, SOFTBOX_SOURCE)).toBeInstanceOf(Texture);
+  });
+
+  it("never evicts while an export holds the renderer", async () => {
+    const gl = {} as WebGLRenderer;
+    const first = stripKey(4);
+    await preloadEnvironments(gl, [first]);
+    const baked = getLoadedEnvironment(gl, first);
+    await withExporting(() => preloadEnvironments(gl, [stripKey(5)]));
+    expect(getLoadedEnvironment(gl, first)).toBe(baked);
   });
 });
 
