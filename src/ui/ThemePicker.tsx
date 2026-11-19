@@ -332,13 +332,15 @@ function ThemeCard({
   const thumbRef = useRef<HTMLDivElement>(null);
   const previews = choice.previews;
   const src = previews ? previews[Math.min(frame, previews.length - 1)] : null;
+  const own = markOwn && choice.source === "workspace";
+  const mark = suggested ? ", suggested" : own ? ", yours" : "";
   return (
     <div
       ref={cardRef}
       role="option"
       tabIndex={tabIndex}
       aria-selected={selected}
-      aria-label={`${choice.name}, ${choice.useLabel}`}
+      aria-label={`${choice.name}, ${choice.useLabel}${mark}`}
       className={`theme-card${selected ? " selected" : ""}${dragging ? " dragging" : ""}${
         dropTarget ? " drop-target" : ""
       }`}
@@ -391,7 +393,7 @@ function ThemeCard({
         {suggested ? (
           <span className="theme-card-own suggested">Suggested</span>
         ) : (
-          markOwn && choice.source === "workspace" && <span className="theme-card-own">Yours</span>
+          own && <span className="theme-card-own">Yours</span>
         )}
         {previewIntent &&
           previews

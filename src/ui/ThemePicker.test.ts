@@ -170,6 +170,36 @@ describe("ThemeGrid markup", () => {
     expect(html).toContain("First use");
     expect(html).not.toContain("first-2.jpg");
   });
+
+  it("reads the Suggested and Yours badges in each card's label", () => {
+    const html = renderToStaticMarkup(
+      createElement(ThemeGrid, {
+        choices: [
+          choice({ id: "studio", name: "Studio", useLabel: "Product story" }),
+          choice({ id: "ws:own", name: "Own", useLabel: "Brand", source: "workspace" }),
+          choice({ id: "ws:both", name: "Both", useLabel: "Launch", source: "workspace" }),
+        ],
+        value: "studio",
+        onChange: () => {},
+        markOwn: true,
+        suggestedIds: ["studio", "ws:both"],
+      }),
+    );
+    expect(html).toContain('aria-label="Studio, Product story, suggested"');
+    expect(html).toContain('aria-label="Own, Brand, yours"');
+    expect(html).toContain('aria-label="Both, Launch, suggested"');
+  });
+
+  it("leaves the label plain without a badge", () => {
+    const html = renderToStaticMarkup(
+      createElement(ThemeGrid, {
+        choices: [choice({ id: "ws:own", name: "Own", useLabel: "Brand", source: "workspace" })],
+        value: "ws:own",
+        onChange: () => {},
+      }),
+    );
+    expect(html).toContain('aria-label="Own, Brand"');
+  });
 });
 
 describe("recent themes", () => {
