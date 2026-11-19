@@ -67,6 +67,17 @@ export function grateBars(spec: GrateSpec): Range[] {
   return bars;
 }
 
+/** Hand-placed bars sorted by start, with overlapping and nested ones merged, so `covered` can binary-search their ends. Bars that only touch stay apart. */
+export function mergedBars(bars: readonly Range[]): Range[] {
+  const out: Range[] = [];
+  for (const [a, b] of [...bars].sort((p, q) => p[0] - q[0])) {
+    const last = out.at(-1);
+    if (last && a < last[1]) last[1] = Math.max(last[1], b);
+    else out.push([a, b]);
+  }
+  return out;
+}
+
 /** How much of [a, b] the bars cover. */
 function covered(bars: Range[], a: number, b: number): number {
   let lo = 0;
@@ -116,7 +127,7 @@ export function grateCrossing(spec: GrateSpec, frame: SpotFrame): (d: V3) => num
 
 /** RGBA8 rows, bottom row first, in the light's shadow-camera view: what the light passes through the bars. */
 export function rasterGrate(spec: GrateSpec, frame: SpotFrame, size = GRATE_SIZE): Uint8Array {
-  const bars = spec.bars ? [...spec.bars].sort((a, b) => a[0] - b[0]) : grateBars(spec);
+  const bars = spec.bars ? mergedBars(spec.bars) : grateBars(spec);
   const soft = 2 * Math.max(0, spec.soft ?? 0);
   const crossing = grateCrossing(spec, frame);
   const cam = shadowBasis(frame.position, frame.target);
