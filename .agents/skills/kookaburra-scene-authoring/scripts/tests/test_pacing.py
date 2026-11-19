@@ -213,6 +213,17 @@ class BeatsPlanTests(KbTestCase):
         self.assertEqual([(p["id"], p["fromBar"]) for p in data["parts"]], [("unnamed", 1), ("peak-1", 2)])
         self.assertEqual(next(s for s in data["slots"] if s["role"].startswith("reveal"))["from"], "bar:2")
 
+    def test_overlapping_sections_never_overlap_their_scenes(self) -> None:
+        overlap = [{"id": "intro", "from": "bar:1", "to": "bar:9"}, {"id": "peak-1", "from": "bar:7", "to": "bar:13"},
+                   {"id": "breakdown-1", "from": "bar:8", "to": "bar:10"}]
+        project = song_project(self.tmp, stems(5), sections=overlap, cues={})
+        data = self.plan(project, "--to", "bar:13", "--apply")
+        self.assertEqual([(p["id"], p["fromBar"], p["toBar"]) for p in data["parts"]], [("intro", 1, 9), ("peak-1", 9, 13)])
+        cuts = [s["cutAt"] for s in data["slots"]]
+        self.assertEqual(len(cuts), len(set(cuts)))
+        self.assertTrue(all(a["toMs"] == b["fromMs"] for a, b in zip(data["slots"], data["slots"][1:])))
+        self.assertWritesWhatItPrinted(project, data)
+
     def test_two_four_time_caps_peaks_at_a_scene_a_bar(self) -> None:
         project = song_project(self.tmp, stems(3), grid={"bpm": 120, "offsetMs": 0, "beatsPerBar": 2},
                                sections=[{"id": "peak-1", "from": "bar:1", "to": "bar:9"}], cues={})

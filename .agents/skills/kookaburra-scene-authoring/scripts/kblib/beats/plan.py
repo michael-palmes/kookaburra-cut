@@ -120,7 +120,8 @@ def window(shape: Dict[str, Any], project: Project, manifest: Dict[str, Any], fi
 
 def parts_in(shape: Dict[str, Any], lo: int, hi: int) -> List[Dict[str, Any]]:
     """The song's parts within bars lo..hi (hi exclusive) with any stretch between them a quiet part; one under 2 bars
-    joins the part before it, or the quiet part after it at the start (a peak keeps its downbeat)."""
+    joins the part before it, or the quiet part after it at the start (a peak keeps its downbeat). Where hand-written
+    sections overlap, the earlier part keeps the bars."""
     out: List[Dict[str, Any]] = []
     cursor = lo
 
@@ -128,7 +129,7 @@ def parts_in(shape: Dict[str, Any], lo: int, hi: int) -> List[Dict[str, Any]]:
         out.append({"id": ident, "kind": kind, "fromBar": a, "toBar": b, "gap": gap})
 
     for p in shape["parts"]:
-        a, b = max(p["fromBar"], lo), min(p["toBar"], hi)
+        a, b = max(p["fromBar"], lo, cursor), min(p["toBar"], hi)
         if b > a:
             if a > cursor:
                 add("unnamed", "quiet", cursor, a, True)
