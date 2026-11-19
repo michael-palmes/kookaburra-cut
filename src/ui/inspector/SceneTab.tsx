@@ -6480,7 +6480,7 @@ export function SceneTab({
                       if (next.background?.type === "color") {
                         next.background = { ...next.background, color: hex };
                       }
-                      if (stagingOn) next.backdrop = floorFor(hex);
+                      if (stageHidesFill) next.backdrop = floorFor(hex);
                     });
                   }}
                 />
