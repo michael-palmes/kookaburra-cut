@@ -106,7 +106,7 @@ intensity and shadow, so its keys and `castShadow` reach the shafts:
 | `smoke` | Drifting wisps in place of even haze: `scale` (0.2; keep it large, edge-on rays average small wisps away), `warp`, `contrast` [lo, hi], `floor` (density between wisps, 0..1), `drift` [x, y, z] per second, `evolve`, `frontFade` `{ z0, z1, min }` thins it in front of the subject |
 | `extinction` | `true` dims the light on its way through the haze, as real smoke does |
 | `grate` | Bars aimed at the lens, so the rays fan crisply from the source: `lens` (`"camera"`, the default, is the scene's first camera key; or [x, y, z]), `offset`, `along`, `width`, `slat`, `gap`, `seed`, `soft`, or explicit `bars` [[a, b], ...]. World lights only; it also casts the bars' pools on surfaces |
-| `dust` | `true` or `{ count (1800), radius, color, drift, gain, min, max }`: motes that glint only in the beam, filling the `box` (else the cone). Keep them few and dim or they read as stars |
+| `dust` | `true` or `{ count (1800), radius, color, drift, gain, min, max }`: motes that glint only in the beam, filling the `box` (else the cone; a camera- or subject-space spot needs a `box`, or its dust is dropped with a warning). Keep them few and dim or they read as stars |
 | `shadowMapSize` | 512, 1024, 2048 or 4096 for this light alone |
 
 - Shadow shafts (the subject cutting the beam) need `castShadow`, a caster slot and

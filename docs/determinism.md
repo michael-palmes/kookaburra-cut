@@ -1498,7 +1498,7 @@ is a deliberate rebase.
   while σ is small, dropped so σ spans at most 6 texels while it is large, and quantised
   to quarter octaves: a pure function of the frame's camera and size.
 - **Flat only.** Units with depth or a tip or turn (`dolly`, `stand-up`, `flip-cascade`)
-  and the `frosted` look keep the SDF soften; soften under 0.006 em snaps crisp.
+  and the `frosted` and arc looks keep the SDF soften; soften under 0.006 em snaps crisp.
 
 ## Generative 3D primitives
 
