@@ -1299,8 +1299,8 @@ function StaggeredHeadline(
   const highlighting = usesPreset(HIGHLIGHT_PRESETS, anim);
   const underlining = usesPreset(UNDERLINE_PRESETS, anim);
   const exact = useExactText();
-  // Optical text blur rides the pack's soften, so it mounts only there (frosted's constant soften stays an edge look).
-  const optical = useOpticalTextBlur() && pack && !lookFrosted;
+  // Optical text blur rides the pack's soften, so it mounts only there (frosted's constant soften stays an edge look, and arc's bend lands outside the capture).
+  const optical = useOpticalTextBlur() && pack && !lookFrosted && !lookArc;
   const opticalRoot = useRef<Group>(null);
   const opticalFrame = useRef<OpticalBlurFrame>({
     serial: 0,
