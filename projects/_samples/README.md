@@ -7,68 +7,38 @@ reference these by name and never ship a copy.
 
 ## Product family
 
-The launch templates show one fictional product family, so the picker reads as one
-campaign: Fairywren (a calm planner), Thornbill (a developer CLI and SDK) and
-Songlark (an AI assistant). Rendered from HTML and CSS by `tools/sample-product/`
-(`pnpm assets:sample-product`), which steps a deterministic clock frame by frame in
-headless Chrome. Fictional brands, people and data only; the names were checked
-against IP Australia, USPTO and the App Store (see that README).
+Unveil shows one fictional product, Fairywren (a calm planner). Its screens are
+rendered from HTML and CSS by `tools/sample-product/` (`pnpm assets:sample-product`),
+which steps a deterministic clock frame by frame in headless Chrome. Fictional brand,
+people and data only; the name was checked against IP Australia, USPTO and the App
+Store (see that README). The tool also draws light twins and two sibling products,
+Thornbill and Songlark; only the files a bundled template names are kept here.
 
-- Screens match the device catalogue: `-phone` 1206x2622, `-tablet` 2752x2064,
-  `-laptop` 3456x2234, `-window` and `-terminal` 2560x1600 (16:10). JPEG.
+- Phone screens are 1206x2622 JPEG.
 - Recordings are 30 fps H.264, yuv420p, BT.709 tagged, faststart, 4 to 6 s and at
   most 1.5 MB each. Each still at a recording's settled moment matches its frame.
-- Icons are 1024 PNG with transparent corners.
-- Keep the family under 18 MB.
+- The icon is a 1024 PNG with transparent corners.
+- Keep the family under 18 MiB.
 - Fairywren's phone screens are drawn for the camera: type about a fifth larger than a
-  real app and fewer rows, on warm grey, so they read on a phone inside a film frame.
-  Each one Unveil shows has a dark twin, `fairywren-<name>-dark-phone`, with the same
-  layout and timings as the light file.
+  real app and fewer rows, so they read on a phone inside a film frame.
 
 | File | Purpose |
 | --- | --- |
 | `fairywren-icon.png` | Fairywren app icon |
-| `fairywren-today-phone.jpg` / `fairywren-today-dark-phone.jpg` | Today, light and dark |
-| `fairywren-focus-phone.jpg` / `fairywren-focus-dark-phone.jpg` | Focus mode, warm dark (the two match; the dark name is for dark films) |
-| `fairywren-then-phone.jpg` | The same day in an older design, for before and after |
-| `fairywren-week-tablet.jpg` / `fairywren-week-laptop.jpg` | The same week on a tablet and a laptop |
-| `fairywren-share-window.jpg` | Web app timeline in a browser window |
-| `fairywren-plan-phone.mp4` / `fairywren-plan-dark-phone.mp4` | Plans land, one is ticked off, a new plan is typed |
-| `fairywren-focus-phone.mp4` | Focus switches on and the day calms to navy |
-| `fairywren-share-window.mp4` | A cursor shares the plan and copies the link |
-| `thornbill-icon.png` | Thornbill app icon |
-| `thornbill-upgrade-terminal.jpg` / `.mp4` | `thornbill upgrade` runs to done |
-| `thornbill-docs-window.jpg` / `thornbill-api-window.jpg` | Docs home and an API reference page |
-| `thornbill-docs-window.mp4` | The API page switches to Python and copies the code |
-| `thornbill-changelog-window.jpg` | The 4.2.0 changelog |
-| `thornbill-dashboard-laptop.jpg` | Latency drops after the 4.2.0 deploy |
-| `thornbill-editor-window.jpg` | A typed route with an inferred type |
-| `songlark-icon.png` | Songlark app icon |
-| `songlark-ask-window.jpg` / `songlark-answer-window.jpg` | The prompt typed, then the answer cards |
-| `songlark-ask-window.mp4` | Ask, think, answer on the web |
-| `songlark-ask-phone.jpg` / `songlark-answer-phone.jpg` / `.mp4` | The same on a phone |
-| `songlark-voice-phone.jpg` | Voice mode |
-| `fairywren-sorted-phone.mp4` / `.jpg`, `fairywren-sorted-dark-phone.mp4` / `.jpg` | "Plans your week for you": the week sorts itself under a "This week, sorted" card |
-| `fairywren-quickadd-phone.mp4` / `.jpg`, `fairywren-quickadd-dark-phone.mp4` / `.jpg` | "Faster": a plan typed in plain words is parsed and added |
-| `fairywren-reschedule-phone.mp4` / `.jpg`, `fairywren-reschedule-dark-phone.mp4` / `.jpg` | "Smarter": a meeting runs over and two plans move to fit |
-| `fairywren-share-phone.mp4` / `.jpg`, `fairywren-share-dark-phone.mp4` / `.jpg` | "Together": a list shared with three people, who tick items off |
-| `fairywren-focusflow-phone.mp4` | Spotlight's flow: one large Focus toggle, no baked tap |
-| `fairywren-insights-phone.jpg` / `fairywren-month-phone.jpg`, `fairywren-insights-dark-phone.jpg` / `fairywren-month-dark-phone.jpg` | Two more screens for a line-up |
-| `songlark-offsite-ask-window.jpg` / `songlark-offsite-answer-window.jpg` | Prompt pair two: a team offsite |
-| `songlark-notes-ask-window.jpg` / `songlark-notes-answer-window.jpg` | Prompt pair three: launch notes |
-| `songlark-followup-window.mp4` / `.jpg` | A follow-up typed into the thread, the answer streaming in word by word |
-| `thornbill-changes-terminal.mp4` / `.jpg` | `thornbill upgrade` with one change line per beat |
-| `thornbill-diff-window.jpg` | The 4.2 migration diff, changed lines lit |
-| `thornbill-benchmark-window.jpg` | 4.1 against 4.2: cold start, p95 latency, throughput |
+| `fairywren-today-dark-phone.jpg` | Today |
+| `fairywren-focus-dark-phone.jpg` | Focus mode |
+| `fairywren-insights-dark-phone.jpg`, `fairywren-month-dark-phone.jpg` | Two more screens for a line-up |
+| `fairywren-share-dark-phone.jpg` | A shared list |
+| `fairywren-plan-dark-phone.mp4` | Plans land, one is ticked off, a new plan is typed |
+| `fairywren-sorted-dark-phone.mp4` | "Plans your week for you": the week sorts itself under a "This week, sorted" card |
+| `fairywren-quickadd-dark-phone.mp4` | A plan typed in plain words is parsed and added |
+| `fairywren-reschedule-dark-phone.mp4` | A meeting runs over and two plans move to fit |
+| `fairywren-share-dark-phone.mp4` | A list shared with three people, who tick items off |
 
-### Timings and regions for the launch templates
+### Timings and regions
 
 Regions are screen UV `[u0, v0, u1, v1]` (`ScreenRegion rect`), times are seconds into the clip.
-A dark twin shares its light file's regions and times.
 
-- Line-up of five different phones: `fairywren-today-phone.jpg`, `fairywren-focus-phone.jpg`,
-  `fairywren-insights-phone.jpg`, `fairywren-month-phone.jpg`, `fairywren-share-phone.jpg`
-  (or their dark twins).
 - Plan: the first plan's tick is at `(0.886, 0.340)` and lands at 1.75 s; the round plus button is
   at `(0.883, 0.930)`, pressed at 3.25 s. The New plan sheet is `[0.02, 0.588, 0.98, 0.991]`, up
   from 3.95 s. The Today still is the frame at 3.1 s.
@@ -78,10 +48,6 @@ A dark twin shares its light file's regions and times.
   up from 3.9 s.
 - Reschedule card: `[0.04, 0.27, 0.96, 0.531]`, still from 1.3 to 3.3 s (Keep at 3.35 s).
 - Share sheet: `[0.02, 0.613, 0.98, 0.991]`, still from 1.6 to 2.3 s (Share at 2.3 s).
-- Focus flow: the toggle centre is `(0.818, 0.389)` and flips at 1.5 s; the Focus card is
-  `[0.04, 0.327, 0.96, 0.451]` until it grows at 1.85 s. Put the `TapRing` at 1.5 s.
-- Changes terminal: the command ends on beat 4 at 128 BPM (1.875 s), then one line per beat
-  at 2.34, 2.81, 3.28, 3.75 and 4.22 s, and DONE at 4.69 s, each within one frame.
 
 ## Kooka set
 

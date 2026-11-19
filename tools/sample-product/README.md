@@ -52,7 +52,8 @@ oxipng and the ffmpeg sidecar (`pnpm setup:ffmpeg`; it falls back to `ffmpeg` on
 - Fictional names, people and data only. No real products, marks, domains or package
   installs (`npx` or `brew` lines invite someone to squat the name).
 - Keep each recording 4 to 6 seconds, settled at its first and last frame, and the
-  whole family under 18 MB.
+  whole family under 18 MiB. The tool writes every file; commit only the ones a bundled
+  template names.
 - The names were checked against IP Australia, USPTO, the App Store, npm and PyPI on
   6 Nov 2026. Whipbird and Bellbird clashed with live software marks (WHIPBIRD SIGNALS
   in AU classes 9, 38 and 42; BELLBIRD in US classes 9, 38 and 42), so the developer

@@ -110,7 +110,7 @@ and a manifest newer than the app is ignored with a warning.
 rules (four aspects, the old bands). A version 2 template must:
 
 - target `16:9` only (Blank keeps all four)
-- run 8 to 20 scenes and 15 to 60 seconds (a one-take film, Exhibition or One Dot, is one scene)
+- run 8 to 20 scenes and 15 to 60 seconds (a one-take film is one scene)
 - carry a song exactly when it carries audio, with the grid (and its `source`),
   sections and cues intact through `sanitiseAudioMusic`, and the song's BPM the grid's
 - name only visible bundled themes as looks, with no scene sidecar pinning `themeId`
