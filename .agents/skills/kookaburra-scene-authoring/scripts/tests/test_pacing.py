@@ -195,6 +195,8 @@ class BeatsPlanTests(KbTestCase):
         data = self.plan(song_project(self.tmp, stems(3)), "--from", "bar:9", "--to", "bar:17")
         self.assertEqual((data["film"]["fromBar"], data["film"]["toBar"], [p["id"] for p in data["parts"]]), (9, 17, ["peak-1"]))
         self.assertEqual(data["slots"][-1]["role"], "payoff: lands on its first downbeat")
+        self.assertEqual((data["slots"][0]["fromMs"], data["film"]["lengthMs"]), (0, 16000))
+        self.assertTrue(any("./kb project set audio.startOffsetMs 16000" in n for n in data["notes"]))
 
     def test_apply_retimes_the_scenes_in_order(self) -> None:
         project = song_project(self.tmp, stems(17))
@@ -220,3 +222,46 @@ class BeatsPlanTests(KbTestCase):
     def test_no_song_asks_for_one_first(self) -> None:
         out = self.plan(make_project(self.tmp, scenes=stems(2)), code=1)
         self.assertIn("ask the person for a song first", out.get("hint") or "")
+
+    def assertWritesWhatItPrinted(self, project: Path, data: Dict[str, Any]) -> None:
+        p = Project(project)
+        written = [(round(s["startMs"]), round(s["endMs"])) for s in tl.project_slots(p)]
+        self.assertEqual(written, [(s["fromMs"], s["toMs"]) for s in data["slots"]])
+
+    def test_a_start_offset_plans_from_the_bar_the_film_starts_on(self) -> None:
+        project = song_project(self.tmp, stems(4), startOffsetMs=16000)
+        data = self.plan(project, "--to", "bar:17", "--apply")
+        self.assertEqual((data["film"]["fromBar"], data["slots"][0]["from"], data["slots"][0]["fromMs"]), (9, "bar:9", 0))
+        self.assertNotIn("startOffsetWas", data["film"])
+        self.assertWritesWhatItPrinted(project, data)
+        self.assertEqual(read_json(project / "project.json")["audio"]["startOffsetMs"], 16000)
+
+    def test_from_with_apply_starts_the_song_on_that_bar(self) -> None:
+        project = song_project(self.tmp, stems(4))
+        data = self.plan(project, "--from", "bar:9", "--to", "bar:17", "--apply")
+        self.assertEqual((data["film"]["startOffsetMs"], data["film"]["startOffsetWas"]), (16000, 0))
+        self.assertEqual([s["cutAt"] for s in data["slots"]], ["bar:11", "bar:13", "bar:15", "bar:17"])
+        self.assertEqual(read_json(project / "project.json")["audio"]["startOffsetMs"], 16000)
+        self.assertWritesWhatItPrinted(project, data)
+        self.assertTrue(any("startOffsetMs = 16000" in c for c in data["changes"]))
+
+    def test_apply_dry_run_writes_nothing(self) -> None:
+        project = song_project(self.tmp, stems(4))
+        before = (project / "project.json").read_bytes()
+        data = self.plan(project, "--from", "bar:9", "--to", "bar:17", "--apply", "--dry-run")
+        self.assertTrue(data["dryRun"])
+        self.assertTrue(any("startOffsetMs = 16000" in c for c in data["changes"]))
+        self.assertEqual((project / "project.json").read_bytes(), before)
+
+    def test_a_pickup_before_bar_one_joins_the_first_scene(self) -> None:
+        project = song_project(self.tmp, stems(4), grid={"bpm": 120, "offsetMs": 1000, "beatsPerBar": 4})
+        data = self.plan(project, "--to", "bar:9", "--apply")
+        first = data["slots"][0]
+        self.assertEqual((first["from"], first["fromMs"], first["toMs"], first["bars"]), ("bar:0.3", 0, 5000, 2.5))
+        self.assertEqual((data["film"]["fromBar"], data["film"]["lengthMs"]), (1, 17000))
+        self.assertNotIn("startOffsetMs", read_json(project / "project.json")["audio"])
+        self.assertWritesWhatItPrinted(project, data)
+
+    def test_from_a_bar_before_the_song_refuses(self) -> None:
+        project = song_project(self.tmp, stems(4))
+        self.assertIn("before the song does", self.plan(project, "--from", "bar:0", "--to", "bar:9", code=1)["error"])

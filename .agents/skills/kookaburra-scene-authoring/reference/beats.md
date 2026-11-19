@@ -263,7 +263,7 @@ Or a markdown table with `scene`, `cut`, `transition`, `length` and `align` colu
 ```bash
 ./kb beats plan                            # the song's parts and a scene plan in bars; writes nothing
 ./kb beats plan --scenes 12                # the same with 12 scenes
-./kb beats plan --from bar:9 --to bar:25   # a cut of the song (a short social edit)
+./kb beats plan --from bar:9 --to bar:25   # a cut of the song (a short social edit) that starts on bar 9
 ./kb beats plan --apply [--dry-run]        # retime the project's scenes to it, one checkpointed write
 ./kb beats plan --json | ./kb timeline apply -   # the same through the cut plan
 ```
@@ -272,6 +272,11 @@ Or a markdown table with `scene`, `cut`, `transition`, `length` and `align` colu
   `breakdown-N`, `outro`) from the sections when every one is named that way, else from the
   analysis. With no
   parts every bar plans as quiet.
+- It counts from where the film starts: bar 1, or the bar `audio.startOffsetMs` puts there.
+  A pickup before that bar's line joins the first scene. `--from POS` starts the film on
+  that bar instead, and `--apply` then sets `audio.startOffsetMs` in the same write so the
+  song starts there too. `./kb timeline apply` leaves the offset alone, so the plan's note
+  gives the `./kb project set audio.startOffsetMs` to run before it.
 - Each part gets scenes of the length its energy suits (about 2 bars in quiet parts, 1 to
   2 in peaks), the build into the last peak ends in a burst (one scene, a cut every beat),
   the payoff takes the final hit and the film ends a bar after it (DESIGN.md, Pacing).

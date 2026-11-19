@@ -285,7 +285,9 @@ def parse_plan(text: str) -> List[Dict[str, Any]]:
     return markdown_rows(text)
 
 
-def apply_plan(project: Project, rows: List[Dict[str, Any]], opts: lockmod.WriteOpts, ripple: bool = False) -> Tuple[List[str], lockmod.Txn]:
+def apply_plan(project: Project, rows: List[Dict[str, Any]], opts: lockmod.WriteOpts, ripple: bool = False,
+               start_offset: Optional[int] = None) -> Tuple[List[str], lockmod.Txn]:
+    """start_offset, when given, becomes audio.startOffsetMs in the same write, before any cut resolves."""
     from . import catalog as catmod
     from . import scenes as scenemod
 
@@ -306,8 +308,18 @@ def apply_plan(project: Project, rows: List[Dict[str, Any]], opts: lockmod.Write
             if idx in placed:
                 raise usage(f'{row["label"]}: {stem} is already in the plan ({placed[idx]["label"]})')
             placed[idx] = dict(row, stem=stem)
-        grid = model.grid_of(model.project_music(manifest))
         changes: List[str] = []
+        if start_offset is not None:
+            audio = manifest.get("audio")
+            if not isinstance(audio, dict):
+                raise KbError("project.json has no audio block, so the soundtrack has no start to move", EXIT_PROBLEMS, kind="invalid")
+            was = audio.get("startOffsetMs", 0)
+            if start_offset:
+                audio["startOffsetMs"] = start_offset
+            else:
+                audio.pop("startOffsetMs", None)
+            changes.append(f"audio.startOffsetMs = {start_offset} (was {js_json(was)}): the soundtrack starts where the film does")
+        grid = model.grid_of(model.project_music(manifest))
         for idx in sorted(placed):
             row, entry = placed[idx], scenes[idx]
             name = f"scene {idx} {row['stem']}"
