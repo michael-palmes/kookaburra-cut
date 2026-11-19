@@ -1,4 +1,5 @@
 /** The gated postprocessing wrapper: a single module-level EffectComposer is the final output stage of the compositor whenever the loaded project declares any effect; a project with no effects never touches this file and keeps the original byte-identical render paths. Determinism rules (see docs/determinism.md): `composer.render(0)` uses a fixed delta every frame so the injected `time` uniform never advances (every effect uniform is CPU-written from resolved params + frame seed); MSAA applies only to the composer's input buffer, resolved by fixed-function blit before the effect passes, with one ACES tone-map and one sRGB encode via the final ToneMappingEffect; the effect set is the project-wide union built once so no mid-project shader recompiles, only uniforms change; and only allow-listed, time-free effects are built, never the stock time-seeded NoiseEffect/GlitchEffect. All four starter effects are wired (Bloom, Vignette, film Grain, colour-grade LUT); the LUT applies after tone-mapping in the same EffectPass, and mid-project LUT swaps write the `lut` uniform directly rather than through the public setter (which would recompile the pass), valid only because every LUT in a project shares one LUT_3D_SIZE (enforced in preloadEffectLuts). */
+import { invalidate } from "@react-three/fiber";
 import {
   BlendFunction,
   BloomEffect,
@@ -930,7 +931,10 @@ function antialiasEffect(mode: "fxaa" | "smaa"): FXAAEffect | SMAAEffect {
         "SMAA lookup images are not loaded: await preloadEffectLuts() before rendering an effects project.",
       );
     }
-    void preloadSmaaImages();
+    // The pending composer key rebuilds with SMAA on the next draw, so ask for one.
+    void preloadSmaaImages().then(() => {
+      if (smaaTextures && !isExporting()) invalidate();
+    });
     return new FXAAEffect();
   }
   const Smaa = SMAAEffect as unknown as new (...args: unknown[]) => SMAAEffect;
