@@ -16,7 +16,6 @@ import {
   searchTemplates,
   subscribeTemplates,
   TEMPLATE_CATEGORIES,
-  type TemplateCategoryId,
   type TemplateEntry,
   templateCategoryCounts,
 } from "../engine/templates";
@@ -30,15 +29,18 @@ import {
 import {
   availableLooks,
   CLAUDE_START_ID,
-  claudeStartMatches,
   defaultProjectName,
   gridColumnCount,
   initialLookThemeId,
   type LookFilter,
   lookChoices,
   lookSelection,
+  MINE_CHIP,
   type ShownLook,
+  type StartChip,
   selectionAfterFilter,
+  startAfterSearch,
+  startCards,
   startGridStep,
 } from "./newProjectFlow";
 import { ClaudeComposerArt, ClaudeSpark } from "./startArt";
@@ -61,9 +63,6 @@ const STEPS: { id: Step; label: string; title: string }[] = [
   { id: "look", label: "Look", title: "Pick a look" },
   { id: "name", label: "Name", title: "Name" },
 ];
-
-const MINE_CHIP = "mine";
-type StartChip = TemplateCategoryId | typeof MINE_CHIP | null;
 
 const SEARCH_ICON = railIcon(
   <>
@@ -231,23 +230,6 @@ function ClaudeStartCard({
   );
 }
 
-/** The cards one chip and search show. Create with Claude is pinned into every category, as Blank once was, so a chip never hides the default; only My templates leaves it out. Where a profile turns Claude off, Blank takes its place in the catalogue. */
-function startCards(
-  entries: readonly TemplateEntry[],
-  chip: StartChip,
-  query: string,
-  claudeStart: boolean,
-) {
-  const templates = (
-    chip === MINE_CHIP
-      ? searchTemplates(entries, { query, source: "user" })
-      : searchTemplates(entries, { query, category: chip })
-  ).filter((entry) => !claudeStart || entry.id !== BLANK_TEMPLATE_ID);
-  const withClaude = claudeStart && chip !== MINE_CHIP && claudeStartMatches(query);
-  const ids = [...(withClaude ? [CLAUDE_START_ID] : []), ...templates.map((entry) => entry.id)];
-  return { templates, withClaude, ids };
-}
-
 /** Step one: Create with Claude, recommended and first, then the template catalogue behind category chips and a search. The blank template sits behind the Claude card, so it is not listed on its own. */
 function StartGallery({
   entries,
@@ -302,10 +284,11 @@ function StartGallery({
     onChange(selectionAfterFilter(value, startCards(entries, next, query, claudeStart).ids));
   };
 
-  // Search is global: typing switches the chips back to All.
   const onQuery = (next: string) => {
-    if (next && chip) onChipChange(null);
+    const after = startAfterSearch(entries, chip, next, value, claudeStart);
+    if (after.chip !== chip) onChipChange(after.chip);
     onQueryChange(next);
+    if (after.selected !== value) onChange(after.selected);
   };
 
   const moveTo = (index: number) => {
@@ -493,20 +476,27 @@ function LookStep({
   const searchRef = useRef<HTMLInputElement>(null);
   useSlashFocus(searchRef);
   const hasOwn = choices.some(({ source }) => source === "workspace");
-  const listed = (next: LookFilter) =>
-    lookChoices(filterThemeChoices(choices, "all", query), next, looks);
+  const listed = (next: LookFilter, search = query) =>
+    lookChoices(filterThemeChoices(choices, "all", search), next, looks);
   const visible = useMemo(
     () => lookChoices(filterThemeChoices(choices, "all", query), filter, looks),
     [choices, filter, query, looks],
   );
   const suggested = useMemo(() => availableLooks(choices, looks), [choices, looks]);
-  const pickFilter = (next: LookFilter) => {
-    onFilterChange(next);
+  const follow = (shown: readonly ThemeChoice[]) => {
     const id = selectionAfterFilter(
       value,
-      listed(next).map((choice) => choice.id),
+      shown.map((choice) => choice.id),
     );
     if (id !== value) onAutoSelect(id);
+  };
+  const pickFilter = (next: LookFilter) => {
+    onFilterChange(next);
+    follow(listed(next));
+  };
+  const onQuery = (next: string) => {
+    onQueryChange(next);
+    follow(listed(filter, next));
   };
   return (
     <div className="new-project-step new-project-look">
@@ -517,12 +507,7 @@ function LookStep({
           value={filter}
           onChange={pickFilter}
         />
-        <SearchField
-          inputRef={searchRef}
-          label="Search themes"
-          value={query}
-          onChange={onQueryChange}
-        />
+        <SearchField inputRef={searchRef} label="Search themes" value={query} onChange={onQuery} />
       </div>
       <span className="visually-hidden" aria-live="polite">
         {`${visible.length} ${visible.length === 1 ? "theme" : "themes"}`}
