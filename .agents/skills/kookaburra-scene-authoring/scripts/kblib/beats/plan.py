@@ -1,7 +1,8 @@
-"""kb beats plan: a scene plan drafted from the song (DESIGN.md, "Pacing"). Each part of the song gets scenes of the
-length its energy suits (quiet parts about 2 bars, peaks 1 to 2), the build into the last peak ends in a burst, the
-payoff takes the final hit, and every scene says how often something new must land in it and how many words read in
-it. The cuts come out as a plan ./kb timeline apply takes; --apply retimes the project's scenes to it."""
+"""kb beats plan: a scene plan drafted from the song (DESIGN.md, "Pacing"), counted from where the film starts. Each
+part of the song gets scenes of the length its energy suits (quiet parts about 2 bars, peaks 1 to 2), the build into
+the last peak ends in a burst, the payoff takes the final hit, and every scene says how often something new must land
+in it and how many words read in it. The cuts come out as a plan ./kb timeline apply takes; --apply retimes the
+project's scenes to it, and with --from starts the soundtrack on that bar in the same write."""
 
 from __future__ import annotations
 
@@ -9,8 +10,9 @@ import math
 from typing import Any, Dict, List, Optional, Tuple
 
 from .. import lock as lockmod
+from .. import music
 from ..project import Project
-from ..util import EXIT_ENV, EXIT_OK, EXIT_PROBLEMS, KbError, emit
+from ..util import EXIT_ENV, EXIT_OK, EXIT_PROBLEMS, KbError, emit, js_json
 from . import model, pulse
 
 QUIET_BARS = 2.0
@@ -24,9 +26,11 @@ NO_SOUNDTRACK_HINT = ("ask the person for a song first: the pulse comes from it.
 EPILOG = """\
   ./kb beats plan                          the song's parts and a scene plan in bars (writes nothing)
   ./kb beats plan --scenes 12              the same with 12 scenes
-  ./kb beats plan --from bar:9 --to bar:25 plan a cut of the song (a short social edit)
+  ./kb beats plan --from bar:9 --to bar:25 plan a cut of the song (a short social edit) that starts on bar 9
   ./kb beats plan --apply                  retime the project's scenes to the plan (one checkpointed write)
   ./kb beats plan --json | ./kb timeline apply -   the same through the cut plan
+The plan counts from where the film starts: bar 1, or the bar audio.startOffsetMs puts there.
+--from starts the film on another bar, and --apply then sets audio.startOffsetMs in the same write.
 The plan is a draft: show it to the person before writing anything, and they decide. --apply keeps the
 project's scene count and order, and each scene's transition."""
 
@@ -55,15 +59,52 @@ def pos(shape: Dict[str, Any], beat_index: int) -> str:
     return f"bar:{bar}" if beat == 1 else f"bar:{bar}.{beat}"
 
 
+def pos_at(shape: Dict[str, Any], project_ms: float) -> str:
+    """A project time as its nearest beat, nudged onto the ms when it sits off the beat."""
+    beat = music.js_round((project_ms + shape["startOffsetMs"] - shape["grid"]["offsetMs"]) / shape["beatMs"])
+    nudge = music.js_round(project_ms - ms_of(shape, beat))
+    return pos(shape, beat) + (f"{nudge:+d}ms" if nudge else "")
+
+
+def start_bar(shape: Dict[str, Any]) -> int:
+    """The first bar line at or after the film's start (project time 0), a ms early counting as on it."""
+    return math.ceil(bar_of(shape, 0.0) - 1.0 / shape["barMs"])
+
+
+def rebased(shape: Dict[str, Any], offset: float) -> Dict[str, Any]:
+    """The song's shape with the soundtrack starting offset ms into the track: bars stay, project times move."""
+    shift = shape["startOffsetMs"] - offset
+    out = dict(shape, startOffsetMs=offset, parts=[dict(p, fromMs=p["fromMs"] + shift, toMs=p["toMs"] + shift) for p in shape["parts"]],
+               fills=[dict(f, ms=f["ms"] + shift) for f in shape["fills"]])
+    for key in ("finalHitMs", "audibleEndMs"):
+        if out.get(key) is not None:
+            out[key] += shift
+    return out
+
+
+def start_offset(shape: Dict[str, Any], lo: int, moved: bool) -> float:
+    """audio.startOffsetMs that starts the film on bar lo when --from moved it, else the project's own."""
+    offset = shape["startOffsetMs"]
+    if not moved:
+        return offset
+    track = shape["grid"]["offsetMs"] + (lo - 1) * shape["barMs"]
+    if track < 0:
+        raise KbError(f"bar:{lo} starts {-track / 1000:.2f} s before the song does, so the film can't start on it", EXIT_PROBLEMS,
+                      kind="invalid", hint="--from a later bar")
+    return offset if abs(track - offset) < 1 else music.round_ms(track)
+
+
 def window(shape: Dict[str, Any], project: Project, manifest: Dict[str, Any], first: Optional[str], last: Optional[str]) -> Tuple[int, int, str]:
-    """(first bar, the bar the film ends on, why): --to, else a bar after the final hit, else the song's audible end,
-    else the film's current end."""
+    """(first bar, the bar the film ends on, why): --from, else the bar the film starts on; --to, else a bar after the
+    final hit, else the song's audible end, else the film's current end."""
     m = model.project_music(manifest)
 
     def bound(text: Optional[str], flag: str) -> Optional[int]:
         return None if text is None else _half_up(bar_of(shape, model.parse_time(text, m, flag)["projectMs"]))
 
-    lo = bound(first, "--from") or 1
+    lo = bound(first, "--from")
+    if lo is None:
+        lo = start_bar(shape)
     hi, why = bound(last, "--to"), "--to"
     if hi is None and shape.get("finalHitMs") is not None:
         hi, why = math.floor(bar_of(shape, shape["finalHitMs"]) + 1e-6) + 1, "a bar after the final hit"
@@ -79,7 +120,8 @@ def window(shape: Dict[str, Any], project: Project, manifest: Dict[str, Any], fi
 
 def parts_in(shape: Dict[str, Any], lo: int, hi: int) -> List[Dict[str, Any]]:
     """The song's parts within bars lo..hi (hi exclusive) with any stretch between them a quiet part; one under 2 bars
-    joins the part before it, or the quiet part after it at the start (a peak keeps its downbeat)."""
+    joins the part before it, or the quiet part after it at the start (a peak keeps its downbeat). Where hand-written
+    sections overlap, the earlier part keeps the bars."""
     out: List[Dict[str, Any]] = []
     cursor = lo
 
@@ -87,7 +129,7 @@ def parts_in(shape: Dict[str, Any], lo: int, hi: int) -> List[Dict[str, Any]]:
         out.append({"id": ident, "kind": kind, "fromBar": a, "toBar": b, "gap": gap})
 
     for p in shape["parts"]:
-        a, b = max(p["fromBar"], lo), min(p["toBar"], hi)
+        a, b = max(p["fromBar"], lo, cursor), min(p["toBar"], hi)
         if b > a:
             if a > cursor:
                 add("unnamed", "quiet", cursor, a, True)
@@ -186,6 +228,9 @@ def draft(project: Project, scenes: Optional[int] = None, first: Optional[str] =
         raise KbError("the soundtrack has no beat grid yet", EXIT_PROBLEMS, kind="invalid", hint="./kb song analyse --accept fits one and finds the song's parts")
     lo, hi, why = window(shape, project, manifest, first, last)
     per = shape["beatsPerBar"]
+    was = shape["startOffsetMs"]
+    offset = start_offset(shape, lo, first is not None)
+    now_shape, shape = shape, rebased(shape, offset) if offset != was else shape
     parts = parts_in(shape, lo, hi)
     burst_at = burst_index(parts, shape)
     units: List[Dict[str, Any]] = []
@@ -198,20 +243,28 @@ def draft(project: Project, scenes: Optional[int] = None, first: Optional[str] =
             units.append(dict(p, part=i))
     counts = fit_counts(units, scenes, per)
     first_peak = next((p["fromBar"] for p in parts if p["kind"] == "peak"), None)
+    # The film starts at project 0, so a pickup before bar lo's line joins the first scene.
+    pickup = ms_of(shape, (lo - 1) * per) >= 1
     slots: List[Dict[str, Any]] = []
     for unit, count in zip(units, counts):
-        each = pulse.PULSE_BEATS[unit["kind"]]
+        each = pulse.pulse_beats(unit["kind"], per)
         for a, b in split(unit, count, per):
             start, end = ms_of(shape, a), ms_of(shape, b)
+            beats: float = b - a
+            label = pos(shape, a)
+            if not slots:
+                start = 0.0
+                if pickup:
+                    beats, label = end / shape["beatMs"], pos_at(shape, 0.0)
             role = "open: the hook" if not slots else ""
             if first_peak is not None and a == (first_peak - 1) * per:
                 role = "reveal: lands on the downbeat"
             if unit["kind"] == "burst":
                 role = "burst: a cut every beat inside one scene, pictures not words"
             slots.append({"index": len(slots), "part": unit["id"], "partIndex": unit["part"], "kind": unit["kind"],
-                          "from": pos(shape, a), "cutAt": pos(shape, b), "fromMs": round(start), "toMs": round(end),
-                          "lengthMs": round(end - start), "bars": round((b - a) / per, 2), "pulse": pulse.pulse_words(each, per),
-                          "changes": max(1, math.ceil((b - a) / each)),
+                          "from": label, "cutAt": pos(shape, b), "fromMs": round(start), "toMs": round(end),
+                          "lengthMs": round(end - start), "bars": round(beats / per, 2), "pulse": pulse.pulse_words(each, per),
+                          "changes": max(1, math.ceil(beats / each - 1e-6)),
                           "maxWords": 0 if unit["kind"] == "burst" else max(0, int((end - start - pulse.READ_SETTLE_MS) // pulse.READ_WORD_MS)),
                           "role": role})
     final = shape.get("finalHitMs")
@@ -229,7 +282,7 @@ def draft(project: Project, scenes: Optional[int] = None, first: Optional[str] =
         s["scene"] = stems[s["index"]] if named else f"scene-{s['index'] + 1:02d}"
         if named and s["index"] < len(current):
             now = current[s["index"]]
-            s["now"] = f"{pulse.position(shape, now['startMs'])} to {pulse.position(shape, now['endMs'])}"
+            s["now"] = f"{pulse.position(now_shape, now['startMs'])} to {pulse.position(now_shape, now['endMs'])}"
         row = {"scene": s["scene"], "cutAt": s["cutAt"]}
         entry = entries[s["index"]] if named and s["index"] < len(entries) else None
         if isinstance(entry, dict) and entry.get("align") == "mid":
@@ -240,19 +293,24 @@ def draft(project: Project, scenes: Optional[int] = None, first: Optional[str] =
         mine = [s for s in slots if s["partIndex"] == i]
         burst = next((s for s in mine if s["kind"] == "burst"), None)
         part_rows.append({"id": p["id"], "kind": p["kind"], "fromBar": p["fromBar"], "toBar": p["toBar"], "scenes": len(mine),
-                          "pulse": pulse.pulse_words(pulse.PULSE_BEATS[p["kind"]], per),
+                          "pulse": pulse.pulse_words(pulse.pulse_beats(p["kind"], per), per),
                           "burst": f"{burst['from']} to {burst['cutAt']}" if burst else None})
     notes = []
     if not shape["parts"]:
         notes.append("no song parts found, so every bar counts as quiet (./kb song analyse finds them)")
     if scenes is None and stems and not named:
         notes.append(f"the project has {len(stems)} scenes and this plan {len(slots)}; --scenes {len(stems)} plans for the ones it has")
+    film = {"fromBar": lo, "from": slots[0]["from"], "toBar": hi, "endsAt": why, "lengthMs": round(ms_of(shape, (hi - 1) * per)),
+            "scenes": len(slots), "matchesProject": named, "startOffsetMs": offset}
+    if offset != was:
+        film["startOffsetWas"] = was
+        notes.append(f"the film starts on bar:{lo} once audio.startOffsetMs is {offset}: --apply sets it; ./kb timeline apply leaves it, "
+                     f"so run ./kb project set audio.startOffsetMs {offset} before that")
     return {
         "version": 1, "cuts": rows, "slots": slots, "parts": part_rows, "notes": notes,
         "song": {"bpm": shape["grid"]["bpm"], "beatsPerBar": per, "barMs": round(shape["barMs"], 3), "partsSource": shape["partsSource"],
                  "finalHit": shape["finalHit"], "finalHitMs": round(final) if final is not None else None},
-        "film": {"fromBar": lo, "toBar": hi, "endsAt": why, "lengthMs": round(ms_of(shape, (hi - 1) * per) - ms_of(shape, (lo - 1) * per)),
-                 "scenes": len(slots), "matchesProject": named},
+        "film": film,
     }
 
 
@@ -261,7 +319,10 @@ def print_plan(data: Dict[str, Any]) -> None:
     source = {"sections": "the project's sections", "analysis": "the song analysis"}.get(song["partsSource"] or "", "none found")
     final = f"; final hit {song['finalHit']}" if song.get("finalHit") else ""
     emit(f"Song: {song['bpm']:g} bpm, {song['beatsPerBar']} beats a bar (a bar is {song['barMs'] / 1000:.2f} s); parts from {source}{final}")
-    emit(f"Film: bar:{film['fromBar']} to bar:{film['toBar']}, {film['lengthMs'] / 1000:.1f} s (ends {film['endsAt']}), {film['scenes']} scenes")
+    emit(f"Film: {film['from']} to bar:{film['toBar']}, {film['lengthMs'] / 1000:.1f} s (ends {film['endsAt']}), {film['scenes']} scenes")
+    if "startOffsetWas" in film:
+        emit(f"Start: the soundtrack starts on bar:{film['fromBar']}, so --apply sets audio.startOffsetMs to {film['startOffsetMs']} "
+             f"(now {js_json(film['startOffsetWas'])})")
     emit("")
     emit(f"{'Part':<14}{'Bars':<9}{'Kind':<7}{'New every':<15}Scenes")
     for p in data["parts"]:
@@ -308,11 +369,12 @@ def cmd_plan(ctx: Any) -> int:
         print_plan(data)
         return EXIT_OK
     rows = [cuts.normalise_row(r, f"cuts[{i}]") for i, r in enumerate(data["cuts"])]
+    offset = data["film"]["startOffsetMs"] if "startOffsetWas" in data["film"] else None
     saved = None
     if not ctx.dry_run and gitmod.git_available() and gitmod.repo_state(project) != "foreign" and gitmod.dirty_files(project):
-        cuts.apply_plan(project, rows, lockmod.WriteOpts(True, ctx.wait, ctx.caller))
+        cuts.apply_plan(project, rows, lockmod.WriteOpts(True, ctx.wait, ctx.caller), start_offset=offset)
         saved = gitmod.checkpoint(project, "before kb beats plan --apply")
-    changes, tx = cuts.apply_plan(project, rows, ctx.opts)
+    changes, tx = cuts.apply_plan(project, rows, ctx.opts, start_offset=offset)
     if ctx.json:
         ctx.out(dict(data, changes=changes, writes=tx.writes, dryRun=tx.dry_run, checkpoint=saved))
         return EXIT_OK

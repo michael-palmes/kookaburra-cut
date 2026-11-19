@@ -1,6 +1,6 @@
 """Pacing against the song (DESIGN.md, "Pacing"): each scene's words against their reading time (0.2 s a word plus 0.6 s
 a line, rounded up to the beat; labels left out), every stretch where nothing new happens against the pulse its part of
-the song asks for (a bar in quiet parts, 2 beats in peaks, never past 2.4 s, at most a bar after the final hit), whether
+the song asks for (a bar in quiet parts, half a bar in peaks, never past 2.4 s, at most a bar after the final hit), whether
 something lands on the final hit, and scenes too short to read as anything but a flash. Advice, never a rule: the
 person decides, and a warning they keep is accepted with their reason (pacing.accepted.json)."""
 
@@ -16,8 +16,9 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from ..beats import pulse
 from ..media_input import input_args
 from ..project import Project
+from ..realdir import no_follow, real_dir
 from ..tsx import strip_comments
-from ..util import EXIT_ENV, KbError, is_number
+from ..util import EXIT_ENV, KbError, atomic_write_json, is_number, now_ms
 
 MIN_SCENE_MS = 334
 KEYED_BLOCKS = ("camera", "cameraRig", "deviceTrack", "lighting")
@@ -49,7 +50,8 @@ _ELEMENT_RE = re.compile(r"<[A-Z][\w.]*\s[^<>]*>")
 _TEXT_KEY_RE = re.compile(r"""\btextKey\s*=\s*(?:\{\s*)?["']([\w.-]+)["']""")
 _FONT_SIZE_RE = re.compile(r"\bfontSize\s*=\s*\{\s*([0-9]+(?:\.[0-9]+)?|\.[0-9]+)\s*\}")
 _EMBEDDED_ROLE_RE = re.compile(r"""\bmanagedTextRole\s*=\s*(?:\{\s*)?["']embedded["']""")
-_TSX_MOTION_RE = re.compile(r"\b(?:useTimeline|useBeatGrid|useGroupAnimation|useRigTrack)\s*\(|<(?:AnimatedGroup|AnimatedCounter)\b")
+_ID_RE = re.compile(r"[0-9a-f]{8}")
+_TSX_MOTION_RE = re.compile(r"\b(?:useTimeline|useBeatGrid|useGroupAnimation|useRigTrack)\s*\(|<(?:AnimatedGroup|AnimatedCounter|VideoClip|VideoWindow)\b")
 
 
 def count_words(text: Any) -> int:
@@ -76,19 +78,27 @@ def tsx_label_keys(tsx: str) -> Set[str]:
 
 
 def tsx_moves(tsx: str) -> bool:
-    """Whether the scene's code drives its own motion (reads the timeline or the beat grid, or mounts an animated group or counter)."""
+    """Whether the scene's code drives its own motion (reads the timeline or the beat grid, mounts an animated group or
+    counter) or plays a video clip or window."""
     return bool(_TSX_MOTION_RE.search(strip_comments(tsx or "")))
 
 
 def plays_video(doc: Optional[Dict[str, Any]]) -> bool:
-    """Whether the scene plays a video: a device screen, a media element or the background."""
+    """Whether the scene plays a video: a device screen, a media element (or the legacy video window it reads forward
+    from) or the background."""
     if not isinstance(doc, dict):
         return False
     specs: List[Any] = []
     for d in doc.get("devices") or []:
         if isinstance(d, dict):
             specs += [d.get("media"), d.get("coverMedia")]
-    specs += [e for e in doc.get("media") or [] if isinstance(e, dict)]
+    if isinstance(doc.get("media"), list):
+        specs += [e for e in doc["media"] if isinstance(e, dict)]
+    else:
+        legacy = doc.get("videoWindow")
+        clip = legacy.get("media") if isinstance(legacy, dict) else None
+        if isinstance(clip, dict) and isinstance(clip.get("src"), str) and clip["src"]:
+            return True
     side = (doc.get("compare") or {}).get("b") if isinstance(doc.get("compare"), dict) else None
     for field in ("media", "coverMedia"):
         overrides = side.get(field) if isinstance(side, dict) else None
@@ -165,6 +175,24 @@ def keyed_times(doc: Optional[Dict[str, Any]]) -> List[float]:
     chart = doc.get("chart")
     if isinstance(chart, dict):
         times += _keys(chart.get("track"))
+    return times
+
+
+def motion_times(doc: Optional[Dict[str, Any]]) -> List[float]:
+    """Scene-local times a keyed move lands for pacing: keyed_times, the compare divider's sweep and side B's lighting,
+    and the screenshot stack's animation when it drives the scene (the camera track then stands down)."""
+    if not doc:
+        return []
+    stack = doc.get("layeredScreenshot")
+    drives_stack = doc.get("animatedTrack") == "layeredScreenshot" and isinstance(stack, dict)
+    times = keyed_times(dict(doc, camera=None) if drives_stack else doc)
+    if drives_stack:
+        times += _keys(stack.get("animation"))
+    compare = doc.get("compare")
+    if isinstance(compare, dict):
+        times += _keys(compare.get("track"))
+        side = compare.get("b")
+        times += _keys(side.get("lighting")) if isinstance(side, dict) else []
     return times
 
 
@@ -280,8 +308,8 @@ def kick_times(doc: Optional[Dict[str, Any]], m: Optional[Dict[str, Any]], start
 
 
 def static_still_spans(project: Project, slots: List[Dict[str, Any]], docs: List[Optional[Dict[str, Any]]], tsx: List[str]) -> List[Tuple[float, float]]:
-    """Gaps between cuts, keyed moves (scene and project camera keys) and camera kicks, with scenes whose TSX drives
-    motion or that play a video taken out."""
+    """Gaps between cuts, keyed moves (scene and project camera keys, compare sweeps, a driving screenshot stack) and
+    camera kicks, with scenes whose TSX drives motion or that play a video taken out. Lines landing are not seen."""
     from ..beats import model
 
     m = model.project_music(project.manifest())
@@ -292,7 +320,7 @@ def static_still_spans(project: Project, slots: List[Dict[str, Any]], docs: List
             events.append(float(key["tMs"]))
     for slot, doc in zip(slots, docs):
         events.append(float(slot["startMs"]))
-        events += [slot["startMs"] + t for t in keyed_times(doc) + kick_times(doc, m, slot["startMs"]) if 0 <= t <= slot["durationMs"]]
+        events += [slot["startMs"] + t for t in motion_times(doc) + kick_times(doc, m, slot["startMs"]) if 0 <= t <= slot["durationMs"]]
     total = float(slots[-1]["endMs"]) if slots else 0.0
     marks = sorted(set([0.0, total] + [e for e in events if 0 <= e <= total]))
     spans = list(zip(marks, marks[1:]))
@@ -345,6 +373,7 @@ def still_issues(shape: Dict[str, Any], spans: List[Tuple[float, float]], slots:
     total = float(slots[-1]["endMs"]) if slots else 0.0
     slack = FILM_SLACK_MS if film else STATIC_SLACK_MS
     what = "nothing new appears" if film else "nothing keyed, scripted or playing moves"
+    unseen = "" if film else " (a line landing shows only on the film: --file F)"
     out = []
     for a, b in spans:
         if b >= total - slack:
@@ -363,9 +392,9 @@ def still_issues(shape: Dict[str, Any], spans: List[Tuple[float, float]], slots:
                     why += ", and never more than 2.4 s"
         if b - a > allowed + slack:
             stems = scenes_in(slots, a, b)
-            out.append({"kind": "still", "scene": scene_at(slots, (a + b) / 2), "atMs": int(round(a)), "toMs": int(round(b)),
+            out.append({"kind": "still", "scene": scene_at(slots, (a + b) / 2), "scenes": stems, "atMs": int(round(a)), "toMs": int(round(b)),
                         "message": f"{(b - a) / 1000:.1f}s where {what} ({_span(shape, a, b)}, {', '.join(str(s) for s in stems)}): "
-                                   f"{why}. Land a line, a camera key or a kick inside it, or cut sooner"})
+                                   f"{why}. Land a line, a camera key or a kick inside it, or cut sooner{unseen}"})
     return out
 
 
@@ -396,6 +425,41 @@ def ending_issues(shape: Dict[str, Any], slots: List[Dict[str, Any]], changes: O
 
 def issue_id(kind: str, scene: Optional[str]) -> str:
     return hashlib.sha1(f"{kind}|{scene or ''}".encode("utf-8")).hexdigest()[:8]
+
+
+def looks_like_id(text: Any) -> bool:
+    return isinstance(text, str) and _ID_RE.fullmatch(text) is not None
+
+
+def issue_for_id(project: Project, ident: Any) -> Optional[Tuple[str, str]]:
+    """(kind, scene) a warning id names, found by trying every scene and kind; None when it names none."""
+    if not looks_like_id(ident):
+        return None
+    return next(((kind, stem) for stem in project.stems() for kind in KINDS if issue_id(kind, stem) == ident), None)
+
+
+def last_path(project: Project) -> Path:
+    from .. import lock
+
+    return real_dir(lock.kb_dir(project), "pacing", make=False) / "last.json"
+
+
+def save_last(project: Project, pace: Dict[str, Any], source: str, film: Optional[Path] = None) -> None:
+    """Keeps the check's open warnings as the last check (`kb pacing accept S` keeps only these kinds)."""
+    rows = [{k: i[k] for k in ("id", "kind", "scene", "scenes", "atMs") if k in i} for i in pace.get("issues") or []]
+    try:
+        atomic_write_json(last_path(project), {"version": 1, "atMs": now_ms(), "source": source, "file": str(film) if film else None, "issues": rows})
+    except (KbError, OSError):
+        pass
+
+
+def load_last(project: Project) -> Optional[Dict[str, Any]]:
+    try:
+        with open(last_path(project), encoding="utf-8", opener=no_follow) as f:
+            doc = json.load(f)
+    except (KbError, OSError, ValueError):
+        return None
+    return doc if isinstance(doc, dict) and isinstance(doc.get("issues"), list) else None
 
 
 def load_accepted(project: Project) -> List[Dict[str, Any]]:

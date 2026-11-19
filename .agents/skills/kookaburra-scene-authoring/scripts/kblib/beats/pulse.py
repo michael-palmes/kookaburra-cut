@@ -11,8 +11,6 @@ from ..util import KbError, is_number
 from ..video.editmath import js_round
 from . import model
 
-# Beats a part lets the frame sit still: something new every bar in quiet parts, every 2 beats in peaks, every beat in a burst.
-PULSE_BEATS = {"quiet": 4, "peak": 2, "burst": 1}
 STILL_CAP_MS = 2400
 NO_MUSIC_BAR_MS = 2000
 READ_WORD_MS = 200
@@ -39,6 +37,15 @@ def reading_ms(words: int, lines: int, beat_ms: Optional[float] = None) -> int:
     if beat_ms:
         ms = math.ceil(ms / beat_ms - 1e-9) * beat_ms
     return int(math.ceil(ms - 1e-9))
+
+
+def pulse_beats(kind: str, beats_per_bar: int) -> float:
+    """Beats a part lets the frame sit still: a bar in quiet parts, half a bar in peaks (never under a beat), a beat in a burst."""
+    if kind == "burst":
+        return 1
+    if kind == "peak":
+        return max(1, beats_per_bar // 2 if beats_per_bar % 2 == 0 else beats_per_bar / 2)
+    return beats_per_bar
 
 
 def pulse_words(beats: float, beats_per_bar: int) -> str:
@@ -168,5 +175,5 @@ def pulse_at(shape: Dict[str, Any], project_ms: float) -> Dict[str, Any]:
         return {"kind": "end", "part": None, "beats": shape["beatsPerBar"], "allowedMs": shape["barMs"]}
     part = part_at(shape, project_ms)
     kind = part["kind"] if part else "quiet"
-    beats = PULSE_BEATS.get(kind, 4) if shape.get("grid") else shape["beatsPerBar"]
+    beats = pulse_beats(kind, shape["beatsPerBar"]) if shape.get("grid") else shape["beatsPerBar"]
     return {"kind": kind, "part": part["id"] if part else None, "beats": beats, "allowedMs": min(beats * shape["beatMs"], STILL_CAP_MS)}

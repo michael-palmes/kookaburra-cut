@@ -60,7 +60,7 @@ a strip (the frames before, at and after it, the changing region boxed) to Read.
              luminance step and picture change; hard steps next to short scenes warn
   pacing     against the song: each scene's words against their reading time (0.2 s a word and
              0.6 s a line, to the beat), stretches where nothing new appears against the pulse of
-             their part (a bar quiet, 2 beats in a peak, never past 2.4 s, a bar after the final
+             their part (a bar quiet, half a bar in a peak, never past 2.4 s, a bar after the final
              hit; measured on the film with --file), the payoff on the final hit, scenes under
              334 ms. Advice: a warning the person keeps is accepted (./kb pacing accept)
   safe-areas runs in ./kb verify (text outside the safe area, by key and aspect)
@@ -275,7 +275,13 @@ def pacing_lines(pace: Dict[str, Any], film: bool) -> List[str]:
         read = f", read in {r['readMs'] / 1000:.1f}s" if r.get("readMs") else ""
         lines.append(f"  {r['stem']}: {r['words']} words in {r['durationMs'] / 1000:.1f}s{read}"
                      + (f", {r['labelWords']} label words left out" if r.get("labelWords") else "") + (f"  !! {r['flag']}" if r.get("flag") else ""))
-    lines += [f"  warn  {w}" for w in pace["warnings"]]
+    for issue in pace["issues"]:
+        scene = str(issue.get("scene") or "")
+        message = issue["message"]
+        message = message[len(scene) + 2:] if scene and message.startswith(f"{scene}: ") else message
+        lines.append(f"  warn  {issue['id']}  {scene}, {issue['kind']}: {message}")
+    if pace["issues"]:
+        lines.append('  to keep one the person wants: ./kb pacing accept ID --why "..."')
     if pace.get("accepted"):
         lines.append(f"  {len(pace['accepted'])} kept by the person (./kb pacing lists them)")
     return lines
@@ -411,6 +417,7 @@ def run(kbctx: Any, rest: List[str]) -> int:
     if "pacing" in wanted:
         motion = pc.film_motion(tools.ffmpeg, film, ctx["fps"], ctx["offset"], slots) if film and tools and ctx else None
         pace = pc.check(project, slots, motion)
+        pc.save_last(project, pace, "film" if motion is not None else "static", film if motion is not None else None)
         payload["pacing"] = pace
         warnings += pace["warnings"]
         lines += pacing_lines(pace, motion is not None)

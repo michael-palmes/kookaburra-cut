@@ -50,7 +50,7 @@ Pace comes from the music and from how often something new appears, not from the
 count: a strong launch film can run ten scenes over 32 bars and still change something
 about twice a bar. These are defaults that help, not rules: the person decides. When they
 want a longer hold, a slower read or another length, do it their way, and keep the
-warning with their reason (`./kb pacing accept S --why "..."`) so it isn't raised again.
+warning with their reason (`./kb pacing accept S --kind still --why "..."`) so it isn't raised again.
 
 1. **Plan from the song.** No soundtrack yet? Ask for one first: the pulse comes from it.
    Then `./kb song analyse --accept` (the grid, the song's parts and its final hit) and
@@ -62,7 +62,7 @@ warning with their reason (`./kb pacing accept S --why "..."`) so it isn't raise
    | Part of the song | Something new every | Cut every |
    | --- | --- | --- |
    | Intro, build, breakdown | bar | 2 to 4 bars |
-   | Peak, chorus, drop | 2 beats | 1 to 2 bars |
+   | Peak, chorus, drop | half a bar (2 beats in 4/4) | 1 to 2 bars |
    | Burst (a montage, double time) | beat | inside one scene |
    | After the final hit | hold at most a bar | none |
 

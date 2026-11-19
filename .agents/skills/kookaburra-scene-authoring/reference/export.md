@@ -95,15 +95,20 @@ the user's own Cancel.
 - `check film pacing` holds the film to DESIGN.md's pacing against the song's parts: each
   scene's words above label size against their reading time (0.2 s a word and 0.6 s a
   line, to the beat; card labels and eyebrows left out), every stretch where nothing new
-  appears against its part's pulse (a bar in quiet parts, 2 beats in peaks, never past
+  appears against its part's pulse (a bar in quiet parts, half a bar in peaks, never past
   2.4 s, a bar after the final hit, 2 s with no song), the payoff against the final hit,
-  and scenes under 334 ms. Statically it sees cuts, keyed moves, TSX that drives motion
-  and playing videos; `--file` measures the film itself (a slow drift or a looping
-  background is not a change), so check the export.
-- Pacing warnings are advice and the person decides. When they keep something it flags,
-  `./kb pacing accept S --why "..."` keeps it with their reason (per scene; `--kind still`,
-  `read`, `short`, `final-hit` or `end` for one kind), and later checks list it as kept.
-  `./kb pacing` lists them; `./kb pacing forget S` drops one.
+  and scenes under 334 ms. Statically it sees cuts, keys and kicks (a compare sweep and a
+  screenshot stack's animation too), TSX that drives motion, and playing videos (device
+  screens, `media`, a video background, `VideoClip`, `VideoWindow`); it can't see lines
+  landing through text animation. `--file` measures the film itself (a slow drift or a
+  looping background is not a change), so check the export.
+- Pacing warnings are advice and the person decides. Each warning line starts with its id
+  and the scene it is keyed to. When they keep something it flags,
+  `./kb pacing accept ID --why "..."` keeps that warning with their reason, and later
+  checks list it as kept. `./kb pacing accept S --kind still --why "..."` does the same by
+  scene and kind (`still`, `read`, `short`, `final-hit` or `end`); a scene with no `--kind`
+  keeps only the kinds open on it in the last check. `./kb pacing` lists them;
+  `./kb pacing forget ID` drops one.
 - `sync-check` times cuts and big picture changes as a player shows them, poster frame
   taken off. 0 to one frame late (33 ms at 30 fps, 17 at 60) is the frame grid: a cut on a
   beat shows on the first frame at or after it. Never nudge the beat grid to close that; a
