@@ -328,7 +328,7 @@ the user that and wait for a yes before the first Read; no answer means no. With
 ## Matching motion to the music
 
 Keep the pulse first (DESIGN.md, Pacing): something new every bar in quiet parts, every
-2 beats in peaks. Then settle the feel: hard cuts on beats suit percussive, high-energy
+half bar in peaks. Then settle the feel: hard cuts on beats suit percussive, high-energy
 music; smooth moves that land on beats suit ambient tracks. Mixing both is normal (cut on the
 strongest moments, drift between them).
 

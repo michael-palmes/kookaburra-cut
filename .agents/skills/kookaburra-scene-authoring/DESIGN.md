@@ -62,7 +62,7 @@ warning with their reason (`./kb pacing accept S --why "..."`) so it isn't raise
    | Part of the song | Something new every | Cut every |
    | --- | --- | --- |
    | Intro, build, breakdown | bar | 2 to 4 bars |
-   | Peak, chorus, drop | 2 beats | 1 to 2 bars |
+   | Peak, chorus, drop | half a bar (2 beats in 4/4) | 1 to 2 bars |
    | Burst (a montage, double time) | beat | inside one scene |
    | After the final hit | hold at most a bar | none |
 

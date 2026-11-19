@@ -60,7 +60,7 @@ a strip (the frames before, at and after it, the changing region boxed) to Read.
              luminance step and picture change; hard steps next to short scenes warn
   pacing     against the song: each scene's words against their reading time (0.2 s a word and
              0.6 s a line, to the beat), stretches where nothing new appears against the pulse of
-             their part (a bar quiet, 2 beats in a peak, never past 2.4 s, a bar after the final
+             their part (a bar quiet, half a bar in a peak, never past 2.4 s, a bar after the final
              hit; measured on the film with --file), the payoff on the final hit, scenes under
              334 ms. Advice: a warning the person keeps is accepted (./kb pacing accept)
   safe-areas runs in ./kb verify (text outside the safe area, by key and aspect)

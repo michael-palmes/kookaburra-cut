@@ -247,7 +247,7 @@ def draft(project: Project, scenes: Optional[int] = None, first: Optional[str] =
     pickup = ms_of(shape, (lo - 1) * per) >= 1
     slots: List[Dict[str, Any]] = []
     for unit, count in zip(units, counts):
-        each = pulse.PULSE_BEATS[unit["kind"]]
+        each = pulse.pulse_beats(unit["kind"], per)
         for a, b in split(unit, count, per):
             start, end = ms_of(shape, a), ms_of(shape, b)
             beats: float = b - a
@@ -293,7 +293,7 @@ def draft(project: Project, scenes: Optional[int] = None, first: Optional[str] =
         mine = [s for s in slots if s["partIndex"] == i]
         burst = next((s for s in mine if s["kind"] == "burst"), None)
         part_rows.append({"id": p["id"], "kind": p["kind"], "fromBar": p["fromBar"], "toBar": p["toBar"], "scenes": len(mine),
-                          "pulse": pulse.pulse_words(pulse.PULSE_BEATS[p["kind"]], per),
+                          "pulse": pulse.pulse_words(pulse.pulse_beats(p["kind"], per), per),
                           "burst": f"{burst['from']} to {burst['cutAt']}" if burst else None})
     notes = []
     if not shape["parts"]:

@@ -1,6 +1,6 @@
 """Pacing against the song (DESIGN.md, "Pacing"): each scene's words against their reading time (0.2 s a word plus 0.6 s
 a line, rounded up to the beat; labels left out), every stretch where nothing new happens against the pulse its part of
-the song asks for (a bar in quiet parts, 2 beats in peaks, never past 2.4 s, at most a bar after the final hit), whether
+the song asks for (a bar in quiet parts, half a bar in peaks, never past 2.4 s, at most a bar after the final hit), whether
 something lands on the final hit, and scenes too short to read as anything but a flash. Advice, never a rule: the
 person decides, and a warning they keep is accepted with their reason (pacing.accepted.json)."""
 

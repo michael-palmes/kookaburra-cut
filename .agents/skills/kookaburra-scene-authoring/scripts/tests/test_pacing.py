@@ -68,6 +68,16 @@ class ShapeTests(KbTestCase):
         slow = song_project(self.tmp / "slow", stems(2), grid={"bpm": 80, "offsetMs": 0, "beatsPerBar": 4})
         self.assertEqual(pulse.pulse_at(pulse.song_shape(Project(slow)), 1000)["allowedMs"], pulse.STILL_CAP_MS)
 
+    def test_the_pulse_follows_the_time_signature(self) -> None:
+        waltz = pulse.song_shape(Project(song_project(self.tmp, stems(2), grid={"bpm": 120, "offsetMs": 0, "beatsPerBar": 3})))
+        self.assertEqual([pulse.pulse_at(waltz, ms)["allowedMs"] for ms in (1000, 13000)], [1500, 750])
+        compound = pulse.song_shape(Project(song_project(self.tmp / "b", stems(2), grid={"bpm": 120, "offsetMs": 0, "beatsPerBar": 6})))
+        self.assertEqual([pulse.pulse_at(compound, ms)["allowedMs"] for ms in (1000, 25000)], [pulse.STILL_CAP_MS, 1500])
+        self.assertEqual([pulse.pulse_beats(k, 4) for k in ("quiet", "peak", "burst")], [4, 2, 1])
+        self.assertEqual(pulse.pulse_beats("peak", 2), 1)
+        proc = self.kb(["beats", "plan", "--to", "bar:13", "--json"], cwd=self.tmp / "demo")
+        self.assertEqual([p["pulse"] for p in json.loads(proc.stdout)["parts"]], ["every bar", "every 1.5 beats"])
+
     def test_reading_time_is_rounded_up_to_the_beat(self) -> None:
         self.assertEqual(pulse.reading_ms(5, 1), 1600)
         self.assertEqual(pulse.reading_ms(5, 1, 60000 / 128), 1875)

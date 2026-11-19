@@ -95,7 +95,7 @@ the user's own Cancel.
 - `check film pacing` holds the film to DESIGN.md's pacing against the song's parts: each
   scene's words above label size against their reading time (0.2 s a word and 0.6 s a
   line, to the beat; card labels and eyebrows left out), every stretch where nothing new
-  appears against its part's pulse (a bar in quiet parts, 2 beats in peaks, never past
+  appears against its part's pulse (a bar in quiet parts, half a bar in peaks, never past
   2.4 s, a bar after the final hit, 2 s with no song), the payoff against the final hit,
   and scenes under 334 ms. Statically it sees cuts, keyed moves, TSX that drives motion
   and playing videos; `--file` measures the film itself (a slow drift or a looping
