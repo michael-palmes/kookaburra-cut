@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { collectParseWarnings } from "./parseWarnings";
 import { normalizeLighting } from "./sceneLighting";
 import { parseVolumetric } from "./volumetricSpec";
 
@@ -71,6 +72,21 @@ describe("parseVolumetric", () => {
     expect(parseVolumetric({ dust: true }, "t")).toEqual({ dust: {} });
     expect(parseVolumetric("beam", "t")).toBeUndefined();
   });
+
+  it("needs a box for dust on a camera- or subject-space light, never on a world one", () => {
+    const box = { min: [-1, 0, -1], max: [1, 2, 1] };
+    const { result, warnings } = collectParseWarnings(() => [
+      parseVolumetric({ dust: true }, "t", "camera"),
+      parseVolumetric({ dust: { count: 40 }, extinction: true }, "t", "subject"),
+    ]);
+    expect(result).toEqual([{}, { extinction: true }]);
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0]).toContain("camera-space light needs a box");
+    expect(parseVolumetric({ dust: true, box }, "t", "camera")).toEqual({ box, dust: {} });
+    const own = { dust: { min: [-1, 0, -1], max: [1, 2, 1] } };
+    expect(parseVolumetric(own, "t", "subject")).toEqual(own);
+    expect(parseVolumetric({ dust: true }, "t", "world")).toEqual({ dust: {} });
+  });
 });
 
 describe("a sidecar spot's volumetric block", () => {
@@ -99,8 +115,10 @@ describe("a sidecar spot's volumetric block", () => {
   });
 
   it("drops a grate on a camera or subject light", () => {
-    const key = lighting({ space: "camera", volumetric: { grate: {}, dust: true } })?.lights?.[0];
-    expect(key?.type === "spot" && key.volumetric).toEqual({ dust: {} });
+    const box = { min: [-1, 0, -1], max: [1, 2, 1] };
+    const key = lighting({ space: "camera", volumetric: { grate: {}, box, dust: true } })
+      ?.lights?.[0];
+    expect(key?.type === "spot" && key.volumetric).toEqual({ box, dust: {} });
   });
 
   it("is absent when not authored", () => {

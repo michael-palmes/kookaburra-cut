@@ -180,7 +180,10 @@ export function parseVolumetric(
   if (raw.extinction === true) out.extinction = true;
   if (raw.dust !== undefined && raw.dust !== false) {
     const dust = parseDust(raw.dust, where);
-    if (dust) out.dust = dust;
+    // Without a box the motes fill the cone at the light's rest pose, a world-space position.
+    if (dust && space !== "world" && !out.box && !dust.min) {
+      parseWarn(`[lighting] ${where}: dust on a ${space}-space light needs a box, dropped`);
+    } else if (dust) out.dust = dust;
   }
   if (isNum(raw.shadowMapSize)) {
     if (SHADOW_SIZES.includes(raw.shadowMapSize)) out.shadowMapSize = raw.shadowMapSize;
