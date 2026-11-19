@@ -54,7 +54,6 @@ import {
   emphasisPillEndMs,
   emphasisPillPhase,
   padEmphasisRanges,
-  parseEmphasisValue,
   type ResolvedEmphasis,
   resolveEmphasis,
 } from "./emphasis";
@@ -306,18 +305,7 @@ export function AnimatedHeadline(props: AnimatedHeadlineProps) {
 /** `fit="width"`: measures the block from the parsed face, the same maths troika typesets with, and hands the renderer the size that fits; captures wait for the measure, so no frame sees the unfitted size. A face that can't parse keeps the authored size. */
 function FittedHeadline({ fit: _fit, maxWidth, ...props }: AnimatedHeadlineProps) {
   const format = useFormat();
-  const doc = useContext(SceneDocContext);
-  const styleKey = props.styleKey ?? props.textKey;
-  const shaped = parseEmphasisValue(
-    styleKey ? doc?.textStyle?.[`${styleKey}Emphasis`] : undefined,
-  )?.shape;
-  // A shaped emphasis typesets with room either side of its words, so the fit measures that string.
-  const measured = useMemo(() => {
-    if (!shaped) return props.text;
-    const { text, ranges } = parseEmphasisMarkup(props.text);
-    return padEmphasisRanges({ text, emphasis: ranges, clusters: [] }, shaped).text;
-  }, [shaped, props.text]);
-  const metrics = useTextMetrics(props.textKey, measured, {
+  const metrics = useTextMetrics(props.textKey, props.text, {
     fontSize: props.fontSize,
     face: props.face,
     fontRef: props.fontRef,

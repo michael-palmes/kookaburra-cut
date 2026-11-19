@@ -1,5 +1,5 @@
 import { ease } from "../../engine/ease";
-import type { EmphasisRange, PreparedDisplayText } from "./displayText";
+import { type EmphasisRange, type PreparedDisplayText, parseEmphasisMarkup } from "./displayText";
 
 /** Per-word emphasis styling: `*word*` ranges (displayText.ts) take a colour and an SDF weight, from the sidecar's `textStyle.<key>Emphasis` ("<colour>", "<colour>@<weight>", either followed by a shape: "accent pill"). A shape wraps each range in a pill that draws on, then fills while its words turn the background colour. Pure; the stagger material draws the words and `EmphasisPills` the shapes. */
 
@@ -198,6 +198,13 @@ export function padEmphasisRanges(
     clusters: prepared.clusters.map((c) => ({ ...c, codeUnitIndex: shift(c.codeUnitIndex, true) })),
     emphasis: prepared.emphasis.map(([s, e]) => [shift(s, true), shift(e, false)] as const),
   };
+}
+
+/** The copy a measure sees for a headline with this emphasis shape: markup stripped and its ranges padded as the headline typesets them. Unshaped copy comes back untouched. */
+export function shapedMeasureText(raw: string, shape: EmphasisShape | undefined): string {
+  if (!shape) return raw;
+  const { text, ranges } = parseEmphasisMarkup(raw);
+  return padEmphasisRanges({ text, emphasis: ranges, clusters: [] }, shape).text;
 }
 
 let warnedRects = false;

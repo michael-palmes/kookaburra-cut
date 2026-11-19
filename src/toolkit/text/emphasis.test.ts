@@ -18,6 +18,7 @@ import {
   padEmphasisRanges,
   parseEmphasisValue,
   resolveEmphasis,
+  shapedMeasureText,
 } from "./emphasis";
 import { EDGE_SENTINEL, type TextUnitSample } from "./presets";
 import {
@@ -234,6 +235,14 @@ describe("shaped emphasis", () => {
     expect(edges.text).toBe("24 hours\nleft");
     const plain = { text: "plain", emphasis: [], clusters: [] };
     expect(padEmphasisRanges(plain)).toBe(plain);
+  });
+
+  it("measures the padded string a shaped headline typesets, and plain copy as given", () => {
+    expect(shapedMeasureText("a *24h* b", "pill")).toBe("a  24h  b");
+    expect(shapedMeasureText("a *24h* b", "battery")).toBe("a  24h   b");
+    const raw = "a *24h* b";
+    expect(shapedMeasureText(raw, undefined)).toBe(raw);
+    expect(shapedMeasureText("no markup", "pill")).toBe("no markup");
   });
 });
 
