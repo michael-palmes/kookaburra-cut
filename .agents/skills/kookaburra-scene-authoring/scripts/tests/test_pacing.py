@@ -143,6 +143,37 @@ class StaticChangeTests(KbTestCase):
         kicked = pc.check(Project(project), tl.project_slots(Project(project)))
         self.assertEqual([i for i in kicked["issues"] if i["kind"] == "still"], [])
 
+    def stills_of(self, sidecar: Dict[str, Any], tsx: str = "") -> List[str]:
+        project = make_project(self.tmp / str(len(list(self.tmp.iterdir()))), scenes=stems(2))
+        manifest = read_json(project / "project.json")
+        manifest["scenes"] = [{"file": f"scenes/{s}.tsx", "durationMs": ms} for s, ms in zip(stems(2), (6000, 1500))]
+        write_json(project / "project.json", manifest)
+        write_json(project / "scenes" / "01-s1.json", dict({"version": 1}, **sidecar))
+        if tsx:
+            path = project / "scenes" / "01-s1.tsx"
+            path.write_text(path.read_text().replace("<TitleBlock title={title} />", "<TitleBlock title={title} />\n" + tsx))
+        p = Project(project)
+        return [i["message"] for i in pc.check(p, tl.project_slots(p))["issues"] if i["kind"] == "still"]
+
+    def test_videos_sweeps_and_a_driving_stack_count_as_motion(self) -> None:
+        sweep = {"keys": [{"id": f"k{n}", "tMs": n * 1500, "pose": {"value": 1 - n / 4}} for n in range(1, 4)], "segments": []}
+        moving = {
+            "background video": ({"background": {"type": "video", "src": "assets/clip.mp4"}}, ""),
+            "media video": ({"media": [{"id": "vid1", "kind": "video", "src": "assets/clip.mp4", "host": "stage"}]}, ""),
+            "TSX VideoClip": ({}, '<VideoClip src="assets/clip.mp4" startMs={0} fit="cover" />'),
+            "TSX VideoWindow": ({}, '<VideoWindow src="assets/clip.mp4" />'),
+            "legacy video window": ({"videoWindow": {"media": {"src": "assets/clip.mp4", "startMs": 0}}}, ""),
+            "compare sweep": ({"compare": {"b": {}, "track": sweep}}, ""),
+            "screenshot stack": ({"layeredScreenshot": {"layers": [], "animation": sweep}, "animatedTrack": "layeredScreenshot"}, ""),
+        }
+        for name, (sidecar, tsx) in moving.items():
+            with self.subTest(name):
+                self.assertEqual(self.stills_of(sidecar, tsx), [])
+        idle_stack = self.stills_of({"layeredScreenshot": {"layers": [], "animation": sweep}})
+        self.assertEqual(len(idle_stack), 1)
+        self.assertIn("a line landing shows only on the film", idle_stack[0])
+        self.assertEqual(len(self.stills_of({"videoWindow": {"media": {"src": "assets/clip.mp4"}}, "media": []})), 1)
+
 
 class ChangeDetectorTests(KbTestCase):
     def test_a_change_splits_the_stillness_and_a_slow_drift_does_not(self) -> None:

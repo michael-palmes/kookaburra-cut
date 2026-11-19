@@ -97,9 +97,11 @@ the user's own Cancel.
   line, to the beat; card labels and eyebrows left out), every stretch where nothing new
   appears against its part's pulse (a bar in quiet parts, half a bar in peaks, never past
   2.4 s, a bar after the final hit, 2 s with no song), the payoff against the final hit,
-  and scenes under 334 ms. Statically it sees cuts, keyed moves, TSX that drives motion
-  and playing videos; `--file` measures the film itself (a slow drift or a looping
-  background is not a change), so check the export.
+  and scenes under 334 ms. Statically it sees cuts, keys and kicks (a compare sweep and a
+  screenshot stack's animation too), TSX that drives motion, and playing videos (device
+  screens, `media`, a video background, `VideoClip`, `VideoWindow`); it can't see lines
+  landing through text animation. `--file` measures the film itself (a slow drift or a
+  looping background is not a change), so check the export.
 - Pacing warnings are advice and the person decides. When they keep something it flags,
   `./kb pacing accept S --why "..."` keeps it with their reason (per scene; `--kind still`,
   `read`, `short`, `final-hit` or `end` for one kind), and later checks list it as kept.
