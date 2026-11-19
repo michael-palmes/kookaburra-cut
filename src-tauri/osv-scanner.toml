@@ -7,3 +7,7 @@ reason = "glib: the Linux GTK stack tauri/wry pull in; never compiled for the on
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0370"
 reason = "proc-macro-error: build-time dependency of glib-macros/gtk3-macros, same Linux-only stack"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0543"
+reason = "chrono: unmaintained notice; trash pulls it only for its Linux and BSD backends, never compiled for the one shipped target"
