@@ -203,6 +203,7 @@ export function AnimationLane({
   const shared = {
     open,
     label,
+    laneName: "Camera",
     slotStartMs: slot.startMs,
     durationMs: slot.durationMs,
     windowStartMs,

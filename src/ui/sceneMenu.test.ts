@@ -158,9 +158,35 @@ describe("sceneMenuItems", () => {
   });
 });
 
+describe("scene Move up and Move down", () => {
+  it("are left out where the surface cannot reorder", () => {
+    expect(items().some((e) => e !== "separator" && e.id.startsWith("move-"))).toBe(false);
+  });
+
+  it("sit in their own group before the background actions, disabled at the ends", () => {
+    const up = vi.fn();
+    const entries = items({ moves: { up, down: null } });
+    const ids = entries.map((e) => (e === "separator" ? "|" : e.id));
+    expect(ids.slice(ids.indexOf("move-up") - 1, ids.indexOf("copy-background"))).toEqual([
+      "|",
+      "move-up",
+      "move-down",
+      "|",
+    ]);
+    expect(item(entries, "move-down").disabled).toBe(true);
+    expect(item(entries, "move-down").title).toBe("Already last");
+    expect(item(entries, "move-up").disabled).toBe(false);
+    item(entries, "move-up").onSelect();
+    expect(up).toHaveBeenCalledOnce();
+  });
+});
+
 describe("SceneMenuIcon", () => {
   it("gives every menu item a leading icon", () => {
-    for (const entries of [items(), items({ onManage: vi.fn(), onCopyToProject: undefined })]) {
+    for (const entries of [
+      items({ moves: { up: vi.fn(), down: vi.fn() } }),
+      items({ onManage: vi.fn(), onCopyToProject: undefined }),
+    ]) {
       for (const entry of entries) {
         if (entry !== "separator") expect(entry.icon).toBeDefined();
       }
@@ -180,6 +206,8 @@ describe("SceneMenuIcon", () => {
       "manage",
       "copy-background",
       "paste-background",
+      "move-up",
+      "move-down",
       "delete",
     ];
     for (const id of ids) {

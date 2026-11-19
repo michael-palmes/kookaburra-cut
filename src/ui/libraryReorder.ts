@@ -23,3 +23,25 @@ export function gridInsertionIndex(boxes: readonly CardBox[], x: number, y: numb
 export function dropTargetIndex(from: number, insertBefore: number): number {
   return insertBefore > from ? insertBefore - 1 : insertBefore;
 }
+
+/** Where Move up and Move down drop a card, as `insertBefore` for the drag's commit, or null with the reason. Stable items keep ahead of beta ones, as a drag does. */
+export function cardMoveTargets(
+  statuses: readonly (string | undefined)[],
+  index: number,
+  searching: boolean,
+): { up: number | null; down: number | null; upTitle?: string; downTitle?: string } {
+  if (searching) {
+    const title = "Clear the search to reorder";
+    return { up: null, down: null, upTitle: title, downTitle: title };
+  }
+  const status = "Stable items stay before beta items";
+  const crosses = (to: number) => statuses[to] !== statuses[index];
+  const up = index <= 0 ? null : crosses(index - 1) ? null : index - 1;
+  const down = index >= statuses.length - 1 ? null : crosses(index + 1) ? null : index + 2;
+  return {
+    up,
+    down,
+    upTitle: index > 0 && up === null ? status : undefined,
+    downTitle: index < statuses.length - 1 && down === null ? status : undefined,
+  };
+}

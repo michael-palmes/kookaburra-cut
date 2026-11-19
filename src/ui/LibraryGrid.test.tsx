@@ -40,3 +40,34 @@ describe("bundled library in a release build", () => {
     ]);
   });
 });
+
+describe("library card moves", () => {
+  it("seat Move up and Move down between the copies and Delete", () => {
+    const down = vi.fn();
+    const items = libraryCardMenuItems({
+      kind: "preset",
+      source: "user",
+      writable: true,
+      onOpen: vi.fn(),
+      onEditDetails: vi.fn(),
+      onDuplicate: vi.fn(),
+      onDelete: vi.fn(),
+      moves: { up: null, down },
+    });
+    expect(items.map((item) => (item === "separator" ? "|" : item.id))).toEqual([
+      "open",
+      "details",
+      "duplicate",
+      "|",
+      "move-up",
+      "move-down",
+      "|",
+      "delete",
+    ]);
+    const up = items.find((item) => item !== "separator" && item.id === "move-up");
+    expect(up !== "separator" && up?.disabled).toBe(true);
+    const move = items.find((item) => item !== "separator" && item.id === "move-down");
+    if (move && move !== "separator") move.onSelect();
+    expect(down).toHaveBeenCalledOnce();
+  });
+});

@@ -1,23 +1,17 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useClockStore } from "../engine/clock";
 import { DEFAULT_EASE, EASE_FAMILIES, ease } from "../engine/ease";
-import { FPS } from "../engine/format";
 import {
   addAnimationAuto,
   addedKey,
-  deleteKeyMerged,
   duplicateKey,
   duplicateKeyBefore,
   junctionInfo,
   type KeyedTrack,
   type KeyedTrackKey,
-  type MergedDelete,
   MIN_KEY_GAP_MS,
   mergeGap,
-  moveKey,
-  moveSegment,
   nearestKey,
-  nextKeyId,
   playheadDriftTarget,
   removeSegment,
   resizeBounds,
@@ -34,39 +28,47 @@ import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { formatSceneLengthMs, parseSceneLengthMs } from "./durationText";
 import { ToggleRow } from "./inspector/rows";
 import { KeptLengthNote, useKeptLength } from "./keptLength";
+import {
+  focusAdjacentLane,
+  LANE_FOCUS_RING,
+  laneKeyIntent,
+  nextAnnouncement,
+  rovingIndex,
+  rovingStop,
+} from "./laneKeys";
 import { seekSceneLocal } from "./laneSeek";
 import { ResizeAnimationModal } from "./ResizeAnimationModal";
 import { SceneMenuIcon } from "./sceneMenu";
 import { StillsIcon } from "./stillsIcons";
 import { commitFocusedInspectorEdit } from "./textEditFocus";
+import {
+  deleteKeySelection,
+  deleteTrackLaneItem,
+  FRAME_MS,
+  keyDragResult,
+  keyItemId,
+  retimeKey,
+  segmentDragResult,
+  segmentItemId,
+  snapToFrame,
+  type TrackLaneItem,
+  trackLaneEditMessage,
+  trackLaneItemName,
+  trackLaneItems,
+  trackLaneNudge,
+} from "./trackLaneKeys";
 
 /** The generic keyed-track timeline lane, extracted verbatim from the camera AnimationLane so the layered-screenshot lane can reuse it: hard walls and gaps stay the model (the opposite of the video editor's magnetic reflow); the 4% minimum segment length is visual only (decision 16). Animations are CONNECTED: one diamond per key, so a shared junction is ONE handle, keys attached to no segment draw nothing, and the pixel-derived `minLenMs` (24px, 10px in the Detailed view) rather than MIN_KEY_GAP_MS is what drags and the connected engine ops clamp against. Track-specific state (edit store, doc funnel, tool keys, copy) arrives through props from a thin wrapper. */
 
 const PAD = 12; // px inset either side of the track
 const SNAP_PX = 8; // playhead snap radius for diamond drags
 const MOVE_THRESHOLD_PX = 4; // pointer travel before a press becomes a drag
-const FRAME_MS = 1000 / FPS;
 const MIN_SEGMENT_VISUAL = 0.04; // of the track's inner width, visual floor only
 /** The visible minimum length of an animation, in px of lane (decision 1); the Detailed view trades legibility for finer packing. */
 const MIN_LEN_PX = 24;
 const MIN_LEN_PX_DETAILED = 10;
 /** Gap between two clicks on one diamond that still counts as a double-click. */
 const DOUBLE_CLICK_MS = 400;
-
-/** Round to the export frame grid, then to whole ms (sidecar times stay integers). */
-function snapToFrame(ms: number): number {
-  return Math.round(Math.round(ms / FRAME_MS) * FRAME_MS);
-}
-
-/** What a merged delete writes: the collapsed track, or the static single-key doc freezing the surviving pose (decision 4), so losing the last animation holds the shot instead of leaving a lone diamond. */
-function withFrozenPose<P, T extends KeyedTrack<P>>(result: MergedDelete<P, T>): T {
-  if (result.frozenPose === undefined) return result.track;
-  return {
-    ...result.track,
-    keys: [{ id: nextKeyId(result.track), tMs: 0, pose: result.frozenPose }],
-    segments: [],
-  };
-}
 
 /** Keeps the keys some resolved animation joins: the rest (a legacy stray, or the frozen static pose) are invisible on the lane and unpickable. */
 function hasSegment<P>(layout: TrackLayout<P>): (key: KeyedTrackKey<P>) => boolean {
@@ -124,6 +126,8 @@ export interface TrackLaneProps<P, T extends KeyedTrack<P>> {
   writeErrorPrefix: string;
   /** Names the add button when lanes stack ("＋ Camera" / "＋ Comparison"), so each track states what it animates without a label column; absent keeps "＋ Animation", the single-lane look byte for byte. */
   label?: string;
+  /** What the lane animates, for its accessible name ("Camera" reads "Camera animations"); falls back to `label`. */
+  laneName?: string;
   /** Extra root class for per-lane theming (`lane-compare` recolours diamonds and segments via --lane-accent). */
   laneClassName?: string;
   /** Double-clicking a diamond activates it (the chart lane opens the data modal on that key); absent leaves the second click a plain select. */
@@ -178,6 +182,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
   addTitle,
   writeErrorPrefix,
   label,
+  laneName,
   laneClassName,
   onKeyActivate,
   segmentExtras,
@@ -201,6 +206,12 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
   /** The animation the easing popover is open for; only the context menu opens it. */
   const [easingSegment, setEasingSegment] = useState<number | null>(null);
   const [resizeSegIndex, setResizeSegIndex] = useState<number | null>(null);
+  // Keyboard model (laneKeys.ts): the roving item, the one drawing a forced ring, and the polite announcement.
+  const [focusedItem, setFocusedItem] = useState<string | null>(null);
+  const [ringItem, setRingItem] = useState<string | null>(null);
+  const [announcement, setAnnouncement] = useState("");
+  const itemRefs = useRef(new Map<string, HTMLElement>());
+  const pendingFocus = useRef<{ id: string | null; index: number } | null>(null);
 
   useEffect(() => {
     const el = trackRef.current;
@@ -285,30 +296,21 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
         const key = track.keys.find((k) => k.id === selection.keyId);
         if (!key) return;
         const frames = (e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 10 : 1);
-        const next = moveKey(
-          track,
-          key.id,
-          snapToFrame(key.tMs + frames * FRAME_MS),
-          durationMs,
-          minLenMs,
-        );
+        const next = retimeKey(track, key.id, key.tMs + frames * FRAME_MS, durationMs, minLenMs);
         if (next && next !== track) void commit(next);
         return;
       }
       if (e.key === "Delete" || e.key === "Backspace") {
         // Instant delete by design: lane edits are rapid-fire, and the lane redraws immediately, so a slip is obvious and cheap to redo.
-        if (selection.segment !== null) {
-          const next = removeSegment(track, selection.segment);
-          if (next) {
-            select(null, null);
-            void commit(next);
-          }
-        } else if (selection.keyId) {
-          const result = deleteKeyMerged(track, selection.keyId);
-          if (result) {
-            select(null, null);
-            void commit(withFrozenPose(result));
-          }
+        const next =
+          selection.segment !== null
+            ? removeSegment(track, selection.segment)
+            : selection.keyId
+              ? deleteKeySelection(track, selection.keyId)
+              : null;
+        if (next) {
+          select(null, null);
+          void commit(next);
         }
       }
     };
@@ -318,10 +320,22 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
 
   // ── Drags ─────────────────────────────────
 
+  /** A press on an item never takes focus (so the arrows keep their pointer meaning), but it moves the lane's Tab stop there. */
+  function pointerTakesStop(id: string) {
+    pendingFocus.current = null;
+    setFocusedItem(id);
+    const lane = trackRef.current;
+    const active = document.activeElement;
+    if (lane && active instanceof Node && lane.contains(active) && active !== lane) {
+      lane.focus({ preventScroll: true });
+    }
+  }
+
   function onKeyPointerDown(e: React.PointerEvent, keyId: string) {
     if (e.button !== 0) return;
     e.stopPropagation();
     e.preventDefault(); // a drag must never paint a native text selection
+    pointerTakesStop(keyItemId(keyId));
     e.currentTarget.setPointerCapture(e.pointerId);
     setEasingSegment(null);
     setDrag({ kind: "key", id: keyId, startX: e.clientX, orig: track, moved: false });
@@ -336,6 +350,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
     if (e.button !== 0) return;
     e.stopPropagation();
     e.preventDefault();
+    pointerTakesStop(segmentItemId(fromId, toId));
     e.currentTarget.setPointerCapture(e.pointerId);
     setEasingSegment(null);
     setDrag({
@@ -381,32 +396,27 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
       driftPlayhead();
     }
     if (drag.kind === "key") {
-      const origKey = drag.orig.keys.find((k) => k.id === drag.id);
-      if (!origKey) return;
-      let target = origKey.tMs + dx / pxPerMs;
-      // Snap to the nearest of beats + playhead within radius (playhead wins ties), then to the frame grid.
-      const snapRadius = SNAP_PX / pxPerMs;
-      let snapped: number | null = null;
-      let bestD = snapRadius;
-      for (const cand of [...beatSnapTimes, playheadLocal]) {
-        const d = Math.abs(target - cand);
-        if (d <= bestD) {
-          bestD = d;
-          snapped = cand;
-        }
-      }
-      if (snapped !== null) target = snapped;
-      const next = moveKey(drag.orig, drag.id, snapToFrame(target), durationMs, minLenMs);
+      const next = keyDragResult(
+        drag.orig,
+        drag.id,
+        dx,
+        pxPerMs,
+        SNAP_PX / pxPerMs,
+        [...beatSnapTimes, playheadLocal],
+        durationMs,
+        minLenMs,
+      );
       if (!next) return;
       const moved = next.keys.find((k) => k.id === drag.id);
       setMergeTarget(moved ? mergeCandidate(drag.orig, drag.id, moved.tMs) : null);
       preview(next, false);
     } else {
-      const next = moveSegment(
+      const next = segmentDragResult(
         drag.orig,
         drag.fromId,
         drag.toId,
-        snapToFrame(dx / pxPerMs),
+        dx,
+        pxPerMs,
         durationMs,
         minLenMs,
       );
@@ -476,17 +486,16 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
     scrubAt(e.clientX);
   }
 
-  /** Right-click a keyframe: the connected edits, each probed so a disabled item can say why. */
-  function onKeyContextMenu(e: React.MouseEvent, keyId: string) {
-    e.preventDefault();
-    e.stopPropagation();
+  /** Right-click (or ⇧F10 on) a keyframe: the connected edits, each probed so a disabled item can say why. */
+  function openKeyMenu(keyId: string, x: number, y: number) {
     select(keyId, null);
     const after = duplicateKey(track, ctx, keyId, minLenMs);
     const before = duplicateKeyBefore(track, ctx, keyId, minLenMs);
     const still = keyExtras?.isStill(keyId) ?? false;
     setMenu({
-      x: e.clientX,
-      y: e.clientY,
+      x,
+      y,
+      ariaLabel: "Keyframe actions",
       items: [
         {
           id: "duplicate",
@@ -521,10 +530,10 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
             ? "Joins the animations either side; the last one leaves the pose frozen. Its still goes too"
             : "Joins the animations either side; the last one leaves the pose frozen",
           onSelect: () => {
-            const result = deleteKeyMerged(track, keyId);
-            if (result) {
+            const next = deleteKeySelection(track, keyId);
+            if (next) {
               select(null, null);
-              void commit(withFrozenPose(result));
+              void commit(next);
             }
           },
         },
@@ -549,20 +558,26 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
   /** Right-click an animation: easing, resize, split at the clicked point, delete. */
   function onSegmentContextMenu(e: React.MouseEvent, docIndex: number) {
     e.preventDefault();
-    select(null, docIndex);
-    const bounds = resizeBounds(track, ctx, docIndex, minLenMs);
     const rect = trackRef.current?.getBoundingClientRect();
     const clickedT =
       rect && pxPerMs > 0
         ? snapToFrame(windowStartMs + (e.clientX - rect.left - PAD) / pxPerMs)
         : null;
+    openSegmentMenu(docIndex, e.clientX, e.clientY, clickedT);
+  }
+
+  /** The animation menu at (x, y); Add keyframe splits at `clickedT`. */
+  function openSegmentMenu(docIndex: number, x: number, y: number, clickedT: number | null) {
+    select(null, docIndex);
+    const bounds = resizeBounds(track, ctx, docIndex, minLenMs);
     const splitNext =
       clickedT === null
         ? null
         : splitSegmentAt(track, docIndex, clickedT, poseAt(clickedT), minLenMs);
     setMenu({
-      x: e.clientX,
-      y: e.clientY,
+      x,
+      y,
+      ariaLabel: "Animation actions",
       items: [
         {
           id: "easing",
@@ -613,6 +628,138 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
   const targetKey = selectedKey ?? nearestKey(shown, playheadLocal);
   const nearIds = [targetKey?.id ?? ""];
 
+  const items = trackLaneItems(layout, shown.keys);
+  const selectedItemId = selectedKeyId
+    ? keyItemId(selectedKeyId)
+    : (items.find((i) => i.kind === "segment" && i.docIndex === selectedSegment)?.id ?? null);
+  const stop = rovingStop(
+    items.map((i) => i.id),
+    focusedItem,
+    selectedItemId,
+  );
+  const itemById = new Map(items.map((item, index) => [item.id, { item, index }]));
+
+  // After a keyboard delete, focus lands on the neighbour once the new track arrives (or the lane, when nothing is left).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once per committed track
+  useLayoutEffect(() => {
+    const pending = pendingFocus.current;
+    if (!pending) return;
+    pendingFocus.current = null;
+    const target =
+      (pending.id !== null && itemById.has(pending.id) ? pending.id : null) ??
+      items[Math.min(pending.index, items.length - 1)]?.id;
+    const el = target ? itemRefs.current.get(target) : null;
+    (el ?? trackRef.current)?.focus({ preventScroll: true });
+  }, [track]);
+
+  const announce = (message: string) =>
+    setAnnouncement((previous) => nextAnnouncement(previous, message));
+
+  const laneElements = () => {
+    const root = trackRef.current?.closest(".anim-lane")?.parentElement;
+    return root ? [...root.querySelectorAll<HTMLElement>('.anim-lane.open [role="listbox"]')] : [];
+  };
+
+  /** Enter or Space: what a click does, and a second press on a selected key what a double-click does. */
+  function activateItem(item: TrackLaneItem) {
+    if (item.kind === "key") {
+      const again = getSelection().keyId === item.keyId;
+      select(item.keyId, null);
+      seekLocal(item.tMs);
+      if (again) onKeyActivate?.(item.keyId);
+      return;
+    }
+    select(null, item.docIndex);
+    driftPlayhead();
+  }
+
+  function onItemKeyDown(e: React.KeyboardEvent<HTMLElement>, item: TrackLaneItem) {
+    const intent = laneKeyIntent(e);
+    if (!intent) return;
+    pendingFocus.current = null;
+    if (intent.kind === "escape") {
+      // The window handler still disarms or deselects; focus steps back to the lane.
+      trackRef.current?.focus({ preventScroll: true });
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    const index = itemById.get(item.id)?.index ?? 0;
+    switch (intent.kind) {
+      case "focus": {
+        const next = items[rovingIndex(index, items.length, intent.to)];
+        if (next) itemRefs.current.get(next.id)?.focus({ preventScroll: true });
+        return;
+      }
+      case "lane":
+        focusAdjacentLane(laneElements(), e.currentTarget, intent.step);
+        return;
+      case "move":
+      case "trim": {
+        const next = trackLaneNudge(track, item, intent, durationMs, minLenMs);
+        if (intent.kind === "trim" && item.kind === "key") return;
+        const changed = next !== null && next !== track;
+        if (changed) void commit(next);
+        announce(trackLaneEditMessage(item, intent, next, changed));
+        return;
+      }
+      case "select":
+        activateItem(item);
+        return;
+      case "delete": {
+        const next = deleteTrackLaneItem(track, item);
+        if (!next) return;
+        const neighbour = items[index - 1] ?? items[index + 1];
+        pendingFocus.current = { id: neighbour?.id ?? null, index: Math.max(0, index - 1) };
+        select(null, null);
+        void commit(next);
+        announce(item.kind === "key" ? "Keyframe deleted" : "Animation deleted");
+        return;
+      }
+      case "menu": {
+        const r = e.currentTarget.getBoundingClientRect();
+        if (item.kind === "key") {
+          openKeyMenu(item.keyId, r.left, r.bottom + 4);
+          return;
+        }
+        // Add keyframe splits at the playhead when it sits inside, else halfway.
+        const inside = playheadLocal > item.fromTMs && playheadLocal < item.toTMs;
+        const at = snapToFrame(inside ? playheadLocal : (item.fromTMs + item.toTMs) / 2);
+        openSegmentMenu(item.docIndex, r.left, r.bottom + 4, at);
+        return;
+      }
+    }
+  }
+
+  /** The roving, naming and focus plumbing every item shares; pointer handlers stay on the elements. */
+  function itemProps(id: string, selected: boolean, name: string) {
+    const entry = itemById.get(id);
+    return {
+      "aria-selected": selected,
+      "aria-label": name,
+      "aria-posinset": (entry?.index ?? 0) + 1,
+      "aria-setsize": items.length,
+      ref: (el: HTMLElement | null) => {
+        if (el) itemRefs.current.set(id, el);
+        else itemRefs.current.delete(id);
+      },
+      onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => {
+        if (entry) onItemKeyDown(e, entry.item);
+      },
+      onFocus: (e: React.FocusEvent<HTMLElement>) => {
+        setFocusedItem(id);
+        let visible = false;
+        try {
+          visible = e.currentTarget.matches(":focus-visible");
+        } catch {
+          visible = false;
+        }
+        setRingItem(visible ? id : null);
+      },
+      onBlur: () => setRingItem((current) => (current === id ? null : current)),
+    };
+  }
+
   // Probed every render: null means nothing fits at this playhead, which is what disables the button.
   const addNext = addAnimationAuto(track, ctx, snapToFrame(playheadLocal), poseAt, minLenMs);
   const easingLayout =
@@ -653,13 +800,22 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
         <div
           className="anim-track"
           ref={trackRef}
+          role="listbox"
+          aria-label={`${laneName ?? label ?? "Camera"} animations`}
+          aria-orientation="horizontal"
+          tabIndex={-1}
           onPointerDown={onBackgroundPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
         >
           {beatMarkers?.beats.map((t) =>
             t >= windowStartMs && t <= windowEndMs ? (
-              <span key={`beat-${t}`} className="anim-beat-tick" style={{ left: xOf(t) }} />
+              <span
+                key={`beat-${t}`}
+                className="anim-beat-tick"
+                style={{ left: xOf(t) }}
+                aria-hidden="true"
+              />
             ) : null,
           )}
           {beatMarkers?.keyMoments.map((t) =>
@@ -668,6 +824,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
                 key={`moment-${t}`}
                 className="anim-beat-tick strong"
                 style={{ left: xOf(t) }}
+                aria-hidden="true"
               />
             ) : null,
           )}
@@ -677,14 +834,22 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
             const width = Math.max(innerW * MIN_SEGMENT_VISUAL, xOf(seg.toTMs) - left);
             // A segment living entirely inside a trimmed transition half pins at the lane edge, cued like edge keys.
             const outside = seg.toTMs <= windowStartMs || seg.fromTMs >= windowEndMs;
+            const id = segmentItemId(seg.fromId, seg.toId);
+            const entry = itemById.get(id);
             return (
-              // biome-ignore lint/a11y/noStaticElementInteractions: pointer-driven editing surface — keyboard editing rides the window-level Delete/arrow handlers
               <div
+                role="option"
+                tabIndex={id === stop ? 0 : -1}
+                {...itemProps(
+                  id,
+                  selectedSegment === seg.docIndex,
+                  entry ? trackLaneItemName(entry.item) : "Animation",
+                )}
                 key={`${seg.fromId}-${seg.toId}`}
                 className={`anim-seg${selectedSegment === seg.docIndex ? " selected" : ""}${
                   seg.ease === "jump" ? " jump" : ""
                 }${activeSegment?.docIndex === seg.docIndex ? " at-playhead" : ""}${outside ? " overhang" : ""}`}
-                style={{ left, width }}
+                style={{ left, width, ...(ringItem === id ? LANE_FOCUS_RING : null) }}
                 title={
                   outside
                     ? `Animation at ${(seg.fromTMs / 1000).toFixed(2)}s, inside the transition (shown at the lane edge)`
@@ -709,15 +874,27 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
               ) : null,
             )}
           {shown.keys.map((key) => (
-            // biome-ignore lint/a11y/noStaticElementInteractions: pointer-driven editing surface, keyboard editing rides the window-level Delete/arrow handlers
             <div
+              role="option"
+              tabIndex={keyItemId(key.id) === stop ? 0 : -1}
+              {...itemProps(
+                keyItemId(key.id),
+                selectedKeyId === key.id,
+                trackLaneItemName(
+                  { kind: "key", id: keyItemId(key.id), keyId: key.id, tMs: key.tMs },
+                  keyExtras?.isStill(key.id) ?? false,
+                ),
+              )}
               key={key.id}
               className={`anim-key${detailed ? " detailed" : ""}${
                 selectedKeyId === key.id ? " selected" : ""
               }${nearIds.includes(key.id) ? " near" : ""}${
                 mergeTarget === key.id ? " merge-target" : ""
               }${key.tMs < windowStartMs || key.tMs > windowEndMs ? " overhang" : ""}`}
-              style={{ left: xOf(key.tMs) }}
+              style={{
+                left: xOf(key.tMs),
+                ...(ringItem === keyItemId(key.id) ? LANE_FOCUS_RING : null),
+              }}
               title={`${
                 key.tMs > durationMs
                   ? `Keyframe at ${(key.tMs / 1000).toFixed(2)}s, past the scene end (holds clamp)`
@@ -728,10 +905,14 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
               onPointerDown={(e) => onKeyPointerDown(e, key.id)}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
-              onContextMenu={(e) => onKeyContextMenu(e, key.id)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openKeyMenu(key.id, e.clientX, e.clientY);
+              }}
             />
           ))}
-          <span className="anim-playhead" style={{ left: xOf(playheadLocal) }} />
+          <span className="anim-playhead" style={{ left: xOf(playheadLocal) }} aria-hidden="true" />
         </div>
 
         <span className="anim-readout">
@@ -767,6 +948,10 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
           <KeptLengthNote note={kept.note} />
         </span>
       </div>
+
+      <span className="visually-hidden" role="status">
+        {announcement}
+      </span>
 
       {writeError && (
         <div className="anim-lane-error" role="alert">

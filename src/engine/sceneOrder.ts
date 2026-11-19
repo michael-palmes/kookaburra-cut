@@ -14,6 +14,20 @@ export function moveSelection(count: number, selected: number[], insertBefore: n
   return [...rest.slice(0, at), ...block, ...rest.slice(at)];
 }
 
+/** The order after moving `selected` one place earlier (-1) or later (1), as a drag to that spot would; null when the block already sits at that end. */
+export function nudgeSelection(
+  count: number,
+  selected: readonly number[],
+  delta: -1 | 1,
+): number[] | null {
+  const block = [...new Set(selected)].sort((a, b) => a - b);
+  if (block.length === 0 || block.length >= count) return null;
+  const first = block[0];
+  const last = block[block.length - 1];
+  if (delta < 0 ? first <= 0 : last >= count - 1) return null;
+  return moveSelection(count, block, delta < 0 ? first - 1 : last + 2);
+}
+
 /** The `{from, at}` pairs that duplicate `selected` as ONE block after the LAST selected scene, keeping the sources' relative order: duplicating Title and Device gives `Title, Device, Title copy, Device copy`, and a gappy selection (scenes 2 and 5) puts both copies after scene 5. Issue them in the order returned, `from` as `duplicate_scene`'s index and `at` as its `position`: the cursor walks with the array, which grows by one per insertion, and no source index moves because every copy lands past the last of them. */
 export function planDuplicates(selected: readonly number[]): { from: number; at: number }[] {
   const block = [...new Set(selected)].sort((a, b) => a - b);

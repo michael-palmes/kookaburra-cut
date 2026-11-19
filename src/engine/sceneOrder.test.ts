@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { moveSelection, planDeletes, planDuplicates, planMoves } from "./sceneOrder";
+import {
+  moveSelection,
+  nudgeSelection,
+  planDeletes,
+  planDuplicates,
+  planMoves,
+} from "./sceneOrder";
 
 describe("moveSelection", () => {
   it("moves one scene forward and back", () => {
@@ -119,5 +125,24 @@ describe("planMoves", () => {
       }
       expect(current).toEqual(desired);
     }
+  });
+});
+
+describe("nudgeSelection", () => {
+  it("lands where a drag one place over lands", () => {
+    expect(nudgeSelection(4, [2], -1)).toEqual(moveSelection(4, [2], 1));
+    expect(nudgeSelection(4, [1], 1)).toEqual(moveSelection(4, [1], 3));
+    expect(nudgeSelection(4, [1], 1)).toEqual([0, 2, 1, 3]);
+  });
+  it("moves a block as one", () => {
+    expect(nudgeSelection(5, [2, 3], -1)).toEqual([0, 2, 3, 1, 4]);
+    expect(nudgeSelection(5, [2, 3], 1)).toEqual([0, 1, 4, 2, 3]);
+  });
+  it("stops at the ends and for a selection of everything", () => {
+    expect(nudgeSelection(3, [0], -1)).toBeNull();
+    expect(nudgeSelection(3, [2], 1)).toBeNull();
+    expect(nudgeSelection(3, [1, 2], 1)).toBeNull();
+    expect(nudgeSelection(2, [0, 1], 1)).toBeNull();
+    expect(nudgeSelection(3, [], 1)).toBeNull();
   });
 });

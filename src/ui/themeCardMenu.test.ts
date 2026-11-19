@@ -91,4 +91,33 @@ describe("theme card actions", () => {
     expect(move({ ...choice("ws:base"), dependents: ["Night"] })?.disabled).toBe(true);
     expect(move(choice("ws:solo"))?.disabled).toBe(false);
   });
+  it("seats Move up and Move down before the destructive group, with icons", () => {
+    const up = vi.fn();
+    const items = buildThemeCardMenu(choice("ws:personal"), options(), vi.fn(), false, {
+      up,
+      down: null,
+    });
+    const ids = items.map((item) => (item === "separator" ? "|" : item.id));
+    expect(ids).toEqual([
+      "duplicate",
+      "edit",
+      "fonts",
+      "|",
+      "move-up",
+      "move-down",
+      "|",
+      "rename",
+      "delete",
+    ]);
+    const moves = actions(items).filter((item) => item.id.startsWith("move-"));
+    expect(moves.every((item) => item.icon !== undefined)).toBe(true);
+    expect(moves[1].disabled).toBe(true);
+    expect(moves[1].title).toBe("Already last");
+    moves[0].onSelect();
+    expect(up).toHaveBeenCalledOnce();
+  });
+  it("leaves the moves out where the listing cannot reorder", () => {
+    const items = actions(buildThemeCardMenu(choice("ws:personal"), options(), vi.fn(), false));
+    expect(items.some((item) => item.id.startsWith("move-"))).toBe(false);
+  });
 });
