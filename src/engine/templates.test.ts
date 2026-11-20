@@ -263,7 +263,9 @@ interface SceneSource {
 }
 
 function sceneSources(entry: TemplateFolder): SceneSource[] {
-  return (entry.project?.scenes ?? []).flatMap(({ file }) => {
+  const files = (entry.project?.scenes ?? []).map((scene) => scene.file);
+  if (entry.project?.persistent) files.push(entry.project.persistent);
+  return files.flatMap((file) => {
     const code = sceneSourceGlob[`../../projects/${entry.id}/${file}`];
     return code === undefined ? [] : [{ file, code }];
   });
@@ -294,17 +296,12 @@ function editabilityProblems(
       problems.push(`${file} takes a device by position; find it by id with a fallback`);
     }
     for (const match of code.matchAll(/\bdevices(\[\d+\]|\.at\(\d+\))/g)) {
-      if (
-        !code
-          .slice(Math.max(0, match.index - 8), match.index)
-          .trimEnd()
-          .endsWith("??")
-      ) {
+      if (!/\?\?\s*$/.test(code.slice(Math.max(0, match.index - 40), match.index))) {
         problems.push(`${file} takes ${match[0]} without finding a device by id first`);
       }
     }
-    if (readsDevices && /\breturn\s+null\b/.test(code)) {
-      problems.push(`${file} returns null; return the stage so it stays without a device`);
+    if (readsDevices && /\breturn\s*(null\b|undefined\b|;)/.test(code)) {
+      problems.push(`${file} returns nothing; return the stage so it stays without a device`);
     }
     const excepted = SAMPLE_PIXEL_EXCEPTIONS[id]?.includes(file) ?? false;
     if (!excepted && code.includes("mediaPixelToScreenUv(")) {
@@ -314,7 +311,7 @@ function editabilityProblems(
   for (const sidecar of sidecars) {
     for (const ref of collectAssetRefs(sidecar.raw)) {
       const name = ref.split("/").pop() ?? ref;
-      if (ref !== APP_ICON && /icon/i.test(name)) {
+      if (ref !== APP_ICON && /(^|[-_.])icon([-_.]|$)/i.test(name)) {
         problems.push(`${sidecar.file} shows ${ref}; the app icon is ${APP_ICON}`);
       }
     }
@@ -712,6 +709,8 @@ describe("template editability", () => {
 
   it("passes scene code that finds its device by id and keeps its stage", () => {
     expect(editabilityProblems("launch", scene(stage), [])).toEqual([]);
+    const wrapped = stage.replace("?? devices[0]", "??\n          devices[0]");
+    expect(editabilityProblems("launch", scene(wrapped), [])).toEqual([]);
   });
 
   it("keeps media and samples out of scene code, the app icon aside", () => {
@@ -744,9 +743,11 @@ describe("template editability", () => {
   });
 
   it("keeps the stage when the device is gone", () => {
-    expect(
-      editabilityProblems("launch", scene(stage.replace("<SceneStage />", "null")), []),
-    ).toEqual(["scenes/01.tsx returns null; return the stage so it stays without a device"]);
+    const message = "scenes/01.tsx returns nothing; return the stage so it stays without a device";
+    for (const empty of ["return null;", "return;"]) {
+      const code = stage.replace("return <SceneStage />;", empty);
+      expect(editabilityProblems("launch", scene(code), [])).toEqual([message]);
+    }
   });
 
   it("fits nothing to a recording's pixels", () => {
@@ -757,7 +758,10 @@ describe("template editability", () => {
   });
 
   it("shows only the app icon slot as an icon in sidecars", () => {
-    const sidecars = [{ file: "scenes/01.json", raw: { media: { src: "assets/brand-icon.png" } } }];
+    const sidecars = [
+      { file: "scenes/01.json", raw: { media: { src: "assets/brand-icon.png" } } },
+      { file: "scenes/02.json", raw: { media: { src: "assets/silicone-case.jpg" } } },
+    ];
     expect(editabilityProblems("launch", [], sidecars)).toEqual([
       "scenes/01.json shows assets/brand-icon.png; the app icon is assets/app-icon.png",
     ]);

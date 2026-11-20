@@ -133,10 +133,10 @@ checks the ones marked *tested*.
   writes; a template showing its own product's icon ships it under that name.
   Screens and recordings are named in sidecars, where Replace reaches them. Scene
   code names no asset but the app icon and no sample by name (*tested*), and finds
-  a device by id with a fallback, `devices.find((d) => d.id === "hero") ?? devices[0]`
-  (*tested*).
+  a device by id with a fallback, `devices.find((d) => d.id === "hero") ?? devices[0]`,
+  never by position alone (*tested*).
 - **The stage stays.** With a device removed, the floor, lights and words remain:
-  a scene module that reads devices never returns `null` (*tested*).
+  a scene module that reads devices always returns its stage (*tested*).
 - **Nothing fitted to the samples.** No crop rectangles in a recording's pixels
   (`mediaPixelToScreenUv`, *tested*) and no clip times in scene code; what depends
   on the media lives in the sidecar or follows the beat grid.
