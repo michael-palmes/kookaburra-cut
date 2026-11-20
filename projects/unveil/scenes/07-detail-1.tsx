@@ -6,6 +6,7 @@ import {
   SceneStage,
   ScreenRegion,
   useSceneDevices,
+  useSceneDuration,
   useTimeline,
 } from "@kookaburra/toolkit";
 
@@ -23,10 +24,11 @@ export default defineScene({
     const devices = useSceneDevices();
     const hero = devices.find((d) => d.id === "hero") ?? devices[0];
     const { localMs } = useTimeline();
+    const endMs = useSceneDuration();
     if (!hero) return <SceneStage floorY={-1.905} />;
     const [u0, v0] = mediaPixelToScreenUv(hero.model, [CARD_PX[0], CARD_PX[1]], MEDIA);
     const [u1, v1] = mediaPixelToScreenUv(hero.model, [CARD_PX[2], CARD_PX[3]], MEDIA);
-    const lift = LIFT[0] + (LIFT[1] - LIFT[0]) * ramp(localMs, 0, 1875, "linear");
+    const lift = LIFT[0] + (LIFT[1] - LIFT[0]) * ramp(localMs, 0, endMs, "linear");
     const offset: [number, number] = [TOWARD_LENS[0] * lift, TOWARD_LENS[1] * lift];
     return (
       <SceneStage floorY={-1.905}>

@@ -103,6 +103,13 @@ export const TOOLKIT_SHOW: Readonly<
       "Motion blur smears a held pose around its own instant, never into the next step.",
     ],
   },
+  useSceneDuration: {
+    example: `const endMs = useSceneDuration();\nconst outAt = endMs - 165;`,
+    timing: [
+      "The length the project plays: project.json's durationMs and a pinned cutAt move it; the TSX durationMs is only the default. Steady while Present holds a slide; outside a scene, the project's length.",
+      "An exit with outAt = endMs - outDurationMs ends on the cut, wherever a retime moves it.",
+    ],
+  },
   usePresentTiming: {
     example: `const { localMs: raw } = useTimeline();\nconst localMs = useHeldLocalMs(raw);\nusePresentTiming(2400);`,
     timing: [
