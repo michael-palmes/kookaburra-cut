@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { useClockStore } from "./clock";
+import { SceneHost } from "./SceneHost";
 import { SceneContext, type SceneTimeContext } from "./sceneContext";
 import { useSceneDuration } from "./timeline";
 
@@ -32,6 +33,20 @@ describe("useSceneDuration", () => {
     expect(read({ index: 4, startMs: 0, durationMs: 1875 + 86_400_000, lengthMs: 1875 })).toBe(
       1875,
     );
+  });
+
+  it("reads the length a host forwards beside its stretched window", () => {
+    let ms = Number.NaN;
+    renderToStaticMarkup(
+      <SceneHost index={4} id="scenes/a.tsx" startMs={0} durationMs={86_401_875} lengthMs={1875}>
+        <Probe
+          onRead={(v) => {
+            ms = v;
+          }}
+        />
+      </SceneHost>,
+    );
+    expect(ms).toBe(1875);
   });
 
   it("falls back to the project's length outside a scene", () => {
