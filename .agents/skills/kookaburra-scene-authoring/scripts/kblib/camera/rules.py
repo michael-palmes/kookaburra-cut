@@ -148,14 +148,13 @@ def cuts(track: Optional[Dict[str, Any]], duration: float) -> List[float]:
     if not track:
         return []
     out: List[float] = []
-    covered = {(s["from"]["id"], s["to"]["id"]): s for s in track["segments"]}
     keys = track["keys"]
     for seg in track["segments"]:
         if seg["ease"] == "jump":
             out.append(seg["to"]["tMs"])
     for a, b in zip(keys, keys[1:]):
         inside = any(s["from"]["tMs"] <= a["tMs"] and b["tMs"] <= s["to"]["tMs"] for s in track["segments"])
-        if (a["id"], b["id"]) not in covered and not inside and b["tMs"] > a["tMs"] and placed(a) != placed(b):
+        if not inside and b["tMs"] > a["tMs"] and placed(a) != placed(b):
             out.append(b["tMs"])
     return sorted(t for t in set(out) if 0 < t < duration)
 
@@ -261,10 +260,13 @@ def turn_onset(sc: Scene, a: float, b: float) -> Optional[Tuple[float, str]]:
     pose = sc.pose(a)
     during = turns(sc, a, b, pose)
     lead = max(0.0, a - (b - a))
-    before = turns(sc, lead, a, pose) if a - lead > 1e-6 else {}
+    if a - lead >= (b - a) / 2:
+        span, before = a - lead, turns(sc, lead, a, pose)
+    else:
+        span, before = min(b - a, sc.duration - b), turns(sc, b, min(sc.duration, b + (b - a)), pose)
     best: Optional[Tuple[float, str]] = None
     for name, turned in during.items():
-        onset = turned - before.get(name, 0.0) * (b - a) / (a - lead) if before else turned
+        onset = turned - before.get(name, 0.0) * (b - a) / span if span > 1e-6 else turned
         if best is None or onset > best[0]:
             best = (onset, name)
     return best

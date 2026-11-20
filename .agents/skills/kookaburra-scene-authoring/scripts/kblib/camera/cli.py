@@ -55,7 +55,7 @@ def scene_boxes() -> Dict[str, tuple]:
 
 
 def widest_aspect(manifest: Dict[str, Any]) -> float:
-    best = 16 / 9
+    best = 0.0
     for f in manifest.get("formats") or []:
         if isinstance(f, str) and ":" in f:
             a, _, b = f.partition(":")
@@ -63,7 +63,7 @@ def widest_aspect(manifest: Dict[str, Any]) -> float:
                 best = max(best, float(a) / float(b))
             except (ValueError, ZeroDivisionError):
                 continue
-    return best
+    return best or 16 / 9
 
 
 def load_scenes(project: Any) -> List[rules.Scene]:
@@ -84,14 +84,7 @@ def load_scenes(project: Any) -> List[rules.Scene]:
 
 
 def load_accepted(project: Any) -> List[Dict[str, Any]]:
-    import json
-
-    try:
-        doc = json.loads((project.root / pc.ACCEPTED_FILE).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return []
-    rows = doc.get("accepted") if isinstance(doc, dict) else None
-    return [r for r in rows or [] if isinstance(r, dict) and r.get("kind") in rules.KINDS and isinstance(r.get("why"), str)]
+    return pc.load_accepted(project, rules.KINDS)
 
 
 def run(project: Any, only: Optional[Sequence[str]] = None) -> Dict[str, Any]:

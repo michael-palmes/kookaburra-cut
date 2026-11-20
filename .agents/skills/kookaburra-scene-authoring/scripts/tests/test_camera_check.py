@@ -109,6 +109,9 @@ class RuleTests(KbTestCase):
         self.assertEqual(self.kinds(self.project([starts])), ["kick-on-turn"])
         steady = rig(held, pan, cameraKicks=[{"at": 1000, "zoom": 1.02, "releaseMs": 400}])
         self.assertEqual(self.kinds(self.project([steady])), [])
+        orbit = rig([key("a", 0, [0, 0, 5], [0, 0, 0]), key("b", 2000, [0, 0, 5], [3, 0, 0])], [{"from": "a", "to": "b", "ease": "linear"}],
+                    cameraKicks=[{"at": 0, "zoom": 1.02, "releaseMs": 400}])
+        self.assertEqual(self.kinds(self.project([orbit])), [])
 
     def test_a_kick_on_a_device_turn_out_of_view_is_left_alone(self) -> None:
         turn = {"keys": [{"id": "d1", "tMs": 0, "pose": {"p": {"rotationDeg": [0, 0, 0]}}},
