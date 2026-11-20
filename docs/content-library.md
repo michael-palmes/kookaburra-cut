@@ -157,6 +157,38 @@ the highlights. The Look step lists the template's looks first, badged
 Suggested, and preselects the first. Changing template re-seeds the look until
 the user picks one.
 
+## Crafting a template
+
+The order that worked across Unveil's 21 rounds. Craft (pacing, camera, devices,
+type) lives in the stamped skill's
+[DESIGN.md](../.agents/skills/kookaburra-scene-authoring/DESIGN.md) and
+[beats reference](../.agents/skills/kookaburra-scene-authoring/reference/beats.md).
+
+1. **Brief and song.** What shipped, who it's for, why it matters; then the song,
+   its grid, sections and cues.
+2. **Beat-map animatic.** Cards on the grid, something new each bar, signed off
+   before anything is lit.
+3. **Target frames.** Stills of the key shots, agreed as the look.
+4. **One hero shot.** Built in the app against its target until the developer
+   signs it off there.
+5. **Roll the look.** The hero's stage, floor, light, background and lens across
+   every scene, each frame checked beside the hero.
+6. **The rest in rounds.** Scenes go to sub-sessions the developer steers, each with
+   its own worktree and app window, and a full film is exported every round.
+7. **Pre-PR tidy.** Renumber the scenes, finish `template.json`, picker art
+   (`--action template-previews`), a looks sheet of every candidate look,
+   `pnpm agent:catalog`, the create smoke, `pnpm ready`, and Verify ×2 of the
+   template.
+
+What cost time:
+
+- Lit shots built before the look was set: the first play-through scored the
+  opening 4 out of 10, and it was rebuilt.
+- Background research agents instead of steered sessions: they returned reports to
+  judge, not shots to shape.
+- Placeholders reaching the PR branch: storyboard cards and unused samples had to be
+  split out before review.
+
 ## Theme editing
 
 Themes uses the same header search, close control and card sizing as Add a scene.
