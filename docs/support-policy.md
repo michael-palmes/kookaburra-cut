@@ -34,7 +34,7 @@ anything large.
   "Download").
 - **The signed, notarised build** from the
   [releases page](https://github.com/michael-palmes/kookaburra-cut/releases),
-  installed from the DMG or zip, through the in-app updater, or by your MDM
+  installed from the DMG, the pkg or the zip, through the in-app updater, or by your MDM
   from that same file ([fleet-deployment.md](./fleet-deployment.md)).
 - **The app's own behaviour:** opening, editing, previewing, exporting video
   and stills, packs, the managed preferences in [mdm.md](./mdm.md), and the
@@ -58,7 +58,7 @@ anything large.
 
 - **The app version**, at the foot of the Settings window (⌘,), and your
   **macOS version** and **Mac model**.
-- **How it was installed**: the DMG, the in-app updater, your MDM, or source.
+- **How it was installed**: the DMG, the pkg, the in-app updater, your MDM, or source.
 - **Whether your organisation manages it.** Settings marks each managed row
   "Managed by your organisation"; name the keys if you know them
   ([mdm.md](./mdm.md)).

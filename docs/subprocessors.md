@@ -1,13 +1,13 @@
 # Subprocessors and third parties
 
-**Version:** 0.23.0, pending.
+**Version:** 0.23.0.
 
 Kookaburra Cut runs on the Mac, and nothing it does sends data to the vendor.
 There is no account, no server and no hosted data, so there is no subprocessor:
 nobody handles customer data on the vendor's behalf. This page names every
 third party a Mac running the app can reach, what each can receive and how to
-turn it off. Each one is reached only after a person acts. What changes at
-0.23.0 is listed in [vendor-questionnaire.md](./vendor-questionnaire.md#version).
+turn it off. Each one is reached only after a person acts. What differs from
+0.22.4 is listed in [vendor-questionnaire.md](./vendor-questionnaire.md#version).
 
 ## At a glance
 

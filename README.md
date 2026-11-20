@@ -41,8 +41,9 @@ while you watch them update here.
 - The optional AI authoring path uses your own Claude Code install
 - Managed Macs: a configuration profile can turn off the Claude entry points,
   the agent kit, live websites, pack export or update checks, limit packs to
-  approved publishers, point updates at your own server, keep exports in the
-  project and fix the workspace location ([`docs/fleet.md`](docs/fleet.md),
+  approved publishers and live websites to your own sites, point updates at
+  your own server, keep exports in the project, copy the activity log for your
+  collector and fix the workspace location ([`docs/fleet.md`](docs/fleet.md),
   [`docs/mdm.md`](docs/mdm.md))
 - Accessibility: the WCAG 2.2 AA conformance report (VPAT), keyboard map and open
   findings are in [`docs/accessibility.md`](docs/accessibility.md)

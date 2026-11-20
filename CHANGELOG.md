@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-11-20
+
 ### Added
 
 - Settings ▸ Allowed projects lists the projects you allowed to run, and Forget
@@ -58,6 +60,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   landed.
 - Move up and Move down in the scene, library and theme menus, and Move earlier
   and Move later in the clip menu. Theme cards open their menu with ⇧F10.
+- Unveil, a launch template in beta: a 16:9 reveal cut to an original song,
+  First Light. The device rises into the light on bar 9, then three features,
+  each a claim, its proof and a close look, and the name on the final hit.
+  Template cards now play a short loop and show each template's looks.
+- Thirteen new themes, from Obsidian Stage to White Canvas, and two new 3D
+  backgrounds, Sunroom and Gallery.
+- New stage and light looks: a satin floor with a soft reflection, volumetric
+  spot beams with smoke and dust, strip lighting for products, a studio finish
+  for device bodies and screen cards that lift off as bevelled glass.
+- New lens looks: true depth of field, bloom and halation, supersampled export
+  and an optical blur for text.
+- Pill and battery shapes for text emphasis, a dot field for grids and waffle
+  charts, and a flowing gradient fill for rounded shapes.
+- Inter Tight joins the bundled fonts in six weights, 300 to 900, with a 3D face
+  for extruded titles. It loads only in projects that use it.
+- The scene-authoring kit paces films to the music: `kb check film pacing` flags
+  scenes that sit still or text too brief to read, `kb pacing accept` keeps a
+  warning with your reason, and `kb beats plan` drafts the scenes from the
+  song's parts.
 
 ### Changed
 
@@ -67,6 +88,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A selected option preview plays once and holds its last frame; hover or focus
   plays it again.
 - Field, select and selected-card borders are easier to see (3:1 contrast).
+- 0.23.0 is the first version recommended for managed Macs. From here on every
+  security fix also gets a GitHub security advisory; watch the repository's
+  releases and advisories (`SECURITY.md`, "Supported versions").
+- Long exports use less memory: each scene's GPU memory is released once the
+  export has passed it.
+- A pack never brings someone else's kept pacing warnings, just as with flash
+  warnings.
 
 ### Fixed
 
@@ -82,6 +110,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Option previews no longer flash an empty card on hover.
 - An arrow key sent as an old Mac control code, as some remote-control apps
   do, moves the caret instead of typing a stray character.
+- An export whose device screen video can't be prepared now stops and names
+  the clip, instead of finishing with a black or frozen screen. A clip that
+  failed earlier is tried once more when the next export starts.
 
 ### Security
 
@@ -90,6 +121,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   that announce changes can send events to the others.
 - A pull request that adds an HTTP client crate now fails the dependency
   policy: the updater is the only code that fetches over HTTP.
+- Signing a release now needs a second person's approval: whoever starts the
+  release can't approve it. The one exception, an urgent security fix while
+  the other reviewer can't be reached, is named in that release's notes and
+  its advisory.
 - A second reviewer is now asked to review every file where a trust decision
   lives: the Allow gate, the agent kit, git history, the Claude handoff, the
   bridge, live websites, the log, the window permissions and the stage worker.
@@ -105,8 +140,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   anywhere.
 - Each release now ships a software bill of materials
   (`KookaburraCut-<version>.cdx.json`): every npm package and Rust crate built
-  into the app, the sidecar's pinned sources and the beat model, attested on
-  the DMG, and the app binary carries its own Rust dependency list for
+  into the app, the sidecar's pinned sources, the beat model and the bundled
+  fonts, images, models and scripts, attested on the DMG and the pkg, and the
+  app binary carries its own Rust dependency list for
   `cargo audit bin`. Dependency licences and sources are now checked by policy
   in CI, and the release page carries this changelog's section for the version.
 - `unsafe` Rust is denied except where a file or function allows it, and every
@@ -208,8 +244,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   exports in Downloads) and `UpdateEndpoint` (update checks ask your own
   server). Settings shows a lock on each row they govern, and Settings ▸ Claude
   gains an Agent kit row. See `docs/mdm.md`.
-- Inter Tight joins the bundled fonts in six weights, 300 to 900, with a 3D face
-  for extruded titles. It loads only in projects that use it.
 
 ### Security
 

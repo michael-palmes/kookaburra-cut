@@ -1,6 +1,6 @@
 # Vendor questionnaire
 
-**Version:** 0.23.0, pending.
+**Version:** 0.23.0.
 
 Pre-filled answers for the security questionnaire a procurement or security
 team sends before a pilot: the SIG Lite, arranged by the SIG's risk domains,
@@ -28,8 +28,7 @@ app with no service, no account and no hosted data.
 
 ## Version
 
-This page describes 0.23.0, pending: `main` once the 0.23.0 work has merged,
-before that release is tagged. On 0.22.4, the latest release, these rows differ:
+This page describes 0.23.0. On 0.22.4 and earlier these rows differ:
 
 - **Logging and audit:** 0.22.4 keeps no log in a release build.
 - **Data at rest:** Settings ▸ Allowed projects ▸ Forget and Settings ▸ Storage
@@ -42,9 +41,10 @@ before that release is tagged. On 0.22.4, the latest release, these rows differ:
 - **Vulnerability management:** the 14-day acknowledgement, CodeQL over Python
   and the `unsafe` allow-list.
 
-When 0.23.0 is tagged, the version line here and the one in
-[subprocessors.md](./subprocessors.md) drop "pending" in the same change;
-`scripts/vendor-docs.test.mjs` fails until they do.
+A version line marked "pending" names a release not yet tagged; the change
+that bumps the version drops it here and in
+[subprocessors.md](./subprocessors.md), and `scripts/vendor-docs.test.mjs`
+fails until it does.
 
 ## What applies
 
@@ -156,7 +156,7 @@ SIG: Access control. CAIQ: IAM.
 | Does the app need administrator rights? | No | [updater.rs](../src-tauri/src/updater.rs) | Only an in-app update into a folder the user cannot write asks macOS for an administrator password; `DisableUpdateCheck` removes it. |
 | Are the app's internal privileges least privilege? | Yes | [capabilities](../src-tauri/capabilities/), [acl.rs](../src-tauri/src/acl.rs) | Each window holds only the native commands it uses, and only the Tauri core permissions its code calls (no `core:default`, menu or tray); a test fails on a command not yet placed or a core permission no window needs. Remote website content gets none. |
 | Are trust decisions made outside the webview? | Yes | [native_alert.rs](../src-tauri/src/native_alert.rs), [SECURITY.md](../SECURITY.md#scene-code-and-the-trust-boundary) | Allow, website grants, moving the workspace and Clear all app data are answered on native sheets, so a compromised page cannot press the button. |
-| Who can change the code or ship a release? | Partial | `gh api repos/michael-palmes/kookaburra-cut/collaborators`, [allowed_tag_signers](../.github/allowed_tag_signers), [allowed_signers](../.github/allowed_signers) | One admin, the maintainer, and one collaborator with write access, the second reviewer. A release run needs approval from a reviewer who did not start it, so the second reviewer approves the maintainer's releases, but the admin can change that rule, so the pipeline rests on the admin account. |
+| Who can change the code or ship a release? | Partial | `gh api repos/michael-palmes/kookaburra-cut/collaborators`, [allowed_tag_signers](../.github/allowed_tag_signers), [allowed_signers](../.github/allowed_signers) | One admin, the maintainer, and one collaborator with write access, the second reviewer. A release run needs approval from a reviewer who did not start it, so the second reviewer approves the maintainer's releases, but the admin can change that rule, so the pipeline rests on the admin account. The one sanctioned change, a break-glass for an urgent security fix, is named in that release's notes and advisory ([incident-response.md](./incident-response.md)). |
 | Does the maintainer's GitHub account require a second factor? | Yes | The maintainer's statement; GitHub shows a personal account's second factor to no one else | A passkey. |
 | Is the Mac holding the release tag key protected? | Partial | [release skill, "Signing keys"](../.agents/skills/kookaburra-release/SKILL.md#signing-keys) | FileVault is on, and the tag key sits in its Secure Enclave behind Touch ID. The Mac is not managed by MDM and runs no EDR or antivirus beyond macOS's own. |
 | Is access separated from other users on the same Mac? | Partial | [privacy.rs](../src-tauri/src/privacy.rs), [workspace.rs](../src-tauri/src/workspace.rs) | App data is owner-only. A workspace folder the app creates (from 0.23.0) is 0700, so other accounts can't list its projects; a folder that already existed, including one an earlier version made, keeps its mode. `chmod 700 ~/"Kookaburra Cut"` closes it. |
@@ -204,7 +204,7 @@ SIG: IT operations management, Application security. CAIQ: CCC, AIS.
 | Does every change land through a pull request with required checks? | Yes | `gh api repos/michael-palmes/kookaburra-cut/rulesets/19092788`, [ci.yml](../.github/workflows/ci.yml) | `main` takes squash merges only, no force push or deletion, and requires `frontend`, `rust` and `Signed head` (pinned to the app that posts it), up to date with `main`. |
 | Are commits signed? | Partial | [signers.yml](../.github/workflows/signers.yml), [allowed_signers](../.github/allowed_signers) | Every pull request's head commit must be signed by a listed key, by the tag key when it touches the pipeline, locks or pins. Only the head commit is checked. |
 | Is every change reviewed by a second person? | Partial | `gh api repos/michael-palmes/kookaburra-cut/rulesets/19092788`, [CODEOWNERS](../.github/CODEOWNERS), `gh api repos/michael-palmes/kookaburra-cut/codeowners/errors` | The ruleset requires an approval, a code owner and approval of the last push, but the maintainer, as the one admin, bypasses it on a pull request; status checks still apply. CODEOWNERS names a second reviewer on the security surfaces, an active collaborator with write access, so GitHub requests their review there; the admin bypass means that review is not required. The process also calls for an automated high-effort code review before each pull request ([SECURITY.md, "Process"](../SECURITY.md#process)); nothing enforces it. |
-| Are duties separated between writing, approving and releasing? | Partial | [SECURITY.md, "Release integrity"](../SECURITY.md#release-integrity), `gh api repos/michael-palmes/kookaburra-cut/environments/release` | Approving a release run takes a second person: self-review is prevented and admins cannot bypass. Writing and merging do not: the maintainer merges through the admin bypass, and as admin can change the environment's rules. |
+| Are duties separated between writing, approving and releasing? | Partial | [SECURITY.md, "Release integrity"](../SECURITY.md#release-integrity), `gh api repos/michael-palmes/kookaburra-cut/environments/release` | Approving a release run takes a second person: self-review is prevented and admins cannot bypass. Writing and merging do not: the maintainer merges through the admin bypass, and as admin can change the environment's rules, which the break-glass for an urgent security fix does on the record ([incident-response.md](./incident-response.md)). |
 | Are release tags protected? | Yes | `gh api repos/michael-palmes/kookaburra-cut/rulesets/19092476` | `v*` tags cannot be deleted, moved or updated, with no bypass. |
 | Are build and signing separated? | Yes | [release.yml](../.github/workflows/release.yml) | A keyless build job, a sign job in the protected environment that never builds or installs, and a verify job with no secret, each on a fresh runner. |
 | Do workflows run with least privilege? | Yes | [workflows](../.github/workflows/) | Each starts from `permissions: {}` or `contents: read` (Scorecard from `read-all`, narrowed per job) and sets `persist-credentials: false`. |
@@ -224,7 +224,7 @@ SIG: Supply chain risk management. CAIQ: STA.
 | Is there a dependency licence and source policy? | Yes | [deny.toml](../src-tauri/deny.toml), [dependency-review.yml](../.github/workflows/dependency-review.yml) | An allow list of permissive licences (plus OFL-1.1 for fonts), crates.io as the only source, no wildcard versions. |
 | Is an SBOM published? | Yes | [sbom.mjs](../scripts/sbom.mjs), [release.yml](../.github/workflows/release.yml) | CycloneDX 1.5, `KookaburraCut-<version>.cdx.json` on each release, attested on the DMG and the pkg: npm packages, crates for the shipped target, the sidecar's sources, the beat model, and the bundled fonts, HDRIs, device models, adapted shaders and kit scripts with their hashes. The binary also embeds its crate list (`cargo auditable`). |
 | Does the app ship its third-party licences? | Yes | [NOTICE.md](../NOTICE.md), [licence-notices.mjs](../scripts/licence-notices.mjs), [verify-release.sh](../scripts/verify-release.sh) | The app carries the GPL texts from the sidecar's sources, the font, shader and model licences and a notice with the licence of every npm package and crate (Settings ▸ About ▸ Acknowledgements). A release without them fails verification. Each release attaches the sidecar's source archives. |
-| Is build provenance published? | Yes | [release.yml](../.github/workflows/release.yml) | A GitHub build provenance attestation (SLSA provenance predicate) over the DMG, zip, updater archive, `build-info.txt` and the SBOM, published as `KookaburraCut-<version>.intoto.jsonl` for offline checks. No SLSA level is claimed. |
+| Is build provenance published? | Yes | [release.yml](../.github/workflows/release.yml) | A GitHub build provenance attestation (SLSA provenance predicate) over the DMG, pkg, zip, updater archive, `build-info.txt`, the SBOM and the sidecar's source archives, published as `KookaburraCut-<version>.intoto.jsonl` for offline checks. No SLSA level is claimed. |
 | Are releases signed and notarised? | Yes | [sign-and-notarize.sh](../scripts/sign-and-notarize.sh), [verify-release.sh](../scripts/verify-release.sh) | Developer ID, hardened runtime, no entitlements, notarised and stapled; Team ID `Q4B8N8ZKA2`. A separate job checks every signature and every file against the keyless build's record. |
 | Are updates verified before install? | Yes | [tauri.conf.json](../src-tauri/tauri.conf.json), [updater.rs](../src-tauri/src/updater.rs) | Ed25519 signature against the key built into the app, bound to the announced version, so an old archive cannot roll an install back. |
 | Can a customer verify a download? | Yes | [security-overview.md](./security-overview.md#verify-it-yourself), [verify-install.sh](../scripts/verify-install.sh) | `SHA256SUMS`, `gh attestation verify`, `codesign` and `spctl`, and one script that runs them all. |
@@ -241,7 +241,7 @@ SIG: Operational resilience. CAIQ: BCR.
 | --- | --- | --- | --- |
 | Is there a business continuity or disaster recovery plan for the service? | Not applicable | [security-overview.md](./security-overview.md#what-the-app-does-not-do) | There is no service. The app runs on the Mac, offline, with no licence server. |
 | Does the app depend on the vendor to keep working? | No | [SECURITY.md, "What leaves the Mac"](../SECURITY.md#what-leaves-the-mac) | If GitHub is down, only update checks and downloads fail. |
-| Can the project continue without its one maintainer? | No | [SECURITY.md, "Release integrity"](../SECURITY.md#release-integrity) | Key-person risk: one maintainer holds admin rights and the only tag key a release accepts, so nobody else can ship a signed release today. |
+| Can the project continue without its one maintainer? | Partial | [release-cadence.md, "If the project stops"](./release-cadence.md#if-the-project-stops), [SECURITY.md, "Release integrity"](../SECURITY.md#release-integrity) | Key-person risk: one maintainer holds admin rights and the only tag key a release accepts, so nobody else can ship a signed release today, and no successor is named. Installed apps keep working and the code can be forked. |
 | Could someone else build and ship it? | Yes | [LICENSE-MIT](../LICENSE-MIT), [LICENSE-APACHE](../LICENSE-APACHE), [release.yml](../.github/workflows/release.yml) | The code is MIT or Apache-2.0 and every tool and source is pinned and recorded. A fork ships under its own signing identity. |
 | What does a lost updater key mean? | Yes | [release skill](../.agents/skills/kookaburra-release/SKILL.md), [tauri.conf.json](../src-tauri/tauri.conf.json) | Installed apps trust only the key built into them, so after a new key each install needs one manual download; updates then resume. |
 | What does a lost tag or commit key mean? | Yes | [release skill, "Recovery for a lost Mac"](../.agents/skills/kookaburra-release/SKILL.md#recovery-for-a-lost-mac) | Neither has a backup, by design. The repository admin replaces them; published releases are unaffected, and a tag not yet built is cut again. |
@@ -278,7 +278,7 @@ SIG: Endpoint security. CAIQ: UEM.
 | Can the project location be fixed? | Yes | [mdm.md](./mdm.md#keys) | `WorkspaceRoot`. |
 | Does the app install background processes? | No | [security-overview.md](./security-overview.md#what-the-app-does-not-do), [fleet.md](./fleet.md#what-to-expect-in-edr) | No launch agent, login item or helper tool. Its child processes are listed for EDR. |
 | Does it run sandboxed? | Partial | [decisions.md](./decisions.md), [realmGuard.ts](../src/stage/realmGuard.ts) | Hardened runtime, no entitlements, no App Sandbox. Scene code runs in a worker with no DOM, IPC or network. |
-| Can versions be installed and pinned through MDM? | Partial | [fleet.md](./fleet.md#updates-in-app-or-mdm-delivery), [SECURITY.md, "Not yet"](../SECURITY.md#not-yet) | Deliver the signed DMG and set `DisableUpdateCheck`. A Homebrew cask is staged in [packaging/homebrew](../packaging/homebrew/) until its tap is published; [fleet-deployment.md](./fleet-deployment.md) has an install script that pins a version and its SHA-256. |
+| Can versions be installed and pinned through MDM? | Partial | [fleet.md](./fleet.md#updates-in-app-or-mdm-delivery), [SECURITY.md, "Not yet"](../SECURITY.md#not-yet) | Deliver the signed pkg (or the DMG) and set `DisableUpdateCheck`. A Homebrew cask is staged in [packaging/homebrew](../packaging/homebrew/) until its tap is published; [fleet-deployment.md](./fleet-deployment.md) has an install script that pins a version and its SHA-256. |
 
 ## Privacy
 
@@ -325,5 +325,6 @@ SIG: Compliance management. CAIQ: A&A.
 | Physical and environmental security (DCS) | No office, data centre or hosted data. Releases build on GitHub-hosted runners ([release.yml](../.github/workflows/release.yml)). |
 | Server security, Cloud hosting services (IVS) | No server and no hosted service. |
 
-Not answered here: ESG and accessibility. The vendor, the terms, support and
-insurance are in [Governance and risk](#governance-and-risk).
+Not answered here: ESG. Accessibility, with the WCAG 2.2 AA conformance
+report, is in [accessibility.md](./accessibility.md). The vendor, the terms,
+support and insurance are in [Governance and risk](#governance-and-risk).

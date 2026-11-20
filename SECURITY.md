@@ -1,7 +1,10 @@
 # Security policy
 
-**As of version 0.22.4.** This file describes that version, whose controls match
-0.22.3's. Older versions have less: 0.22.2 has no managed keys for the agent
+**As of version 0.23.0.** This file describes that version. Older versions
+have less: 0.22.4 and 0.22.3 keep no log in a release build, share one website
+store across projects, leave bridge requests unsigned, have no Allowed
+projects list, Clear all app data, `AuditLogPath` or `AllowedWebsiteOrigins`,
+and ship no pkg, SBOM or source archives; 0.22.2 has no managed keys for the agent
 kit, pack export, exports in the project or the update endpoint; 0.22.1 asks
 the Keychain for the pack key whenever Settings or Export opens, and its Later
 stops the launch check offering that version again; 0.22.0 is 0.22.1 built
@@ -39,10 +42,16 @@ under `### Security` in `CHANGELOG.md` and in the release notes built from it.
 
 ## Supported versions
 
-Only the latest release receives security fixes. Older versions are not
-patched; the in-app updater moves each Mac forward. Fixes are best effort, with
-no committed time; please update before reporting. If a release or a signing
-key is compromised: [docs/incident-response.md](docs/incident-response.md).
+0.23.0 is the first version recommended for managed Macs; earlier versions are
+unsupported. Only the latest release receives security fixes. Older versions
+are not patched; the in-app updater moves each Mac forward. Fixes are best
+effort, with no committed time; please update before reporting. If a release
+or a signing key is compromised: [docs/incident-response.md](docs/incident-response.md).
+
+From 0.23.0 on, every security fix gets a GitHub security advisory beside its
+`CHANGELOG.md` entry; the fixes in 0.23.0 itself are listed in the changelog
+only. Stay informed: watch the repository's releases (Watch ▸ Custom ▸
+Releases) and its [advisories](https://github.com/michael-palmes/kookaburra-cut/security/advisories).
 
 ## Version 0.21.1
 
@@ -405,8 +414,11 @@ Also:
 
 - `git` from `PATH` (`history.rs`), at project creation and after a project has
   loaded through the Allow gate, never on a failed load, to find footage in older
-  history and rewrite it, and at each kit stamp to read `.git/config` for the
-  agent's verdict. A folder's `.git` arrives with it, so each run sets
+  history and rewrite it, at each kit stamp to read `.git/config` for the
+  agent's verdict, and before each Edit with Claude handoff to check the
+  committed agent files ("What reaches your agent"). When `git` is Apple's
+  `/usr/bin/git` shim, `xcode-select -p` runs before the launch's first git
+  run, once, to check the developer tools are there (`git_usable`). A folder's `.git` arrives with it, so each run sets
   `GIT_CONFIG_NOSYSTEM`, `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CEILING_DIRECTORIES`
   and overrides every key that names a program (`GUARDS`), and the app refuses a
   `.git` that is a link or file, holds a link (outside its hooks, which never
@@ -844,9 +856,17 @@ builds it in separate jobs, each on a fresh runner.
   `KookaburraCut-<version>.cdx.json` (`scripts/sbom.mjs`: CycloneDX 1.5, one
   component per npm package from `pnpm ls --prod` with its licence, every crate
   `cargo cyclonedx` resolves for the shipped target, the sidecar's pinned
-  sources and the beat model's pinned files; the timestamp is the commit's and
-  the serial number derives from it, so two builds of one commit write the
-  same bytes). It uploads `build-info.txt`, the SBOM and a digest of every
+  sources, the beat model's pinned files and, by SHA-256, the bundled fonts,
+  HDRIs, licensed device models, adapted shaders and kit scripts; the
+  timestamp is the commit's and the serial number derives from it, so two
+  builds of one commit write the same bytes). Before `tauri build` it writes
+  the licence texts the app carries in `Contents/Resources/licenses/`
+  (`pnpm setup:licences`, `scripts/licence-notices.mjs`: the project's
+  licences and `NOTICE.md`, the font, shader and beat model licences, the GPL
+  texts from the sidecar's pinned sources and `THIRD-PARTY-NOTICES.txt` for
+  every shipped npm package and crate), and fails when the notices miss any
+  component the SBOM lists (`--check-sbom`). Settings ▸ About ▸
+  Acknowledgements shows them in Finder. It uploads `build-info.txt`, the SBOM and a digest of every
   bundle file as its own artefact, whose combined digest is a job output the
   sign job never touches.
 - **Sign, in the protected `release` environment.** Behind a required reviewer
@@ -866,7 +886,9 @@ builds it in separate jobs, each on a fresh runner.
   ID, no entitlements, `stapler validate` and `spctl` on the zip's app, the
   updater tar's app and the DMG; the DMG holds the same bytes as the zip;
   the updater signature verifies against `plugins.updater.pubkey`; `latest.json`
-  names the same signature and version; the signed binary runs
+  names the same signature and version; the zip's app and the pkg's carry
+  every licence text and notice, the project's own unchanged and the sidecar's
+  the GPLv2; the signed binary runs
   `edit caps` and `check flashes` on a film its bundled ffmpeg renders; and,
   before that binary runs, every file in the zip's app and the updater tar's
   app equals the build job's record with signatures stripped, file list
@@ -1002,7 +1024,11 @@ builds it in separate jobs, each on a fresh runner.
 
 One maintainer holds admin rights on the repository. A release run needs a
 second reviewer's approval, but an admin can change the `release` environment's
-rules, so this pipeline still rests on one account. A passkey on
+rules, so this pipeline still rests on one account. The one sanctioned change
+is a break-glass for an urgent security fix when the other reviewer can't be
+reached: self-review is allowed for that run only, restored straight after,
+and named in that release's notes and advisory
+([docs/incident-response.md](docs/incident-response.md)). A passkey on
 the account makes a takeover harder, and a Touch ID tag key in
 the Mac's Secure Enclave can't be copied off the Mac, while the promptless commit
 key, which agents use, can't tag. Neither stops an account that has been taken
@@ -1021,7 +1047,7 @@ and the Rust binary are not claimed reproducible. In place of a rebuild, a
 reviewer has the build record (`build-info.txt`, `bundle-digests.txt`,
 `sidecar-digests.txt` and the SBOM, chained by one digest from the keyless
 build job), the provenance attestation that ties the DMG to this workflow and
-the tag, the SBOM attestation on the DMG, and the crate list embedded in the
+the tag, the SBOM attestation on the DMG and the pkg, and the crate list embedded in the
 binary (`cargo audit bin`).
 
 ## Process
@@ -1084,6 +1110,6 @@ Deliberately deferred, recorded so nobody mistakes them for done:
 - A sandbox for the agent. Its allow and deny rules, hooks and reach checks bound
   its own tools and ask a person; a script a misled agent runs can still read a
   file.
-- `release` environment rules and a review on `main` that the admin cannot
-  change or bypass, and a pinned runner image and Xcode (`build-info.txt`
+- `release` environment rules the admin cannot change, a review on `main` the
+  admin cannot bypass, and a pinned runner image and Xcode (`build-info.txt`
   records both).

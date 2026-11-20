@@ -1,6 +1,6 @@
 # Security overview
 
-Describes version 0.22.4. For the team deciding whether Kookaburra Cut can run
+Describes version 0.23.0. For the team deciding whether Kookaburra Cut can run
 on managed Macs: the security lead, CTO or engineering manager. Every line
 links to the file, command or release asset behind it, and anything not done
 yet sits under [Not yet](#not-yet). Read it at the tag of the version you
@@ -17,7 +17,9 @@ The three documents, nothing repeated between them on purpose:
 | [SECURITY.md](../SECURITY.md) | The security engineer, auditor and contributor | Every control with the file or command behind it, the threat model, how to report a vulnerability |
 
 The deployment guide for the IT team is [fleet.md](./fleet.md); the keys it
-forces are in [mdm.md](./mdm.md).
+forces are in [mdm.md](./mdm.md). Procurement's long form is
+[vendor-questionnaire.md](./vendor-questionnaire.md), and every third party a
+Mac can reach is in [subprocessors.md](./subprocessors.md).
 
 ## In one paragraph
 
@@ -59,8 +61,10 @@ and `asset:` (`src-tauri/tauri.conf.json`, `security.csp`); and the release
 ffmpeg is built `--disable-network` (`scripts/build-ffmpeg-sidecar.sh`).
 Opening a project, importing a pack, exporting and presenting make no request,
 and allowed scene code cannot make one: it runs in a worker that refuses to
-start in a release build unless that policy is live, behind a guard that limits
-every network API to the app's own files (`src/stage/realmGuard.ts`).
+start in a release build unless that policy is live. A guard limits every
+network API to the app's own files (`src/stage/realmGuard.ts`), but code in the
+worker can undo it, so the policy and the window's `asset://` reach are the
+bound.
 
 ## Subprocessors and third parties
 
@@ -102,31 +106,37 @@ Every location, with its mode, is in
   synchronised; the one secret the app keeps
   ([SECURITY.md, "Saved secrets"](../SECURITY.md#saved-secrets)).
 - **Website data**: `~/Library/WebKit/com.mpalmes.kookaburracut`, one WebKit
-  store for every allowed site, separate from Safari. Settings ▸ Website data
-  lists and clears it.
+  store per project, so a sign-in made for one project never shows in another,
+  separate from Safari. Settings ▸ Website data lists and clears them. The one
+  store every project shared before 0.23.0 is deleted at launch, so people
+  sign in to allowed sites again.
 - **The agent's files**: the kit the app writes inside each project (`.claude/`,
   `./kb`, `CLAUDE.md`, `.kb/`), and `~/Kookaburra Cut/_bridge` and `_autorun`,
   the file queues the agent and the terminal use, owner-only and pruned (bridge
-  responses live at most an hour). `~/.claude` is Claude Code's own; the app
+  responses live at most an hour; kb also keeps its newest film frames and
+  export records there, and `kb video` drafts for up to 24 hours). `~/.claude` is Claude Code's own; the app
   never reads or writes it.
 - **Exports**: `~/Downloads` by default, or the project's `exports/` folder
-  (Settings ▸ Video, or `ExportsInProject` for a fleet).
+  (Settings ▸ Video, or `ExportsInProject` for a fleet). A failed video export
+  leaves `<export>.health.json` (the frame and scenes it reached, memory
+  samples) in the project's `exports/` until that export next starts.
 
 Encryption at rest is FileVault and the account: the app adds none and claims
 none. Deletion while installed: Settings ▸ Allowed projects ▸ Forget removes
-one project's grant and its website grants; Settings ▸ Storage ▸ Clear all app data removes every
-cache, the website store, the bridge's queues and the autorun runs, and resets
-the settings to the workspace location and the update consent, keeping only
-the pack key and its Keychain item; deleting a project moves it to the Trash
-and drops its grant and cache entries.
+one project's grant, its website grants and its Website data; Settings ▸
+Storage ▸ Clear all app data removes every cache, every website store, the
+bridge's queues and the autorun runs, and resets the settings to the workspace
+location and the update consent, keeping the pack key and its Keychain item,
+the log and the projects; deleting a project moves it to the Trash and drops
+its grant, its website grants, its Website data and its cache entries.
 
 ### Uninstall
 
 The same steps as [privacy.md, "Uninstalling"](./privacy.md#uninstalling):
 
-1. Quit the app.
-2. Settings ▸ Storage ▸ Clear all app data, while the app is still installed:
-   it is the only thing that clears the website profile.
+1. Settings ▸ Storage ▸ Clear all app data, while the app is still installed:
+   it is the only thing that clears the website profiles.
+2. Quit the app.
 3. In Keychain Access, delete "Kookaburra Cut pack signing key". Packs it
    signed stay valid.
 4. Delete `~/Library/Application Support/com.mpalmes.kookaburracut`,
@@ -142,8 +152,9 @@ The same steps as [privacy.md, "Uninstalling"](./privacy.md#uninstalling):
 
 ## Verify it yourself
 
-Every release's page carries the DMG, `SHA256SUMS`, `build-info.txt`, the
-SBOM, the provenance bundle (`KookaburraCut-<version>.intoto.jsonl`), the
+Every release's page carries the DMG, the MDM pkg, `SHA256SUMS`,
+`build-info.txt`, the SBOM, the sidecar's ffmpeg, x264 and x265 source
+archives, the provenance bundle (`KookaburraCut-<version>.intoto.jsonl`), the
 updater archive's signature (`.tar.gz.sig`) and a copy of `SECURITY.md` at
 the tag ([SECURITY.md, "Release integrity"](../SECURITY.md#release-integrity)).
 On a Mac with the app installed and the release's files downloaded:
@@ -161,6 +172,8 @@ gh attestation verify "KookaburraCut-$V.dmg" --bundle "KookaburraCut-$V.intoto.j
   --signer-workflow michael-palmes/kookaburra-cut/.github/workflows/release.yml \
   --source-ref "refs/tags/v$V" --deny-self-hosted-runners        # offline, from the release's own bundle
 gh attestation verify "KookaburraCut-$V.dmg" --repo michael-palmes/kookaburra-cut \
+  --signer-workflow michael-palmes/kookaburra-cut/.github/workflows/release.yml \
+  --source-ref "refs/tags/v$V" --deny-self-hosted-runners \
   --predicate-type https://cyclonedx.org/bom                    # the SBOM attestation
 grep '^commit=' build-info.txt                                  # the same commit as the next line
 git ls-remote https://github.com/michael-palmes/kookaburra-cut "refs/tags/v$V^{}"
@@ -170,9 +183,10 @@ spctl -a -t exec -vv "/Applications/Kookaburra Cut.app"         # source=Notariz
 git diff "v$P" "v$V" -- SECURITY.md docs/mdm.md src-tauri/src/managed.rs   # what changed in the controls
 ```
 
-`scripts/verify-install.sh --version "$V" --previous "$P"` runs the same
-checks from a checkout, and checks the updater archive against its published
-signature and the key built into the app. The Team ID in every signature is `Q4B8N8ZKA2`,
+`scripts/verify-install.sh --version "$V" --dir <downloads> --previous "$P"`
+runs the same checks from a checkout, plus the sidecars' signatures and, with
+the pkg in the folder, its attestations, installer signature and Gatekeeper.
+The Team ID in every signature is `Q4B8N8ZKA2`,
 printed in each release's notes and in
 [SECURITY.md, "Verify an install"](../SECURITY.md#release-integrity).
 `SHA256SUMS` alone catches a broken download; the attestations are the check
@@ -217,18 +231,23 @@ Each line is one job or control in
    Node, pnpm and the sidecar's build tools) from ffmpeg, x264 and x265 sources
    pinned by SHA-256; `build-info.txt` records the runner image, Xcode, commit
    and pins, the binary carries its own Rust dependency list (`cargo auditable`)
-   and the job writes the SBOM (`scripts/sbom.mjs`).
+   and the job writes the SBOM (`scripts/sbom.mjs`) and the licence texts the
+   app carries, failing when they miss anything the SBOM lists
+   (`scripts/licence-notices.mjs`).
 3. **Sign, in the protected `release` environment** behind a required reviewer
    who did not start the run:
    Developer ID, hardened runtime, no entitlements, notarised and stapled; the
    updater archive signed with ed25519 and bound to the version
-   (`scripts/sign-and-notarize.sh`).
+   (`scripts/sign-and-notarize.sh`); the MDM pkg built from the stapled app,
+   signed with a Developer ID Installer certificate, notarised and stapled.
 4. **Verify, on a fresh runner with no secret:** signatures, notarisation,
    Gatekeeper, the updater signature against the key in the app, and every
-   file in the signed app against the build job's own record
+   file in the signed app against the build job's own record, the pkg's app
+   against the zip's byte for byte, and every licence text in both
    (`scripts/verify-release.sh`).
 5. **Publish:** `SHA256SUMS`, GitHub build provenance attestations over the
-   DMG, zip, updater archive, `build-info.txt` and the SBOM, with the
+   DMG, pkg, zip, updater archive, `build-info.txt`, the SBOM and the
+   sidecar's exact ffmpeg, x264 and x265 source archives, with the
    attestation's bundle and the updater archive's signature published as
    release assets for offline checks, release notes built from `CHANGELOG.md`,
    and a copy of `SECURITY.md` at the tag; a draft a person publishes.
@@ -241,7 +260,9 @@ Each line is one job or control in
 
 Two caveats, stated so they are not implied away: one maintainer holds admin
 rights, and though a release run needs a second reviewer's approval, an admin
-can change that rule, so the pipeline rests on one account; and no build is claimed reproducible (the runner image
+can change that rule, so the pipeline rests on one account (the one sanctioned
+change, a break-glass for an urgent security fix, is named in that release's
+notes and advisory: [incident-response.md](./incident-response.md)); and no build is claimed reproducible (the runner image
 and Xcode float and are recorded), though the exported film is, and the
 packaged-parity gate proves that each release
 ([determinism.md](./determinism.md)).
@@ -286,13 +307,18 @@ whether to use the in-app updater or MDM delivery are in
 
 Report privately through GitHub's private vulnerability reporting: the
 [report form](https://github.com/michael-palmes/kookaburra-cut/security/advisories/new),
-which creates a draft advisory visible only to the maintainer. You will get an
+which creates a draft advisory visible only to the maintainer, or email
+`security@kookaburracut.com`. You will get an
 acknowledgement within 14 days, usually sooner, and a fix or mitigation plan
 once the report is confirmed
 ([SECURITY.md, "Reporting a vulnerability"](../SECURITY.md#reporting-a-vulnerability)).
-Only the latest release receives security fixes. Each fix is listed under
-`### Security` in [CHANGELOG.md](../CHANGELOG.md) and in the release notes
-built from it.
+0.23.0 is the first version recommended for managed Macs; earlier versions
+are unsupported. Only the latest release receives security fixes, best effort
+with no committed time. Each fix is listed under `### Security` in
+[CHANGELOG.md](../CHANGELOG.md) and in the release notes built from it, and
+from 0.23.0 on also gets a GitHub security advisory: watch the repository's
+releases and [advisories](https://github.com/michael-palmes/kookaburra-cut/security/advisories).
+A compromised release or signing key: [incident-response.md](./incident-response.md).
 
 ## Questionnaire answers
 
@@ -307,21 +333,21 @@ place to check.
 | Encryption in transit | The update check and install use HTTPS to GitHub or your `UpdateEndpoint`; a live website must be HTTPS or loopback (`website.rs`). Nothing else leaves ([What leaves the Mac](#what-leaves-the-mac)). |
 | Encryption at rest | None by the app: FileVault and the account are the protection at rest. App data is owner-only, 0700 folders and 0600 files, re-sealed each launch (`privacy.rs`). |
 | Logging and audit | `~/Library/Application Support/com.mpalmes.kookaburracut/logs/app.log`: trust grants and declines, website grants, pack imports with key id and verdict, update checks and installs, managed refusals; paths, slugs, origins, key ids and versions, never file contents; rotated at 1 MiB with three files kept, owner-only, never sent anywhere ([SECURITY.md, "On the Mac"](../SECURITY.md#on-the-mac)). |
-| Retention | Nothing is held by anyone but the Mac. Caches are capped at 20 GB with least-recently-used eviction; bridge responses live an hour, import backups 24 hours; a deleted project goes to the Trash ([fleet.md, "Retention"](./fleet.md#retention)). |
+| Retention | Nothing is held by anyone but the Mac. Caches are capped at 20 GB with least-recently-used eviction; bridge responses live an hour, `kb video` drafts and import backups 24 hours; a deleted project goes to the Trash ([fleet.md, "Retention"](./fleet.md#retention)). |
 | Deletion | Settings ▸ Allowed projects ▸ Forget, Settings ▸ Storage ▸ Clear all app data, Settings ▸ Website data, and the [uninstall steps](#uninstall). |
 | Subprocessors | None ([Subprocessors and third parties](#subprocessors-and-third-parties)). |
 | Third parties | GitHub for the update check and downloads; Anthropic through the person's own Claude Code; each only when a person acts. |
-| Security contact and response window | GitHub private vulnerability reporting; an acknowledgement within 14 days ([Reporting a vulnerability](#reporting-a-vulnerability)). |
+| Security contact and response window | GitHub private vulnerability reporting or `security@kookaburracut.com`; an acknowledgement within 14 days, fixes best effort with no committed time ([Reporting a vulnerability](#reporting-a-vulnerability)). |
 | Secure development | Every pull request head signed; CodeQL over four languages; `cargo deny` and `pnpm audit` on every pull request and weekly; dependency review with a severity floor; Dependabot; `unsafe` denied crate-wide and allowed per file with a SAFETY line on every block; hostile-input tests over packs, images, fonts and the agent's inputs; a leak check for workspace names; a high-effort code review before every pull request ([SECURITY.md, "Release integrity"](../SECURITY.md#release-integrity) and ["Process"](../SECURITY.md#process)). |
 | Signed releases | Yes. Developer ID signed with the hardened runtime and notarised by Apple; a GitHub build provenance attestation per release, with its bundle published as a release asset (`KookaburraCut-<version>.intoto.jsonl`) so it can be checked offline, and the updater archive's ed25519 signature (`.tar.gz.sig`) published beside it ([Verify it yourself](#verify-it-yourself)). |
-| Software bill of materials | Yes: a CycloneDX JSON per release (`KookaburraCut-<version>.cdx.json`) covering the Rust and npm dependencies, the ffmpeg, x264 and x265 sources and the beat model, attested; the binary also carries its Rust dependency list (`cargo auditable`) ([Verify it yourself](#verify-it-yourself)). |
+| Software bill of materials | Yes: a CycloneDX JSON per release (`KookaburraCut-<version>.cdx.json`) covering the Rust and npm dependencies, the ffmpeg, x264 and x265 sources, the beat model and the bundled fonts, HDRIs, device models, shaders and kit scripts by hash, attested on the DMG and the pkg; the binary also carries its Rust dependency list (`cargo auditable`) ([Verify it yourself](#verify-it-yourself)). |
 | Penetration test | None. The maintainer's own audit in November 2026 drove the changes from 0.22.0 on; no third-party test has been done. |
 | Fuzzing | Yes, for the riskiest parsers: a weekly cargo-fuzz run (`.github/workflows/fuzz.yml`) over pack archive paths, manifests and signatures, the edit documents, font faces, the mp4 `moov` reader and PNG decoding, and every pull request runs each target over its seeds. The other parsers are bounded and tested on hostile fixtures ([Not yet](#not-yet)). |
 | Certifications | None: no SOC 2, ISO 27001 or similar. |
 | Sandboxing | Scene code runs in a Web Worker with no DOM, no IPC and no network; a live website runs in a child webview with no app capability; the app itself has the hardened runtime, no entitlements and no App Sandbox; the agent is bounded by rules and asks, not a sandbox ([SECURITY.md, "Scene code and the trust boundary"](../SECURITY.md#scene-code-and-the-trust-boundary)). |
-| Supported versions | Only the latest release receives security fixes ([SECURITY.md, "Supported versions"](../SECURITY.md#supported-versions)). |
-| Business continuity | One maintainer. The code is MIT or Apache-2.0 and every dependency, tool and source is pinned and recorded, so a fork can build and ship it ([How releases are built](#how-releases-are-built)). |
-| Licence | MIT OR Apache-2.0 for the code; bundled assets keep their own terms; the ffmpeg sidecar is a GPL build run as a separate process ([NOTICE.md](../NOTICE.md)). |
+| Supported versions | The latest release only; nothing before 0.23.0 is recommended for managed Macs, and each fix from 0.23.0 on gets a GitHub security advisory ([SECURITY.md, "Supported versions"](../SECURITY.md#supported-versions)). |
+| Business continuity | One maintainer, no named successor. Installed apps keep working offline if the project stops; the code is MIT or Apache-2.0 and every dependency, tool and source is pinned and recorded, so a fork can build and ship it ([release-cadence.md, "If the project stops"](./release-cadence.md#if-the-project-stops)). |
+| Licence | MIT OR Apache-2.0 for the code; bundled assets keep their own terms; the ffmpeg sidecar is a GPL build run as a separate process, its exact source archives attached to each release; every licence text and a third-party notices file ship inside the app (Settings ▸ About ▸ Acknowledgements) ([NOTICE.md](../NOTICE.md)). |
 | Egress hosts | `github.com` and `release-assets.githubusercontent.com` (updates, or your `UpdateEndpoint` instead); `claude.ai`, a fixed page a person opens in their browser; the origins a person allows in a scene. Nothing else ([What leaves the Mac](#what-leaves-the-mac)). |
 | Fleet controls | Eleven managed keys through a configuration profile ([mdm.md](./mdm.md)); verified builds delivered by MDM; Claude Code's own managed settings ([fleet.md](./fleet.md)). |
 
@@ -339,21 +365,39 @@ word:
 - An App Sandbox for the app itself: kb's headless CLI is the same binary, the
   updater swaps the bundle in place, and each workspace or linked `assets/`
   root would need a dialog (`docs/decisions.md`, "No App Sandbox").
-- A Homebrew cask, so MDM fleets can install and pin versions without the DMG.
-- A per-project website data store: approved projects share one login profile
-  today (`docs/scene-website.md`, "Accepted residual risk").
-- Bridge request signing: the queue is 0700 and same-user processes are out of
-  scope, so it has no authentication beyond the user account.
+- A published Homebrew tap: the cask is staged in `packaging/homebrew/` until
+  the tap repository `michael-palmes/homebrew-kookaburra-cut` exists.
+- Bridge signing against same-user processes. Since 0.23.0 every request and
+  answer is signed under the serving instance's key ("What reaches your
+  agent"), which closes a writer that can drop files in
+  `_bridge` but not read the key: the agent's own file tools, which are denied
+  it. It does not close any process running as the user, or a shell command the
+  person approves, reading the key and forging both directions; the bash-pre
+  check on `_bridge/keys` is best effort. The heartbeat stays unsigned, so a
+  forged heartbeat with a planted key is the same case.
 - Sealing the trust state: `trustedProjects`, `websiteOriginGrants` and
   `knownPublishers` are plain JSON under the 0600 file mode. An HMAC under a
   Keychain secret can't serve headless exports, and after the stage worker a forged
   grant buys only a sandboxed render; native consent closes the webview path.
 - A token on the autorun launch variables: `KOOKABURRA_ACTION` and its set are
   honoured in release builds, which is the same-user case above.
+- Confirmation before kb reaches another project: kb can read and write another
+  project in the workspace (`-C`, an `@file` path, `--out`) without asking. The
+  bridge asks per project; kb's own commands need a rule for what counts as
+  another project first.
+- A stage guard the worker can't undo: `realmGuard.ts` runs inside the realm it
+  guards, so scene code can tamper with the builtins it relies on. Moving the
+  check into Rust needs a per-realm token. Until then the bound is the window's
+  `asset://` reach.
+- One stage worker per project: a worker lives per window role, so the editor
+  switching projects, and the render window's captures, reuse one realm. Its
+  store writes are limited, but code from one project can still see the next.
+- Agent configuration on another branch: Edit with Claude checks `HEAD` and the
+  index, so a branch the person checks out later in a session can still bring
+  agent files back.
 - A sandbox for the agent. Its allow and deny rules, hooks and reach checks bound
   its own tools and ask a person; a script a misled agent runs can still read a
   file.
-- The still checks on app icons: `import_app_icon` takes only the extension list.
-- `release` environment rules and a review on `main` that the admin cannot
-  change or bypass, and a pinned runner image and Xcode (`build-info.txt`
+- `release` environment rules the admin cannot change, a review on `main` the
+  admin cannot bypass, and a pinned runner image and Xcode (`build-info.txt`
   records both).

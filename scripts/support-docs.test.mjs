@@ -11,9 +11,13 @@ const DOCS = [
   "docs/support-policy.md",
   "docs/release-cadence.md",
   "docs/incident-response.md",
-  "docs/legal/privacy-notice-draft.md",
+  "docs/legal/privacy-notice.md",
 ];
-const DROPPED = ["docs/legal/EULA-draft.md", "docs/licensing-options.md"];
+const DROPPED = [
+  "docs/legal/EULA-draft.md",
+  "docs/legal/privacy-notice-draft.md",
+  "docs/licensing-options.md",
+];
 
 const read = (path) => readFileSync(join(ROOT, path), "utf8");
 const withoutFences = (text) => text.replace(/^```[\s\S]*?^```/gm, "");

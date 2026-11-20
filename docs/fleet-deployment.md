@@ -1,7 +1,8 @@
 # Deploying Kookaburra Cut with an MDM
 
-Written against version 0.22.4, the current release, and what 0.23.0 adds;
-wherever 0.23.0 differs, the text says so. Copy-paste recipes for Jamf Pro,
+Written against version 0.23.0; wherever an earlier version differs, the text
+says so. The pinned install examples name 0.22.4 and its hash until 0.23.0's
+`SHA256SUMS` is published. Copy-paste recipes for Jamf Pro,
 Kandji (now Iru), Mosyle and Microsoft Intune: install the app, force a posture
 with a configuration profile, check a Mac, serve updates from your own server,
 and remove it. Which keys to force and why is in [fleet.md](./fleet.md); what
@@ -121,7 +122,8 @@ say "installed $VERSION"
 
 ### From 0.23.0: the pkg
 
-`KookaburraCut-<version>.pkg` ships beside the DMG from 0.23.0: the same app,
+`KookaburraCut-<version>.pkg` ships beside the DMG from 0.23.0 (before it, use
+the DMG and the install script above): the same app,
 installed into `/Applications` owned by root with no prompts and no install
 scripts, signed with a Developer ID Installer certificate of the same team,
 notarised and stapled (`scripts/sign-and-notarize.sh`). It is in the release's
@@ -527,8 +529,6 @@ paths, for the account that runs it only.
 
 ## Not yet
 
-- The pkg ships from 0.23.0; for 0.22.4 and earlier, the DMG and the install
-  script.
 - The Homebrew tap `michael-palmes/homebrew-kookaburra-cut` does not exist yet;
   the cask is staged in `packaging/homebrew/` with its audit record.
 - None of these recipes has run on a live Jamf Pro, Iru, Mosyle or Intune

@@ -1,10 +1,7 @@
 # Kookaburra Cut privacy notice
 
-> **Draft for a lawyer's review. Not legal advice.** No lawyer has reviewed
-> this text. Don't publish it or rely on it until an Australian lawyer, and
-> for people in Europe a European data protection adviser, has.
-> `[LAWYER: ...]` marks a question for the reviewer; `[TO CONFIRM: ...]` marks
-> a fact still to check.
+> **The maintainer's own notice. Not legal advice.** No lawyer has reviewed
+> it.
 
 This is the legal form of [privacy.md](../privacy.md). Sections 3 to 5 name
 their source in that page or in [SECURITY.md](../../SECURITY.md), which hold
@@ -111,11 +108,11 @@ reaches me.
 5.1 GitHub, Anthropic and each website handle that data under their own
 privacy terms, as their own controllers. GitHub names GitHub, Inc. or GitHub
 B.V. as controller of what it collects from visitors, IP addresses included
-[S7].
+[S6].
 
 5.2 I have no access to it. GitHub shows me a running download count for
 each release file and 14 days of aggregate traffic, never who downloaded or
-visited [S8][S9].
+visited [S7][S8].
 
 5.3 Two buttons open a fixed web page in your browser (the Claude download
 page and the privacy page on GitHub). Nothing about you is added to either
@@ -147,7 +144,7 @@ your browser load only from the site itself, which serves its own fonts, so
 no other host learns of your visit.
 
 6.5 **The download button** links to GitHub Releases. GitHub sees you only if
-you click it, under its own privacy terms [S7]. The site looks up the latest
+you click it, under its own privacy terms [S6]. The site looks up the latest
 release on its server, never from your browser.
 
 6.6 **Forms.** There is no form and no mailing list.
@@ -163,7 +160,7 @@ don't use it for marketing, sell it or share it, except as section 7.4 says.
 
 7.3 **Who sees it.** A GitHub issue is public. A security report is a draft
 advisory that only you, the maintainer and anyone the maintainer adds to it
-can see, until a fix is published [S10].
+can see, until a fix is published [S9].
 
 7.4 **Who holds it for me.** GitHub hosts issues and reports, in the United
 States, under its own terms. Mail to `privacy@` and `security@kookaburracut.com`
@@ -181,17 +178,9 @@ Source: [SECURITY.md, "Reporting a vulnerability"](../../SECURITY.md#reporting-a
 8.1 **In the app I am neither controller nor processor.** I never receive,
 access or store personal data you handle in the app, so I don't decide why or
 how it is processed (GDPR Article 4(7)) and don't process it on your behalf
-(Article 4(8)) [S6]. There is no processing for Article 28 to govern, so
+(Article 4(8)) [S5]. There is no processing for Article 28 to govern, so
 there is no data processing agreement to sign, and no subprocessor
 ([subprocessors.md](../subprocessors.md)).
-
-[LAWYER: the EDPB's controller and processor guidelines (07/2020) define a
-processor as acting on the controller's behalf (paragraphs 76 to 80) and say a
-provider whose access is incidental is neither role (paragraphs 82 and 83).
-They don't address software that runs only on the user's device, so 8.1 is
-an inference. Paragraph 45 (a controller needs no access) and footnote 29
-(system providers) point the other way for software that processes data
-itself; confirm they don't reach a desktop app [S11].]
 
 8.2 **Your organisation is the controller** of personal data in its projects,
 such as people in footage or names in copy. The app processes it on your
@@ -208,30 +197,11 @@ app (Article 6(1)(f)).
 in Australia, with GitHub in the United States and with Google, which hosts my
 mailbox; email passes through Cloudflare on its way there. The website runs in
 Australia.
-[LAWYER: the transfer basis for messages a person in the EU or UK sends to an
-individual in Australia, given that Australia has no adequacy decision.]
-
-8.5 [LAWYER: (1) whether the GDPR reaches an individual maintaining free
-software at all, for the website and for messages people send, given Article
-3(2) and Recital 23 (a reachable website or an email address is not
-targeting), and whether the household exemption in Article 2(2)(c) has any
-part; (2) if it does, whether an EU or UK representative is needed (Article
-27(1)), or the exemption for occasional, low-risk processing in Article
-27(2)(a) applies; (3) whether the record-keeping exemption in Article 30(5)
-applies; (4) the UK GDPR position after the Data (Use and Access) Act 2025
-[S12].]
 
 ## 9. The Australian Privacy Principles
 
-9.1 [LAWYER: whether the Australian Privacy Principles bind an individual who
-maintains free software with no business turnover. The small business
-exemption covers a business with an annual turnover of $3,000,000 or less
-(Privacy Act 1988 section 6D) [S1][S2]; confirm whether that, or something
-else, applies here. Also: whether to opt in to the Privacy Act through the
-OAIC's register (section 6EA). Opting in makes the principles, the notifiable
-data breaches scheme [S5] and OAIC complaints binding, and the OAIC declines an
-application without a privacy policy, which this notice would be.] Either way,
-I follow the principles below.
+9.1 Whether or not the Australian Privacy Principles bind me [S1][S2], I
+follow them as below.
 
 9.2 The statutory tort for serious invasions of privacy, in force since 10
 June 2025, applies whether or not the principles bind me [S3].
@@ -282,11 +252,8 @@ Checked on 9 November 2026.
 - S2. OAIC, the Australian Privacy Principles quick reference: https://www.oaic.gov.au/privacy/australian-privacy-principles/australian-privacy-principles-quick-reference; opting in: https://www.oaic.gov.au/privacy/privacy-guidance-for-organisations-and-government-agencies/organisations/opting-in-to-the-privacy-act
 - S3. OAIC, statutory tort for serious invasions of privacy: https://www.oaic.gov.au/privacy/your-privacy-rights/more-privacy-rights/statutory-tort-for-serious-invasions-of-privacy
 - S4. Privacy and Other Legislation Amendment Act 2024, section 2 and Schedule 1 Part 15: https://www.legislation.gov.au/C2024A00128/asmade/text
-- S5. OAIC, the notifiable data breaches scheme: https://www.oaic.gov.au/privacy/notifiable-data-breaches/preventing-preparing-for-and-responding-to-data-breaches/data-breach-preparation-and-response/part-4-notifiable-data-breach-ndb-scheme
-- S6. GDPR, Articles 2, 3, 4, 6, 12, 13, 25, 27, 28, 30, 32, 49 and 77, and Recital 23: https://gdpr-info.eu/
-- S7. GitHub General Privacy Statement: https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement
-- S8. GitHub REST API, release assets (`download_count`): https://docs.github.com/en/rest/releases/assets
-- S9. GitHub, viewing traffic to a repository: https://docs.github.com/en/repositories/viewing-activity-and-data-for-your-repository/viewing-traffic-to-a-repository
-- S10. GitHub, privately reporting a vulnerability: https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/report-privately; repository advisories: https://docs.github.com/en/rest/security-advisories/repository-advisories
-- S11. EDPB Guidelines 07/2020 on controller and processor, version 2.1: https://www.edpb.europa.eu/system/files/documents/2023-10/EDPB_guidelines_202007_controllerprocessor_final_en.pdf
-- S12. ICO, data protection and the EU: https://ico.org.uk/for-organisations/data-protection-and-the-eu/overview-data-protection-and-the-eu/
+- S5. GDPR, Articles 2, 3, 4, 6, 12, 13, 25, 27, 28, 30, 32, 49 and 77, and Recital 23: https://gdpr-info.eu/
+- S6. GitHub General Privacy Statement: https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement
+- S7. GitHub REST API, release assets (`download_count`): https://docs.github.com/en/rest/releases/assets
+- S8. GitHub, viewing traffic to a repository: https://docs.github.com/en/repositories/viewing-activity-and-data-for-your-repository/viewing-traffic-to-a-repository
+- S9. GitHub, privately reporting a vulnerability: https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/report-privately; repository advisories: https://docs.github.com/en/rest/security-advisories/repository-advisories

@@ -744,7 +744,7 @@ jobs:
 
           \`build-info.txt\` records the toolchain, the runner image, the commit and the sidecar pins this build used.
 
-          \`KookaburraCut-${VERSION}.cdx.json\` is the release's SBOM (CycloneDX 1.5): every npm package and Rust crate built into the app, the sidecar's pinned sources and the beat model, attested on the DMG and the pkg. The app binary also carries its own Rust dependency list (\`cargo audit bin\`).
+          \`KookaburraCut-${VERSION}.cdx.json\` is the release's SBOM (CycloneDX 1.5): every npm package and Rust crate built into the app, the sidecar's pinned sources, the beat model and, by SHA-256, the bundled fonts, HDRIs, licensed device models, adapted shaders and kit scripts, attested on the DMG and the pkg. The app binary also carries its own Rust dependency list (\`cargo audit bin\`).
 
           ## Sidecar source
 
