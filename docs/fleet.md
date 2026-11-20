@@ -1,6 +1,6 @@
 # Kookaburra Cut on managed Macs
 
-Describes version 0.22.4. For the IT and security team deploying Kookaburra Cut
+Describes version 0.23.0. For the IT and security team deploying Kookaburra Cut
 to a fleet. The keys themselves, their types and a sample profile are in
 [mdm.md](./mdm.md); the decision-maker's summary is
 [security-overview.md](./security-overview.md); the engineering record with the

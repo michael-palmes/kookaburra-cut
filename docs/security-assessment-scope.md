@@ -6,7 +6,7 @@ and how an engagement should run. Quote from it freely. Every claim it points at
 is stated, with its control, in [SECURITY.md](../SECURITY.md) at the version
 under test; where the two disagree, SECURITY.md wins and this file is stale.
 
-Checked against 0.22.4, the latest release, while 0.23.0 is in review.
+Checked against 0.23.0, the latest release.
 
 ## The product
 

@@ -1,6 +1,6 @@
 # Security overview
 
-Describes version 0.22.4. For the team deciding whether Kookaburra Cut can run
+Describes version 0.23.0. For the team deciding whether Kookaburra Cut can run
 on managed Macs: the security lead, CTO or engineering manager. Every line
 links to the file, command or release asset behind it, and anything not done
 yet sits under [Not yet](#not-yet). Read it at the tag of the version you

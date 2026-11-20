@@ -1,7 +1,8 @@
 # Deploying Kookaburra Cut with an MDM
 
-Written against version 0.22.4, the current release, and what 0.23.0 adds;
-wherever 0.23.0 differs, the text says so. Copy-paste recipes for Jamf Pro,
+Written against version 0.23.0; wherever an earlier version differs, the text
+says so. The pinned install examples name 0.22.4 and its hash until 0.23.0's
+`SHA256SUMS` is published. Copy-paste recipes for Jamf Pro,
 Kandji (now Iru), Mosyle and Microsoft Intune: install the app, force a posture
 with a configuration profile, check a Mac, serve updates from your own server,
 and remove it. Which keys to force and why is in [fleet.md](./fleet.md); what

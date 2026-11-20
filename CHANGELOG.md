@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-11-20
+
 ### Added
 
 - Settings ▸ Allowed projects lists the projects you allowed to run, and Forget

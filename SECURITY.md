@@ -1,7 +1,10 @@
 # Security policy
 
-**As of version 0.22.4.** This file describes that version, whose controls match
-0.22.3's. Older versions have less: 0.22.2 has no managed keys for the agent
+**As of version 0.23.0.** This file describes that version. Older versions
+have less: 0.22.4 and 0.22.3 keep no log in a release build, share one website
+store across projects, leave bridge requests unsigned, have no Allowed
+projects list, Clear all app data, `AuditLogPath` or `AllowedWebsiteOrigins`,
+and ship no pkg, SBOM or source archives; 0.22.2 has no managed keys for the agent
 kit, pack export, exports in the project or the update endpoint; 0.22.1 asks
 the Keychain for the pack key whenever Settings or Export opens, and its Later
 stops the launch check offering that version again; 0.22.0 is 0.22.1 built
