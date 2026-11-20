@@ -243,7 +243,7 @@ under the project lock (`kblib.lock`) and re-validated after writing.
 | `status` | App alive (heartbeat), version, open project, aspect, exporting; this project's last load result; what the app changed since this agent last looked ("App edits"); kit version and anything wrong with the kit; checkpoint state; the last verify verdict and whether a source changed since; a leading STOP banner when the project is a linked git worktree (`--json`: `worktree` is `{ path, main }` or null; `appEdits`, `kitProblems`, `lastVerify`) |
 | `context [--md]` | The SessionStart text: status, scene roster, last load errors, the five rules that matter most (under 4 KB). `--md`, and every `SessionStart:compact`, is the same as headed markdown under 7 KB: a scene table, the recent checkpoints and the last hour's app edits even if the agent was told before |
 | `scenes` | Roster: index, stem, name, duration, transition, text, overrides (replaces `inspect.py`) |
-| `check [--app] [--render] [files...]` | Static checks (below); `--app` adds the running app's real compile, load and font checks; `--render` also renders each scene once; `check film ...` hands its arguments to `kblib/film` (`run(ctx, rest)`), and `check film --range SPAN \| --scene S` is the ranged flash check ("Ranged checks") |
+| `check [--app] [--render] [files...]` | Static checks (below); `--app` adds the running app's real compile, load and font checks; `--render` also renders each scene once; `check film ...` hands its arguments to `kblib/film` (`run(ctx, rest)`), and `check film --range SPAN \| --scene S` is the ranged flash check ("Ranged checks"); `check camera [S...]` is the camera check alone ("Camera check"), whose warnings `check` and `verify` also carry for the scenes they check |
 | `capture [--scene S] [--at SEC\|POS] [--aspect A] [--frames S@SEC,S@POS,POS,bars:A-B,beats:A-B] [--around SEC\|POS --count N] [--sheet] [--width N \| --scale F] [--probe X,Y[,X,Y...]] [--crop X,Y,W,H] [--diff A B] [--out DIR \| --no-copy]` | Frames from the running app (one frame native, several or a sheet at a 1280 px long edge); prints the paths of copies in `.kb/captures/`; `--sheet` adds one contact-sheet PNG; `--probe` returns exact pixel values ("The capture service"). A musical position resolves against `audio.grid` to the scene that owns it (mid-transition, the one the editor shows as current); with `--scene` a position outside it is exit 1; `bars:`/`beats:` ranges expand to downbeats or beats, 48 frames at most; answers carry `position` and `projectMs`. Motion and joins: "Captures for motion and joins" |
 | `verify [--scene S]... [--aspect A] [--no-render] [--film \| --quick] [--formats]`, `verify --last` | Every check before calling the work done, one step at a time (below); `--last` prints the saved verdict and exits with its code |
 | `debug contexts`, `debug lose-context [--window render\|editor]` | Every window's WebGL contexts; force a context loss to exercise the stall recovery (the editor only in dev builds) |
@@ -270,6 +270,7 @@ under the project lock (`kblib.lock`) and re-validated after writing.
 | `export [--aspect A] [--preset ID] [--fps 30\|60] [--short-edge N] [--poster-frame on\|off\|app] [--verify] [--headless] [--allow-flashes] [--timeout S] [--progress-every S]` | The finished film, exactly as the app's Export button makes it ("kb export") |
 | `flashes [list]`, `flashes accept TIME --why TEXT`, `flashes forget TIME\|ID` | The last flash check at a glance, and accepted warnings ("Accepted flash warnings"; `--json`: `accepted`, `last`) |
 | `pacing [list]`, `pacing accept ID\|S --why TEXT [--kind still\|read\|short\|final-hit\|end]`, `pacing forget ID\|S` | Pacing warnings the person kept, per scene and kind, in `pacing.accepted.json`; later `kb check film pacing` runs list them under `accepted` instead of `warnings`. Without `--kind`, accept keeps only the kinds open on that scene in the last check (`.kb/pacing/last.json`, written by every `kb check film pacing`; a static check when none ran) (`kblib/pacing_cli.py`; `--json`: `accepted`) |
+| `camera [list]`, `camera accept ID\|S --why TEXT [--kind kick-at-cut\|kick-on-turn\|sway\|wobble\|climb\|focus]`, `camera forget ID\|S` | Camera warnings the person kept, one row per warning id beside the pacing ones in `pacing.accepted.json` (so packs leave them out and checkpoints keep them); accept by scene keeps every warning open on it now, or only `--kind` (`kblib/camera/cli.py`; `--json`: `accepted`) |
 | `preview --range SPAN \| --scene S [--aspect A] [--fps N] [--width N] [--gif]` | A low-resolution MP4 or GIF of a span, rendered by the render window, plus a contact sheet to Read ("Ranged checks") |
 | `verify-export FILE [--no-sheet] [--no-flashes] [--allow-flashes] [--loudness-target LUFS] [--standard wcag\|itu\|both]` | Check an exported film against what the project asked for ("Film checks and verify-export") |
 | `sync-check FILE [--bpm N [--offset MS]] [--poster-frame auto\|on\|off] [--threshold PCT] [--window MS]` | Each cut and big picture change against its nearest beat, in ms ("kb sync-check") |
@@ -583,7 +584,7 @@ Hooks:
   `.kb/agents/<name>/` and `.kb/captures/` is allowed), and to the asset records
   (`assets/_meta.json`, `assets/**/*.timing.json`, anything under `assets/.originals/`),
   each reason naming the kb command to use (`kblib/hookfast.py` `asset_record_reason`), and to
-  `flashes.accepted.json` and `pacing.accepted.json` (only `kb flashes` and `kb pacing` accept
+  `flashes.accepted.json` and `pacing.accepted.json` (only `kb flashes`, `kb pacing` and `kb camera` accept
   and forget write them, each entry with a reason). These names compare case-folded, since APFS opens any folded spelling as the same
   file, and a respelled project folder still counts as the project. An edit to a scene leased to
   someone else is denied with `permissionDecision: "deny"`, naming the holder, the expiry
@@ -1179,6 +1180,27 @@ with `accepted: { id, why, by }`: summaries count it as accepted, verify lists i
 `accepted` and never as a warning, and a failure is never marked. `kb flashes` shows the
 last check and the entries; `kb flashes forget TIME|ID` drops every entry at that moment. The file is tracked by
 checkpoints and blocked to Edit and Write (the pre-edit hook names the command).
+
+### Camera check
+
+`kb check camera` (`kblib/camera/`) samples each scene's camera with a mirror of the app's
+samplers: the orbit track, the rig (centripetal spline, slerped look, log aim distance),
+kicks, carried dof and the device track, resolving object aims as the app does before it
+knows the floor and frame. `tests/fixtures/camera-vectors.json`, written by
+`src/agentKit/cameraVectors.ts` (`pnpm agent:vectors`), holds both sides to the same poses.
+Each threshold comes from the bundled Unveil template's history (`tests/fixtures/camera/`):
+
+| Kind | Threshold | Evidence |
+| --- | --- | --- |
+| `kick-at-cut` | Starts within 120 ms of the cut, the camera within 2% and 1° of the last scene's end pose | Name's 3% kick on its first frame, after Reveal ended on the same pose. A kick on a hard cut to a new view passes (the Lockup's) |
+| `kick-on-turn` | The camera or an in-view device turning 2° more inside the kick's window than at its rate just before | The 0:21.55 kick as a still phone began a 6° turn; today's kicks land on 0.16° or less, and kicks on a steady orbit pass |
+| `sway` | The aim point's screen path, less its net travel, over 2% of the frame height each way; or a move running back 2% of its chord | Montage before the fix: 9 of 12 cuts at 2.8 to 5.5%; Glimpses 2.6 to 3.6%; today's largest is 1.65% |
+| `wobble` | Three jump cuts of one device model in a row alternating sides by 6° (yaw or pitch) or 1.5° (roll) | Glimpses at -18, +19, -19, +19°; today's Montage varies its angles without alternating |
+| `climb` | A fixed-aim push whose pitch changes by 3% of the fov | The 3% slide noticed at 0:11 (that move was a pure push along its sightline, so this rule does not flag it) |
+| `focus` | A key's numeric focus whose band (the dof `range`, or where the lens CoC stays under 1% of the frame, the round-21 readability calibration) reaches neither the aim nor the middle half of an in-view device's depth | Name's guessed 10.42 with a 0.3 range (round 11). Proof 1's keyed card focus passes |
+
+Warnings never fail a check. Kept ones are rows of their own kinds in `pacing.accepted.json`
+(`kb pacing` ignores them). A broken camera block is a note, never a failure.
 
 ### kb sync-check
 

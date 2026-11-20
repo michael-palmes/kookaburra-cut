@@ -1,0 +1,194 @@
+{
+  "version": 1,
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "g1a",
+        "tMs": 0,
+        "pose": {
+          "position": [1.3045, 0.3607, 5.0018],
+          "aim": { "mode": "point", "at": [-1.9509, 0.3607, -0.208] },
+          "fov": 18,
+          "dof": { "mode": "lens", "fStop": 16, "focus": "auto" }
+        }
+      },
+      {
+        "id": "g1b",
+        "tMs": 1874,
+        "pose": {
+          "position": [1.1418, 0.3607, 4.7413],
+          "aim": { "mode": "point", "at": [-1.9509, 0.3607, -0.208] },
+          "fov": 18,
+          "dof": { "mode": "lens", "fStop": 16, "focus": "auto" }
+        }
+      },
+      {
+        "id": "g2a",
+        "tMs": 1875,
+        "pose": {
+          "position": [0.3744, 0.4858, 3.5133],
+          "aim": { "mode": "point", "at": [-1.9509, 0.4858, -0.208] },
+          "fov": 18,
+          "dof": { "mode": "lens", "fStop": 16, "focus": "auto" }
+        },
+        "at": "bar:4"
+      },
+      {
+        "id": "g2b",
+        "tMs": 3749,
+        "pose": {
+          "position": [0.2582, 0.4858, 3.3272],
+          "aim": { "mode": "point", "at": [-1.9509, 0.4858, -0.208] },
+          "fov": 18,
+          "dof": { "mode": "lens", "fStop": 16, "focus": "auto" }
+        }
+      },
+      {
+        "id": "g3a",
+        "tMs": 3750,
+        "pose": {
+          "position": [0.6069, 0.18, 3.8854],
+          "aim": { "mode": "point", "at": [-1.9509, 0.18, -0.208] },
+          "fov": 18,
+          "dof": { "mode": "lens", "fStop": 16, "focus": "auto" }
+        },
+        "at": "bar:5"
+      },
+      {
+        "id": "g3b",
+        "tMs": 5624,
+        "pose": {
+          "position": [0.4791, 0.18, 3.6807],
+          "aim": { "mode": "point", "at": [-1.9509, 0.18, -0.208] },
+          "fov": 18,
+          "dof": { "mode": "lens", "fStop": 16, "focus": "auto" }
+        }
+      },
+      {
+        "id": "g4a",
+        "tMs": 5625,
+        "pose": {
+          "position": [0.8395, -1.1683, 4.2575],
+          "aim": { "mode": "point", "at": [-1.9509, -1.1683, -0.208] },
+          "fov": 18,
+          "dof": { "mode": "lens", "fStop": 16, "focus": "auto" }
+        },
+        "at": "bar:6"
+      },
+      {
+        "id": "g4b",
+        "tMs": 7500,
+        "pose": {
+          "position": [0.7, -1.1683, 4.0343],
+          "aim": { "mode": "point", "at": [-1.9509, -1.1683, -0.208] },
+          "fov": 18,
+          "dof": { "mode": "lens", "fStop": 16, "focus": "auto" }
+        }
+      }
+    ],
+    "segments": [
+      { "from": "g1a", "to": "g1b", "ease": "linear" },
+      { "from": "g1b", "to": "g2a", "ease": "jump" },
+      { "from": "g2a", "to": "g2b", "ease": "linear" },
+      { "from": "g2b", "to": "g3a", "ease": "jump" },
+      { "from": "g3a", "to": "g3b", "ease": "linear" },
+      { "from": "g3b", "to": "g4a", "ease": "jump" },
+      { "from": "g4a", "to": "g4b", "ease": "linear" }
+    ]
+  },
+  "deviceTrack": {
+    "keys": [
+      {
+        "id": "d1",
+        "tMs": 0,
+        "pose": {
+          "planned": { "offset": [0, 0, 0] },
+          "typed": { "offset": [0, 0, 400] },
+          "moved": { "offset": [0, 0, 400] },
+          "shared": { "offset": [0, 0, 400] }
+        }
+      },
+      {
+        "id": "d2",
+        "tMs": 1875,
+        "pose": {
+          "planned": { "offset": [0, 0, 400] },
+          "typed": { "offset": [0, 0, 0] },
+          "moved": { "offset": [0, 0, 400] },
+          "shared": { "offset": [0, 0, 400] }
+        },
+        "at": "bar:4"
+      },
+      {
+        "id": "d3",
+        "tMs": 3750,
+        "pose": {
+          "planned": { "offset": [0, 0, 400] },
+          "typed": { "offset": [0, 0, 400] },
+          "moved": { "offset": [0, 0, 0] },
+          "shared": { "offset": [0, 0, 400] }
+        },
+        "at": "bar:5"
+      },
+      {
+        "id": "d4",
+        "tMs": 5625,
+        "pose": {
+          "planned": { "offset": [0, 0, 400] },
+          "typed": { "offset": [0, 0, 400] },
+          "moved": { "offset": [0, 0, 400] },
+          "shared": { "offset": [0, 0, 0] }
+        },
+        "at": "bar:6"
+      }
+    ],
+    "segments": [
+      { "from": "d1", "to": "d2", "ease": "jump" },
+      { "from": "d2", "to": "d3", "ease": "jump" },
+      { "from": "d3", "to": "d4", "ease": "jump" }
+    ]
+  },
+  "devices": [
+    {
+      "id": "planned",
+      "model": "iphone-15-pro",
+      "placement": {
+        "position": [-2.05, 0.079, -0.318],
+        "rotationDeg": [0, 42, 0],
+        "scale": 1.39,
+        "ground": true
+      }
+    },
+    {
+      "id": "typed",
+      "model": "iphone-15-pro",
+      "placement": {
+        "position": [-2.05, 0.079, -0.318],
+        "rotationDeg": [0, 42, 0],
+        "scale": 1.39,
+        "ground": true
+      }
+    },
+    {
+      "id": "moved",
+      "model": "iphone-15-pro",
+      "placement": {
+        "position": [-2.05, 0.079, -0.318],
+        "rotationDeg": [0, 42, 0],
+        "scale": 1.39,
+        "ground": true
+      }
+    },
+    {
+      "id": "shared",
+      "model": "iphone-15-pro",
+      "placement": {
+        "position": [-2.05, 0.079, -0.318],
+        "rotationDeg": [0, 42, 0],
+        "scale": 1.39,
+        "ground": true
+      }
+    }
+  ]
+}

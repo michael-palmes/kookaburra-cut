@@ -262,3 +262,24 @@ move the camera across the whole project and own `fov`. Prefer per-scene tracks.
 Land keys on the soundtrack: give a key `"at": "bar:13"` so it follows the grid
 (`./kb doc S set camera.keys.N.at bar:13`), or read times from `./kb beats --scene <s>`
 (scene-local ms). Both are in reference/beats.md.
+
+## Checking the camera
+
+`./kb check camera` samples every scene's camera the way the app renders it and warns, with
+an id, a scene and a time, about what reads as a mistake in motion. `./kb check` and
+`./kb verify` carry the same warnings, so read them after every camera change.
+
+| Kind | Warns when | Usual fix |
+| --- | --- | --- |
+| `kick-at-cut` | A kick starts on a scene's first moment while the camera carries on from the last scene | Move it a beat in, or drop it |
+| `kick-on-turn` | A kick lands as the camera or a device in view starts to turn (2° more than just before) | Kick where nothing starts to turn |
+| `sway` | What the camera aims at drifts 2% of the frame off its line and back inside one move, or a move runs back on itself | `"smooth": false` (a spline bends towards other shots' keys), keys along a curve, an ease that never reverses |
+| `wobble` | Three or more jump cuts of one subject swing to either side of it in turn | One angle for every cut; change the shot size instead |
+| `climb` | A push climbs or drops round its subject, sliding the background 3% of the frame | Push along the line to the subject |
+| `focus` | A numeric focus, where a key sets it, reaches neither the aim nor any device in view | `"focus": "auto"`, or the subject's own depth |
+
+These are defaults, and the person decides. A warning they keep goes in with their reason:
+`./kb camera accept ID --why "..."` (or `S [--kind K]` for every one open on a scene). Later
+checks list it as kept; `./kb camera` lists them and `./kb camera forget ID` drops one. Kb
+cannot see text or a lifted card in depth, so focus held on one warns: keep it once you
+have checked the frame.

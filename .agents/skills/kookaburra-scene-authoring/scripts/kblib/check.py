@@ -1880,8 +1880,8 @@ def collapse_theme_warnings(project: Project, report: Report, caller: Any = None
 
 
 def check_project(project: Project, files: Optional[List[str]] = None, heartbeat: Optional[Dict[str, Any]] = None, ctx: Optional[Context] = None,
-                  once: bool = False) -> Report:
-    """Full check, or one scoped to `files` (project-relative) plus the manifest's errors; `once` shows workspace-theme warnings once a session (only where the report reaches the agent)."""
+                  once: bool = False, camera: bool = False) -> Report:
+    """Full check, or one scoped to `files` (project-relative) plus the manifest's errors; `once` shows workspace-theme warnings once a session (only where the report reaches the agent); `camera` adds kb check camera's warnings."""
     ctx = ctx or Context(project, heartbeat=heartbeat)
     checker = Checker(ctx)
     scoped = files is not None
@@ -1906,6 +1906,10 @@ def check_project(project: Project, files: Optional[List[str]] = None, heartbeat
         from . import assets_check
 
         assets_check.run(checker)
+        if camera:
+            from .camera import cli as cameramod
+
+            cameramod.into_report(project, checker.report)
         if once:
             collapse_theme_warnings(project, checker.report)
         return checker.report
@@ -1920,6 +1924,12 @@ def check_project(project: Project, files: Optional[List[str]] = None, heartbeat
             checker.sidecar(stem_of(f[:-5]))
         elif f.startswith("assets/"):
             continue
+    named = {stem_of(f[:-5] if f.endswith(".json") else f) for f in files or [] if f.startswith("scenes/")}
+    stems = sorted(named & {stem_of(f) for f in listed})
+    if camera and stems:
+        from .camera import cli as cameramod
+
+        cameramod.into_report(project, checker.report, stems)
     if once:
         collapse_theme_warnings(project, checker.report)
     return checker.report
