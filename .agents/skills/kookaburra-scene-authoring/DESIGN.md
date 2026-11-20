@@ -13,7 +13,8 @@ or demo, draw out three things in one short round of questions (multiple choice 
 you can), skipping whatever the request, `BRAND.md` or the folder already answers:
 
 1. What shipped: the change, in their words, and the real product that shows it
-   (screen recordings, screenshots, the app itself; add them with `./kb assets add`).
+   (screen recordings, screenshots, the app itself; add them with `./kb assets add`),
+   in dark mode for a dark film.
 2. Who it's for, and where they will see it (social, keynote, store page, all-hands):
    that sets the aspects, length and tone.
 3. Why it matters: what the viewer should feel or do after. It becomes the hook and the
@@ -22,6 +23,8 @@ you can), skipping whatever the request, `BRAND.md` or the folder already answer
 Then build around their answers: their product is the hero, their words lead the copy.
 Never invent features, numbers or quotes; ask, or flag a placeholder in your reply. When
 they say just start, propose a one-line brief from what is in the folder and confirm it.
+A staged 3D film (devices on a lit set) agrees its look and signs off one hero shot before
+the rest is built (reference/staging.md).
 
 ## Principles
 
@@ -223,8 +226,9 @@ Text motion by purpose (sidecar `textAnimation`):
 | A hit on a strong beat | A `cameraKicks` push (`zoom` 1.04) on top of the move |
 
 Text-heavy scenes keep the camera still or nearly so. Depth of field (`Cinematic`
-blur 0.6, range 1.2) separates a device from a busy background; keep text on the
-focus plane.
+blur 0.6, range 1.2) separates a device from a busy background; keep text and the UI the
+viewer reads on the focus plane. Every move needs a reason and one direction, and cuts of
+one subject keep its angle (reference/camera.md, Moves with a reason).
 
 ## Devices for product demos
 
@@ -232,8 +236,10 @@ focus plane.
   `macbook-pro-16` for desktop and web apps, `iphone-duo` for a fold story.
 - Screen media: real recordings trimmed to the feature, `startMs` timed to the caption.
   Static screenshots for stills and stacks.
-- Pose: front on for clarity; editorial `[-6, 14, 0]` for style; mirror it on
-  alternating scenes for rhythm.
+- Pose: front on for clarity; editorial `[-6, 14, 0]` for style. Consecutive cuts of one
+  device keep one angle and change shot size: a pose mirrored cut to cut reads as a wobble.
+- On a lit stage, devices stand flat on the floor, show the app working, and land rather
+  than slide in (reference/staging.md).
 - Shadows: `soft` clean default, `long` for drama, `wetfloor` on dark premium stages,
   `drop` or `sun` for app-store cards.
 - Several devices: `toe-in` for two or three, `hero` for one main plus context,
@@ -251,6 +257,9 @@ focus plane.
 - Tech: `glitch`, `datamosh`, `chromasplit`, `pixelstretch`, sparingly.
 - One-off moments: `shatter`, `prism`, `shockwave`.
 - Pick one main transition plus one accent per video. Hard cuts on strong beats.
+- Staged films carry light and motion across a cut, never a cut to black mid-film (a black
+  beat reads as the film stopping): fly through to the next subject, or open the next
+  shot's light where this one's ends (Unveil's `04-reveal` and `15-hero`).
 
 ## Backgrounds
 
@@ -327,6 +336,13 @@ or `b.background`. Templates: `before-after-update`, `dark-mode-launch`,
       included (reference/export.md).
 - [ ] Every changed scene captured in a landscape AND a portrait aspect (and every
       aspect in `formats`), mid-reveal and settled.
+- [ ] Motion checked after any camera or timing change, since stills pass sway, reversals
+      and jumps: frames stepped around every cut, key and kick
+      (`./kb capture --around <pos> --count 12`), each join compared
+      (`--diff A@last B@first`), the span watched (`./kb preview --scene S --fps 30`) and
+      its flashes checked (`./kb check film --scene S`).
+- [ ] Staged 3D film: each scene's frame checked beside the signed-off hero, and every shot
+      through the staged-shot checklist (reference/staging.md).
 - [ ] All text inside the safe area, nothing clipped, nothing overlapping a device.
 - [ ] Legible at phone size: no text under the sizes above; contrast holds over moving
       backgrounds.
@@ -337,4 +353,6 @@ or `b.background`. Templates: `before-after-update`, `dark-mode-launch`,
       in your reply with the reason.
 - [ ] Fonts bundled or passed `./kb fonts check`; capture confirms the face.
 - [ ] Videos probed; follow-media durations match.
-- [ ] Told the user what changed, in plain words.
+- [ ] Told the user what changed, in plain words. Anything they must judge is shown, not
+      asked: the scene and time to look at, a frame or clip per option with your pick
+      marked, and the film's full path with `open -a "QuickTime Player" "<path>"`.

@@ -70,6 +70,27 @@ drift inside a cut, measured).
 
 `<DepthStage>` (reference/scenes.md) gives a rig layers to fly through.
 
+## Moves with a reason
+
+A move the viewer can't explain reads as a mistake ("why did it go up?"), and sway reads as
+a wobble even when each frame looks right.
+
+- One move a shot, in one direction, for a reason you can name: closer to what matters,
+  revealing what comes next, following the subject. Never reverse or change direction
+  inside a shot; cut, and give the next shot its own move.
+- Consecutive cuts of one subject keep one angle and change shot size (wide, close,
+  medium). Mirroring the pose or the orbit cut to cut (yaw 14 one way, then the other)
+  reads as the picture wobbling left and right. Unveil's `03-glimpses`: four phones seen
+  from one angle, 10 degrees off the screen and level, each glimpse its own size.
+- A push stays level: keep `position` and `aim.at` at one height. A camera that climbs as
+  it pushes slides the background up behind still text.
+- No kick on a scene's first frame (it reads as a jump at the cut) or on top of a device
+  turn (the two stack into a lurch). Kick a strong hit while the subject holds.
+- A moment that must read as one take is one scene. Haze, smoke, dust and every keyed value
+  run on scene time and restart at a cut, so a move split over two scenes jumps even when
+  the poses match (`continueFromPrevious` carries only the camera). Unveil's question,
+  reveal and name are one 11.25 s scene, `04-reveal`, for this reason.
+
 ## Screen portal
 
 A pull-out from inside a screen starts on a rig key whose camera fills the frame with the
@@ -174,6 +195,21 @@ the scene's; blur animates, the mode does not.
 - Everything blurs by its true depth, text and screens included: keep text you need
   legible on the focus plane. `blur: 0` frames are unchanged. Inspector depth presets:
   Subtle (blur 0.25, range 2), Cinematic (0.6, 1.2), Macro (0.9, 0.5).
+
+Focus keeps the UI readable. Each rule below fixed a shot where the words the scene was
+about went soft:
+
+- Focus on what the scene is about for its whole length: every word and every part of the
+  UI the viewer must read stays inside the sharp band at every key, not just the first.
+- Never set a numeric `focus` by eye: a guessed 10.42 missed both the title (9.9 to 10.3)
+  and the phone (11.5 to 11.9). Use `"auto"` on the aimed subject, or work out the
+  subject's depth along the view axis, `(subject - position) · unit(aim.at - position)`,
+  and key it on every camera key (Unveil's `06-proof-1` does this for its lifted card).
+- Capture the last frame of every rack (`./kb capture --scene S --at <the rack's end>`):
+  the end of a rack is where a wrong focus misses most.
+- At a steep angle to a screen, flatten the angle rather than stopping down: 20 to 26
+  degrees off a phone's screen, even f/22 to f/32 blurred half of it. Turn the camera
+  nearer the screen's normal (Unveil's glimpses: 10 degrees off at f/16).
 
 ## Motion blur
 
