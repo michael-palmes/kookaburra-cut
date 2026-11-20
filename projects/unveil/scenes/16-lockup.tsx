@@ -35,7 +35,7 @@ export default defineScene({
     return (
       <SceneStage floorY={-1.905}>
         <group position={[0, ICON_Y + 0.3 * (1 - land), 0]} scale={1.08 - 0.08 * land}>
-          <ImageCard src="assets/fairywren-icon.png" width={icon} from={0} to={50} />
+          <ImageCard src="assets/app-icon.png" width={icon} from={0} to={50} />
           <AnimatedGroup
             preset="fade-scale"
             startScale={1}
@@ -46,7 +46,7 @@ export default defineScene({
             extent={[icon * 1.2, icon * 1.2]}
             position={[0, 0, 0.002]}
           >
-            <ImageCard src="assets/fairywren-icon.png" width={icon} />
+            <ImageCard src="assets/app-icon.png" width={icon} />
           </AnimatedGroup>
         </group>
         <AnimatedHeadline
