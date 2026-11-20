@@ -1446,7 +1446,7 @@ lands in `responses/<id>.json`. A request without `kind` is a v1 capture.
   "instancePid": 87186, "client": "session-1a2b3c4d",
   "deadlineAtMs": 1792020120000, "retryOf": null,
   "scene": "03-feature-checks", "at": 1.5, "aspect": "9:16",
-  "frames": [{ "scene": "3", "at": 2.0 }], "sheet": true,
+  "frames": [{ "scene": "3", "at": 2.0 }, { "scene": "3", "at": 2.0, "sceneDoc": { "version": 3 } }], "sheet": true,
   "width": 1280, "scale": null, "probe": [[100, 200], [640, 360]],
   "op": "lose-context", "window": "render",
   "render": false,
@@ -1480,6 +1480,15 @@ unclaimed or unanswered request exits 3 (`bridge-timeout`); `needsTrust` exits 2
   most 48 frames. `aspect` overrides the editor's aspect for this request only; an
   unknown aspect, a `scale` outside (0, 1] or a `width` that is not a whole number of
   pixels is an error.
+  A frame's `sceneDoc` (`kb try`) is a whole sidecar for that frame's scene, used for that frame
+  only: the window loads the project with `loadProject`'s `sceneDocOverlay` (parsed by the same
+  `parseSceneDoc`, never a write base, no TSX recompile), renders, and never caches it; the real
+  project is parked and re-applied by the next request without a recompile, and any failure
+  reloads cold. Frames group by overlay (the saved project first, each overlay loading once), and
+  answer `sceneDoc: true` plus `sceneDocWarnings` (what the parser dropped); `timing.sceneDocLoads`
+  counts the loads. Workspace projects only, a frame naming its scene, one scene per overlay, at
+  most 8 distinct overlays of 256 KB each; anything else is an error before rendering. Each
+  distinct overlay costs one unit on top of its pixels.
 - `check`: `project`, `scenes: [{ index, file, id, ok, phase?, error?, warnings }]`,
   `fonts: [{ ref, ok, error?, fallback? }]` (passing refs included),
   `assets: [{ path, ok, error? }]`, `warnings`, `rendered`. Built from a real load in
@@ -1652,8 +1661,8 @@ is `kblib/queue.py` and `kblib/capture.py`. Bridge captures are never baselines.
   exact against a decoded MP4 or across sizes near edges.
 - **Cost.** A capture costs frames x ceil(width x height / 921 600) units (a 4K frame is
   9, 1280x720 is 1); a `range` request costs its frames' pixels with four frames to a unit
-  (it skips the per-frame preamble and PNG save: a minute at 640x360 and 30 fps is 113);
-  other kinds cost 1. A capture or range over 144 units is answered `{ ok: false, tooLarge:
+  (it skips the per-frame preamble and PNG save: a minute at 640x360 and 30 fps is 113); each
+  distinct `sceneDoc` adds one; other kinds cost 1. A capture or range over 144 units is answered `{ ok: false, tooLarge:
   true, units, maxUnits, hint }` (kb exit 1, `too-large`; kb splits long ranged checks itself).
 - **Ranged renders.** The `range` kind ("Ranged checks") renders at a 360 px short edge (or
   `width`) and 30 fps (1 to 60) unless sized; `range_size` and `range_frames` in
@@ -1742,7 +1751,7 @@ order and the estimate to each answer, from the last 32 capture durations):
 ```json
 {
   "version": 1,
-  "captureFeatures": ["scale", "width", "probe", "client", "deadline", "recycle", "debug", "range", "texts"],
+  "captureFeatures": ["scale", "width", "probe", "client", "deadline", "recycle", "debug", "range", "texts", "sceneDoc"],
   "queue": { "depth": 2, "oldestAgeMs": 4200,
     "order": ["0001792020004000-311-c0ffee", "0001792020003000-207-beef01"],
     "etaMs": [3800, 6000],

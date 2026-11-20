@@ -478,6 +478,8 @@ export function sceneFileStem(file: string): string {
   return file.replace(/^scenes\//, "").replace(/\.tsx$/, "");
 }
 
+const normSceneFile = (file: string): string => file.replace(/^\.?\//, "");
+
 /** The React key for one scene's mounts, the identity `assertUniqueSceneFiles` guarantees unique; TSX `defineScene` ids are author-owned and free to collide, so they must never key a mount. */
 export function sceneMountKey(projectId: string, sceneFile: string): string {
   return `${projectId}:${sceneFile.replace(/^\.?\//, "")}`;
@@ -1299,6 +1301,8 @@ export async function loadProject(
     theme?: Theme;
     trustMode?: "stored-only";
     readSavedThemes?: boolean;
+    /** One scene's sidecar replaced in memory for this load only (a bridge capture's `sceneDoc`); `file` is the manifest's scene module path. */
+    sceneDocOverlay?: { file: string; doc: unknown };
   },
 ): Promise<LoadedProject> {
   await ensureProjectsRoot();
@@ -1359,9 +1363,21 @@ export async function loadProject(
 
   // Sidecar scene documents, keyed off each entry's file stem; missing → undefined.
   const sceneDocWarnings = manifest.scenes.map((): string[] => []);
+  const overlay = options?.sceneDocOverlay;
+  const overlayFile = overlay && normSceneFile(overlay.file);
+  if (overlay && !manifest.scenes.some((entry) => normSceneFile(entry.file) === overlayFile)) {
+    throw new Error(`the sceneDoc names ${overlay.file}, which isn't a scene in this project`);
+  }
   const loadedDocs = await Promise.all(
     manifest.scenes.map((entry, i) =>
-      loadSceneDoc(id, entry.file, sceneDocGlob, bundledProjectDir(id), sceneDocWarnings[i]),
+      loadSceneDoc(
+        id,
+        entry.file,
+        sceneDocGlob,
+        bundledProjectDir(id),
+        sceneDocWarnings[i],
+        overlay && normSceneFile(entry.file) === overlayFile ? overlay : undefined,
+      ),
     ),
   );
   manifest.scenes.forEach((entry, i) => {
