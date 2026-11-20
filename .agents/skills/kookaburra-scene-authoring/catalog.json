@@ -26195,6 +26195,11 @@
         "summary": "The raw sidecar document, or null."
       },
       {
+        "id": "useSceneDuration",
+        "kind": "hook",
+        "summary": "The scene's played length in ms (a retime or pinned cut moves it); time exits from it."
+      },
+      {
         "id": "useSceneLayeredScreenshot",
         "kind": "hook",
         "summary": "The validated layeredScreenshot block, or null."

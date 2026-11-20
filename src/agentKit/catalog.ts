@@ -893,6 +893,10 @@ export const TOOLKIT_SUMMARIES: Record<
   useSceneChart: { summary: "The resolved sidecar chart block, or null." },
   useSceneDevices: { summary: "Sidecar devices as Device props, layout resolved." },
   useSceneDoc: { summary: "The raw sidecar document, or null." },
+  useSceneDuration: {
+    summary:
+      "The scene's played length in ms (a retime or pinned cut moves it); time exits from it.",
+  },
   useSceneLayeredScreenshot: { summary: "The validated layeredScreenshot block, or null." },
   useSceneObjects: { summary: "The sidecar objects array." },
   useSceneStaged: { summary: "Whether a SceneStage owns the lighting here." },

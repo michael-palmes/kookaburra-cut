@@ -121,6 +121,7 @@ export function PresentStageTree({ project }: { project: LoadedProject | null })
                       durationMs={
                         active ? slot.durationMs + ACTIVE_DURATION_EXTENSION_MS : slot.durationMs
                       }
+                      lengthMs={slot.durationMs}
                       doc={project.sceneDocs[i]}
                       theme={project.sceneThemes[i]}
                       frame={project.sceneFrames[i]}
@@ -173,6 +174,7 @@ export function PresentStageTree({ project }: { project: LoadedProject | null })
                       durationMs={
                         active ? slot.durationMs + ACTIVE_DURATION_EXTENSION_MS : slot.durationMs
                       }
+                      lengthMs={slot.durationMs}
                       doc={project.sceneDocs[i]}
                       theme={project.sceneThemes[i]}
                       frame={frame ?? undefined}
