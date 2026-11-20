@@ -64,7 +64,7 @@ first), then build around their real product, paced to the song (DESIGN.md, Paci
    `--frames 1@0.5,2@1.2 --sheet` captures several frames plus one contact sheet.
 6. Look hard (legibility, safe areas, overlap, colour), fix, repeat. After a camera or
    timing change, stills hide sway and jumps: step through every cut, key and kick with
-   `./kb capture --around <pos> --count 12` and watch `./kb preview --scene S --fps 30`.
+   `./kb capture --scene S --around <sec> --count 12` and watch `./kb preview --scene S`.
 7. Before calling the work done: `./kb verify` (static check, the app's load and render,
    each scene's first and last frames, the handoffs between them, and the flashes of a
    fresh export) and Read the sheets it lists. Never end a turn with the project failing

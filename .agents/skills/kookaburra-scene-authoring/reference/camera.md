@@ -82,8 +82,9 @@ a wobble even when each frame looks right.
   medium). Mirroring the pose or the orbit cut to cut (yaw 14 one way, then the other)
   reads as the picture wobbling left and right. Unveil's `03-glimpses`: four phones seen
   from one angle, 10 degrees off the screen and level, each glimpse its own size.
-- A push stays level: keep `position` and `aim.at` at one height. A camera that climbs as
-  it pushes slides the background up behind still text.
+- A push never climbs: moving in, keep `position` and `aim.at` at one height, since a
+  camera that rises as it pushes slides the background up behind still text. A rise or
+  fall you mean is its own move (a crane).
 - No kick on a scene's first frame (it reads as a jump at the cut) or on top of a device
   turn (the two stack into a lurch). Kick a strong hit while the subject holds.
 - A moment that must read as one take is one scene. Haze, smoke, dust and every keyed value
@@ -203,8 +204,8 @@ about went soft:
   UI the viewer must read stays inside the sharp band at every key, not just the first.
 - Never set a numeric `focus` by eye: a guessed 10.42 missed both the title (9.9 to 10.3)
   and the phone (11.5 to 11.9). Use `"auto"` on the aimed subject, or work out the
-  subject's depth along the view axis, `(subject - position) · unit(aim.at - position)`,
-  and key it on every camera key (Unveil's `06-proof-1` does this for its lifted card).
+  subject's depth along the view axis (in a rig, `(subject - position) · unit(aim.at -
+  position)`; in orbit, `distance` is the target's) and key it on every camera key (Unveil's `06-proof-1` does this for its lifted card).
 - Capture the last frame of every rack (`./kb capture --scene S --at <the rack's end>`):
   the end of a rack is where a wrong focus misses most.
 - At a steep angle to a screen, flatten the angle rather than stopping down: 20 to 26

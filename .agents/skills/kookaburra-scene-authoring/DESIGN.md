@@ -257,8 +257,8 @@ one subject keep its angle (reference/camera.md, Moves with a reason).
 - Tech: `glitch`, `datamosh`, `chromasplit`, `pixelstretch`, sparingly.
 - One-off moments: `shatter`, `prism`, `shockwave`.
 - Pick one main transition plus one accent per video. Hard cuts on strong beats.
-- Staged films carry light and motion across a cut, never a cut to black mid-film (a black
-  beat reads as the film stopping): fly through to the next subject, or open the next
+- Staged films carry light and motion across a cut, never a cut or `dip` to black mid-film,
+  chapters included (a black beat reads as the film stopping): fly through, or open the next
   shot's light where this one's ends (Unveil's `04-reveal` and `15-hero`).
 
 ## Backgrounds
@@ -338,7 +338,7 @@ or `b.background`. Templates: `before-after-update`, `dark-mode-launch`,
       aspect in `formats`), mid-reveal and settled.
 - [ ] Motion checked after any camera or timing change, since stills pass sway, reversals
       and jumps: frames stepped around every cut, key and kick
-      (`./kb capture --around <pos> --count 12`), each join compared
+      (`./kb capture --scene S --around <sec> --count 12`), each join compared
       (`--diff A@last B@first`), the span watched (`./kb preview --scene S --fps 30`) and
       its flashes checked (`./kb check film --scene S`).
 - [ ] Staged 3D film: each scene's frame checked beside the signed-off hero, and every shot
