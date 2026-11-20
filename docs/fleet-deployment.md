@@ -366,11 +366,13 @@ The locked-down profile in full:
 ```bash
 sudo profiles list | grep kookaburracut                                   # the profile is installed
 plutil -p "/Library/Managed Preferences/com.mpalmes.kookaburracut.plist"  # what it forces for every account
-defaults read com.mpalmes.kookaburracut                                    # as the person: what the app reads
+plutil -p "/Library/Managed Preferences/$USER/com.mpalmes.kookaburracut.plist"  # what it forces for this person
 ```
 
-A user-level profile lands in `/Library/Managed Preferences/<user>/` instead
-([mdm.md](./mdm.md), "Without a profile, on a dev Mac"). Then ask the app:
+A user-level profile writes only the second file ([mdm.md](./mdm.md),
+"Without a profile, on a dev Mac"). Plain `defaults read com.mpalmes.kookaburracut`
+is no check: it can leave forced values out (it does on macOS 27), so a
+working profile looks absent. Then ask the app:
 
 - **0.23.0 and later.** The app log records the forced keys at each launch,
   one line per malformed key, and the first refusal of each key in a launch
