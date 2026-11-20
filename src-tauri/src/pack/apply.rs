@@ -13,7 +13,7 @@ use super::hash::sha256_bytes;
 use super::limits::{BACKUP_DIR, PAYLOAD_PREFIX};
 use super::model::{ItemKind, PackFont, PackManifest, PackProject, Resolution, BRAND_MANIFEST};
 use super::read::{set_file_mode, StagedPack};
-use super::scan::ACCEPTED_FLASHES_FILE;
+use super::scan::{ACCEPTED_FLASHES_FILE, ACCEPTED_PACING_FILE};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeSet, HashMap};
@@ -153,7 +153,7 @@ pub fn apply_import(
     outcome.agent_notes = replace_agent_instructions(&staging, &work)?;
     outcome
         .notes
-        .extend(drop_accepted_flashes(&staging, &work)?);
+        .extend(drop_accepted_warnings(&staging, &work)?);
     outcome
         .notes
         .extend(dropped_config_notes(&staged.dropped, &work));
@@ -805,29 +805,34 @@ fn preview(text: &str) -> String {
     format!("{kept}\n… {} more characters in NOTES.md", total - AGENT_NOTE_PREVIEW_CHARS)
 }
 
-/// Someone else's accepted flash warnings never land. Removed by path, not matched by name: the volume decides what reads as the file (APFS folds `FLASHES.ACCEPTED.JSON` and `ﬂashes.accepted.json` onto it). One that will not delete stops the import.
-fn drop_accepted_flashes(staging: &Path, work: &[Work]) -> Result<Vec<String>, PackError> {
+/// Someone else's accepted flash and pacing warnings never land. Removed by path, not matched by name: the volume decides what reads as the file (APFS folds `FLASHES.ACCEPTED.JSON` and `ﬂashes.accepted.json` onto it). One that will not delete stops the import.
+fn drop_accepted_warnings(staging: &Path, work: &[Work]) -> Result<Vec<String>, PackError> {
     let mut notes = Vec::new();
     for item in work
         .iter()
         .filter(|w| is_project_shaped(w.kind) && w.resolution != Resolution::Skip)
     {
-        let path = staged_source(staging, item.kind, &item.slug).join(ACCEPTED_FLASHES_FILE);
-        let meta = match std::fs::symlink_metadata(&path) {
-            Ok(meta) => meta,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(error) => return Err(error.into()),
-        };
-        if meta.is_dir() {
-            std::fs::remove_dir_all(&path)?;
-        } else {
-            std::fs::remove_file(&path)?;
+        for (file, check) in [
+            (ACCEPTED_FLASHES_FILE, "flash"),
+            (ACCEPTED_PACING_FILE, "pacing"),
+        ] {
+            let path = staged_source(staging, item.kind, &item.slug).join(file);
+            let meta = match std::fs::symlink_metadata(&path) {
+                Ok(meta) => meta,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(error.into()),
+            };
+            if meta.is_dir() {
+                std::fs::remove_dir_all(&path)?;
+            } else {
+                std::fs::remove_file(&path)?;
+            }
+            notes.push(format!(
+                "{} ({}) came with accepted {check} warnings that were left out, so its {check} checks show them as warnings.",
+                item.name,
+                label(item.kind)
+            ));
         }
-        notes.push(format!(
-            "{} ({}) came with accepted flash warnings that were left out, so its flash checks show them as warnings.",
-            item.name,
-            label(item.kind)
-        ));
     }
     Ok(notes)
 }
@@ -2761,7 +2766,7 @@ mod tests {
 
     /// Someone else's acceptances never land on any project-shaped item, and the summary says they were left out.
     #[test]
-    fn a_packs_accepted_flash_warnings_never_land() {
+    fn a_packs_accepted_warnings_never_land() {
         let root = scratch("accepted-root");
         let staging = scratch("accepted-staging");
         let theirs = r#"{"version":1,"accepted":[{"id":"1a2b3c4d","why":"theirs"}]}"#;
@@ -2774,7 +2779,9 @@ mod tests {
             &[
                 ("project.json", &project_json),
                 (ACCEPTED_FLASHES_FILE, theirs),
+                (ACCEPTED_PACING_FILE, theirs),
                 ("assets/flashes.accepted.json", "kb never reads this one"),
+                ("assets/pacing.accepted.json", "kb never reads this one"),
             ],
             FUTURE,
         );
@@ -2787,6 +2794,7 @@ mod tests {
                 ("project.json", &template_json),
                 ("template.json", r#"{"version":1,"name":"Acme"}"#),
                 (ACCEPTED_FLASHES_FILE, theirs),
+                (ACCEPTED_PACING_FILE, theirs),
             ],
             FUTURE,
         );
@@ -2799,6 +2807,7 @@ mod tests {
                 ("project.json", &preset_json),
                 ("preset.json", r#"{"version":1,"name":"Acme"}"#),
                 ("flashes.accepted.json/nested.json", theirs),
+                ("pacing.accepted.json/nested.json", theirs),
             ],
             FUTURE,
         );
@@ -2829,20 +2838,25 @@ mod tests {
             let dir = root.join(landed);
             assert!(dir.join("project.json").is_file(), "{landed}");
             assert!(!dir.join(ACCEPTED_FLASHES_FILE).exists(), "{landed}");
+            assert!(!dir.join(ACCEPTED_PACING_FILE).exists(), "{landed}");
         }
-        let nested = root.join("acme-promo/assets/flashes.accepted.json");
-        assert!(nested.is_file());
+        for nested in ["flashes", "pacing"] {
+            let path = format!("acme-promo/assets/{nested}.accepted.json");
+            assert!(root.join(path).is_file());
+        }
         for name in [
             "acme-promo (theirs) (project)",
             "acme-template (theirs) (template)",
             "acme-preset (theirs) (scene preset)",
         ] {
-            let note = format!("{name} came with accepted flash warnings");
-            assert!(
-                outcome.notes.iter().any(|n| n.starts_with(&note)),
-                "{:?}",
-                outcome.notes
-            );
+            for check in ["flash", "pacing"] {
+                let note = format!("{name} came with accepted {check} warnings");
+                assert!(
+                    outcome.notes.iter().any(|n| n.starts_with(&note)),
+                    "{:?}",
+                    outcome.notes
+                );
+            }
         }
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -2862,6 +2876,7 @@ mod tests {
                 &format!(r#"{{"id":"{slug}","name":"Mine"}}"#),
             );
             write(&root.join(slug).join(ACCEPTED_FLASHES_FILE), mine);
+            write(&root.join(slug).join(ACCEPTED_PACING_FILE), mine);
         }
         let incoming = |slug: &str| {
             let body = format!(r#"{{"id":"{slug}","name":"Theirs"}}"#);
@@ -2870,7 +2885,11 @@ mod tests {
                     &staging,
                     ItemKind::Project,
                     slug,
-                    &[("project.json", &body), (ACCEPTED_FLASHES_FILE, theirs)],
+                    &[
+                        ("project.json", &body),
+                        (ACCEPTED_FLASHES_FILE, theirs),
+                        (ACCEPTED_PACING_FILE, theirs),
+                    ],
                     FUTURE,
                 ),
                 "ws:acme-dark",
@@ -2897,19 +2916,19 @@ mod tests {
         .unwrap();
         assert_eq!(outcome.stopped_at, None, "{:?}", outcome.results);
 
-        let accepted = |slug: &str| root.join(slug).join(ACCEPTED_FLASHES_FILE);
-        assert_eq!(read(&accepted("acme-kept")), mine);
-        assert!(root.join("acme-kept-2/project.json").is_file());
-        assert!(!accepted("acme-kept-2").exists());
-
-        assert!(root.join("acme-replaced/project.json").is_file());
-        assert!(!accepted("acme-replaced").exists());
         let backup = PathBuf::from(outcome.backup_dir.clone().unwrap());
         let old_film = backup.join("projects/acme-replaced");
-        assert_eq!(read(&old_film.join(ACCEPTED_FLASHES_FILE)), mine);
-
-        assert_eq!(read(&accepted("acme-skipped")), mine);
-        assert_eq!(outcome.notes.len(), 2, "{:?}", outcome.notes);
+        assert!(root.join("acme-kept-2/project.json").is_file());
+        assert!(root.join("acme-replaced/project.json").is_file());
+        for file in [ACCEPTED_FLASHES_FILE, ACCEPTED_PACING_FILE] {
+            let accepted = |slug: &str| root.join(slug).join(file);
+            assert_eq!(read(&accepted("acme-kept")), mine);
+            assert!(!accepted("acme-kept-2").exists());
+            assert!(!accepted("acme-replaced").exists());
+            assert_eq!(read(&old_film.join(file)), mine);
+            assert_eq!(read(&accepted("acme-skipped")), mine);
+        }
+        assert_eq!(outcome.notes.len(), 4, "{:?}", outcome.notes);
         let _ = std::fs::remove_dir_all(&root);
     }
 

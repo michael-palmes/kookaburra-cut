@@ -82,6 +82,7 @@ const BASE_3D: ChartStyleSurface3D = {
   wallGrid: true,
   floorShadow: true,
   interiorFlatStacks: false,
+  trailDepth: 0,
 };
 
 type ChartStyleShared = Omit<ChartStyleSurface, "id" | "twod" | "threed">;
@@ -93,6 +94,8 @@ const BASE_SHARED: ChartStyleShared = {
   cornerRadiusScale: 1,
   fontEmphasis: "body",
   seriesLightnessStep: 0,
+  furniture: "full",
+  lineFinish: "solid",
 };
 
 interface ChartStylePresetSeed {
@@ -104,7 +107,7 @@ interface ChartStylePresetSeed {
   shared?: Partial<ChartStyleShared>;
 }
 
-/** The catalogue in carousel order: the safe default first, then the rest of the classic shelf, studio, market and dark looks. Every row is deltas against boardroom. */
+/** The catalogue in carousel order: the safe default first, then the rest of the classic shelf, studio, market and dark looks (the furniture-free light trail closing it). Every row is deltas against boardroom. */
 const SEEDS: ChartStylePresetSeed[] = [
   // ── Classic: restrained, editorial, safe in front of any audience ──
   {
@@ -468,6 +471,29 @@ const SEEDS: ChartStylePresetSeed[] = [
       fontEmphasis: "headline",
     },
   },
+  {
+    // A trend drawn as light through space: a white-hot core in a soft halo, brightest at its head, with every axis, label and legend cleared away.
+    id: "lightTrail",
+    label: "Light trail",
+    tier: "dark",
+    twod: {
+      strokeFraction: 0.006,
+      areaOpacity: 0.24,
+      areaGradient: "vertical",
+      pieGap: 0.006,
+    },
+    threed: {
+      roughness: 0.4,
+      metalness: 0.1,
+      emissiveEdge: 0.6,
+      bevelScale: 0.6,
+      wallGrid: false,
+      floorShadow: false,
+      interiorFlatStacks: true,
+      trailDepth: 0.5,
+    },
+    shared: { furniture: "none", lineFinish: "trail", cornerRadiusScale: 0.6 },
+  },
 ];
 
 function buildCatalogue(): Record<string, ChartStylePreset> {
@@ -522,14 +548,22 @@ const cloneSurface = (s: ChartStyleSurface): ChartStyleSurface => ({
   threed: { ...s.threed },
 });
 
-/** True when the preset was designed for a dark stage: glass, glow or a metallic finish all lose their point on white. Derived, so no preset carries a flag that could disagree with its own numbers. */
+/** True when the preset was designed for a dark stage: glass, glow, a metallic finish or a light trail all lose their point on white. Derived, so no preset carries a flag that could disagree with its own numbers. */
 export function isDarkFirstSurface(surface: ChartStyleSurface): boolean {
   const { transmission, emissiveEdge, metalness } = surface.threed;
-  return transmission > 0 || emissiveEdge > 0 || metalness >= DARK_FIRST_METALNESS;
+  return (
+    transmission > 0 ||
+    emissiveEdge > 0 ||
+    metalness >= DARK_FIRST_METALNESS ||
+    surface.lineFinish === "trail"
+  );
 }
 
-const isLightTheme = (theme: Theme): boolean =>
-  hexToOklch(hex(theme.colors.background) ?? FALLBACK_BACKGROUND).l >= 0.5;
+/** A light stage by OKLCH lightness, where glow and refraction read as grime; a malformed hex reads as dark. */
+export const isLightBackground = (background: string): boolean =>
+  hexToOklch(hex(background) ?? FALLBACK_BACKGROUND).l >= 0.5;
+
+const isLightTheme = (theme: Theme): boolean => isLightBackground(theme.colors.background);
 
 /** The finish a STACK SEGMENT takes: under `interiorFlatStacks` the segments go matte and drop gloss and glow, so a tall stack reads as blocks rather than a column of highlights. Identity otherwise. */
 export function chartStackSurface(threed: ChartStyleSurface3D): ChartStyleSurface3D {
@@ -551,7 +585,7 @@ export function chartStackSurface(threed: ChartStyleSurface3D): ChartStyleSurfac
  * - `innerRadius`: a donut narrows `pieGapScale` by `DONUT_GAP_RELIEF`, since the same angular gap opens wider at the inner edge.
  * - `depth`: scales `threed.thickness`, so refraction tracks the solid it passes through and the preset value lands exactly at the default depth.
  * - `gap`: no surface effect. Layout owns it (it moves the marks, never the finish), and crowding is the renderer's own mark geometry to judge.
- * - theme: a dark-first surface (glass, glow or metal) relaxes its glow, its refraction (transmission and thickness) and its metalness on a light theme, where they read as grime rather than shine.
+ * - theme: a dark-first surface (glass, glow or metal) relaxes its glow, its refraction (transmission and thickness) and its metalness on a light theme, where they read as grime rather than shine; a light trail draws as ink there instead (`chartTrailTone`).
  */
 export function resolveChartStyle(
   presetId: string,

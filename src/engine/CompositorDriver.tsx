@@ -13,6 +13,7 @@ import {
 import { NO_SHUTTER, type ShutterSample, useClockStore } from "./clock";
 import { useCompareEditStore } from "./compareEditStore";
 import { renderComposited } from "./compositor";
+import { useEffectsStore } from "./effectsStore";
 import {
   collectEnvironmentSources,
   collectMirrorRequestsWithCompare,
@@ -46,7 +47,7 @@ import {
 } from "./sceneCamera";
 import { compareSpecOf, resolveCompareFrame } from "./sceneCompare";
 import type { SceneDoc } from "./sceneDocSchema";
-import { getSceneHosts } from "./sceneHostRegistry";
+import { getSceneHosts, subscribeSceneHosts } from "./sceneHostRegistry";
 import { buildCompareBLightingTracks, buildLightingTracks } from "./sceneLighting";
 import { buildRoomTracks } from "./sceneRoom";
 import { buildSceneRenderStates, resolveFramePlans } from "./sceneState";
@@ -66,8 +67,16 @@ import {
   type ShutterPlan,
 } from "./shutterPlan";
 import { useSceneStageFloors } from "./stageRegistry";
+import { beginSupersample, endSupersample } from "./supersample";
 
 const SETTLE_MS = 150;
+
+/** Every slot has a primary host still in the scene graph; a previous project's hosts unregister an effect after leaving it. */
+function sceneHostsCommitted(slotCount: number): boolean {
+  let live = 0;
+  for (const host of getSceneHosts()) if (host.side === undefined && host.group.parent) live++;
+  return live >= slotCount;
+}
 const bufferSize = new Vector2();
 
 /** A paused object-blur pass in flight: which frame it serves, its samples, and the running sum. */
@@ -290,6 +299,8 @@ export function CompositorDriver({
 
   // Redraw on camera-edit draft changes (a drag moves the camera without moving the clock).
   useEffect(() => useCameraEditStore.subscribe(() => invalidate()), [invalidate]);
+  // Redraw once the scenes' hosts register: frames before that are skipped below.
+  useEffect(() => subscribeSceneHosts(() => invalidate()), [invalidate]);
   // Redraw on divider-lane draft changes, same rule.
   useEffect(() => useCompareEditStore.subscribe(() => invalidate()), [invalidate]);
   useEffect(() => useLightingEditStore.subscribe(() => invalidate()), [invalidate]);
@@ -306,6 +317,8 @@ export function CompositorDriver({
   useFrame((s) => {
     // Stands down while the exporter owns rendering: a stray preview render here would race the export's async text sync and capture stale glyphs (non-deterministic export).
     if (isExporting()) return;
+    // A frame before the hosts register draws every scene at once (awaitSceneHostsCommitted is the export's twin).
+    if (!sceneHostsCommitted(slots.length)) return;
     // Preview frames see the light helpers' layer; the exporter disables it per run (the double guard), and a thumbnail/snapshot capture borrows one frame without it.
     if (isCapturingPreview()) s.camera.layers.disable(HELPER_LAYER);
     else s.camera.layers.enable(HELPER_LAYER);
@@ -426,9 +439,30 @@ export function CompositorDriver({
       }
       renderWith(sample);
     };
+    // A rested playhead settles to the export's supersampled frame, through the same jitter table and lane.
+    const renderSettled = () => {
+      const count = useEffectsStore.getState().renderSettings.supersample ?? 1;
+      const cam = s.camera as PerspectiveCamera;
+      if (count <= 1 || !cam.isPerspectiveCamera) {
+        renderWith(plan);
+        return;
+      }
+      try {
+        accumulateFrame(s.gl, bufferSize.x, bufferSize.y, count, (k) => {
+          beginSupersample(cam, bufferSize.x, bufferSize.y, k, count);
+          renderWith(plan);
+        });
+      } finally {
+        endSupersample(cam);
+      }
+    };
     const blur = previewBlur(currentMs, editing, tracks);
     if (blur === "plain") {
       renderWith(plan);
+      return;
+    }
+    if (blur === "settled") {
+      renderSettled();
       return;
     }
     if (blur === "progress") {
@@ -455,7 +489,8 @@ export function CompositorDriver({
       return;
     }
     if (!cameras) {
-      renderWith(plan);
+      if (blur.samples === undefined) renderSettled();
+      else renderWith(plan);
       return;
     }
     accumulateFrame(s.gl, bufferSize.x, bufferSize.y, cameras.plans.length, (k) =>
@@ -468,7 +503,7 @@ export function CompositorDriver({
     currentMs: number,
     editing: boolean,
     tracks: readonly (SceneCameraTracks | null)[],
-  ): "plain" | "progress" | { plan: ShutterPlan; samples: number | undefined } {
+  ): "plain" | "progress" | "settled" | { plan: ShutterPlan; samples: number | undefined } {
     const playing = previewPlaybackActive();
     const eligible = !!shutterPlan && !previewMotionBlurOff() && !isCapturingPreview();
     const p = progress.current;
@@ -486,7 +521,11 @@ export function CompositorDriver({
     ) {
       abortProgress();
     }
-    if (!shutterPlan || !eligible) return "plain";
+    if (!shutterPlan || !eligible) {
+      const supersampled = (useEffectsStore.getState().renderSettings.supersample ?? 1) > 1;
+      if (!supersampled || playing || isCapturingPreview()) return "plain";
+      return settleFired(editing) ? "settled" : "plain";
+    }
     if (playing) {
       const samples = previewMotionBlurPlaybackSamples();
       return samples > 0 ? { plan: shutterPlan, samples } : "plain";
@@ -495,10 +534,15 @@ export function CompositorDriver({
     if (run && !run.shown) return "progress";
     // A finished pass is already on screen, so any later frame means something else changed.
     if (run) abortProgress();
+    return settleFired(editing) ? { plan: shutterPlan, samples: undefined } : "plain";
+  }
+
+  /** True on the one frame the rest timer fires; any other frame re-arms it. */
+  function settleFired(editing: boolean): boolean {
     const st = settle.current;
     if (st.fired && !editing) {
       st.fired = false;
-      return { plan: shutterPlan, samples: undefined };
+      return true;
     }
     st.fired = false;
     clearTimeout(st.timer);
@@ -508,7 +552,7 @@ export function CompositorDriver({
         invalidate();
       }, SETTLE_MS) as unknown as number;
     }
-    return "plain";
+    return false;
   }
 
   /** Paused object blur builds up one committed sample per preview frame (each needs a canvas commit), showing the running mean, edges first so a still frame stops at two. */

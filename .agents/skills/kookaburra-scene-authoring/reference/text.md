@@ -57,7 +57,7 @@ Keys are `<textKey><Suffix>`; a primitive must carry `textKey` (or be managed te
 | `OffsetX`, `OffsetY` | World-unit nudges from the layout position |
 | `LineHeight` | Multiple of font size, 0.8..2; absent is the font's own |
 | `RotationDeg` | Clockwise tilt about the anchor |
-| `Emphasis` | `*word*` styling: `"<colour>"` or `"<colour>@<weight>"` (token or hex, CSS weight), e.g. `"accent@700"`; absent is the accent one step bolder |
+| `Emphasis` | `*word*` styling: `"<colour>"` or `"<colour>@<weight>"` (token or hex, CSS weight), e.g. `"accent@700"`, optionally then a shape: `"accent pill"`, `"accent@600 battery"`; absent is the accent one step bolder |
 
 Also `iconSize`, `frameIconSize` and `chipSize` scale icons and chips. Layered
 screenshot text items use `ls-<itemId>` keys.
@@ -72,6 +72,14 @@ an SDF weight so every face works). Markdown's flanking rules decide what counts
 emphasis; emphasis never crosses a blank line. It works in every motion and look
 (`PromptBar` strips it and types the words plain). Emphasis is always on: to show a
 literal pair, add spaces or use `∗` (U+2217).
+
+A shape wraps each emphasised range in its own token: `"titleEmphasis": "accent pill"`
+traces a capsule round the words once the line has landed, then floods it while the
+words turn the background colour; `battery` does the same in a rounded body with a
+terminal, for a stat that lives in its icon (`"Up to *24 hours* of battery"`). Shaped
+words gain a space either side for the outline. `AnimatedHeadline`'s `emphasisAt`
+(scene ms) starts the trace on a beat instead. Keep it to one or two short tokens per
+line, on a line that holds still while the pill draws.
 
 ## Primitives
 
@@ -119,8 +127,8 @@ literal pair, add spaces or use `∗` (U+2217).
   - `stepsAt={[ms, ...]}`: one jump (with a pop) at each scene ms; it replaces the window.
     With `ticks` or `stepsAt`, `ease` bends how far each jump goes, not when. `pop` is the
     scale each pops by (default 0.08 over 180 ms; 0 turns it off).
-- `ExtrudedText`: lit 3D text, bundled families only, no emoji. For 3D-looking type in
-  any font, use `depth` on `AnimatedHeadline`.
+- `ExtrudedText`: lit 3D text, bundled families only, one weight each (Inter Tight's is
+  800), no emoji. For 3D-looking type in any font, use `depth` on `AnimatedHeadline`.
 - `ManagedTextStack`: the generic managed renderer the host mounts; rarely mounted by hand.
 - `PromptBar text textKey from to position width height fontSize face send caret`: a
   chat prompt bar (theme tokens only). The text types in one keystroke at a time from
@@ -204,6 +212,14 @@ apply). To make coded motion editable, remove the TSX preset props instead.
 delays: char 35 ms, word 90, paragraph 160, group 260. Per-character units ignore line
 breaks, so on multi-line copy prefer `by-paragraph`.
 
+Text blur: `tracking`, `slam`, `develop` and `vapor` soften each glyph's edge, which
+reads as stacked ghosts where letters overlap. For a launch film set
+`"textBlur": "optical"` in project.json's `render` block: the soften becomes a true
+gaussian defocus, so overlapping letters melt into one soft shape and resolve like a
+lens pulling focus. It is project-wide and export-exact; units with depth or a tip
+(`dolly`, `stand-up`) and the `frosted` look keep the edge soften. `"edge"` (or absent)
+is today's look.
+
 - `stamp` runs its own fixed curve (the toolkit's `stampScale` shape over the in
   window); `ease` is ignored.
 - `build` is single line: each word's slot joins the line as it fades in, so the
@@ -276,6 +292,36 @@ so an underline sits a little below that. `measureText(text, { font, fontSize, l
 the plain version (`font` is a theme `FontRef` or `"Family@weight"`). Explicit `\n`
 breaks count; `maxWidth` wrapping is not measured; `*word*` markup is stripped first.
 
+### Glyph boxes
+
+`box.glyphs` places every glyph where the headline draws it, in world units from the
+headline's `position` (sidecar OffsetX and OffsetY included; a tilt is not):
+`{ text, index, line, x, width, baseline, capHeight, ink }`. `x` and `width` are the
+pen cell (spaces have one, so a run of spaces holds a slot), `baseline` the line's,
+`capHeight` the face's above it, and `ink` the outline's `[left, bottom, right, top]`
+(null for a space). Pass the headline's `anchorX`, `anchorY` and `textAlign` when it
+sets them (defaults centre, middle, left), and scale the boxes by
+`fitFontSize(w) / fontSize` when you fit. Use them for a wordmark built letter by
+letter, an image flashing in each letter's slot, a device parked in a headline as a
+letter, or an inline icon. They read left to right, so right-to-left copy is not placed:
+
+```tsx
+const at: [number, number, number] = [0, 0.6, 0];
+const line = useTextMetrics("line", "Meet    the app", { fontSize: 0.42 });
+const gap = line?.glyphs.filter((g) => g.text === " ") ?? [];
+const left = gap[0];
+const right = gap[gap.length - 1];
+// ...
+<AnimatedHeadline text="Meet    the app" textKey="line" fontSize={0.42} position={at} />
+{left && right && (
+  <ImageCard
+    src="assets/icon.png"
+    width={Math.min(right.x + right.width - left.x, left.capHeight * 1.2)}
+    position={[at[0] + (left.x + right.x + right.width) / 2, at[1] + left.baseline + left.capHeight / 2, 0.02]}
+  />
+)}
+```
+
 ## Text looks (`textLook`)
 
 ```json
@@ -330,6 +376,7 @@ Bundled families are always safe (`./kb fonts safe`):
 | Jost | 400, 500 |
 | IBM Plex Sans | 400, 600 |
 | Fraunces | 600 |
+| Inter Tight | 300, 400, 600, 700, 800, 900 |
 
 A bundled family snaps to its nearest weight (ties go lighter): `Inter@700` renders 600.
 

@@ -40,7 +40,16 @@ export interface CompareChrome {
   tintA: string | null;
   tintB: string | null;
   tintAmount: number;
+  /** The glass bar's full width in reference pixels (0 = off) and its refraction strength. */
+  glassWidth: number;
+  glassStrength: number;
 }
+
+/** The glass bar's defaults: a slab about a seventh of the frame height, refracting at full strength. */
+export const COMPARE_GLASS_WIDTH = 150;
+export const COMPARE_GLASS_STRENGTH = 1;
+/** Glass strength is clamped here; the lens folds its content inside out from 2.25. */
+export const COMPARE_GLASS_STRENGTH_MAX = 2;
 
 /** A normalised comparison, precomputed once per doc: mask params with defaults baked, track keys sorted with their EFFECTIVE angles resolved, chrome resolved. */
 export interface CompareSpec {
@@ -122,6 +131,10 @@ export function compareSpecOf(doc: SceneDoc | undefined, theme?: Theme): Compare
   const line = chromeRaw?.line;
   const grip = chromeRaw?.grip;
   const tint = chromeRaw?.tint;
+  // The bar rides an edge with a width: linear and circle masks only.
+  const maskType = c.mask?.type ?? "linear";
+  const glass = (maskType === "linear" || maskType === "circle") && chromeRaw?.glass;
+  const glassObject = typeof glass === "object" ? glass : undefined;
   const chrome: CompareChrome = {
     lineWidth: line ? (line.width ?? 4) : 0,
     lineColor: tokenHex(line?.colour, theme, "#6f93a8"),
@@ -132,9 +145,13 @@ export function compareSpecOf(doc: SceneDoc | undefined, theme?: Theme): Compare
     tintA: tint?.a ? tokenHex(tint.a, theme, "#6f93a8") : null,
     tintB: tint?.b ? tokenHex(tint.b, theme, "#6f93a8") : null,
     tintAmount: tint ? (tint.amount ?? 0.08) : 0,
+    glassWidth: glass ? (glassObject?.width ?? COMPARE_GLASS_WIDTH) : 0,
+    glassStrength: glass
+      ? Math.min(COMPARE_GLASS_STRENGTH_MAX, glassObject?.strength ?? COMPARE_GLASS_STRENGTH)
+      : 0,
   };
   return {
-    maskType: c.mask?.type ?? "linear",
+    maskType,
     angleDeg: staticAngleDeg,
     softness: c.mask?.softness ?? 0,
     center: c.mask?.center ?? [0.5, 0.5],

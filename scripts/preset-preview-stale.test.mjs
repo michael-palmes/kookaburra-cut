@@ -102,6 +102,22 @@ describe("preview staleness ledger", () => {
     assert.deepEqual(stalePreviews(root, "template"), []);
   });
 
+  test("a template that declares a loop needs its loop as well as its stills", () => {
+    const root = fixtureRoot();
+    const manifest = {
+      version: 2,
+      name: "Reel",
+      preview: { loop: { scene: 0, atMs: 0, durationMs: 6000 } },
+    };
+    write(root, "projects/reel/template.json", JSON.stringify(manifest));
+    write(root, "projects/reel/project.json", JSON.stringify({ id: "reel" }));
+    for (const i of [1, 2, 3, 4]) write(root, `src/assets/template-previews/reel-${i}.jpg`, "jpeg");
+    assert.throws(() => commitPreviews(root, "template", ["reel"]), /no committed art/);
+    write(root, "src/assets/template-previews/reel-loop.mp4", "mp4");
+    commitPreviews(root, "template", ["reel"]);
+    assert.deepEqual(stalePreviews(root, "template"), []);
+  });
+
   // The golden vector src/engine/presets.test.ts pins too: the app and this script must
   // digest identically or every bundled card would read as stale.
   test("hashes to the golden vector the app pins", () => {

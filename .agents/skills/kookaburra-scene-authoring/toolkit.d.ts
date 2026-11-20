@@ -2,7 +2,7 @@
 // Scene files import from "@kookaburra/toolkit"; `kb toolkit show <Name>` reads the same source.
 declare module "@kookaburra/toolkit" {
   import type { ComponentType, ReactElement, ReactNode } from "react";
-  import type { Color, DirectionalLight, Group, InstancedMesh, Light, Material, Mesh, MeshStandardMaterial, Object3D, PerspectiveCamera, SkinnedMesh, Vector3 } from "three";
+  import type { Color, DirectionalLight, Group, InstancedBufferAttribute, InstancedMesh, Light, Material, Mesh, MeshStandardMaterial, Object3D, PerspectiveCamera, SkinnedMesh, Vector3 } from "three";
 
   /** Devices this build can render with their own model and screen contract. */
   export const AVAILABLE_DEVICE_IDS: DeviceId[];
@@ -102,6 +102,8 @@ declare module "@kookaburra/toolkit" {
     hitAt?: number;
     /** 0..1, multiplied into every fade (default 1). */
     opacity?: number;
+    /** Scene ms a shaped emphasis (`textStyle.<key>Emphasis` ending in `pill` or `battery`) starts drawing on; default when the line has landed. */
+    emphasisAt?: number;
     /** Per-char / per-word stagger granularity. Paragraph delivery is spelled through `delivery`, never here. */
     stagger?: "char" | "word";
     /** Per-unit stagger delay, ms. Defaults to the theme's `textAnimation.staggerMs`. */
@@ -431,6 +433,8 @@ declare module "@kookaburra/toolkit" {
 
   export const DEVICE_IDS: DeviceId[];
 
+  export const DOT_ORDERS: readonly DotOrder[];
+
   /** A dashed bracket marking a span: a long run with an end tick at each side. The draw-on grows out from the middle to both ticks. */
   export function DashedBracket(props: DashedBracketProps): ReactElement;
 
@@ -586,6 +590,8 @@ declare module "@kookaburra/toolkit" {
     foldTransition?: DeviceFoldTransitionSpec;
     /** Motion blur override; absent inherits the scene's Objects switch. */
     motionBlur?: MotionBlurOverride;
+    /** Opt-in hero finish for the body (a preset id or a spec); absent keeps the glb's materials. */
+    finish?: DeviceFinish;
     /** Content riding the device's pose in its fitted frame; `DeviceScreenAnchor` pins it to the screen. */
     children?: ReactNode;
   }
@@ -623,6 +629,12 @@ declare module "@kookaburra/toolkit" {
     foldDeg?: number;
   }
 
+  export interface DeviceScreenPointOptions {
+    /** Off the glass along the display's normal, in fitted units (default `SCREEN_LIFT`). */
+    lift?: number;
+    display?: DeviceScreenDisplay;
+  }
+
   /** A device's resolved world pose (static: no motion preset or device track). */
   export interface DeviceScreenPose extends DeviceScreenHinge {
     /** The device group's world position, grounding applied (`resolveDeviceWorldAnchor`). */
@@ -643,6 +655,14 @@ declare module "@kookaburra/toolkit" {
     cornerRadius: number;
     /** The hinge pose a riding display was measured at (a laptop's lid; a foldable's fold, the cover closed and the inside open flat, auto-centre included). */
     frame?: { lidDeg?: number; foldDeg?: number };
+  }
+
+  /** A screen point this frame: where it is, how its display is turned, and the world size of one fitted unit. */
+  export interface DeviceScreenSample {
+    position: V3;
+    /** The display plane's orientation, Euler XYZ in radians (a group's `rotation`). */
+    rotation: V3;
+    scale: number;
   }
 
   /** The presentation modes' parameter sets. */
@@ -688,6 +708,152 @@ declare module "@kookaburra/toolkit" {
     fold?: DeviceFoldSpec;
   }
 
+  /** What the per-dot callback may change. */
+  export interface DotAdjust {
+    /** World units added to the position. */
+    offset?: readonly [number, number];
+    /** Multiplies the size. */
+    scale?: number;
+    /** Multiplies the opacity. */
+    alpha?: number;
+  }
+
+  /** A run of dots recoloured in order: `value` dots (fractional values blend the next one) take `color`. Several runs stack one after another. */
+  export interface DotCount {
+    value: number;
+    /** Theme token or hex (default `muted`). */
+    color?: string;
+    /** Read from the first run (default `reading`). */
+    order?: DotOrder;
+    /** Read from the first run, for `random` (default 1). */
+    seed?: number;
+  }
+
+  /** Hundreds of dots in ONE instanced draw, laid out as a grid or waffle, each dot's size, place and colour a pure function of the authored fields: a pop-in, a halftone wave, a window that clears for a hero number, counts recolouring dots in order as a counter rolls, a funnel, a gather into one dot and a merge into a solid tile. Flat and colour-exact like `RoundedRect`, or filled with the fluid gradient. Drive every field from `useTimeline()`; the field itself reads no clock. */
+  export function DotField(props: DotFieldProps): ReactElement;
+
+  export interface DotFieldProps {
+    /** Dots across (default 10). */
+    columns?: number;
+    /** Dots down (default 10). */
+    rows?: number;
+    /** Centre-to-centre spacing in world units, or [across, down] (default 0.3). */
+    pitch?: number | readonly [number, number];
+    /** Dot diameter as a fraction of the pitch (default 0.72). */
+    size?: number;
+    /** "circle" (default) or "square", a waffle cell. */
+    shape?: "circle" | "square";
+    /** A square's corner radius, 0..1 of half its side (default 0.25). */
+    roundness?: number;
+    /** Theme token (`text`, `muted`, `accent`, `background`) or hex (default `text`). */
+    color?: string;
+    /** A fluid gradient instead of the flat colour, sampled in screen space so the dots and any filled `RoundedRect` share one gradient; `true` takes colours from the theme accent. */
+    fill?: FluidFill | boolean;
+    opacity?: number;
+    /** Dots pop in one by one. */
+    reveal?: DotReveal;
+    /** A travelling wave of dot sizes. */
+    wave?: DotWave;
+    /** A clearing that opens for a hero number. */
+    window?: DotWindow;
+    /** Dots recoloured in order as a value rolls: one run, or several stacked. */
+    count?: DotCount | readonly DotCount[];
+    /** Columns narrowing into an arrow. */
+    funnel?: DotFunnel;
+    /** Every dot drawn into one. */
+    gather?: DotGather;
+    /** 0..1: the dots swell and merge into one solid tile covering the grid (displaced dots return home first). */
+    merge?: number;
+    /** The merged tile's corner radius, world units (default half the pitch). */
+    tileRadius?: number;
+    /** Per-dot adjustment, called for every dot every frame: keep it a pure function of its argument and the clock. */
+    dot?: (info: DotInfo) => DotAdjust | undefined;
+    position?: V3;
+    /** Radians. */
+    rotation?: V3;
+    scale?: number;
+    renderOrder?: number;
+  }
+
+  /** Columns narrowing into an arrow: each column keeps fewer slots than the one before and the extra dots stack onto them. */
+  export interface DotFunnel {
+    /** 0..1 through the narrowing. */
+    progress: number;
+    /** Dots left in the last column (default 1). */
+    to?: number;
+    /** 0..1: how far the columns follow one another rather than moving together (default 0.5). */
+    stagger?: number;
+  }
+
+  /** Every dot drawn to one point, merging into one dot. */
+  export interface DotGather {
+    /** 0..1 (an eased value past 1 swells the final dot past its size). */
+    progress: number;
+    /** World units from the field centre (default [0, 0]). */
+    to?: readonly [number, number];
+    /** The final dot's diameter in world units (default one dot's). */
+    size?: number;
+  }
+
+  /** What the per-dot callback sees: the dot after the reveal, wave, window and funnel. */
+  export interface DotInfo {
+    index: number;
+    col: number;
+    row: number;
+    x: number;
+    y: number;
+    /** Half the dot's size, world units. */
+    radius: number;
+    alpha: number;
+  }
+
+  /** Which dot goes first: `reading` (left to right, top row down), `rows-up` (left to right, bottom row up, the waffle-chart fill), `columns` (top to bottom, left column first), `centre` (nearest the middle first) or `random` (seeded). */
+  export type DotOrder = "reading" | "rows-up" | "columns" | "centre" | "random";
+
+  /** Dots popping in one after another. */
+  export interface DotReveal {
+    /** 0..1 through the whole reveal. */
+    progress: number;
+    /** Default `random`. */
+    order?: DotOrder;
+    /** Seed for the `random` order (default 1). */
+    seed?: number;
+    /** Fraction of the reveal each dot takes to pop (default 0.3). */
+    span?: number;
+    /** The pop's `outBack` overshoot (default 1.70158; 0 lands without one). */
+    overshoot?: number;
+  }
+
+  /** A travelling wave of dot sizes (the halftone wave). */
+  export interface DotWave {
+    /** 0..1: how far the wave reshapes the sizes (default 1). */
+    amount?: number;
+    /** The direction the crests travel, degrees anticlockwise from +x (default -45, the reading diagonal). */
+    angleDeg?: number;
+    /** Crest to crest, in dots (default 6). */
+    wavelength?: number;
+    /** Cycles travelled: drive it from the clock, e.g. `localMs / 1000` (default 0). */
+    phase?: number;
+    /** Size at a trough, as a fraction of the full dot (default 0.15). */
+    min?: number;
+  }
+
+  /** A clearing that opens from a point: the dots there shrink away, the nearest first, leaving a window for a hero number. */
+  export interface DotWindow {
+    /** 0..1: closed to fully open. */
+    open: number;
+    /** Radius of the cleared middle, in dots (default 2). */
+    radius?: number;
+    /** Width of the fall-off ring beyond it, in dots (default 1.5). */
+    softness?: number;
+    /** Centre in dots from the field centre, x right and y up (default [0, 0]). */
+    centre?: readonly [number, number];
+    /** Shape of the clearing: 2 is round, higher is squarer (default 2). */
+    roundness?: number;
+    /** 0..1: how far the opening ripples outward from the centre rather than shrinking all at once (default 0.6). */
+    ripple?: number;
+  }
+
   /** Every valid ease name (stable order: linear, jump, then in/out/inOut per family). */
   export const EASE_NAMES: readonly EaseName[];
 
@@ -726,6 +892,20 @@ declare module "@kookaburra/toolkit" {
 
   export const FALLBACK_DEVICE_ID: DeviceId;
 
+  /** A fluid fill for `RoundedRect`, `Pill` and `DotField`. Every field is optional: `true` (or `{}`) is the mesh gradient in colours drawn from the theme accent. */
+  export interface FluidFill {
+    /** A shader background id (`kb catalog backgrounds`); default "mesh-gradient", the fluid one. */
+    shader?: string;
+    /** Hex colours or theme tokens (`text`, `muted`, `accent`, `background`); absent derives deep, mid and highlight shades from the theme accent. */
+    colors?: readonly string[];
+    /** The shader's own params by name (the background inspector's sliders); absent takes each default. */
+    params?: Readonly<Record<string, number>>;
+    /** Flow speed on the project clock (default 0.4). */
+    speed?: number;
+    /** Pattern zoom, 1 being the background's own: lower shows more of the gradient inside a small shape (default 0.6). */
+    scale?: number;
+  }
+
   export interface FormatInfo {
     /** Output pixel width. */
     width: number;
@@ -743,6 +923,24 @@ declare module "@kookaburra/toolkit" {
 
   /** How a frame reads for layout, from `FormatInfo.aspect`: "wide" at 1.2 and up (16:9, 3:2, 5:4), "tall" at 0.85 and below (9:16, 2:3, 4:5, phone), "square" between (1:1). */
   export type FormatShape = "wide" | "square" | "tall";
+
+  /** One glyph of a measured block, in the text's own space: world units from its `position` under the measured anchors, y up. */
+  export interface GlyphBox {
+    /** What it draws: one character (a surrogate pair stays whole), or a ligature's whole run. */
+    text: string;
+    /** Where that starts in the displayed text (`*word*` markup stripped, an emoji as one placeholder). */
+    index: number;
+    /** Its line, 0 first. */
+    line: number;
+    /** The pen cell's left edge and advance; a space has one too, so spaces can hold a slot. */
+    x: number;
+    width: number;
+    /** Its line's baseline, and the face's cap height above it. */
+    baseline: number;
+    capHeight: number;
+    /** The outline's bounds `[left, bottom, right, top]`; null for whitespace. */
+    ink: readonly [number, number, number, number] | null;
+  }
 
   /** A frame-filling blend between two colours, linear or radial. Mount inside a `ScreenLayer`. */
   export function Gradient(props: GradientProps): ReactElement;
@@ -878,6 +1076,11 @@ declare module "@kookaburra/toolkit" {
     letterSpacing?: number;
     /** Line advance as a multiple of the font size; absent is the face's own "normal". */
     lineHeight?: number;
+    /** Where the text's `position` sits on the block; glyph boxes measure from there (default the headline's, centre and middle). */
+    anchorX?: "left" | "center" | "right";
+    anchorY?: "top" | "middle" | "bottom";
+    /** Per-line alignment inside the block, visible on multi-line text (default left). */
+    textAlign?: "left" | "center" | "right";
   }
 
   /** A measured block, plus the size that makes it fit a width. */
@@ -954,6 +1157,8 @@ declare module "@kookaburra/toolkit" {
     strokeWidth?: number;
     /** Border colour; defaults to the theme text colour. */
     strokeColor?: string;
+    /** A fluid gradient fill sampled in screen space, so several shapes look through one gradient; `true` takes colours from the theme accent. Replaces `color`. */
+    fill?: FluidFill | boolean;
     position?: V3;
     /** Radians. */
     rotation?: V3;
@@ -1011,6 +1216,19 @@ declare module "@kookaburra/toolkit" {
     holdMs?: number;
     releaseMs: number;
     ease?: EaseName | ((t: number) => number);
+  }
+
+  export interface RegionLiftTiming {
+    /** Scene ms the lift starts (default 0). */
+    at?: number;
+    /** Lift length in ms (default 600). */
+    durationMs?: number;
+    /** Both ways (default `outCubic`, so it lands softly too). */
+    ease?: string;
+    /** Scene ms it starts settling back onto the glass; absent stays up. */
+    outAt?: number;
+    /** Settle length in ms (default `durationMs`). */
+    outDurationMs?: number;
   }
 
   /** The chart block with every default baked and the data track resolved: what the renderers and the editor read. `data.categories` and every `series.values` row are the same length, so a sampled matrix is always rectangular. */
@@ -1093,7 +1311,7 @@ declare module "@kookaburra/toolkit" {
     pose: LightingPose;
   }
 
-  /** An unlit, antialiased rounded rectangle with an optional border ring; colour-exact like ImageCard, and size, radius and colours animate without rebuilding geometry. */
+  /** An unlit, antialiased rounded rectangle with an optional border ring; colour-exact like ImageCard, and size, radius and colours animate without rebuilding geometry. With `fill` it shows a fluid gradient instead of a flat colour. */
   export function RoundedRect(props: RoundedRectProps): ReactElement;
 
   export interface RoundedRectProps extends PillProps {
@@ -1134,7 +1352,7 @@ declare module "@kookaburra/toolkit" {
     text?: Record<string, string>;
     /** Layout for the scene's text block; consumed by TitleBlock (inert when a scene positions text by hand, the `backdrop` precedent). */
     textLayout?: { align?: SceneTextAlign };
-    /** Per-text-element overrides keyed `<textKey><Suffix>`: `Color` (raw hex fill, the one narrow exception to "colours stay tokens"), `Font` ("Family" or "Family@weight"), `Size` (multiplier of the element's default, 1 = unchanged), `OffsetX`/`OffsetY` (world-unit nudges from the scene's layout), `LineHeight` (line spacing as a multiple of the font size, clamped 0.8..2; absent means troika's own "normal") `RotationDeg` (clockwise tilt in degrees about the block's anchor; absent or 0 is upright) and `Emphasis` (`*word*` emphasis: "<colour>" or "<colour>@<weight>", a token or hex and a CSS weight; absent is the accent one weight step bolder); consumed by text primitives given a matching `textKey`, inert otherwise. */
+    /** Per-text-element overrides keyed `<textKey><Suffix>`: `Color` (raw hex fill, the one narrow exception to "colours stay tokens"), `Font` ("Family" or "Family@weight"), `Size` (multiplier of the element's default, 1 = unchanged), `OffsetX`/`OffsetY` (world-unit nudges from the scene's layout), `LineHeight` (line spacing as a multiple of the font size, clamped 0.8..2; absent means troika's own "normal") `RotationDeg` (clockwise tilt in degrees about the block's anchor; absent or 0 is upright) and `Emphasis` (`*word*` emphasis: "<colour>" or "<colour>@<weight>", a token or hex and a CSS weight, optionally followed by a `pill` or `battery` shape; absent is the accent one weight step bolder); consumed by text primitives given a matching `textKey`, inert otherwise. */
     textStyle?: Record<string, string | number>;
     /** Header icon for a plain (non-overlay) scene's text: an emoji or an `assets/` image path, drawn above the headline by `TextFallback`/`TitleBlock`. Overlay scenes carry their icon on `frame.icon` instead; both scale by `textStyle.iconSize`. */
     headerIcon?: string;
@@ -1272,7 +1490,7 @@ declare module "@kookaburra/toolkit" {
     theme: Theme;
   }
 
-  export function SceneStage(props: { children?: ReactNode; /** Stage floor height for a floor backdrop (world y; default −1.5). */ floorY?: number; }): ReactElement;
+  export function SceneStage(props: { children?: ReactNode; /** Stage floor height for a floor or satin backdrop (world y; default −1.5). */ floorY?: number; }): ReactElement;
 
   /** Troika's textAlign values, 1:1 (never localise these; UI labels may). */
   export type SceneTextAlign = "left" | "center" | "right";
@@ -1285,6 +1503,15 @@ declare module "@kookaburra/toolkit" {
     globalMs: number;
     /** Project progress in [0, 1]. */
     progress: number;
+  }
+
+  export interface ScreenFillOptions {
+    /** The key's lens, written into the pose so the distance and lens agree (default the camera's 45). */
+    fovDeg?: number;
+    /** Frame width / height (default 16:9). */
+    aspect?: number;
+    /** 1 fills edge to edge (default); above 1 pushes past the display's edges. */
+    overscan?: number;
   }
 
   /** What every fill shares: an opacity and keys over any of its numbers (`tMs` is scene-local). */
@@ -1303,6 +1530,41 @@ declare module "@kookaburra/toolkit" {
     order?: "front" | "back";
     children?: ReactNode;
   }
+
+  /** Lifts part of the parent `Device`'s own display towards the camera, a card with a soft shadow on the glass, or a round lens that magnifies a point: the control that matters rising out of the screen, then settling back. It samples the texture the display shows this frame (video or still), so it never adds a decode. A child of `Device`, like `DeviceScreenAnchor`. */
+  export function ScreenRegion(props: ScreenRegionProps): ReactElement | null;
+
+  export interface ScreenRegionProps extends RegionLiftTiming {
+    /** The card's display rectangle, `[u0, v0, u1, v1]` (u right, v down from the top-left). */
+    rect?: ScreenUvRect;
+    /** `"lens"`: a round magnifier over `centre` instead of a card. */
+    variant?: "card" | "lens";
+    /** Lens: the display point it magnifies (default the centre). */
+    centre?: [number, number];
+    /** Lens radius in fitted units (default 0.32; a phone display is about 1.15 wide). */
+    radius?: number;
+    /** Lens magnification (default 2). */
+    zoom?: number;
+    /** How far it rises off the glass at full lift, in fitted units (default 0.35 for a card, 0.22 for a lens). */
+    lift?: number;
+    /** Size at full lift (default 1.12 for a card, 1 for a lens). */
+    scale?: number;
+    /** Slide across the display at full lift, `[x, y]` in fitted units (default none). */
+    offset?: [number, number];
+    /** Card corner radius in fitted units (default 22% of the short side). */
+    cornerRadius?: number;
+    /** Shadow strength at full lift, 0 to 1 (default 0.35): on the glass under it, and a softer one round its own edge. */
+    shadow?: number;
+    /** Lens rim colour (default the theme's text colour). */
+    rimColour?: string;
+    /** A foldable's display (default `"main"`, the inside one). */
+    display?: DeviceScreenDisplay;
+    /** Card only: render it as glass with a bevel this wide (fitted units), lit by the scene's environment; absent keeps the flat card. */
+    glassEdge?: number;
+  }
+
+  /** A display rectangle in screen UV, `[u0, v0, u1, v1]`: u runs right and v down from the top-left. */
+  export type ScreenUvRect = [number, number, number, number];
 
   /** Clear to a colour, linear or radial, for text to sit on. Mount inside a `ScreenLayer`. */
   export function Scrim(props: ScrimProps): ReactElement;
@@ -1401,6 +1663,9 @@ declare module "@kookaburra/toolkit" {
     settleMs?: number;
   }
 
+  /** Steps its subtree's time at a whole `fps` (default 12, the hand-made look), counted from the scene's first frame: every pose holds for whole frames while the camera, and anything outside, moves every frame. 60 or more runs every frame. */
+  export function SteppedTime(props: { fps?: number; children: ReactNode }): ReactElement;
+
   /** Text-animation presets, the library behind `theme.textAnimation` and `AnimatedHeadline`'s `preset`/`ease`/`stagger` props: everything here is PURE math over the local scene clock so preview and the deterministic export loop agree byte-for-byte, and easing goes through the golden-tested `engine/ease` table, never an animation runtime. IMPORTANT (the null-for-legacy contract): when nothing is configured, `resolveTextAnimation` returns null and AnimatedHeadline runs its original v0 linear-ramp code verbatim, so committed projects on legacy themes must not change by a byte. */
   export const TEXT_PRESET_NAMES: readonly ["none", "fade", "fade-up", "blur-in", "slide", "mask-reveal", "fade-scale", "twist-scale", "scatter-scale", "tracking", "slam", "dolly", "chromatic", "line-stretch", "highlight-wipe", "rise-mask", "word-cycle", "ribbon", "stand-up", "spring-pop", "spotlight", "underline-draw", "orbit", "weight-build", "develop", "flip-cascade", "converge", "glint-wipe", "vapor", "stamp", "build", "typewriter"];
 
@@ -1427,9 +1692,11 @@ declare module "@kookaburra/toolkit" {
     ascent: number;
     descent: number;
     lines: number;
+    /** Every glyph in reading order, line breaks left out. */
+    glyphs: GlyphBox[];
   }
 
-  /** The AnimatedHeadline props that shape the measured block; pass the same values the headline gets. */
+  /** The AnimatedHeadline props that shape the measured block; pass the same values the headline gets. The anchors and `textAlign` only place the glyph boxes. */
   export interface TextMetricsOptions {
     fontSize?: number;
     face?: "headline" | "body";
@@ -1437,6 +1704,9 @@ declare module "@kookaburra/toolkit" {
     lineHeight?: number;
     letterSpacing?: number;
     styleKey?: string;
+    anchorX?: "left" | "center" | "right";
+    anchorY?: "top" | "middle" | "bottom";
+    textAlign?: "left" | "center" | "right";
   }
 
   export type TextPresetName = (typeof TEXT_PRESET_NAMES)[number] | typeof STATIC_TEXT_PRESET;
@@ -1514,6 +1784,17 @@ declare module "@kookaburra/toolkit" {
     icon?: string;
   }
 
+  /** A device as the scene hands it to `Device`: the same props, so the point lands where that device renders. */
+  export interface TrackedDevice {
+    /** The sidecar id the scene's device track keys on. */
+    id?: string;
+    model: string;
+    placement?: DevicePlacement;
+    lidDeg?: number;
+    foldDeg?: number;
+    motionBlur?: MotionBlurOverride;
+  }
+
   /** A 3D vector, used for positions / rotations / scales. */
   export type V3 = [number, number, number];
 
@@ -1525,10 +1806,16 @@ declare module "@kookaburra/toolkit" {
     src: string;
     /** When the clip starts, in ms (local scene time). */
     startMs: number;
+    /** Source ms shown at `startMs` (held before it), so a full-bleed clip can carry on a device screen's video; with it the clip shows every source frame exactly once. */
+    inMs?: number;
     /** `contain` fits the whole clip in the frame (letterbox); `cover` fills + crops. */
     fit?: "cover" | "contain";
     position?: V3;
     scale?: number;
+    /** Rounds the corners, as a fraction of the short edge (0 to 0.5), so a clip reads as a card. */
+    radius?: number;
+    /** 0..1 (default 1), so a card can fade as it rides a carousel. */
+    opacity?: number;
   }
 
   /** The scene document's windowed media: a screen recording (or a still) presented as a floating rounded window with a drop shadow, over whatever the scene stages behind it; sits in world space so the per-scene camera moves around it with real parallax. Registers the scene as the window family's consumer so the host-side fallback stands down. */
@@ -1575,6 +1862,9 @@ declare module "@kookaburra/toolkit" {
     /** Base rotation in radians; lay it flat as a floor (default) or tilt it as a backdrop. */
     rotation?: V3;
   }
+
+  /** Deep, mid, highlight and a hue-shifted shade of the theme accent: the cobalt-to-ice value material, in any brand colour. */
+  export function accentFluidColours(accent: string): string[];
 
   /** Clamps to [0, 1]; NaN reads as 0. */
   export function clamp01(x: number): number;
@@ -1656,6 +1946,9 @@ declare module "@kookaburra/toolkit" {
   /** Samples the morph track at a global time: linear interpolation between the surrounding keys that define each property, clamped outside the keyed range. Pure: same (track, t) → same transform, so preview and export agree by construction. */
   export function sampleSharedTransform(track: SharedKeyframe[], globalMs: number): SharedTransform;
 
+  /** A rig pose square on to a device's display, close enough that the display covers the frame and rolled to the display's own up: the first key of a pull-out from inside a screen, or the last of a push into one. `pose` is the device as it renders (placement, layout and grounding, its scale times any multiplier the scene's TSX applies) and the maths reads the model this build renders, so the Android stand-in gets its own display. A point aim at the display's centre, since an object aim follows the device's origin, not its glass. */
+  export function screenFillPose(model: string, pose: DeviceScreenPose, options?: ScreenFillOptions): SceneDocRigPose | null;
+
   /** Screen UV to media pixel coordinates (top-left origin), the inverse of `mediaPixelToScreenUv`. */
   export function screenUvToMediaPixel(model: string, uv: [number, number], media: { width: number; height: number }, display?: DeviceScreenDisplay): [number, number];
 
@@ -1683,11 +1976,20 @@ declare module "@kookaburra/toolkit" {
   /** Inside a `Device`: the screen it renders this frame, else null. */
   export function useDeviceScreen(): DeviceScreen | null;
 
+  /** In a scene: where a point on one of its devices' displays is this frame, with the scene's device track and staged floor applied, for a match move into a moving screen. Pass the same props the scene hands that `Device`. */
+  export function useDeviceScreenPoint(device: TrackedDevice, u: number, v: number, options?: DeviceScreenPointOptions): DeviceScreenSample;
+
   /** Reactive format info for the currently selected export aspect. Inside a scene rendering through an overlay cutout, `<SceneHost>` supplies a cutout-scoped override (the cutout as its own frame); everywhere else this is null and it falls back to the export format, byte-identical to before overlays. Mirrors the context-first/store-fallback shape of `useTheme()`. */
   export function useFormat(): FormatInfo;
 
   /** The enclosing group's animation state, or null outside groups; the hook custom primitives use to participate (multiply `alpha` into your own opacity CPU-side). */
   export function useGroupAnimation(): GroupAnimationState | null;
+
+  /** The scene-local time staged primitives animate from: the raw timeline unless this scene is held. */
+  export function useHeldLocalMs(rawLocalMs: number): number;
+
+  /** Tells Present and the automatic stills when a hand-built set piece settles: the scene holds after `toMs` (scene-local) and before `outAtMs`, its outro. Drive the piece from `useHeldLocalMs` so it pauses there too. Video export never reads it. */
+  export function usePresentTiming(toMs: number, outAtMs?: number): void;
 
   export function useProjectShared(path?: string, fallback?: unknown): unknown;
 
@@ -1697,7 +1999,7 @@ declare module "@kookaburra/toolkit" {
   /** The scene's room at the frame instant (its colour, any flood in progress and the room's lighting pose), or null when the scene has no sidecar `room`. */
   export function useRoom(): RoomSample | null;
 
-  /** The scene camera's current pose: the scene's free-flight rig or orbit track at this scene time, else the project camera track, else the base camera. */
+  /** The scene camera's current pose: the scene's free-flight rig or orbit track at this scene time, else the project camera track, else the base camera. It moves every frame inside `SteppedTime` too, as the camera does. */
   export function useSceneCamera(): SceneCamera;
 
   /** The scene document's chart block, fully resolved (defaults baked, data track sorted), or null when absent; registers the scene as a consumer so a host-mounted `ChartFallback` stands down (the useSceneMedia pattern). */
@@ -1721,13 +2023,13 @@ declare module "@kookaburra/toolkit" {
   /** Resolves code-owned or embedded copy, plus the matching item while a managed scaffold retains its template layout. */
   export function useSceneText(key: string, fallback?: string, managedTextRole?: ManagedTextRenderRole): string;
 
-  /** The world-size block an `AnimatedHeadline` with this `textKey`, text and options typesets (sidecar Font, Size and LineHeight overrides included), or null until its face has loaded and it has measured real ink: never a 0-wide first measure, so a scene can divide by `width` once it has one. Captures wait for it, so exported frames always see the measured layout. */
+  /** The world-size block an `AnimatedHeadline` with this `textKey`, text and options typesets (sidecar Font, Size and LineHeight overrides included), or null until its face has loaded and it has measured real ink: never a 0-wide first measure, so a scene can divide by `width` once it has one. Its `glyphs` sit where the headline draws each one relative to its `position`, sidecar OffsetX and OffsetY included (a tilt is not). Captures wait for it, so exported frames always see the measured layout. */
   export function useTextMetrics(key: string | undefined, text: string, opts?: TextMetricsOptions): MeasuredText | null;
 
   /** The active theme: inside `<SceneHost>` it's the scene's resolved theme (project theme unless the sidecar overrides `themeId`); elsewhere it falls back to the editor store's theme, since r3f's reconciler doesn't bridge context outside the `<Canvas>` boundary. */
   export function useTheme(): Theme;
 
-  /** Reactive scene time for the active scrub position. `localMs` is relative to the enclosing scene's start (supplied by `<SceneHost>` via `SceneContext`); with no scene context it falls back to project time so a lone scene anchored at t=0 keeps `localMs === globalMs` (the v0 contract). `progress` stays project-global per the `SceneTime` type; authors derive scene-local progress from `localMs / scene.durationMs`. Inside a motion blur sample the time moves by the scene's shutter offset times `scale` (default: the `MotionBlurContext`); 0 never moves and never re-renders for a sample. */
+  /** Reactive scene time for the active scrub position. `localMs` is relative to the enclosing scene's start (supplied by `<SceneHost>` via `SceneContext`); with no scene context it falls back to project time so a lone scene anchored at t=0 keeps `localMs === globalMs` (the v0 contract). `progress` stays project-global per the `SceneTime` type; authors derive scene-local progress from `localMs / scene.durationMs`. Inside a motion blur sample the time moves by the scene's shutter offset times `scale` (default: the `MotionBlurContext`); 0 never moves and never re-renders for a sample. Inside `SteppedTime` the frame instant steps BEFORE that offset, so a held pose blurs around itself and never ghosts into the next step. */
   export function useTimeline(scale?: number): SceneTime;
 
   /** Bloom / glow params (see engine/effects.ts). `intensity` 0 = no bloom. */
@@ -1771,6 +2073,12 @@ declare module "@kookaburra/toolkit" {
     /** Pie outer radius as a fraction of half the plot's short edge. */
     pieRadius: number;
   }
+
+  /** The flat facet as one chart draws it, with the shared treatments the flat path reads carried alongside. */
+  type Chart2DDrawLook = ChartStyleSurface2D & {
+    furniture: ChartFurniture;
+    lineFinish: ChartLineFinish;
+  };
 
   interface Chart3DProps extends ChartRendererProps {
     /** The resolved appearance; absent takes the catalogue's default preset, so the primitive still stands alone. */
@@ -1829,6 +2137,9 @@ declare module "@kookaburra/toolkit" {
   /** Which theme face chart numerals and labels take. */
   type ChartFontEmphasis = "body" | "headline";
 
+  /** "none" draws the marks alone (no axes, gridlines, tick or category labels, axis names, legend or value labels), whatever the block asks for, and the mounts reserve nothing for it. */
+  type ChartFurniture = "full" | "none";
+
   type ChartGridlineStyle = "hair" | "dashed" | "none";
 
   interface ChartGridlines {
@@ -1845,6 +2156,9 @@ declare module "@kookaburra/toolkit" {
   type ChartLegendChrome = "plain" | "chips";
 
   type ChartLegendPosition = "top" | "bottom" | "trailing";
+
+  /** "solid" is the flat stroke and the extruded 3D ribbon; "trail" draws a line as light: a bright core in a soft halo with a glowing head (`trailMath.ts`). */
+  type ChartLineFinish = "solid" | "trail";
 
   /** A vertex on a line or area: one per category at its band centre, plus the vertices the axis trim inserts where a segment crosses a bound. */
   interface ChartLinePoint extends ChartPoint {
@@ -1929,6 +2243,10 @@ declare module "@kookaburra/toolkit" {
     fontEmphasis: ChartFontEmphasis;
     /** OKLCH lightness step per series index, away from the background (`chartSeriesTint`); 0 leaves the palette as resolved. */
     seriesLightnessStep: number;
+    /** Axis furniture in both renderers and every mount's fit; "none" outranks the block's own axis and label switches. */
+    furniture: ChartFurniture;
+    /** The stroke a line (and a flat area's edge) draws with. */
+    lineFinish: ChartLineFinish;
   }
 
   /** The flat facet of an appearance preset: every `Chart2DAppearance` fraction the 2D metrics resolve, plus the treatments only a preset asks for. A superset, so `chart2dMetrics` takes it as is. */
@@ -1966,6 +2284,8 @@ declare module "@kookaburra/toolkit" {
     floorShadow: boolean;
     /** Stack segments take the matte finish `chartStackSurface` returns, so a tall stack is not a column of highlights. */
     interiorFlatStacks: boolean;
+    /** How far a light trail's start recedes behind the plot plane its leading end lands on, as a fraction of the plot's short side; read only under `lineFinish: "trail"`. */
+    trailDepth: number;
   }
 
   /** A value-axis tick. Labels are NOT formatted here: callers run `value` through the chart formatter so axis labels, value labels and counters all agree. */
@@ -2033,7 +2353,7 @@ declare module "@kookaburra/toolkit" {
   type Colour = "background" | "text" | "muted" | "accent" | (string & {});
 
   /** Multi-device layout presets, resolved to per-aspect placements in `toolkit/device/layout.ts`. */
-  const DEVICE_LAYOUT_PRESETS: readonly ["row", "toe-in", "arc", "cascade", "hero", "depth-pair"];
+  const DEVICE_LAYOUT_PRESETS: readonly ["row", "toe-in", "arc", "cascade", "hero", "depth-pair", "v"];
 
   interface DashStyleProps {
     /** Line weight in world units (default 0.02). */
@@ -2053,6 +2373,31 @@ declare module "@kookaburra/toolkit" {
     /** Radians. */
     rotation?: V3;
     renderOrder?: number;
+  }
+
+  type DeviceFinish = string | DeviceFinishSpec;
+
+  interface DeviceFinishSpec {
+    frame?: DeviceFrameFinish;
+    polished?: { roughness?: number; envIntensity?: number };
+    /** A specular-only coat over the display: Fresnel reflections add onto the media, which stays exact where nothing reflects. */
+    glass?: {
+      roughness?: number;
+      ior?: number;
+      specularIntensity?: number;
+      envIntensity?: number;
+    };
+    back?: {
+      roughness?: number;
+      metalness?: number;
+      /** Multiplies the colour the device colour set. */
+      tint?: number;
+      clearcoat?: number;
+      clearcoatRoughness?: number;
+      envIntensity?: number;
+    };
+    /** Research only: paints these glb materials magenta to map roles. */
+    debug?: string[];
   }
 
   /** How auto-fit normalises the model into the scene (Device.tsx's Box3 fit). */
@@ -2089,6 +2434,26 @@ declare module "@kookaburra/toolkit" {
     /** 0 to 1 multipliers on the blur radius and the dimming depth alone (default 1). */
     blur?: number;
     darken?: number;
+  }
+
+  interface DeviceFrameFinish {
+    roughness?: number;
+    metalness?: number;
+    /** 0..1 stretch of the highlight across the brushing (KHR anisotropy strength). */
+    anisotropy?: number;
+    /** Stretch along the grooves instead of across them (the unphysical but sometimes prettier choice). */
+    anisotropyAlong?: boolean;
+    /** 0..1 procedural hairline grain along the band, band-limited so it fades instead of aliasing. */
+    grain?: number;
+    /** Grain cells per metre across the band (the band is about 8 mm tall). */
+    grainScale?: number;
+    /** Scale on the glb's own brushed normal map; 0 removes it and its roughness map. */
+    brushedMap?: number;
+    /** Roughness where the band rolls over into the glass and the back (a polished chamfer line); absent keeps one roughness. */
+    chamferRoughness?: number;
+    envIntensity?: number;
+    /** Environment lookups fanned across the grooves around the true mirror direction, in place of three's bent normal, which swings the band's reflection towards the viewer. A strip placed on the band's mirror direction then lands on it, as it would in a path tracer. */
+    iblTaps?: number;
   }
 
   type DeviceLayoutPreset = (typeof DEVICE_LAYOUT_PRESETS)[number];
@@ -2146,8 +2511,21 @@ declare module "@kookaburra/toolkit" {
     fold?: { hingeZ: number };
   }
 
-  /** The blur families a scene can pick (track-level, first authored key wins). Depth and split read scene depth through the CoC; the rest are screen-space. */
-  type DofMode = "depth" | "tilt" | "soft" | "radial" | "directional" | "split";
+  /** The blur families a scene can pick (track-level, first authored key wins). Depth, split and lens read scene depth through the CoC; the rest are screen-space. */
+  type DofMode = "depth" | "tilt" | "soft" | "radial" | "directional" | "split" | "lens";
+
+  /** A count run with its colour resolved to linear RGB. */
+  interface DotCountRun {
+    value: number;
+    rgb: readonly [number, number, number];
+  }
+
+  /** One frame of the field: per dot `dots` holds (x, y, radius, alpha) and `tints` (linear r, g, b, weight). */
+  interface DotFieldFrame {
+    count: number;
+    dots: Float32Array;
+    tints: Float32Array;
+  }
 
   /** The easing families exposed to the UI/scene documents (each as in / out / inOut). */
   const EASE_FAMILIES: readonly ["Sine", "Quad", "Cubic", "Quart", "Quint", "Expo", "Circ", "Back"];
@@ -2171,6 +2549,10 @@ declare module "@kookaburra/toolkit" {
     centerY: number;
     squeeze: number;
     focusB: number;
+    fStop: number;
+    /** Null derives the focal length from the sensor and fov. */
+    focalMm: number | null;
+    sensorMm: number;
   }
 
   /** The postprocessing stack: every field is a plain number/string set on the CPU, never time-derived, so effect frames stay a pure function of the timeline. Omitting a key omits that effect. A theme with NO `effects` keeps the byte-identical (composer-free) render path. See docs/determinism.md. */
@@ -2179,6 +2561,7 @@ declare module "@kookaburra/toolkit" {
     vignette?: VignetteParams;
     lut?: LutParams;
     grain?: GrainParams;
+    lens?: LensParams;
   }
 
   /** One quad's fully resolved frame state; every field is in the parent Text's local space (offsets already × fontSize). */
@@ -2206,12 +2589,36 @@ declare module "@kookaburra/toolkit" {
     scaleY?: number;
   }
 
+  /** One environment strip: reflection-only light. Azimuth from +Z toward +X, elevation up, like the light rig. */
+  interface EnvStripSpec {
+    azimuthDeg: number;
+    elevationDeg: number;
+    /** Angular length along the strip's long axis. */
+    lengthDeg: number;
+    /** Angular width across it. */
+    widthDeg: number;
+    /** 0 stands the strip upright; 90 lays it level. */
+    rollDeg?: number;
+    /** sRGB hex. */
+    color: string;
+    /** Linear radiance: 10 to 60 reads as a hot line on polished metal. */
+    intensity: number;
+    /** 0 even, 1 falls to black at both ends. */
+    falloff?: number;
+    /** 0 hard edge, 1 fades to black across the width. */
+    feather?: number;
+  }
+
   /** Environment reflections for the lighting block: same shape as `ThemeEnvironment` plus the explicit `"none"` source ("no reflections", distinct from absent = inherit the layer below). Lighting only; never a visible background. */
   interface EnvironmentSpec {
     /** `"kookaburra:<slug>"` | `"kookaburra:softbox"` | a project-relative `.hdr`/`.exr` path | `"none"`. */
     source: string;
     intensity: number;
     rotationDeg: number;
+    /** Emissive strips baked into a black environment (engine/stripSpec.ts); present, they replace `source`. */
+    strips?: EnvStripSpec[];
+    /** Linear floor of the strips' sphere. */
+    stripsAmbient?: number;
   }
 
   interface FaceLine {
@@ -2388,9 +2795,10 @@ declare module "@kookaburra/toolkit" {
     space?: "oklch";
   }
 
-  /** Film-grain params. `intensity` 0 = no grain. Seeded from the frame only (see grainSeed). */
+  /** Film-grain params. `intensity` 0 = no grain. Seeded from the frame only (see grainSeed); `hold` keeps each pattern for that many frames, the paper boil (5 is 12 fps). */
   interface GrainParams {
     intensity: number;
+    hold?: number;
   }
 
   /** A shine band along `SHINE_AXIS`, in the space of whoever holds it. */
@@ -2508,6 +2916,22 @@ declare module "@kookaburra/toolkit" {
     placement?: DevicePlacement;
   }
 
+  /** Lens response for hot highlights (engine/LensEffect.ts): energy-conserving bloom, halation and glare on the linear HDR buffer. `intensity` 0 = off. */
+  interface LensParams {
+    intensity: number;
+    bloom?: number;
+    bloomRadius?: number;
+    karis?: number;
+    halation?: number;
+    halationColor?: string;
+    halationThreshold?: number;
+    glare?: number;
+    glarePoints?: number;
+    glareAngleDeg?: number;
+    glareThreshold?: number;
+    glareFalloff?: number;
+  }
+
   interface LightBase {
     id: string;
     name?: string;
@@ -2541,8 +2965,72 @@ declare module "@kookaburra/toolkit" {
         penumbra: number;
         distance?: number;
         decay?: number;
+        volumetric?: LightVolumetricSpec;
       })
     | (LightBase & { type: "area"; width: number; height: number });
+
+  /** A spot's visible beam (engine/volumetricSpec.ts parses it): single-scatter haze in its cone, lit through its shadow map, with optional bars aimed at the lens, moving smoke and dust. Absent, the spot is a plain light. */
+  interface LightVolumetricSpec {
+    /** Bars parallel to the line from the light to the lens, so every shadow plane holds the lens and the rays fan crisply from the source. World lights only. */
+    grate?: {
+      /** The lens the bars aim at; "camera" (the default) takes the scene's opening camera. */
+      lens?: Vec3 | "camera";
+      offset?: number;
+      along?: Pair;
+      width?: number;
+      slat?: Pair;
+      gap?: Pair;
+      wideGap?: { p: number; range: Pair };
+      seed?: number;
+      /** Explicit bars across the row, in place of the seeded layout. */
+      bars?: Pair[];
+      /** The light's radius: how far each bar's shadow edge blurs. */
+      soft?: number;
+    };
+    /** Haze only inside this world box. */
+    box?: { min: Vec3; max: Vec3 };
+    haze?: {
+      /** Scattering per world unit. */
+      density?: number;
+      /** Henyey-Greenstein g: towards 1 the haze glows looking into the light. */
+      anisotropy?: number;
+      strength?: number;
+      heightFalloff?: number;
+      /** Height over which the haze thins into the floor. */
+      groundFade?: number;
+    };
+    smoke?: {
+      scale?: number;
+      warp?: number;
+      warpScale?: number;
+      contrast?: Pair;
+      floor?: number;
+      drift?: Vec3;
+      evolve?: number;
+      warpEvolve?: number;
+      offset?: Vec3;
+      frontFade?: { z0: number; z1: number; min: number };
+    };
+    /** The haze dims light on its way in and out. */
+    extinction?: boolean;
+    /** Motes that glint only in the beam; they fill the haze box, else the cone at rest, unless `min` and `max` are set. */
+    dust?: {
+      count?: number;
+      min?: Vec3;
+      max?: Vec3;
+      radius?: Pair;
+      seed?: number;
+      drift?: Vec3;
+      jitter?: number;
+      jitterScale?: number;
+      jitterSpeed?: number;
+      color?: string;
+      forward?: number;
+      gain?: number;
+    };
+    /** This light's shadow map size, in place of the stage's. */
+    shadowMapSize?: number;
+  }
 
   /** Provenance for the Matching lighting toggle, so turning it off removes only its own unedited writes. */
   interface LightingCompanion {
@@ -2628,7 +3116,19 @@ declare module "@kookaburra/toolkit" {
     width: number;
     lineHeight: number;
     baseline: number;
-    glyphs: { x: number; width: number; space: boolean; face: FaceLine }[];
+    glyphs: LineGlyph[];
+  }
+
+  interface LineGlyph {
+    x: number;
+    width: number;
+    space: boolean;
+    face: FaceLine;
+    index: number;
+    capHeight: number;
+    /** The outline relative to the pen and baseline, or null for an empty glyph. */
+    ink: [number, number, number, number] | null;
+    newline: boolean;
   }
 
   /** Colour-grade params: `url` is a project-relative `.cube` 3D LUT (e.g. "assets/grade.cube"), resolved by loadProject to a project asset key. `intensity` 0 = no grade, 1 = full grade (drives blend opacity). All LUTs in one project must share one LUT_3D_SIZE (see preloadEffectLuts). */
@@ -2669,6 +3169,8 @@ declare module "@kookaburra/toolkit" {
     placement?: LayeredScreenshotPlacement;
     track: LayeredScreenshotTrack | null;
   }
+
+  type Pair = [number, number];
 
   /** Per-particle constants derived once from the seed. */
   interface Particle {
@@ -2755,6 +3257,39 @@ declare module "@kookaburra/toolkit" {
       ? Exclude<V, undefined>
       : never;
   };
+
+  /** A lit satin floor that fades into the void: a reflection blurred with height, sheen, glitter and floor-only pools. It stands at the stage's floorY like the cyclorama and takes real shadows itself. */
+  interface SatinBackdropSpec {
+    type: "satin";
+    color: string;
+    roughness?: number;
+    /** Dielectric reflectance, 0.5 being the usual 4%. */
+    specular?: number;
+    /** Where the fade is centred, [x, z]. */
+    centre?: [number, number];
+    /** The floor dissolves into the layers behind it between these radii. */
+    fade?: [number, number];
+    /** `false` turns the reflection off. `blur` is in pixels of a 1080p frame; `heightBlur` is the height over which a reflection goes from sharp to fully blurred; `contact` is the blur kept even at the contact. */
+    reflection?: false | { strength?: number; blur?: number; heightBlur?: number; contact?: number };
+    /** Glossy flakes: `scale` flakes per unit, `density` the share that is flake, `grain` how much the sheen varies grain to grain. */
+    glitter?: {
+      scale?: number;
+      density?: number;
+      roughness?: number;
+      tilt?: number;
+      weight?: number;
+      grain?: number;
+      seed?: number;
+    };
+    /** Up to four soft patches the floor alone receives, such as light thrown off a polished rail. */
+    pools?: {
+      at: [number, number];
+      radius: [number, number];
+      angleDeg?: number;
+      color: string;
+      intensity: number;
+    }[];
+  }
 
   interface SceneDocCameraKey {
     id: string;
@@ -2891,18 +3426,25 @@ declare module "@kookaburra/toolkit" {
     chrome?: SceneDocCompareChrome;
   }
 
-  /** The exported chrome: a divider line along the mask edge, a grip riding a linear divider, label chips per half, per-side tints. `line.colour` and both tints are each a THEME TOKEN NAME (background | text | accent | muted) resolved against the scene's theme at plan build, or a `#rrggbb` hex used as authored. Absent sub-blocks are off, and `grip: true` is the legacy chevrons handle at size 1. */
+  /** The exported chrome: a divider line along the mask edge, a grip riding a linear divider, label chips per half, per-side tints, and a refracting glass bar along a linear or circle edge. `line.colour` and both tints are each a THEME TOKEN NAME (background | text | accent | muted) resolved against the scene's theme at plan build, or a `#rrggbb` hex used as authored. Absent sub-blocks are off, `grip: true` is the legacy chevrons handle at size 1, and `glass: true` the default bar. */
   interface SceneDocCompareChrome {
     line?: { width?: number; colour?: string; softness?: number };
     grip?: boolean | SceneDocCompareGrip;
     chips?: boolean;
     tint?: { a?: string; b?: string; amount?: number };
+    glass?: boolean | SceneDocCompareGlass;
   }
 
   /** The narrow device appearance surface side B may override. Device identity, pose and motion remain shared. */
   interface SceneDocCompareDeviceAppearance {
     colour?: string;
     shadow?: DeviceShadowMode;
+  }
+
+  /** The glass edge as authored: `width` is the bar's full width in 1080-tall reference pixels, `strength` scales its refraction and rim light. */
+  interface SceneDocCompareGlass {
+    width?: number;
+    strength?: number;
   }
 
   /** The grip as authored: `size` is a multiplier on the reference radius, `style` picks the handle. */
@@ -2970,6 +3512,8 @@ declare module "@kookaburra/toolkit" {
 
   /** One device's pose at a key: a DELTA on whatever the scene already resolves for it (the layout block, or its own placement), so the motion presets keep layering on top and deleting the track reverts exactly. Offsets and rotations add, scale multiplies, and the hinge angles (`lidDeg`, `foldDeg`) and screen powers are the absolutes (an angle has no meaningful delta). Every field is optional and an absent one holds the device's resting value, the lighting-pose rule. */
   interface SceneDocDevicePose {
+    /** Another device's id: this pose's offset, rotation and scale measure from that device's resting slot instead of this one's, so a line-up can start stacked behind its hero. */
+    slot?: string;
     offset?: [number, number, number];
     rotationDeg?: [number, number, number];
     scale?: number;
@@ -3015,6 +3559,12 @@ declare module "@kookaburra/toolkit" {
     squeeze?: number;
     /** Split mode: the second focus distance in world units (always manual). */
     focusB?: number;
+    /** Lens mode: aperture as an f-number. */
+    fStop?: number;
+    /** Lens mode: focal length in mm; absent derives it from `sensorMm` and the fov. */
+    focalMm?: number;
+    /** Lens mode: sensor extent along the fov axis in mm (24 is full frame). */
+    sensorMm?: number;
   }
 
   interface SceneDocImageSpec {
@@ -3473,6 +4023,13 @@ declare module "@kookaburra/toolkit" {
   /** Website scene content: field-level parsing, secure URL normalisation, capture freshness and shared frame geometry. The live native view and deterministic WebGL poster both consume this pure contract. */
   type SceneWebsiteViewportPreset = "desktop" | "tablet" | "mobile" | "custom";
 
+  /** A line drawn as a light trail instead of a ribbon: its halo half width and depth travel in chart units, and the stage it glows (or inks) against. */
+  interface Series3DTrail {
+    reach: number;
+    travel: number;
+    background: string;
+  }
+
   /** The device pose the silhouette is built from: everything the inner animated group applies, so a float lifts the shadow off the floor and a turntable spin narrows it. */
   interface ShadowPose {
     /** Placement scale times the model's auto-fit is NOT included: slabs are authored in fitted units and scaled by `scale` alone. */
@@ -3601,7 +4158,8 @@ declare module "@kookaburra/toolkit" {
     | { type: "floor"; color: string; filletRadius?: number }
     /** `gradient` names a THEME gradient; `spec` carries an inline self-contained gradient (the unified Background editor's write-through). One must be present; `spec` wins when both are. */
     | { type: "gradient"; gradient?: string; spec?: GradientSpec }
-    | { type: "image"; src: string; fit?: "cover" | "contain" };
+    | { type: "image"; src: string; fit?: "cover" | "contain" }
+    | SatinBackdropSpec;
 
   /** Camera-locked, frame-filling background, drawn behind ALL world content and COMPOSABLE with `backdrop` (a fixed image can sit behind a shadowed cyclorama). Vocabulary: `colors.background` clears the frame, `background` is a camera-locked fill over that clear and behind world content, `backdrop` is world-space staging. Image/gradient fills cover-crop, centred, one asset serves every aspect. `parallax` (0..0.5, default 0 = hard-locked) drifts the fill at that fraction of the content's screen motion; `image.src` is `kookaburra:<name>` (bundled) or a project-relative path. */
   type ThemeBackground =
@@ -3686,6 +4244,8 @@ declare module "@kookaburra/toolkit" {
     /** True when any key's effective blur exceeds 0: what routes the scene through the composer. */
     active: boolean;
   }
+
+  type Vec3 = [number, number, number];
 
   /** The window's edge stroke. `width` is a fraction of the short edge, `opacity` 0..1; `enabled: false` turns it off. */
   interface VideoWindowBorder {

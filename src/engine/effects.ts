@@ -1,14 +1,20 @@
 /** The gated postprocessing wrapper: a single module-level EffectComposer is the final output stage of the compositor whenever the loaded project declares any effect; a project with no effects never touches this file and keeps the original byte-identical render paths. Determinism rules (see docs/determinism.md): `composer.render(0)` uses a fixed delta every frame so the injected `time` uniform never advances (every effect uniform is CPU-written from resolved params + frame seed); MSAA applies only to the composer's input buffer, resolved by fixed-function blit before the effect passes, with one ACES tone-map and one sRGB encode via the final ToneMappingEffect; the effect set is the project-wide union built once so no mid-project shader recompiles, only uniforms change; and only allow-listed, time-free effects are built, never the stock time-seeded NoiseEffect/GlitchEffect. All four starter effects are wired (Bloom, Vignette, film Grain, colour-grade LUT); the LUT applies after tone-mapping in the same EffectPass, and mid-project LUT swaps write the `lut` uniform directly rather than through the public setter (which would recompile the pass), valid only because every LUT in a project shares one LUT_3D_SIZE (enforced in preloadEffectLuts). */
+import { invalidate } from "@react-three/fiber";
 import {
   BlendFunction,
   BloomEffect,
   CopyPass,
   DepthOfFieldEffect,
+  EdgeDetectionMode,
   EffectComposer,
   EffectPass,
+  FXAAEffect,
   LUT3DEffect,
   RenderPass,
   type ShaderPass,
+  SMAAEffect,
+  SMAAImageLoader,
+  SMAAPreset,
   TiltShiftEffect,
   ToneMappingEffect,
   VignetteEffect,
@@ -18,16 +24,19 @@ import {
   Camera,
   ClampToEdgeWrapping,
   Data3DTexture,
+  DataTexture,
   DepthTexture,
   FramebufferTexture,
   HalfFloatType,
   LinearFilter,
   NearestFilter,
+  NoColorSpace,
   NoToneMapping,
   PerspectiveCamera,
   RGBAFormat,
   Scene,
   type ShaderMaterial,
+  type Texture,
   Uniform,
   UnsignedByteType,
   Vector2,
@@ -36,12 +45,22 @@ import {
 } from "three";
 import type { EffectsConfig, EffectsOverride } from "../theme/tokens";
 import { DeterministicGrainEffect } from "./DeterministicGrainEffect";
+import { DitherEffect } from "./DitherEffect";
 import { asDisplayTarget } from "./displayTarget";
 import type { DofUnion, ResolvedDof } from "./dof";
 import { ExposureEffect } from "./ExposureEffect";
-import { blendEffectParams, resolveEffectParams, sceneBaseEffects } from "./effectParams";
+import {
+  blendEffectParams,
+  heldGrainSeed,
+  resolveEffectParams,
+  sceneBaseEffects,
+} from "./effectParams";
 import { useEffectsStore } from "./effectsStore";
+import { isExporting } from "./exportState";
 import { MSAA_SAMPLES } from "./format";
+import { LensDofEffect } from "./LensDofEffect";
+import { LensEffect } from "./LensEffect";
+import { withLensDepth } from "./lensDepth";
 import { type CubeLut, parseCubeLut } from "./lutCube";
 import { composerToneMapping } from "./renderSettings";
 import { SmearEffect } from "./SmearEffect";
@@ -49,7 +68,7 @@ import { SoftFocusEffect } from "./SoftFocusEffect";
 import type { Resolved } from "./sceneTimeline";
 
 /** Effect keys that are actually wired into the chain (all four starter effects as of cut 2). */
-const WIRED_EFFECTS = new Set(["bloom", "vignette", "grain", "lut"]);
+const WIRED_EFFECTS = new Set(["bloom", "vignette", "grain", "lut", "lens"]);
 
 /** Which dof blur families the loaded project's camera tracks activate (`dofUnionOf`, defined in dof.ts); part of the composer rebuild key, so the chain stays project-stable like the effect-key union. */
 export type { DofUnion } from "./dof";
@@ -69,6 +88,7 @@ export const SMEAR_DIR_SPAN = 0.25;
 /** The dof-family effect handles a chain carries (main and side composers alike); applyDofUniforms drives whichever exist. */
 interface DofEffects {
   dof: DepthOfFieldEffect | null;
+  lensDof: LensDofEffect | null;
   tilt: TiltShiftEffect | null;
   smear: SmearEffect | null;
   soft: SoftFocusEffect | null;
@@ -82,6 +102,7 @@ interface ComposerState extends DofEffects {
   /** Persistent-layer overlay pass, disabled except on transition frames. */
   overlayPass: RenderPass;
   bloom: BloomEffect | null;
+  lens: LensEffect | null;
   vignette: VignetteEffect | null;
   grain: DeterministicGrainEffect | null;
   exposure: ExposureEffect;
@@ -220,12 +241,13 @@ function projectEffectKeys(): Set<string> {
 
 /** Resolves the effect stack for the frame, or `null` if the project declares no effects at all (the compositor keeps its byte-identical composer-free paths); a project that declares any effect returns non-null for every frame, even a scene with no params returns `{}`, so tone-mapping is uniform project-wide (three's ACES and postprocessing's ACES aren't bit-identical, so they're never mixed). */
 export function resolveFrameEffects(resolved: Resolved): EffectsConfig | null {
-  const { projectDefault, overrides, sceneDefaults } = useEffectsStore.getState();
+  const { projectDefault, overrides, sceneDefaults, renderSettings } = useEffectsStore.getState();
   const anySceneEffects = Object.values(sceneDefaults).some((b) => Object.keys(b).length > 0);
   if (
     Object.keys(projectDefault).length === 0 &&
     Object.keys(overrides).length === 0 &&
-    !anySceneEffects
+    !anySceneEffects &&
+    renderSettings.dither !== true
   ) {
     return null;
   }
@@ -263,7 +285,10 @@ export function ensureComposer(
     [...keys].sort().join(",") +
     (lutUrls.length ? `|${lutUrls.join("|")}` : "") +
     `|tm:${renderSettings.toneMapping}` +
-    `|dof:${dofKeyOf(dofUnion)}`;
+    `|dof:${dofKeyOf(dofUnion)}` +
+    (renderSettings.antialias ? `|aa:${renderSettings.antialias}` : "") +
+    (renderSettings.antialias === "smaa" && !smaaTextures ? "-pending" : "") +
+    (renderSettings.dither ? "|dither" : "");
   if (
     composerState &&
     composerState.gl === gl &&
@@ -296,6 +321,7 @@ export function ensureComposer(
   composer.addPass(overlayPass);
 
   const bloom = keys.has("bloom") ? new BloomEffect({ mipmapBlur: true }) : null;
+  const lens = keys.has("lens") ? new LensEffect() : null;
   const vignette = keys.has("vignette") ? new VignetteEffect() : null;
   const grain = keys.has("grain") ? new DeterministicGrainEffect() : null;
   // ToneMapping owns the single display tone-map (the project mode; ACES by default); the pass's one sRGB encode still happens at output. Exposure multiplies immediately BEFORE it, mirroring gl.toneMappingExposure's position in three's pipeline.
@@ -314,11 +340,35 @@ export function ensureComposer(
     lut = new LUT3DEffect(seedTex, { blendFunction: BlendFunction.NORMAL });
   }
   // The dof family sits at the chain head: it samples linear HDR colour (+ depth for the CoC modes) pre-everything, and blurred highlights still bloom coherently. Placeholder camera, overwritten per frame via setMainCamera (which copies camera settings into the CoC material). All effects build zeroed; applyDofUniforms drives them per frame. (EffectPass itself orders by attributes, so the convolution smear runs first; modes are exclusive per scene, so only uniforms care.)
-  const { dof, tilt, smear, soft } = buildDofChain(dofUnion);
-  const chain = [dof, tilt, smear, soft, bloom, vignette, grain, exposure, tonemap, lut].filter(
-    (e): e is NonNullable<typeof e> => e !== null,
-  );
-  composer.addPass(new EffectPass(undefined, ...chain));
+  const { dof, lensDof, tilt, smear, soft } = buildDofChain(dofUnion);
+  const blurs = [dof, lensDof, tilt, smear, soft].filter(isEffect);
+  if (lens && blurs.length > 0) {
+    // The lens reads its pass's input, so it rides a second pass behind the blur families: a defocused highlight blooms as a disc.
+    composer.addPass(new EffectPass(undefined, ...blurs));
+    const tail = [lens, bloom, vignette, grain, exposure, tonemap, lut].filter(isEffect);
+    composer.addPass(new EffectPass(undefined, ...tail));
+  } else {
+    const chain = [
+      dof,
+      lensDof,
+      tilt,
+      smear,
+      soft,
+      lens,
+      bloom,
+      vignette,
+      grain,
+      exposure,
+      tonemap,
+      lut,
+    ];
+    composer.addPass(new EffectPass(undefined, ...chain.filter(isEffect)));
+  }
+  // Antialiasing reads its pass's input, so it rides its own pass after the tone map: on display values, where MSAA's linear resolve leaves hot highlights hard-edged.
+  if (renderSettings.antialias)
+    composer.addPass(new EffectPass(undefined, antialiasEffect(renderSettings.antialias)));
+  // The dither rides the last pass, on the encoded display values just before the 8-bit write.
+  if (renderSettings.dither) composer.addPass(new EffectPass(undefined, new DitherEffect()));
 
   composerState = {
     gl,
@@ -326,10 +376,12 @@ export function ensureComposer(
     renderPass,
     overlayPass,
     dof,
+    lensDof,
     tilt,
     smear,
     soft,
     bloom,
+    lens,
     vignette,
     grain,
     exposure,
@@ -340,18 +392,23 @@ export function ensureComposer(
   return composerState;
 }
 
+function isEffect<T>(e: T | null): e is T {
+  return e !== null;
+}
+
 /** The chain-shape key bit per blur family (composer rebuild keys, main and side alike). */
 function dofKeyOf(u: DofUnion | null | undefined): string {
-  if (!u) return "000000";
-  return [u.depth, u.tilt, u.soft, u.radial, u.directional, u.split]
+  if (!u) return "0000000";
+  return [u.depth, u.tilt, u.soft, u.radial, u.directional, u.split, u.lens]
     .map((f) => (f ? 1 : 0))
     .join("");
 }
 
-/** Build the dof-family effects a union asks for (split rides the depth effect via the patched CoC). */
-function buildDofChain(dofUnion: DofUnion | null | undefined): DofEffects {
+/** Build the dof-family effects a union asks for (split rides the depth effect via the patched CoC). `display` marks the dof-only lane, whose input is finished display bytes rather than linear HDR. */
+function buildDofChain(dofUnion: DofUnion | null | undefined, display = false): DofEffects {
   return {
     dof: dofUnion?.depth || dofUnion?.split ? buildDofEffect() : null,
+    lensDof: dofUnion?.lens ? new LensDofEffect(display) : null,
     tilt: dofUnion?.tilt ? buildTiltEffect() : null,
     smear: dofUnion?.radial || dofUnion?.directional ? new SmearEffect() : null,
     soft: dofUnion?.soft ? new SoftFocusEffect(DOF_RESOLUTION_SCALE) : null,
@@ -455,6 +512,9 @@ function applyDofUniforms(effects: DofEffects, d: ResolvedDof | null | undefined
     const squeezeX = active ? 1 / active.squeeze : 1;
     for (const mat of bokehMaterials(effects.dof)) mat.uniforms.squeeze.value = squeezeX;
   }
+  if (effects.lensDof) {
+    effects.lensDof.setLens(d && d.mode === "lens" && d.blur > 0 ? d : null);
+  }
   if (effects.tilt) {
     const active = d && d.mode === "tilt" && d.blur > 0 ? d : null;
     effects.tilt.blendMode.opacity.value = active ? active.blur : 0;
@@ -488,12 +548,13 @@ function applyEffectUniforms(cs: ComposerState, cfg: EffectsConfig, seed: number
       cs.bloom.luminanceMaterial.smoothing = cfg.bloom.luminanceSmoothing;
     }
   }
+  if (cs.lens) cs.lens.setParams(cfg.lens);
   if (cs.vignette) {
     cs.vignette.offset = cfg.vignette?.offset ?? 0.5;
     cs.vignette.darkness = cfg.vignette?.darkness ?? 0; // 0 = no vignette
   }
   if (cs.grain) {
-    cs.grain.seed = seed;
+    cs.grain.seed = heldGrainSeed(seed, cfg.grain?.hold);
     cs.grain.intensity = cfg.grain?.intensity ?? 0; // 0 = no grain
   }
   if (cs.lut) {
@@ -535,7 +596,8 @@ export function renderThroughComposer(
   }
   applyEffectUniforms(cs, cfg, seed);
   applyDofUniforms(cs, dof);
-  cs.composer.render(0); // fixed delta, the injected `time` uniform never advances
+  // Fixed delta, the injected `time` uniform never advances.
+  withLensDepth(mainCamera, dof, () => cs.composer.render(0));
   gl.toneMapping = prevTone;
   gl.autoClear = prevAutoClear;
   gl.setRenderTarget(prevTarget);
@@ -568,8 +630,8 @@ function ensureDofSide(gl: WebGLRenderer, w: number, h: number, dofUnion: DofUni
 
   const renderPass = new RenderPass(new Scene(), new Camera());
   composer.addPass(renderPass);
-  const { dof, tilt, smear, soft } = buildDofChain(dofUnion);
-  const chain = [dof, tilt, smear, soft].filter((e): e is NonNullable<typeof e> => e !== null);
+  const { dof, lensDof, tilt, smear, soft } = buildDofChain(dofUnion);
+  const chain = [dof, lensDof, tilt, smear, soft].filter(isEffect);
   composer.addPass(new EffectPass(undefined, ...chain));
   // Copies the dof-graded linear HDR frame into the side target the transition composite samples; autoResize off, the compositor owns that target's size.
   const copyPlaceholder = new WebGLRenderTarget(1, 1, { depthBuffer: false });
@@ -581,6 +643,7 @@ function ensureDofSide(gl: WebGLRenderer, w: number, h: number, dofUnion: DofUni
     composer,
     renderPass,
     dof,
+    lensDof,
     tilt,
     smear,
     soft,
@@ -609,7 +672,7 @@ export function renderSideWithDof(
   st.composer.setMainCamera(sideCamera);
   applyDofUniforms(st, dof);
   st.copyPass.renderTarget = target;
-  st.composer.render(0);
+  withLensDepth(sideCamera, dof, () => st.composer.render(0));
   gl.setRenderTarget(prevTarget);
 }
 
@@ -669,14 +732,14 @@ function ensureDofOverlay(gl: WebGLRenderer, w: number, h: number, u: DofUnion):
   }
   releaseDofOverlay();
 
-  const effects = buildDofChain(u);
-  const chain = [effects.dof, effects.tilt, effects.smear, effects.soft].filter(
-    (e): e is NonNullable<typeof e> => e !== null,
+  const effects = buildDofChain(u, true);
+  const chain = [effects.dof, effects.lensDof, effects.tilt, effects.smear, effects.soft].filter(
+    isEffect,
   );
   const pass = new EffectPass(undefined, ...chain);
   pass.initialize(gl, false, UnsignedByteType);
   pass.setSize(w, h);
-  const needsDepth = u.depth || u.split;
+  const needsDepth = u.depth || u.split || u.lens;
   let depthTarget: WebGLRenderTarget | null = null;
   if (needsDepth) {
     // A real scene draw fills this (never an override material, which would let the depth-immune fixed quads write depth); no MSAA, depth textures resolve nowhere.
@@ -709,11 +772,12 @@ function renderDofDepth(
   st: DofOverlayState,
   scene: Scene,
   camera: Camera,
+  dof: ResolvedDof,
 ): void {
   if (!st.depthTarget) return;
   const prevTarget = gl.getRenderTarget();
   gl.setRenderTarget(st.depthTarget);
-  gl.render(scene, camera);
+  withLensDepth(camera, dof, () => gl.render(scene, camera));
   gl.setRenderTarget(prevTarget);
 }
 
@@ -736,7 +800,7 @@ export function renderDofOverCanvas(
   const prevTarget = gl.getRenderTarget();
   gl.setRenderTarget(null);
   gl.copyFramebufferToTexture(st.frameTexture, _copyOrigin);
-  renderDofDepth(gl, st, scene, camera);
+  renderDofDepth(gl, st, scene, camera, dof);
   st.pass.mainCamera = camera;
   applyDofUniforms(st, dof);
   st.inputShim.texture = st.frameTexture;
@@ -760,7 +824,7 @@ export function renderDofOverTarget(
 ): void {
   const st = ensureDofOverlay(gl, w, h, dofUnion);
   const prevTarget = gl.getRenderTarget();
-  renderDofDepth(gl, st, scene, camera);
+  renderDofDepth(gl, st, scene, camera, dof);
   st.pass.mainCamera = camera;
   applyDofUniforms(st, dof);
   st.pass.renderToScreen = false;
@@ -801,6 +865,89 @@ export function dofSideScratch(
   return st.scratch;
 }
 
+let smaaTextures: [DataTexture, DataTexture] | null = null;
+
+/** A lookup image's pixels as RGBA bytes, bottom row first when `flip` (what flipY would do). Decoded from its data URL as an ImageBitmap in this realm, with no colour conversion: the stage's GL context and canvases reject an image element made by the page. */
+async function lookupTexture(src: string, flip: boolean, nearest: boolean): Promise<DataTexture> {
+  const blob = await (await fetch(src)).blob();
+  const bitmap = await createImageBitmap(blob, {
+    premultiplyAlpha: "none",
+    colorSpaceConversion: "none",
+  });
+  const { width: w, height: h } = bitmap;
+  const ctx = new OffscreenCanvas(w, h).getContext("2d");
+  if (!ctx) throw new Error("SMAA: no 2d context to decode its lookup images");
+  ctx.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  const pixels = ctx.getImageData(0, 0, w, h).data;
+  const out = new Uint8Array(pixels.length);
+  const row = w * 4;
+  for (let y = 0; y < h; y++) {
+    const from = (flip ? h - 1 - y : y) * row;
+    out.set(pixels.subarray(from, from + row), y * row);
+  }
+  const tex = new DataTexture(out, w, h, RGBAFormat);
+  tex.minFilter = nearest ? NearestFilter : LinearFilter;
+  tex.magFilter = nearest ? NearestFilter : LinearFilter;
+  tex.generateMipmaps = false;
+  tex.colorSpace = NoColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/** Decodes SMAA's lookup images once into byte textures, so the effect builds complete and synchronously: left to itself it decodes them after its first frames. Best effort; only an SMAA project needs them. The loader needs its callback: without one it calls undefined inside the image's load event, past any catch. */
+let smaaLoading: Promise<void> | null = null;
+function preloadSmaaImages(): Promise<void> {
+  if (smaaTextures) return Promise.resolve();
+  smaaLoading ??= decodeSmaaImages().finally(() => {
+    smaaLoading = null;
+  });
+  return smaaLoading;
+}
+
+async function decodeSmaaImages(): Promise<void> {
+  try {
+    // Its typings declare three's url-first Loader signature; at runtime a lone function is the load callback.
+    const loader = new SMAAImageLoader() as unknown as {
+      load(onLoad: (images: unknown) => void): Promise<unknown>;
+    };
+    const [search, area] = (await loader.load(() => {})) as [HTMLImageElement, HTMLImageElement];
+    smaaTextures = await Promise.all([
+      lookupTexture(search.src, true, true),
+      lookupTexture(area.src, false, false),
+    ]);
+  } catch (err) {
+    console.warn("[effects] SMAA lookup images failed to decode", err);
+    smaaTextures = null;
+  }
+}
+
+/** SMAA with the preloaded lookup textures (its legacy constructor takes placeholder images and builds at once, then the real textures go in), or FXAA, which has nothing to load. Until the textures land, the preview shows FXAA; an export never renders without them. */
+function antialiasEffect(mode: "fxaa" | "smaa"): FXAAEffect | SMAAEffect {
+  if (mode === "fxaa") return new FXAAEffect();
+  if (!smaaTextures) {
+    if (isExporting()) {
+      throw new Error(
+        "SMAA lookup images are not loaded: await preloadEffectLuts() before rendering an effects project.",
+      );
+    }
+    // The pending composer key rebuilds with SMAA on the next draw, so ask for one.
+    void preloadSmaaImages().then(() => {
+      if (smaaTextures && !isExporting()) invalidate();
+    });
+    return new FXAAEffect();
+  }
+  const Smaa = SMAAEffect as unknown as new (...args: unknown[]) => SMAAEffect;
+  const effect = new Smaa({}, {}, SMAAPreset.HIGH, EdgeDetectionMode.COLOR);
+  const weights = effect.weightsMaterial as unknown as {
+    searchTexture: Texture;
+    areaTexture: Texture;
+  };
+  weights.searchTexture = smaaTextures[0];
+  weights.areaTexture = smaaTextures[1];
+  return effect;
+}
+
 /** Loads + parses every LUT the project could bind (project default + per-scene overrides) before frame 0, mirroring preloadDeviceModels/preloadProjectImages, since the capture loop must never race an async effect-asset decode and a mid-run swap must find its texture already cached. The project loader awaits this before publishing effects to the store so the composer chain never builds against a missing texture; the export preamble awaits it again (a cached no-op) with `gl` so every texture is uploaded before frame 0, never a lazy first-use upload mid-run. See docs/determinism.md. Enforces that all of a project's LUTs share one LUT_3D_SIZE, since mid-project swaps write the `lut` uniform directly, so the pass's compiled size defines must fit every texture. */
 export async function preloadEffectLuts(opts?: {
   /** When given, force-uploads each LUT texture to the GPU (export preamble). */
@@ -811,6 +958,7 @@ export async function preloadEffectLuts(opts?: {
   /** Per-scene theme-swap base stacks, see effectsStore. */
   sceneDefaults?: Record<number, EffectsConfig>;
 }): Promise<void> {
+  if (useEffectsStore.getState().renderSettings.antialias === "smaa") await preloadSmaaImages();
   const store = useEffectsStore.getState();
   const urls = collectLutUrls(
     opts?.effects ?? store.projectDefault,

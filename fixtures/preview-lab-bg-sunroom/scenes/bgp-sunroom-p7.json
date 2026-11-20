@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "name": "preset still for the \"sunroom\" 3D background (\"Border Ranges\")",
+  "background": {
+    "type": "scene3d",
+    "look": "sunroom",
+    "colors": ["#161b26", "#566279", "#121621"],
+    "speed": 0.9,
+    "params": {
+      "sunSide": 50,
+      "sunHeight": 34,
+      "drift": 1.5,
+      "patch": 0.3,
+      "slatPitch": 0.48,
+      "opening": 0.45,
+      "panes": 2,
+      "softness": 0.9,
+      "wallDistance": 10
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0a0d14"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

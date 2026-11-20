@@ -6,8 +6,9 @@ import {
   type TemplateEntry,
 } from "../engine/templates";
 import { builtinThemes, defaultTheme } from "../theme/registry";
+import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 
-/** The template card, shared by the new-project wizard (where it is one option in a radio grid) and the welcome screen's library (where it opens the item and drags to reorder). Mouse X across the poster cycles the committed stills; with none rendered yet the card falls back to the template theme's swatch at the same 16:9 box, so the grid never reflows when the art lands. A user template carries a single poster still, so its hover simply holds that frame. */
+/** The template card, shared by the new-project wizard (where it is one option in a radio grid) and the welcome screen's library (where it opens the item and drags to reorder). A template with a committed loop plays it, muted, while hovered or selected (the OptionCard pattern); otherwise, and under Reduce motion, mouse X across the poster cycles the committed stills. With no art yet the card falls back to the template theme's swatch at the same 16:9 box, so the grid never reflows when the art lands. A user template carries a single poster still, so its hover simply holds that frame. */
 
 /** What a hosting grid wires into a card: the pointer plumbing for right-click menus and drag-reorder, plus the drop marker. */
 export interface LibraryCardInteraction {
@@ -77,10 +78,15 @@ export function TemplateCard({
   // The card rests on the manifest's poster frame; hovering still sweeps all four stills.
   const poster = Math.min(TEMPLATE_PREVIEW_COUNT - 1, Math.max(0, entry.manifest.preview.poster));
   const [hoverFrame, setFrame] = useState<number | null>(null);
+  const [hovering, setHovering] = useState(false);
+  const reduceMotion = usePrefersReducedMotion();
   const frame = previewFrame ?? hoverFrame ?? poster;
   const thumbRef = useRef<HTMLDivElement>(null);
   const previews = entry.previews;
   const src = previews ? previews[Math.min(frame, previews.length - 1)] : null;
+  // A pinned still (the inspector's slot picker) never gives way to the loop.
+  const loop = previewFrame === undefined && !reduceMotion ? entry.loop : null;
+  const playing = loop !== null && (hovering || selected);
   const theme = builtinThemes[entry.themeId] ?? defaultTheme;
   const flags = templateCardFlags(entry);
   const select = interaction.mode !== "open";
@@ -97,6 +103,8 @@ export function TemplateCard({
       onPointerDown={interaction.onPointerDown}
       onPointerMove={interaction.onPointerMove}
       onPointerUp={interaction.onPointerUp}
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -109,7 +117,7 @@ export function TemplateCard({
         ref={thumbRef}
         className="template-card-thumb"
         onMouseMove={(e) => {
-          if (previewFrame !== undefined || !previews || !thumbRef.current) return;
+          if (playing || previewFrame !== undefined || !previews || !thumbRef.current) return;
           const rect = thumbRef.current.getBoundingClientRect();
           const t = (e.clientX - rect.left) / Math.max(1, rect.width);
           setFrame(
@@ -118,7 +126,9 @@ export function TemplateCard({
         }}
         onMouseLeave={() => setFrame(null)}
       >
-        {src ? (
+        {playing && loop ? (
+          <video src={loop} poster={src ?? undefined} autoPlay loop muted playsInline />
+        ) : src ? (
           <img src={src} alt="" loading="lazy" decoding="async" draggable={false} />
         ) : (
           <div className="template-card-swatch" style={{ background: theme.colors.background }}>

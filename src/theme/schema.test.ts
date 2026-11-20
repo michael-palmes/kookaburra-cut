@@ -18,9 +18,20 @@ import {
   parseBackdropSpec,
   parseBackgroundSpec,
   parseLightingOverride,
+  parseSceneEffectsOverride,
   parseThemeDoc,
   THEME_DOC_VERSION,
 } from "./schema";
+
+/** The lens every Unveil scene entry carries; it must parse to exactly itself. */
+const UNVEIL_LENS = {
+  intensity: 1,
+  bloom: 0.08,
+  bloomRadius: 0.88,
+  halation: 0.2,
+  halationThreshold: 1,
+  halationColor: "#ff7a30",
+};
 
 /** The builtin docs are STRUCTURE-PINNED here (the gate-sidecar lesson): parseThemeDoc degrades malformed documents by design, so a silent parse-degrade of a bundled theme must fail unit tests, not turn a gate project into a differently-themed no-op. */
 
@@ -695,6 +706,63 @@ describe("parseThemeDoc degrade behaviour", () => {
     const theme = parseThemeDoc(doc, "t");
     expect(theme?.effects?.bloom).toBeUndefined();
     expect(theme?.effects?.vignette).toEqual({ offset: 0.3, darkness: 0.55 });
+  });
+
+  it("rounds and caps a grain hold, and drops a bad one but keeps the grain", () => {
+    const grainOf = (hold: unknown) =>
+      parseThemeDoc({ ...validDoc(), effects: { grain: { intensity: 0.06, hold } } }, "t")?.effects
+        ?.grain;
+    expect(grainOf(4.6)).toEqual({ intensity: 0.06, hold: 5 });
+    expect(grainOf(500)).toEqual({ intensity: 0.06, hold: 60 });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(grainOf(0)).toEqual({ intensity: 0.06 });
+    expect(grainOf("5")).toEqual({ intensity: 0.06 });
+    expect(warn).toHaveBeenCalledTimes(2);
+    warn.mockRestore();
+  });
+
+  it("parses a theme's lens, needs an intensity, and clamps without rounding", () => {
+    const lensOf = (lens: unknown) =>
+      parseThemeDoc({ ...validDoc(), effects: { lens } }, "t")?.effects?.lens;
+    expect(lensOf(UNVEIL_LENS)).toEqual(UNVEIL_LENS);
+    expect(lensOf({ intensity: 3, bloom: 0.9, glarePoints: 12, glareFalloff: 0.1 })).toEqual({
+      intensity: 1,
+      bloom: 0.5,
+      glarePoints: 6,
+      glareFalloff: 0.5,
+    });
+    const { warnings } = collectParseWarnings(() => {
+      expect(lensOf({ bloom: 0.1 })).toBeUndefined();
+      expect(lensOf({ intensity: "1" })).toBeUndefined();
+      expect(lensOf(true)).toBeUndefined();
+    });
+    expect(warnings).toHaveLength(4);
+  });
+
+  it("drops a scene entry's bad lens fields with a warning and keeps the rest", () => {
+    const { result, warnings } = collectParseWarnings(() =>
+      parseSceneEffectsOverride(
+        {
+          grain: { intensity: 0.05 },
+          lens: {
+            bloom: 0.1,
+            halationColor: "orange",
+            halationThreshold: "2",
+            glareAngleDeg: Number.NaN,
+            glarePoints: 3,
+          } as never,
+        },
+        "p/project.json scene 2",
+      ),
+    );
+    expect(result).toEqual({ grain: { intensity: 0.05 }, lens: { bloom: 0.1, glarePoints: 3 } });
+    expect(warnings).toHaveLength(3);
+    expect(warnings[0]).toContain("scene 2");
+    const unveil = { lens: { ...UNVEIL_LENS } };
+    expect(parseSceneEffectsOverride(unveil, "s")).toEqual(unveil);
+    const plain = { bloom: { intensity: 1, luminanceThreshold: 0.9, luminanceSmoothing: 0.1 } };
+    expect(parseSceneEffectsOverride(plain, "s")).toBe(plain);
+    expect(parseSceneEffectsOverride({ lens: "on" as never }, "s")).toEqual({});
   });
 
   it("parses textAnimation with a stagger default", () => {

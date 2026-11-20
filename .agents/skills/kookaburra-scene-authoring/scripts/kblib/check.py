@@ -28,10 +28,10 @@ SUPPORTED_ASSET_EXTS = {
 AUDIO_EXTS = {"mp3", "wav", "m4a", "aac", "flac", "ogg"}
 TEXT_STYLE_SUFFIXES = ("Color", "Font", "Size", "OffsetX", "OffsetY", "LineHeight", "RotationDeg", "Emphasis")
 HEX_RE = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
-# textStyle.<key>Emphasis: "<colour>" or "<colour>@<weight>" (toolkit/text/emphasis.ts).
-EMPHASIS_RE = re.compile(r"^(text|muted|accent|#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6})(?:@(\d{1,4}))?$")
+# textStyle.<key>Emphasis: "<colour>" or "<colour>@<weight>", optionally then "pill" or "battery" (toolkit/text/emphasis.ts).
+EMPHASIS_RE = re.compile(r"^(text|muted|accent|#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6})(?:@(\d{1,4}))?(?:\s+(pill|battery))?$")
 FALLBACK_BACKGROUND_TYPES = ["none", "color", "gradient", "image", "video", "scene3d", "shader"]
-BACKDROP_TYPES = ["none", "floor", "gradient", "image"]
+BACKDROP_TYPES = ["none", "floor", "gradient", "image", "satin"]
 PATH_KEYS = {"src", "file", "poster"}
 KEYED_TRACKS = [
     ("camera",), ("cameraRig",), ("deviceTrack",), ("lighting",), ("compare", "track"),
@@ -45,6 +45,13 @@ DECLARED_RE = re.compile(r"\b(?:function|const|let|var)\s+([\w$]+)")
 EDITOR_SPEEDS = (0.25, 6)
 KICK_FIELDS = ("id", "at", "zoom", "offset", "rollDeg", "attackMs", "holdMs", "releaseMs", "ease")
 KICK_ZOOM = (0.25, 4)
+# A camera key's dof fields and the ranges the app clamps them to (engine/dof.ts, engine/lensDof.ts).
+DOF_RANGES = {
+    "blur": (0, 1), "range": (0, 10), "focus": (0.05, 50), "band": (0, 1), "offset": (-1, 1),
+    "angleDeg": (-90, 90), "glow": (0, 1), "centerX": (-1, 1), "centerY": (-1, 1), "squeeze": (1, 2),
+    "focusB": (0.05, 50), "fStop": (0.7, 64), "focalMm": (4, 1200), "sensorMm": (2, 70),
+}
+DOF_LENS_ONLY = ("fStop", "focalMm", "sensorMm")
 DEPTH_STAGE_RE = re.compile(r"<DepthStage\b")
 
 
@@ -523,6 +530,10 @@ class Checker:
             kinds = self.ctx.ids("backgrounds.backdrops", BACKDROP_TYPES) or BACKDROP_TYPES
             if not isinstance(bd, dict) or bd.get("type") not in kinds:
                 rep.error(file, "backdrop.type", f'must be one of {", ".join(kinds)}')
+            elif bd["type"] == "satin":
+                colour = bd.get("color")
+                if not (isinstance(colour, str) and HEX_RE.match(colour) and len(colour) in (4, 7)):
+                    rep.error(file, "backdrop.color", "a satin floor needs a hex colour, or the app drops it")
         self.text_animation(file, "textAnimation", doc.get("textAnimation"))
         overrides = doc.get("textAnimationOverrides")
         if isinstance(overrides, dict):
@@ -988,7 +999,7 @@ class Checker:
             elif suffix == "Emphasis":
                 m = EMPHASIS_RE.match(value.strip()) if isinstance(value, str) else None
                 if not m or (m.group(2) is not None and not 1 <= int(m.group(2)) <= 1000):
-                    rep.error(file, path, 'must be "<colour>" or "<colour>@<weight>", e.g. "accent@700" (the app drops it)')
+                    rep.error(file, path, 'must be "<colour>" or "<colour>@<weight>", optionally then "pill" or "battery", e.g. "accent@700" or "accent pill" (the app drops it)')
             elif not is_number(value):
                 rep.error(file, path, "must be a finite number")
 
@@ -1374,6 +1385,8 @@ class Checker:
             seen.add(k["id"])
             if "at" in k and path in ("chart.track", "layeredScreenshot.animation"):
                 self.report.warn(file, f"{path}.keys[{i}].at", "this track takes plain tMs, so the app ignores at (./kb beats --scene S lists each bar's ms)")
+        if path in ("camera", "cameraRig"):
+            self.dof_blocks(file, path, keys)
         eases = self.ctx.ids("eases")
         for i, seg in enumerate(segments):
             if not isinstance(seg, dict):
@@ -1385,6 +1398,41 @@ class Checker:
             for field in ("ease", "easeDof"):
                 if field in seg and eases is not None:
                     self.enum(file, f"{path}.segments[{i}].{field}", seg[field], "eases", "ease", extra=["jump"])
+
+    def dof_blocks(self, file: str, path: str, keys: List[Any]) -> None:
+        rep = self.report
+        timed = sorted((k for k in keys if isinstance(k, dict) and is_number(k.get("tMs"))), key=lambda k: k["tMs"])
+        blocks = [(keys.index(k), k["pose"]["dof"]) for k in timed if isinstance(k.get("pose"), dict) and "dof" in k["pose"]]
+        # The app's rule: the first dof block sets the mode, "depth" when it names none.
+        first = next((b for _, b in blocks if isinstance(b, dict)), None)
+        scene_mode = first.get("mode", "depth") if first is not None else None
+        for i, dof in blocks:
+            at = f"{path}.keys[{i}].pose.dof"
+            if not isinstance(dof, dict):
+                rep.error(file, at, "must be an object (the app drops it)")
+                continue
+            if "mode" in dof:
+                self.enum(file, f"{at}.mode", dof["mode"], "camera.dof", "dof mode")
+                if dof["mode"] != scene_mode:
+                    rep.warn(file, f"{at}.mode", f"dof mode is per scene and the first key's \"{scene_mode}\" wins, so the app ignores this one")
+            for field, value in dof.items():
+                if field == "mode":
+                    continue
+                if field not in DOF_RANGES:
+                    rep.warn(file, f"{at}.{field}", f"unknown dof field (the app ignores it).{did_you_mean(field, DOF_RANGES)}")
+                    continue
+                if field == "focus" and value == "auto":
+                    continue
+                lo, hi = DOF_RANGES[field]
+                if not _finite(value):
+                    hint = ' or "auto"' if field == "focus" else ""
+                    rep.error(file, f"{at}.{field}", f"must be a number{hint} (the app drops it)")
+                elif not lo <= value <= hi:
+                    rep.warn(file, f"{at}.{field}", f"{value:g} is outside {lo:g} to {hi:g}, so the app clamps it")
+                if field in DOF_LENS_ONLY and scene_mode != "lens":
+                    rep.warn(file, f"{at}.{field}", f"only lens mode reads {field}; this scene's dof mode is \"{scene_mode}\"")
+                elif field == "range" and scene_mode == "lens":
+                    rep.warn(file, f"{at}.range", "lens mode ignores range: the f-stop and focus set what is sharp")
 
     def assets_in(self, file: str, path: str, value: Any) -> None:
         if isinstance(value, dict):

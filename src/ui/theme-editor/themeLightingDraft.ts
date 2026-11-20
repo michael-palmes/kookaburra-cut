@@ -83,6 +83,7 @@ export function changeThemeLightType(light: LightSpec, type: LightSpec["type"]):
   } else {
     delete next.angleDeg;
     delete next.penumbra;
+    delete next.volumetric;
   }
   if (type === "area") {
     next.width ??= 2;

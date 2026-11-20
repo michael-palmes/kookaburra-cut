@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Color, type Object3D } from "three";
+import { Color, type Group, type Object3D } from "three";
 import { useFormat } from "../../engine/format";
 import { registerGizmoTarget, unregisterGizmoTarget } from "../../engine/gizmoTargetRegistry";
 import {
@@ -31,6 +31,7 @@ import { registerSceneText } from "../../engine/sceneTextRegistry";
 import { reportTextDerivedPending } from "../../engine/textDerivedState";
 import { useTextKeyRegistry } from "../../engine/textKeyRegistry";
 import { useTextMotionRegistry } from "../../engine/textMotionRegistry";
+import { textStyleValue } from "../../engine/textStyleResolve";
 import { MotionBlurContext, useTimeline } from "../../engine/timeline";
 import { useTheme } from "../../theme";
 import { formatFontString } from "../../theme/fontRef";
@@ -48,7 +49,17 @@ import {
   EmojiQuads,
   sweepCoverage,
 } from "./EmojiQuads";
-import { computeEmphasisRects, type ResolvedEmphasis, resolveEmphasis } from "./emphasis";
+import { EmphasisPills, pillMotionsFromUnits } from "./EmphasisPills";
+import {
+  computeEmphasisRects,
+  type EmphasisShape,
+  emphasisPillEndMs,
+  emphasisPillPhase,
+  padEmphasisRanges,
+  parseEmphasisValue,
+  type ResolvedEmphasis,
+  resolveEmphasis,
+} from "./emphasis";
 import { materialProp, useExactText, useExactTextBase } from "./exactText";
 import { computeUnitYExtents, HighlightQuads } from "./HighlightQuads";
 import { resolveHeadlineType } from "./headlineType";
@@ -75,6 +86,9 @@ import {
   type ResolvedTextLook,
   resolveTextLookWithDoc,
 } from "./looks";
+import { OpticalBlurCards, useOpticalTextBlur } from "./OpticalBlurCards";
+import { type OpticalBlurPlan, planOpticalBlur, unitRestRects } from "./opticalBlur";
+import type { OpticalBlurFrame } from "./opticalBlurPass";
 import {
   BLUR_EM,
   buildLineShiftEm,
@@ -145,6 +159,8 @@ export interface AnimatedHeadlineProps {
   hitAt?: number;
   /** 0..1, multiplied into every fade (default 1). */
   opacity?: number;
+  /** Scene ms a shaped emphasis (`textStyle.<key>Emphasis` ending in `pill` or `battery`) starts drawing on; default when the line has landed. */
+  emphasisAt?: number;
   /** Per-char / per-word stagger granularity. Paragraph delivery is spelled through `delivery`, never here. */
   stagger?: "char" | "word";
   /** Per-unit stagger delay, ms. Defaults to the theme's `textAnimation.staggerMs`. */
@@ -209,7 +225,11 @@ export interface AnimatedHeadlineProps {
 const UNDER_LAYER_ALPHA_EXP = 6;
 
 /** What the renderer takes beyond the public props: `underLayer` marks a depth layer, which keeps the motion but drops the look, the emoji and the registries. */
-export type HeadlineRenderProps = AnimatedHeadlineProps & { underLayer?: boolean };
+export type HeadlineRenderProps = AnimatedHeadlineProps & {
+  underLayer?: boolean;
+  /** When a shaped emphasis starts drawing: the authored `emphasisAt`, else the line's settle. */
+  pillAtMs?: number;
+};
 
 /** A surface's final alpha: `opacity` multiplies in, and an under-layer's curve applies last. Exact when neither is set. */
 function surfaceAlpha(alpha: number, props: HeadlineRenderProps): number {
@@ -339,10 +359,20 @@ function DepthHeadline({ depth, ...props }: AnimatedHeadlineProps) {
   );
 }
 
+/** The copy a hit counts units on: the padded string a shaped emphasis typesets, else the stripped copy. */
+function hitUnitText(raw: string, shape: EmphasisShape | undefined): string {
+  if (shape) {
+    const prepared = prepareDisplayText(raw);
+    if (prepared.emphasis.length > 0) return padEmphasisRanges(prepared, shape).text;
+  }
+  return parseEmphasisMarkup(raw).text;
+}
+
 /** Moves the window so the motion lands on `hitAt`. The v0 linear ramp lands where it ends. */
 export function withHitAt(
   props: HeadlineRenderProps,
   anim: ResolvedTextAnimation | null,
+  shape?: EmphasisShape,
 ): HeadlineRenderProps {
   const hitAt = props.hitAt as number;
   const from = props.from ?? 0;
@@ -353,7 +383,7 @@ export function withHitAt(
     return { ...props, from: start, to: start + (to - from) };
   }
   const end = pinned === undefined ? textAnimationWindowToMs(from, to, anim) : from + pinned;
-  const units = impactUnitCount(anim, parseEmphasisMarkup(props.text).text);
+  const units = impactUnitCount(anim, hitUnitText(props.text, shape));
   const start = hitWindow(hitAt, anim, from, end, units).from;
   return { ...props, from: start, to: start + (to - from) };
 }
@@ -369,7 +399,9 @@ function AnimatedHeadlineRenderer(rawProps: HeadlineRenderProps) {
     doc,
     rawProps.motionKey ?? rawProps.textKey,
   );
-  const props = rawProps.hitAt === undefined ? rawProps : withHitAt(rawProps, anim);
+  const hitKey = rawProps.styleKey ?? rawProps.textKey;
+  const hitShape = parseEmphasisValue(textStyleValue(doc, hitKey, "Emphasis"))?.shape;
+  const props = rawProps.hitAt === undefined ? rawProps : withHitAt(rawProps, anim, hitShape);
   // Report coded motion to the registry; the Text-motion panel warns and offers the sidecar force override instead of silently losing the user's pick.
   const coded = hasOwnAnimationProps(props);
   useEffect(() => {
@@ -625,6 +657,12 @@ function AnimatedHeadlineRenderer(rawProps: HeadlineRenderProps) {
     resolvedEmphasis && underLayer
       ? { ...resolvedEmphasis, color: resolveFill(theme, fill ?? "text") }
       : resolvedEmphasis;
+  // A shaped emphasis gets room for its pill on every layer, so a depth stack still lines up; plain emphasis keeps the exact text.
+  const shapedText = useMemo(
+    () =>
+      resolvedEmphasis?.shape ? padEmphasisRanges(prepared, resolvedEmphasis.shape) : prepared,
+    [prepared, resolvedEmphasis?.shape],
+  );
   const look =
     !underLayer && lookResolved !== null && lookResolved.preset !== "none" ? lookResolved : null;
   const look3d = look !== null && lookIs3d(look.preset);
@@ -670,7 +708,7 @@ function AnimatedHeadlineRenderer(rawProps: HeadlineRenderProps) {
     // 3D looks re-render as an extruded twin; motion degrades to whole-block transforms from the unit-0 sample (legacyMotion keeps the v0 linear ramp on material opacity).
     return (
       <LookText3D
-        text={prepared.text}
+        text={shapedText.text}
         look={look}
         theme={theme}
         anim={legacyMotion ? null : anim}
@@ -701,8 +739,9 @@ function AnimatedHeadlineRenderer(rawProps: HeadlineRenderProps) {
           anim={anim ?? lookOnlyAnim}
           lookSpec={activeLook}
           legacyReveal
-          prepared={prepared}
+          prepared={shapedText}
           emphasis={emphasis}
+          pillAtMs={props.emphasisAt}
           meshRef={meshRef}
           rotZ={rotZ}
         />
@@ -714,8 +753,9 @@ function AnimatedHeadlineRenderer(rawProps: HeadlineRenderProps) {
         color={fill}
         theme={theme}
         lookSpec={activeLook}
-        prepared={prepared}
+        prepared={shapedText}
         emphasis={emphasis}
+        pillAtMs={props.emphasisAt ?? holdToMs}
         meshRef={meshRef}
         rotZ={rotZ}
       />
@@ -736,8 +776,9 @@ function AnimatedHeadlineRenderer(rawProps: HeadlineRenderProps) {
         theme={theme}
         anim={anim}
         lookSpec={activeLook}
-        prepared={prepared}
+        prepared={shapedText}
         emphasis={emphasis}
+        pillAtMs={props.emphasisAt}
         meshRef={meshRef}
         rotZ={rotZ}
       />
@@ -750,8 +791,9 @@ function AnimatedHeadlineRenderer(rawProps: HeadlineRenderProps) {
       theme={theme}
       anim={anim}
       lookSpec={activeLook}
-      prepared={prepared}
+      prepared={shapedText}
       emphasis={emphasis}
+      pillAtMs={props.emphasisAt ?? holdToMs}
       meshRef={meshRef}
       rotZ={rotZ}
     />
@@ -774,6 +816,40 @@ function useEmphasis(
   const hex = emphasis?.color ?? "#ffffff";
   const colour = useMemo(() => new Color(hex), [hex]);
   return { rects, colour };
+}
+
+/** A shaped emphasis this frame: how far its pill has drawn and filled from `startMs`, and the words' colour, crossfading to the filled colour as the pill floods. Null for plain emphasis and under-layers (only the face draws pills). */
+function emphasisShapeFrame(
+  emphasis: ResolvedEmphasis | null,
+  underLayer: boolean | undefined,
+  localMs: number,
+  startMs: number,
+) {
+  if (!emphasis?.shape || underLayer) return null;
+  const phase = emphasisPillPhase(localMs, startMs);
+  // Scratch, safe because writeEmphasisUniforms copies it in the same render.
+  const glyph = SHAPE_GLYPH.set(emphasis.color).lerp(
+    SHAPE_FILLED.set(emphasis.filledColor ?? emphasis.color),
+    phase.fill,
+  );
+  return { ...phase, glyph, shape: emphasis.shape, color: emphasis.color };
+}
+
+const SHAPE_GLYPH = new Color();
+const SHAPE_FILLED = new Color();
+
+/** Registers a shaped emphasis's end with the Present timing, so holds and automatic stills see the pill drawn and filled. Inert without a pill. */
+function useEmphasisPresentTiming(
+  emphasis: ResolvedEmphasis | null,
+  underLayer: boolean | undefined,
+  startMs: number,
+): void {
+  const sceneIndex = useSceneContext()?.index;
+  const toMs = emphasisPillEndMs(emphasis, underLayer, startMs);
+  useEffect(() => {
+    if (sceneIndex === undefined || toMs === null) return;
+    return registerPresentTiming(sceneIndex, { kind: "text", toMs });
+  }, [sceneIndex, toMs]);
 }
 
 /** Type a typewriter preset through the mask on every holder: the head after this frame's keystroke count, from the typeset's carets. Returns the last shown code unit (the emoji quads' twin), or null when the mask is off. */
@@ -862,12 +938,15 @@ function LegacyHeadline(
   useEffect(() => () => holder?.dispose(), [holder]);
   if (holder) writeShineBand(holder, foldBandToChild(group, position));
   const emphasised = useEmphasis(emphasis, prepared, carets);
+  const pillStartMs = props.pillAtMs ?? to;
+  const shaped = emphasisShapeFrame(emphasis, props.underLayer, localMs, pillStartMs);
+  useEmphasisPresentTiming(emphasis, props.underLayer, pillStartMs);
   if (holder && emphasis) {
     writeEmphasisUniforms(
       holder,
       emphasised.rects,
       emphasis.weightEm * fontSize,
-      emphasised.colour,
+      shaped?.glyph ?? emphasised.colour,
     );
   }
 
@@ -939,6 +1018,19 @@ function LegacyHeadline(
           <EmojiQuads clusters={prepared.clusters} states={states} fontSize={fontSize} />
         </group>
       )}
+      {shaped && emphasised.rects && (
+        <group position={position} {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}>
+          <EmphasisPills
+            rects={emphasised.rects}
+            shape={shaped.shape}
+            color={shaped.color}
+            fontSize={fontSize}
+            draw={shaped.draw}
+            fill={shaped.fill}
+            motions={[{ dx: 0, dy: 0, scale: 1, alpha }]}
+          />
+        </group>
+      )}
     </>
   );
 }
@@ -1005,12 +1097,15 @@ function BlockHeadline(
     else writeShineBand(holder, foldBandToChild(group, position));
   }
   const emphasised = useEmphasis(emphasis, prepared, carets);
+  const pillStartMs = props.pillAtMs ?? textAnimationEndMs(from, to, anim);
+  const shaped = emphasisShapeFrame(emphasis, props.underLayer, localMs, pillStartMs);
+  useEmphasisPresentTiming(emphasis, props.underLayer, pillStartMs);
   if (holder && emphasis) {
     writeEmphasisUniforms(
       holder,
       emphasised.rects,
       emphasis.weightEm * fontSize,
-      emphasised.colour,
+      shaped?.glyph ?? emphasised.colour,
     );
   }
 
@@ -1118,6 +1213,17 @@ function BlockHeadline(
         {prepared.text}
       </Text>
       {hasEmoji && <EmojiQuads clusters={prepared.clusters} states={states} fontSize={fontSize} />}
+      {shaped && emphasised.rects && (
+        <EmphasisPills
+          rects={emphasised.rects}
+          shape={shaped.shape}
+          color={shaped.color}
+          fontSize={fontSize}
+          draw={shaped.draw}
+          fill={shaped.fill}
+          motions={[{ dx: 0, dy: 0, scale: 1, alpha }]}
+        />
+      )}
     </group>
   );
 }
@@ -1193,6 +1299,15 @@ function StaggeredHeadline(
   const highlighting = usesPreset(HIGHLIGHT_PRESETS, anim);
   const underlining = usesPreset(UNDERLINE_PRESETS, anim);
   const exact = useExactText();
+  // Optical text blur rides the pack's soften, so it mounts only there (frosted's constant soften stays an edge look, and arc's bend lands outside the capture).
+  const optical = useOpticalTextBlur() && pack && !lookFrosted && !lookArc;
+  const opticalRoot = useRef<Group>(null);
+  const opticalFrame = useRef<OpticalBlurFrame>({
+    serial: 0,
+    levels: [],
+    applyCapture: () => {},
+    applyMain: () => {},
+  });
   const holder = useMemo(
     () =>
       createStaggerTextMaterial({
@@ -1396,19 +1511,48 @@ function StaggeredHeadline(
   const packFrame: StaggerPackFrame | undefined = pack
     ? { accent: accentColor, clipRects }
     : undefined;
-  writeStaggerUniforms(holder, units, samples, fontSize, packFrame);
-  if (echoHolders) {
-    for (const echo of echoHolders) writeStaggerUniforms(echo, units, samples, fontSize, packFrame);
-  }
-  if (offsetHolder) writeStaggerUniforms(offsetHolder, units, samples, fontSize, packFrame);
-  // Emphasis on every layer (the offset under-layer keeps its own colour, gaining only the weight); the typewriter head masks them all alike.
-  const emphasised = useEmphasis(emphasis, prepared, carets);
-  if (emphasis) {
-    const weight = emphasis.weightEm * fontSize;
-    writeEmphasisUniforms(holder, emphasised.rects, weight, emphasised.colour);
+  const opticalPlan: OpticalBlurPlan | null = optical
+    ? planOpticalBlur(
+        samples,
+        units,
+        unitRestRects(units, unitBoxes, bounds, fontSize),
+        fontSize,
+        offsetHolder && lookSpec ? Math.hypot(...offsetPrintOffset(lookSpec, fontSize)) : 0,
+      )
+    : null;
+  const writeUnits = (unitSamples: readonly TextUnitSample[]) => {
+    writeStaggerUniforms(holder, units, unitSamples, fontSize, packFrame);
     if (echoHolders) {
       for (const echo of echoHolders) {
-        writeEmphasisUniforms(echo, emphasised.rects, weight, emphasised.colour);
+        writeStaggerUniforms(echo, units, unitSamples, fontSize, packFrame);
+      }
+    }
+    if (offsetHolder) writeStaggerUniforms(offsetHolder, units, unitSamples, fontSize, packFrame);
+  };
+  const mainSamples = opticalPlan?.main ?? samples;
+  writeUnits(mainSamples);
+  if (optical) {
+    const f = opticalFrame.current;
+    f.serial++;
+    f.levels = opticalPlan?.levels ?? [];
+    f.applyCapture = (i) => {
+      if (opticalPlan) writeUnits(opticalPlan.captures[i]);
+    };
+    f.applyMain = () => writeUnits(mainSamples);
+  }
+  // Emphasis on every layer (the offset under-layer keeps its own colour, gaining only the weight); the typewriter head masks them all alike.
+  const emphasised = useEmphasis(emphasis, prepared, carets);
+  // A shaped emphasis draws once the whole line has landed, the last unit included, unless `emphasisAt` places it.
+  const pillStartMs = props.pillAtMs ?? settleToMs + (spreadMs ?? 0);
+  const shaped = emphasisShapeFrame(emphasis, props.underLayer, localMs, pillStartMs);
+  useEmphasisPresentTiming(emphasis, props.underLayer, pillStartMs);
+  if (emphasis) {
+    const weight = emphasis.weightEm * fontSize;
+    const glyph = shaped?.glyph ?? emphasised.colour;
+    writeEmphasisUniforms(holder, emphasised.rects, weight, glyph);
+    if (echoHolders) {
+      for (const echo of echoHolders) {
+        writeEmphasisUniforms(echo, emphasised.rects, weight, glyph);
       }
     }
     if (offsetHolder) {
@@ -1536,7 +1680,7 @@ function StaggeredHeadline(
   const coreFill = lookSpec?.preset === "neon" ? neonCoreFill(fill, lookSpec.intensity) : fill;
   const offsetXY = offsetHolder && lookSpec ? offsetPrintOffset(lookSpec, fontSize) : null;
 
-  return (
+  const textMeshes = (
     <>
       {offsetHolder && lookSpec && offsetXY && (
         <Text
@@ -1627,6 +1771,30 @@ function StaggeredHeadline(
       >
         {text}
       </Text>
+    </>
+  );
+
+  return (
+    <>
+      {optical ? (
+        <>
+          <group ref={opticalRoot}>{textMeshes}</group>
+          <OpticalBlurCards
+            frame={opticalFrame}
+            root={opticalRoot}
+            levels={opticalPlan?.levels ?? []}
+            position={position}
+            rotZ={rotZ}
+            look={{
+              toneMapped: holder.material.toneMapped,
+              depthTest: holder.material.depthTest,
+              side: holder.material.side,
+            }}
+          />
+        </>
+      ) : (
+        textMeshes
+      )}
       {!props.underLayer && (highlighting || underlining || lookHighlight) && (
         <group position={position} {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}>
           {lookHighlight && lookWordUnits && lookWordBoxes && lookHighlightSamples && (
@@ -1661,6 +1829,19 @@ function StaggeredHeadline(
       {hasEmoji && (
         <group position={position} {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}>
           <EmojiQuads clusters={prepared.clusters} states={states} fontSize={fontSize} />
+        </group>
+      )}
+      {shaped && emphasised.rects && units && (
+        <group position={position} {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}>
+          <EmphasisPills
+            rects={emphasised.rects}
+            shape={shaped.shape}
+            color={shaped.color}
+            fontSize={fontSize}
+            draw={shaped.draw}
+            fill={shaped.fill}
+            motions={pillMotionsFromUnits(emphasised.rects, units, samples, axis, fontSize)}
+          />
         </group>
       )}
     </>

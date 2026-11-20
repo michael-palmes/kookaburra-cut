@@ -226,13 +226,24 @@ describe("parseSceneDoc", () => {
     warn.mockRestore();
   });
 
-  it("parses textStyle emphasis as <colour> or <colour>@<weight>, dropping the rest", () => {
+  it("parses textStyle emphasis as <colour> or <colour>@<weight>, then an optional shape, dropping the rest", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const good = parseSceneDoc(
-      { version: 1, textStyle: { titleEmphasis: "accent@700", subtitleEmphasis: " #ff8800 " } },
+      {
+        version: 1,
+        textStyle: {
+          titleEmphasis: "accent@700",
+          subtitleEmphasis: " #ff8800 ",
+          statEmphasis: "text@600 battery",
+        },
+      },
       "test",
     );
-    expect(good?.textStyle).toEqual({ titleEmphasis: "accent@700", subtitleEmphasis: "#ff8800" });
+    expect(good?.textStyle).toEqual({
+      titleEmphasis: "accent@700",
+      subtitleEmphasis: "#ff8800",
+      statEmphasis: "text@600 battery",
+    });
     const bad = parseSceneDoc({ version: 1, textStyle: { titleEmphasis: "bold" } }, "test");
     expect(bad?.textStyle).toBeUndefined();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("textStyle.titleEmphasis"));
@@ -425,6 +436,23 @@ describe("parseSceneDoc", () => {
     expect(grip({ size: 1.2, style: "wheel" })).toEqual({ size: 1.2 });
     expect(grip("yes")).toBeUndefined();
     expect(warn).toHaveBeenCalledTimes(5);
+    warn.mockRestore();
+  });
+
+  it("keeps the glass edge's boolean and sized form, dropping a bad field alone", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const glass = (raw: unknown) =>
+      parseSceneDoc({ version: 1, compare: { chrome: { glass: raw } } }, "test")?.compare?.chrome
+        ?.glass;
+    expect(glass(true)).toBe(true);
+    expect(glass(false)).toBe(false);
+    expect(glass({})).toBe(true);
+    expect(glass({ width: 90, strength: 0.6 })).toEqual({ width: 90, strength: 0.6 });
+    expect(warn).not.toHaveBeenCalled();
+    expect(glass({ width: 0 })).toBe(true);
+    expect(glass({ width: 90, strength: -1 })).toEqual({ width: 90 });
+    expect(glass("on")).toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(3);
     warn.mockRestore();
   });
 

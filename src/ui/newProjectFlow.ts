@@ -1,4 +1,10 @@
 import { nameCollision } from "../engine/nameCollision";
+import {
+  BLANK_TEMPLATE_ID,
+  searchTemplates,
+  type TemplateCategoryId,
+  type TemplateEntry,
+} from "../engine/templates";
 import type { ThemeChoice } from "./ThemePicker";
 
 /** The wizard's first card: creates from the blank template. */
@@ -73,20 +79,92 @@ export function selectionAfterFilter(selected: string, visibleIds: readonly stri
   return visibleIds.includes(selected) || visibleIds.length === 0 ? selected : visibleIds[0];
 }
 
+export const MINE_CHIP = "mine";
+export type StartChip = TemplateCategoryId | typeof MINE_CHIP | null;
+
+/** The cards one chip and search show. Create with Claude is pinned into every category, as Blank once was, so a chip never hides the default; only My templates leaves it out. Where a profile turns Claude off, Blank takes its place in the catalogue. */
+export function startCards(
+  entries: readonly TemplateEntry[],
+  chip: StartChip,
+  query: string,
+  claudeStart: boolean,
+) {
+  const templates = (
+    chip === MINE_CHIP
+      ? searchTemplates(entries, { query, source: "user" })
+      : searchTemplates(entries, { query, category: chip })
+  ).filter((entry) => !claudeStart || entry.id !== BLANK_TEMPLATE_ID);
+  const withClaude = claudeStart && chip !== MINE_CHIP && claudeStartMatches(query);
+  const ids = [...(withClaude ? [CLAUDE_START_ID] : []), ...templates.map((entry) => entry.id)];
+  return { templates, withClaude, ids };
+}
+
+/** Search is global, so typing returns the chips to All; the selection follows the cards still shown, as a chip moves it. */
+export function startAfterSearch(
+  entries: readonly TemplateEntry[],
+  chip: StartChip,
+  query: string,
+  selected: string,
+  claudeStart: boolean,
+): { chip: StartChip; selected: string } {
+  const nextChip = query ? null : chip;
+  const { ids } = startCards(entries, nextChip, query, claudeStart);
+  return { chip: nextChip, selected: selectionAfterFilter(selected, ids) };
+}
+
 export type LookFilter = "all" | "yours" | "light" | "dark";
 
-/** The Look step's listing: the user's own themes lead, then the bundled catalogue, narrowed by the filter chip. */
-export function lookChoices(choices: readonly ThemeChoice[], filter: LookFilter): ThemeChoice[] {
+/** A template's looks this listing can show, in the template's order; ids it doesn't have (a hidden or missing theme) drop out. */
+export function availableLooks(
+  choices: readonly ThemeChoice[],
+  looks: readonly string[],
+): string[] {
+  return looks.filter((id, i) => looks.indexOf(id) === i && choices.some((c) => c.id === id));
+}
+
+/** The Look step's listing: the template's looks lead, then the user's own themes, then the bundled catalogue, narrowed by the filter chip. */
+export function lookChoices(
+  choices: readonly ThemeChoice[],
+  filter: LookFilter,
+  looks: readonly string[] = [],
+): ThemeChoice[] {
+  const lead = availableLooks(choices, looks).flatMap((id) => choices.filter((c) => c.id === id));
+  const rest = choices.filter(({ id }) => !looks.includes(id));
   const ordered = [
-    ...choices.filter(({ source }) => source === "workspace"),
-    ...choices.filter(({ source }) => source !== "workspace"),
+    ...lead,
+    ...rest.filter(({ source }) => source === "workspace"),
+    ...rest.filter(({ source }) => source !== "workspace"),
   ];
   if (filter === "yours") return ordered.filter(({ source }) => source === "workspace");
   if (filter === "light" || filter === "dark") return ordered.filter(({ mode }) => mode === filter);
   return ordered;
 }
 
-/** The user's first own theme when they have one, the app default otherwise. */
-export function initialLookThemeId(choices: readonly ThemeChoice[]): string {
-  return choices.find(({ source }) => source === "workspace")?.id ?? DEFAULT_THEME_ID;
+/** The template's first look, else the user's first own theme, else the app default. */
+export function initialLookThemeId(
+  choices: readonly ThemeChoice[],
+  looks: readonly string[] = [],
+): string {
+  return (
+    availableLooks(choices, looks)[0] ??
+    choices.find(({ source }) => source === "workspace")?.id ??
+    DEFAULT_THEME_ID
+  );
+}
+
+/** The look a Look step showed for one template's set of looks; a late listing never swaps it. */
+export interface ShownLook {
+  looksKey: string;
+  id: string;
+}
+
+/** The Look step's selection: the user's pick, else what the step showed for these looks, else a fresh seed (so a template change re-seeds until the user picks). */
+export function lookSelection(
+  picked: string | null,
+  shown: ShownLook | null,
+  looksKey: string,
+  seed: string,
+): string {
+  if (picked !== null) return picked;
+  return shown?.looksKey === looksKey ? shown.id : seed;
 }

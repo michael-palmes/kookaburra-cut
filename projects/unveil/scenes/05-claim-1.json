@@ -1,0 +1,159 @@
+{
+  "version": 1,
+  "name": "Claim 1",
+  "text": {
+    "title": "Plans your week for you."
+  },
+  "textStyle": {
+    "titleColor": "#efe9df"
+  },
+  "textAnimation": {
+    "in": "stamp",
+    "out": "fade"
+  },
+  "background": {
+    "type": "gradient",
+    "spec": {
+      "type": "linear",
+      "angleDeg": 135,
+      "stops": [["#140c07", 0], ["#060504", 0.3], ["#030303", 1]],
+      "space": "oklch"
+    }
+  },
+  "backdrop": {
+    "type": "satin",
+    "color": "#22201e",
+    "roughness": 0.35,
+    "specular": 0.3,
+    "centre": [-3.6, -4.6],
+    "fade": [1.5, 6.5],
+    "reflection": {
+      "strength": 1.3,
+      "blur": 24,
+      "heightBlur": 0.9,
+      "contact": 0.75
+    },
+    "glitter": {
+      "density": 0,
+      "weight": 0,
+      "grain": 0
+    },
+    "pools": [
+      {
+        "at": [-5.4, -5.2],
+        "radius": [2.4, 1.2],
+        "angleDeg": -20,
+        "color": "#ffb070",
+        "intensity": 0.12
+      }
+    ]
+  },
+  "lighting": {
+    "ambient": 0,
+    "fills": [],
+    "sun": {
+      "azimuthDeg": -55,
+      "elevationDeg": 32,
+      "intensity": 0,
+      "color": "#ffc888",
+      "castShadow": false
+    },
+    "environment": {
+      "source": "kookaburra:strips",
+      "intensity": 0.5,
+      "rotationDeg": 0,
+      "strips": [
+        {
+          "azimuthDeg": -107.33,
+          "elevationDeg": 34,
+          "rollDeg": -13.82,
+          "lengthDeg": 59.49,
+          "widthDeg": 24.19,
+          "color": "#fff0e0",
+          "intensity": 14,
+          "feather": 0.95,
+          "falloff": 0.85
+        }
+      ]
+    },
+    "lights": [
+      {
+        "id": "key",
+        "type": "spot",
+        "intensity": 3200,
+        "color": "#ffc79a",
+        "placement": {
+          "mode": "point",
+          "position": [-14, 9, -8]
+        },
+        "target": [-6.2, -1.905, -5.4],
+        "angleDeg": 30,
+        "penumbra": 1,
+        "decay": 2,
+        "castShadow": false,
+        "volumetric": {
+          "box": {
+            "min": [-16, -1.905, -30],
+            "max": [-1.2, 9, -2]
+          },
+          "haze": {
+            "density": 0.028,
+            "anisotropy": 0.65,
+            "strength": 1,
+            "heightFalloff": 0,
+            "groundFade": 1.5
+          },
+          "extinction": true,
+          "smoke": {
+            "scale": 0.4,
+            "warp": 1.6,
+            "contrast": [0.4, 0.6],
+            "floor": 0.15,
+            "drift": [0.12, 0.08, 0],
+            "evolve": 0.08
+          }
+        }
+      }
+    ]
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "at": "bar:13",
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 0,
+          "elevationDeg": 0,
+          "distance": 5
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1875,
+        "at": "bar:14",
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 0,
+          "elevationDeg": 0,
+          "distance": 4.545
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "linear"
+      }
+    ]
+  },
+  "cameraKicks": [
+    {
+      "at": "bar:13.3",
+      "zoom": 1.04,
+      "releaseMs": 300
+    }
+  ]
+}

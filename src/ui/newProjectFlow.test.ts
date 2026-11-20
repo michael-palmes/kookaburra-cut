@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
+import type { TemplateEntry } from "../engine/templates";
 import {
+  availableLooks,
+  CLAUDE_START_ID,
   claudeStartMatches,
   DEFAULT_THEME_ID,
   defaultProjectName,
   gridColumnCount,
   initialLookThemeId,
   lookChoices,
+  lookSelection,
   selectionAfterFilter,
+  startAfterSearch,
   startGridStep,
 } from "./newProjectFlow";
 import type { ThemeChoice } from "./ThemePicker";
@@ -115,6 +120,57 @@ describe("selectionAfterFilter", () => {
   });
 });
 
+describe("startAfterSearch", () => {
+  const entry = (id: string, category: TemplateEntry["category"], haystack: string) =>
+    ({ id, source: "bundled", category, tier: "free", haystack }) as unknown as TemplateEntry;
+  const entries = [
+    entry("product-tour", "feature", "product tour walkthrough"),
+    entry("release-notes", "update", "release notes changelog"),
+    entry("launch-teaser", "launch", "launch teaser countdown"),
+  ];
+
+  it("moves the selection off a template the search hides", () => {
+    expect(startAfterSearch(entries, null, "release", "product-tour", false)).toEqual({
+      chip: null,
+      selected: "release-notes",
+    });
+  });
+
+  it("keeps a selection the search still shows", () => {
+    expect(startAfterSearch(entries, null, "tour", "product-tour", true)).toEqual({
+      chip: null,
+      selected: "product-tour",
+    });
+  });
+
+  it("returns the chips to All while typing and follows the wider listing", () => {
+    expect(startAfterSearch(entries, "feature", "teaser", "product-tour", false)).toEqual({
+      chip: null,
+      selected: "launch-teaser",
+    });
+  });
+
+  it("keeps the chip when the search clears", () => {
+    expect(startAfterSearch(entries, "update", "", "release-notes", false)).toEqual({
+      chip: "update",
+      selected: "release-notes",
+    });
+  });
+
+  it("lands on Create with Claude when the search still matches it", () => {
+    expect(startAfterSearch(entries, null, "blank", "product-tour", true)).toEqual({
+      chip: null,
+      selected: CLAUDE_START_ID,
+    });
+  });
+
+  it("keeps the pick when nothing matches", () => {
+    expect(startAfterSearch(entries, null, "zzz", "product-tour", true).selected).toBe(
+      "product-tour",
+    );
+  });
+});
+
 describe("lookChoices", () => {
   const choices = [
     choice("studio", "bundled", "light"),
@@ -135,6 +191,44 @@ describe("lookChoices", () => {
     expect(lookChoices(choices, "dark").map(({ id }) => id)).toEqual(["ws:brand", "midnight"]);
     expect(lookChoices(choices, "light").map(({ id }) => id)).toEqual(["studio"]);
   });
+
+  it("puts a template's looks first, in its order, under every filter", () => {
+    const looks = ["midnight", "gone", "studio"];
+    expect(lookChoices(choices, "all", looks).map(({ id }) => id)).toEqual([
+      "midnight",
+      "studio",
+      "ws:brand",
+    ]);
+    expect(lookChoices(choices, "dark", looks).map(({ id }) => id)).toEqual([
+      "midnight",
+      "ws:brand",
+    ]);
+  });
+});
+
+describe("availableLooks", () => {
+  it("keeps the looks the listing has, once each, in the template's order", () => {
+    const choices = [choice("studio", "bundled", "light"), choice("midnight", "bundled", "dark")];
+    expect(availableLooks(choices, ["midnight", "hidden", "studio", "midnight"])).toEqual([
+      "midnight",
+      "studio",
+    ]);
+  });
+});
+
+describe("lookSelection", () => {
+  it("keeps the user's pick through a template change", () => {
+    expect(lookSelection("midnight", { looksKey: "a", id: "studio" }, "b", "dusk")).toBe(
+      "midnight",
+    );
+  });
+
+  it("holds the look a step showed, and re-seeds once the template's looks change", () => {
+    const shown = { looksKey: "a|b", id: "a" };
+    expect(lookSelection(null, shown, "a|b", "ws:late")).toBe("a");
+    expect(lookSelection(null, shown, "c", "c")).toBe("c");
+    expect(lookSelection(null, null, "c", "c")).toBe("c");
+  });
 });
 
 describe("initialLookThemeId", () => {
@@ -146,5 +240,11 @@ describe("initialLookThemeId", () => {
         choice("ws:a", "workspace", "dark"),
       ]),
     ).toBe("ws:a");
+  });
+
+  it("prefers the template's first available look over the user's own", () => {
+    const choices = [choice("studio", "bundled", "light"), choice("ws:a", "workspace", "dark")];
+    expect(initialLookThemeId(choices, ["hidden", "studio"])).toBe("studio");
+    expect(initialLookThemeId(choices, ["hidden"])).toBe("ws:a");
   });
 });

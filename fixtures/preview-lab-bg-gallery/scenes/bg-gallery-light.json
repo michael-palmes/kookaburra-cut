@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "name": "light-mode 3D background sample for \"gallery\" (\"Tasmanian Oak\")",
+  "background": {
+    "type": "scene3d",
+    "look": "gallery",
+    "colors": ["#c9bbb1", "#b49579", "#a99c94", "#bfa06e", "#ffe8c4"],
+    "speed": 1,
+    "params": {
+      "bayWidth": 9,
+      "pierDepth": 0.6,
+      "lampHeight": 2.6,
+      "pools": 1,
+      "daylight": 0.6,
+      "clouds": 0.5,
+      "boards": 0.42
+    },
+    "backing": {
+      "type": "color",
+      "color": "#e2d8cd"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

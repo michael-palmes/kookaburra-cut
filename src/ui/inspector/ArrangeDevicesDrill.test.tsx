@@ -69,9 +69,9 @@ describe("ArrangeDevicesDrill", () => {
 
     expect(html).toContain('aria-label="Back to Scene from Arrange devices"');
     expect(html).toContain("3 devices in this scene");
-    expect(html.match(/arrange-layout-choice/g)).toHaveLength(6);
-    expect(html.match(/class="arrange-layout-diagram"/g)).toHaveLength(6);
-    expect(html.match(/width="28" height="18"/g)).toHaveLength(6);
+    expect(html.match(/arrange-layout-choice/g)).toHaveLength(7);
+    expect(html.match(/class="arrange-layout-diagram"/g)).toHaveLength(7);
+    expect(html.match(/width="28" height="18"/g)).toHaveLength(7);
     expect(html).toContain(
       '<fieldset class="bg-type-grid arrange-layout-grid" aria-label="Layout"',
     );

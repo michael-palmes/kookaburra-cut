@@ -69,6 +69,13 @@ export const TOOLKIT_SHOW: Readonly<
       "objectId placed in TSX loads when it first mounts, even mid-film: every capture waits for it, so no frame shows it missing. A preview pops it in. No gizmo: use the sidecar `objects` array for an object the inspector should move.",
     ],
   },
+  DotField: {
+    example: `<DotField columns={10} rows={10} pitch={0.26} reveal={{ progress: ramp(localMs, 0, 900) }} count={{ value: 40 * ramp(localMs, 1200, 2950, "outCubic"), order: "rows-up" }} />`,
+    timing: [
+      "The field reads no clock: every progress, phase and value is a number the scene derives from useTimeline(), so put each on a beat with ramp and keep a count on its counter's own window and ease.",
+      "merge closes every gap at once and pulls displaced dots home over its first half; gather's last stretch hands the final dot's edge to the dot nearest its point.",
+    ],
+  },
   useBeatGrid: {
     example: `const grid = useBeatGrid();\nconst hit = grid?.at(5, 3) ?? 2000;`,
     timing: [
@@ -82,9 +89,30 @@ export const TOOLKIT_SHOW: Readonly<
     ],
   },
   useTextMetrics: {
-    example: `const metrics = useTextMetrics("title", title, { fontSize: 0.6 });\nconst size = metrics?.fitFontSize(2) ?? 0.6;`,
+    example: `const metrics = useTextMetrics("title", title, { fontSize: 0.6 });\nconst size = metrics?.fitFontSize(2) ?? 0.6;\nconst slots = metrics?.glyphs.filter((g) => g.ink) ?? [];`,
     timing: [
       "Null until the face has loaded, so never divide by a width you haven't checked. Captures wait for the measure.",
+      "glyphs sit where the headline draws each one, from its position (pass the same anchorX, anchorY and textAlign), at the measured size: scale them by fitFontSize(w) / fontSize when you fit.",
+    ],
+  },
+  SteppedTime: {
+    example: `<SteppedTime fps={12}><AnimatedHeadline text={title} preset="fade-up" /></SteppedTime>`,
+    timing: [
+      "Steps count whole frames from the scene's first frame: 12 fps holds each pose 5 frames at 60 fps, and every frame of a step shows that step's first frame exactly.",
+      "A 30 fps export can't split 12 fps evenly, so poses alternate 3 and 2 frames there (10 and 15 fps stay even). The camera, and anything outside, moves every frame; fps 60 runs every frame, so a nested one opts a child out.",
+      "Motion blur smears a held pose around its own instant, never into the next step.",
+    ],
+  },
+  usePresentTiming: {
+    example: `const { localMs: raw } = useTimeline();\nconst localMs = useHeldLocalMs(raw);\nusePresentTiming(2400);`,
+    timing: [
+      "Present and the automatic stills hold the scene 150 ms after the latest toMs any element reports, and before the earliest outAtMs; useHeldLocalMs pins the time there. Video export always runs the raw time.",
+    ],
+  },
+  VideoClip: {
+    example: `<VideoClip src="assets/clip.mp4" startMs={0} scale={0.3} radius={0.06} opacity={0.8} position={[1.2, 0, 0]} />`,
+    timing: [
+      "Holds the first frame before startMs and the last after the end. radius is a fraction of the short edge; with radius or opacity set it draws as a card, blended and without a depth write.",
     ],
   },
   useFormat: {

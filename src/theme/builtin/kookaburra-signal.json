@@ -1,0 +1,86 @@
+{
+  "version": 2,
+  "id": "kookaburra-signal",
+  "name": "Signal",
+  "mode": "dark",
+  "catalogue": {
+    "category": "studio",
+    "useLabel": "Teasers and countdowns",
+    "tags": ["dark", "teaser", "countdown", "minimal", "dramatic", "launch"],
+    "stage": "lighting-only",
+    "order": 80
+  },
+  "colors": {
+    "background": "#050506",
+    "text": "#f4f4f2",
+    "accent": "#f23a2e",
+    "muted": "#b8bbc1"
+  },
+  "gradients": {
+    "brand": {
+      "type": "radial",
+      "angleDeg": 0,
+      "stops": [["#121214", 0], ["#050506", 1]],
+      "space": "oklch"
+    }
+  },
+  "chartColors": ["#f23a2e", "#f4f4f2", "#c9ccd1", "#8a8d93", "#ff8a3d", "#6fa8ff"],
+  "typography": {
+    "headline": {
+      "family": "Barlow Condensed",
+      "weight": 600
+    },
+    "body": "JetBrains Mono",
+    "scale": 1.333
+  },
+  "motion": {
+    "durations": {
+      "fast": 160,
+      "base": 420,
+      "slow": 800
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "rise-mask",
+    "out": "fade",
+    "staggerMs": 40,
+    "stagger": "word"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 125,
+      "elevationDeg": 14,
+      "intensity": 3,
+      "color": "#f2f6ff"
+    },
+    "fills": [
+      {
+        "azimuthDeg": -125,
+        "elevationDeg": 16,
+        "intensity": 1.6,
+        "color": "#c9d4ff"
+      },
+      {
+        "azimuthDeg": 20,
+        "elevationDeg": 10,
+        "intensity": 0.06,
+        "color": "#20232a"
+      }
+    ],
+    "ambient": 0.05
+  },
+  "environment": {
+    "source": "kookaburra:monochrome-studio",
+    "intensity": 0.22,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "gradient",
+    "gradient": "brand",
+    "parallax": 0.03
+  }
+}

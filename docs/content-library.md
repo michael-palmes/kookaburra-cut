@@ -86,6 +86,50 @@ Source typography, lighting, display transform and frame defaults are retained
 for editing the saved preset, but do not replace the destination's defaults.
 Scene-level overrides remain explicit and travel with the scene.
 
+## Template contract
+
+A template is a project folder with a `template.json`; the schema lives in
+`src/engine/templates.ts`. Cards derive scene count, length, aspects and the
+default theme from `project.json`, so the manifest carries only the rest.
+Version 2, the launch-film set, adds four fields:
+
+| Field | Meaning |
+| --- | --- |
+| `bring` | What the user supplies, in the order the film asks for it |
+| `song` | `{ title, bpm }`, present exactly when `project.json` carries `audio` |
+| `looks` | Bundled theme ids tested with the template; the first is `project.json`'s `themeId` |
+| `preview.loop` | `{ scene, atMs, durationMs }`: the window the card's six-second loop shows, starting inside one scene and running on across cuts |
+
+The categories are `launch`, `feature`, `update`, `proof` and `ai-developer`.
+Version 1 ids still load as aliases: `app-updates` reads as `update`,
+`product-launch` and `marketing-social` as `launch`, `presentations` as
+`feature` and `finance-crypto` as `proof`. Version 2 files use the new ids only,
+and a manifest newer than the app is ignored with a warning.
+
+`src/engine/templates.test.ts` gates every bundled template. Version 1 keeps its
+rules (four aspects, the old bands). A version 2 template must:
+
+- target `16:9` only (Blank keeps all four)
+- run 8 to 20 scenes and 15 to 60 seconds (a one-take film is one scene)
+- carry a song exactly when it carries audio, with the grid (and its `source`),
+  sections and cues intact through `sanitiseAudioMusic`, and the song's BPM the grid's
+- name only visible bundled themes as looks, with no scene sidecar pinning `themeId`
+  (the test cannot see legibility: render a text scene in each look first, since a light
+  theme's text colour disappears on a dark staged film)
+- list something to bring, and a loop window inside the film
+
+A song ships as FLAC in the template's own `assets/`, copied on create. Shared
+media stays in `projects/_samples/`: `create_project` seeds only the samples a
+project names (by the in-use rule, plus `app-icon.png`), and a load restores a
+named sample that has gone missing.
+
+In the picker, a card plays `src/assets/template-previews/<id>-loop.mp4`, muted,
+while hovered or selected; without a loop, or under Reduce motion, it keeps its
+stills. The selected template's detail strip shows the song, what to bring and
+the highlights. The Look step lists the template's looks first, badged
+Suggested, and preselects the first. Changing template re-seeds the look until
+the user picks one.
+
 ## Theme editing
 
 Themes uses the same header search, close control and card sizing as Add a scene.

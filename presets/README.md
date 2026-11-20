@@ -92,6 +92,19 @@ pin nothing theme-specific: colours come from tokens, animated backgrounds run
 on `themeColors: true` (the live Theme preset) or name a theme gradient, and scene overrides stay explicit. Insertions inherit the destination theme,
 so token-based styling adapts to the project.
 
+## Template card loops
+
+A bundled template's card plays `src/assets/template-previews/<id>-loop.mp4`,
+muted, while hovered or selected: the window its manifest's `preview.loop` names
+(the template contract in [`docs/content-library.md`](../docs/content-library.md)).
+With no loop committed, or under Reduce motion, the card keeps its four stills.
+
+`pnpm kookaburra:run --action template-previews` renders the loop with the
+stills: the window's frames go through the export path at 30 fps, and the
+wrapper encodes them into a 640x360 H.264 file (no audio, BT.709). A template
+that declares a loop counts it as card art, so its ledger entry needs the loop
+as well as the four stills.
+
 ## Preview staleness
 
 `scripts/preset-preview-stale.mjs` keeps a content hash per bundled item in a

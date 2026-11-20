@@ -1,0 +1,126 @@
+:root {
+  --bg: #fbfaff;
+  --surface: #ffffff;
+  --ink: #1a1530;
+  --muted: #6b6585;
+  --faint: #a7a2bd;
+  --hair: rgba(26, 21, 48, 0.08);
+  --violet: #7c5cfc;
+  --violet-deep: #5b3be0;
+  --lavender: #efebff;
+  --pink: #f472b6;
+  --shadow: 0 1px 2px rgba(26, 21, 48, 0.04), 0 18px 40px -22px rgba(60, 40, 140, 0.35);
+  --toolbar: #f6f5fa;
+  --toolbar-line: rgba(26, 21, 48, 0.08);
+  --toolbar-ink: #7a7591;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.display {
+  font-family: "Inter Tight", "Inter", sans-serif;
+}
+
+.spark {
+  display: inline-block;
+}
+
+.spark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.composer {
+  background: var(--surface);
+  border-radius: 26px;
+  box-shadow:
+    var(--shadow),
+    0 0 0 1px var(--hair);
+}
+
+.send {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: #d9d5e8;
+}
+
+.send.live {
+  background: linear-gradient(135deg, #8b6dff, #5b3be0);
+  box-shadow: 0 8px 18px -8px rgba(91, 59, 224, 0.8);
+}
+
+.send svg.i {
+  stroke-width: 2.4;
+}
+
+.suggest {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--hair);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.suggest svg.i {
+  color: var(--violet);
+}
+
+.answer-card {
+  display: flex;
+  gap: 14px;
+  background: var(--surface);
+  border-radius: 18px;
+  box-shadow:
+    var(--shadow),
+    0 0 0 1px var(--hair);
+}
+
+.answer-card .ic {
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--lavender);
+  color: var(--violet);
+}
+
+.answer-card b {
+  display: block;
+  font-weight: 600;
+}
+
+.answer-card span {
+  display: block;
+  color: var(--muted);
+}
+
+.bubble {
+  border-radius: 20px 20px 6px 20px;
+  background: var(--lavender);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    #a7a2bd 0%,
+    #a7a2bd 35%,
+    #7c5cfc 50%,
+    #a7a2bd 65%,
+    #a7a2bd 100%
+  );
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}

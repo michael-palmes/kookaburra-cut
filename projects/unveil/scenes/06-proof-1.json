@@ -1,0 +1,501 @@
+{
+  "version": 1,
+  "name": "Proof 1",
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "media": {
+        "src": "assets/fairywren-sorted-dark-phone.mp4",
+        "kind": "video",
+        "startMs": 0,
+        "inMs": 600
+      },
+      "placement": {
+        "position": [-2.05, -0.8733, -0.318],
+        "rotationDeg": [-81.501, 28.879, 72.808],
+        "scale": 1.39,
+        "ground": false
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "none",
+      "finish": {
+        "frame": {
+          "roughness": 0.3,
+          "metalness": 1,
+          "anisotropy": 0.4,
+          "grain": 1,
+          "grainScale": 20000,
+          "brushedMap": 0,
+          "chamferRoughness": 0.08,
+          "envIntensity": 1.6,
+          "iblTaps": 7
+        },
+        "polished": {
+          "roughness": 0.06,
+          "envIntensity": 1.8
+        },
+        "glass": {
+          "roughness": 0.05,
+          "ior": 1.5,
+          "specularIntensity": 1,
+          "envIntensity": 1.5
+        },
+        "back": {
+          "roughness": 0.45,
+          "metalness": 0,
+          "tint": 0.55,
+          "clearcoat": 0.6,
+          "clearcoatRoughness": 0.12,
+          "envIntensity": 1.3
+        }
+      }
+    }
+  ],
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "position": [0.0991, 0.5231, 2.7554],
+          "aim": {
+            "mode": "point",
+            "at": [-2.6045, -0.3709, -0.4666]
+          },
+          "fov": 18,
+          "dof": {
+            "mode": "lens",
+            "fStop": 22,
+            "focus": 4.2222
+          }
+        }
+      },
+      {
+        "id": "f1",
+        "tMs": 937.5,
+        "pose": {
+          "position": [0.0315, 0.5008, 2.6749],
+          "aim": {
+            "mode": "point",
+            "at": [-2.6045, -0.3709, -0.4666]
+          },
+          "fov": 18,
+          "dof": {
+            "fStop": 22,
+            "focus": 4.1136
+          }
+        }
+      },
+      {
+        "id": "f2",
+        "tMs": 1172,
+        "pose": {
+          "position": [0.0146, 0.4952, 2.6547],
+          "aim": {
+            "mode": "point",
+            "at": [-2.6045, -0.3709, -0.4666]
+          },
+          "fov": 18,
+          "dof": {
+            "fStop": 22,
+            "focus": 3.8245
+          }
+        }
+      },
+      {
+        "id": "f3",
+        "tMs": 1406,
+        "pose": {
+          "position": [-0.0023, 0.4896, 2.6346],
+          "aim": {
+            "mode": "point",
+            "at": [-2.6045, -0.3709, -0.4666]
+          },
+          "fov": 18,
+          "dof": {
+            "fStop": 22,
+            "focus": 3.7014
+          }
+        }
+      },
+      {
+        "id": "f4",
+        "tMs": 1640,
+        "pose": {
+          "position": [-0.0192, 0.484, 2.6145],
+          "aim": {
+            "mode": "point",
+            "at": [-2.6045, -0.3709, -0.4666]
+          },
+          "fov": 18,
+          "dof": {
+            "fStop": 22,
+            "focus": 3.6606
+          }
+        }
+      },
+      {
+        "id": "f5",
+        "tMs": 1875,
+        "pose": {
+          "position": [-0.0361, 0.4784, 2.5943],
+          "aim": {
+            "mode": "point",
+            "at": [-2.6045, -0.3709, -0.4666]
+          },
+          "fov": 18,
+          "dof": {
+            "fStop": 22,
+            "focus": 3.6333
+          }
+        }
+      },
+      {
+        "id": "f6",
+        "tMs": 2344,
+        "pose": {
+          "position": [-0.0699, 0.4673, 2.554],
+          "aim": {
+            "mode": "point",
+            "at": [-2.6045, -0.3709, -0.4666]
+          },
+          "fov": 18,
+          "dof": {
+            "fStop": 23,
+            "focus": 3.5245
+          }
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 2812,
+        "pose": {
+          "position": [-0.1037, 0.4561, 2.5138],
+          "aim": {
+            "mode": "point",
+            "at": [-2.6045, -0.3709, -0.4666]
+          },
+          "fov": 18,
+          "dof": {
+            "fStop": 27,
+            "focus": 3.3389
+          }
+        },
+        "at": "bar:15.3"
+      },
+      {
+        "id": "k3",
+        "tMs": 3280,
+        "pose": {
+          "position": [-0.1374, 0.4449, 2.4736],
+          "aim": {
+            "mode": "point",
+            "at": [-2.0882, -0.2002, 0.1488]
+          },
+          "fov": 18,
+          "dof": {
+            "fStop": 31,
+            "focus": 3.1527
+          }
+        }
+      },
+      {
+        "id": "k4",
+        "tMs": 3515,
+        "pose": {
+          "position": [-0.1543, 0.4393, 2.4534],
+          "aim": {
+            "mode": "point",
+            "at": [-2.0636, -0.192, 0.1781]
+          },
+          "fov": 18,
+          "dof": {
+            "fStop": 33,
+            "focus": 3.0845
+          }
+        }
+      },
+      {
+        "id": "k5",
+        "tMs": 3750,
+        "pose": {
+          "position": [-0.1713, 0.4337, 2.4332],
+          "aim": {
+            "mode": "point",
+            "at": [-2.0549, -0.1892, 0.1884]
+          },
+          "fov": 18,
+          "dof": {
+            "fStop": 35,
+            "focus": 3.0427
+          }
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "f1",
+        "ease": "linear",
+        "smooth": false
+      },
+      {
+        "from": "f1",
+        "to": "f2",
+        "ease": "linear",
+        "smooth": false
+      },
+      {
+        "from": "f2",
+        "to": "f3",
+        "ease": "linear",
+        "smooth": false
+      },
+      {
+        "from": "f3",
+        "to": "f4",
+        "ease": "linear",
+        "smooth": false
+      },
+      {
+        "from": "f4",
+        "to": "f5",
+        "ease": "linear",
+        "smooth": false
+      },
+      {
+        "from": "f5",
+        "to": "f6",
+        "ease": "linear",
+        "smooth": false
+      },
+      {
+        "from": "f6",
+        "to": "k2",
+        "ease": "linear",
+        "smooth": false
+      },
+      {
+        "from": "k2",
+        "to": "k3",
+        "ease": "inOutSine",
+        "smooth": false,
+        "easePosition": "linear"
+      },
+      {
+        "from": "k3",
+        "to": "k4",
+        "ease": "linear",
+        "smooth": false
+      },
+      {
+        "from": "k4",
+        "to": "k5",
+        "ease": "linear",
+        "smooth": false
+      }
+    ]
+  },
+  "lighting": {
+    "ambient": 0,
+    "fills": [],
+    "sun": {
+      "azimuthDeg": -55,
+      "elevationDeg": 32,
+      "intensity": 0,
+      "color": "#ffc888",
+      "castShadow": false
+    },
+    "environment": {
+      "source": "kookaburra:strips",
+      "intensity": 1,
+      "rotationDeg": 0,
+      "strips": [
+        {
+          "azimuthDeg": -107.33,
+          "elevationDeg": 34,
+          "rollDeg": -13.82,
+          "lengthDeg": 59.49,
+          "widthDeg": 24.19,
+          "color": "#fff0e0",
+          "intensity": 14,
+          "feather": 0.95,
+          "falloff": 0.85
+        },
+        {
+          "azimuthDeg": 179.1,
+          "elevationDeg": 6.22,
+          "rollDeg": 14.95,
+          "lengthDeg": 45.24,
+          "widthDeg": 5.72,
+          "color": "#9ccfff",
+          "intensity": 25,
+          "feather": 0.6,
+          "falloff": 0.5
+        },
+        {
+          "azimuthDeg": -79.81,
+          "elevationDeg": 49.47,
+          "rollDeg": 0,
+          "lengthDeg": 12.2,
+          "widthDeg": 12.2,
+          "color": "#ffb070",
+          "intensity": 119,
+          "feather": 0.3,
+          "falloff": 0.3
+        },
+        {
+          "azimuthDeg": 76,
+          "elevationDeg": 27,
+          "rollDeg": 90,
+          "lengthDeg": 70,
+          "widthDeg": 12,
+          "color": "#e9efff",
+          "intensity": 12,
+          "feather": 1,
+          "falloff": 0.4
+        },
+        {
+          "azimuthDeg": 110,
+          "elevationDeg": 5,
+          "rollDeg": 0,
+          "lengthDeg": 50,
+          "widthDeg": 9,
+          "color": "#fff0e0",
+          "intensity": 4,
+          "feather": 1,
+          "falloff": 0.4
+        }
+      ]
+    },
+    "lights": [
+      {
+        "id": "key",
+        "type": "spot",
+        "intensity": 520,
+        "placement": {
+          "mode": "point",
+          "position": [-7, 4.85, -7.6]
+        },
+        "target": [-2.15, -0.4, -0.3],
+        "angleDeg": 38,
+        "penumbra": 1,
+        "color": "#ffc79a",
+        "decay": 2,
+        "castShadow": true,
+        "volumetric": {
+          "box": {
+            "min": [-14, -1.905, -30],
+            "max": [8, 9, -0.8]
+          },
+          "haze": {
+            "density": 0.04,
+            "anisotropy": 0.65,
+            "strength": 1,
+            "heightFalloff": 0,
+            "groundFade": 1.5
+          },
+          "extinction": true,
+          "shadowMapSize": 2048,
+          "smoke": {
+            "scale": 0.4,
+            "warp": 1.6,
+            "contrast": [0.4, 0.6],
+            "floor": 0.15,
+            "drift": [0.12, 0.08, 0],
+            "evolve": 0.08
+          },
+          "dust": {
+            "count": 380,
+            "min": [-6.5, 0.3, -7],
+            "max": [-1.9, 3.6, -0.9],
+            "radius": [0.002, 0.005],
+            "gain": 0.45,
+            "drift": [0.05, 0.06, 0]
+          }
+        }
+      },
+      {
+        "id": "fill",
+        "type": "spot",
+        "intensity": 30,
+        "placement": {
+          "mode": "point",
+          "position": [-4.5, 0.5, -1]
+        },
+        "target": [-3, -1.9, 0.2],
+        "angleDeg": 50,
+        "penumbra": 1,
+        "color": "#ffb880",
+        "decay": 2
+      },
+      {
+        "id": "rake",
+        "type": "spot",
+        "intensity": 0,
+        "color": "#ffd9b8",
+        "angleDeg": 18,
+        "penumbra": 0.4,
+        "castShadow": false,
+        "placement": {
+          "mode": "point",
+          "position": [-5.5, 3.2, 2.6]
+        },
+        "target": [-2.0, 0.3, -0.3]
+      }
+    ],
+    "shadow": {
+      "technique": "map",
+      "softness": 0.375,
+      "opacity": 0.85,
+      "mapSize": 2048,
+      "bias": -0.0005
+    }
+  },
+  "background": {
+    "type": "gradient",
+    "spec": {
+      "type": "linear",
+      "angleDeg": 135,
+      "stops": [["#140c07", 0], ["#060504", 0.3], ["#030303", 1]],
+      "space": "oklch"
+    }
+  },
+  "backdrop": {
+    "type": "satin",
+    "color": "#22201e",
+    "roughness": 0.35,
+    "specular": 0.3,
+    "centre": [-2.2, 0.3],
+    "fade": [1.2, 5.5],
+    "reflection": {
+      "strength": 1.3,
+      "blur": 24,
+      "heightBlur": 0.9,
+      "contact": 0.75
+    },
+    "glitter": {
+      "scale": 90,
+      "density": 0,
+      "roughness": 0.15,
+      "tilt": 0.5,
+      "weight": 0,
+      "grain": 0.5,
+      "seed": 5
+    },
+    "pools": [
+      {
+        "at": [-2.4, 0.5],
+        "radius": [1.3, 0.5],
+        "angleDeg": -10,
+        "color": "#ffb070",
+        "intensity": 0.1
+      }
+    ]
+  }
+}

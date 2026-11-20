@@ -1,0 +1,681 @@
+{
+  "version": 1,
+  "name": "Glimpses",
+  "devices": [
+    {
+      "id": "planned",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "media": {
+        "src": "assets/fairywren-plan-dark-phone.mp4",
+        "kind": "video",
+        "inMs": 150,
+        "speed": 1.2
+      },
+      "placement": {
+        "position": [-2.05, 0.079, -0.318],
+        "rotationDeg": [0, 42, 0],
+        "scale": 1.39,
+        "ground": true
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "none",
+      "finish": {
+        "frame": {
+          "roughness": 0.3,
+          "metalness": 1,
+          "anisotropy": 0.4,
+          "grain": 1,
+          "grainScale": 20000,
+          "brushedMap": 0,
+          "chamferRoughness": 0.08,
+          "envIntensity": 1.6,
+          "iblTaps": 7
+        },
+        "polished": {
+          "roughness": 0.06,
+          "envIntensity": 1.8
+        },
+        "glass": {
+          "roughness": 0.05,
+          "ior": 1.5,
+          "specularIntensity": 1,
+          "envIntensity": 1.5
+        },
+        "back": {
+          "roughness": 0.45,
+          "metalness": 0,
+          "tint": 0.55,
+          "clearcoat": 0.6,
+          "clearcoatRoughness": 0.12,
+          "envIntensity": 1.3
+        }
+      }
+    },
+    {
+      "id": "typed",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "media": {
+        "src": "assets/fairywren-quickadd-dark-phone.mp4",
+        "kind": "video",
+        "startMs": 1875,
+        "inMs": 350,
+        "speed": 1.3,
+        "at": "bar:4"
+      },
+      "placement": {
+        "position": [-2.05, 0.079, -0.318],
+        "rotationDeg": [0, 42, 0],
+        "scale": 1.39,
+        "ground": true
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "none",
+      "finish": {
+        "frame": {
+          "roughness": 0.3,
+          "metalness": 1,
+          "anisotropy": 0.4,
+          "grain": 1,
+          "grainScale": 20000,
+          "brushedMap": 0,
+          "chamferRoughness": 0.08,
+          "envIntensity": 1.6,
+          "iblTaps": 7
+        },
+        "polished": {
+          "roughness": 0.06,
+          "envIntensity": 1.8
+        },
+        "glass": {
+          "roughness": 0.05,
+          "ior": 1.5,
+          "specularIntensity": 1,
+          "envIntensity": 1.5
+        },
+        "back": {
+          "roughness": 0.45,
+          "metalness": 0,
+          "tint": 0.55,
+          "clearcoat": 0.6,
+          "clearcoatRoughness": 0.12,
+          "envIntensity": 1.3
+        }
+      }
+    },
+    {
+      "id": "moved",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "media": {
+        "src": "assets/fairywren-reschedule-dark-phone.mp4",
+        "kind": "video",
+        "startMs": 3750,
+        "inMs": 700,
+        "at": "bar:5"
+      },
+      "placement": {
+        "position": [-2.05, 0.079, -0.318],
+        "rotationDeg": [0, 42, 0],
+        "scale": 1.39,
+        "ground": true
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "none",
+      "finish": {
+        "frame": {
+          "roughness": 0.3,
+          "metalness": 1,
+          "anisotropy": 0.4,
+          "grain": 1,
+          "grainScale": 20000,
+          "brushedMap": 0,
+          "chamferRoughness": 0.08,
+          "envIntensity": 1.6,
+          "iblTaps": 7
+        },
+        "polished": {
+          "roughness": 0.06,
+          "envIntensity": 1.8
+        },
+        "glass": {
+          "roughness": 0.05,
+          "ior": 1.5,
+          "specularIntensity": 1,
+          "envIntensity": 1.5
+        },
+        "back": {
+          "roughness": 0.45,
+          "metalness": 0,
+          "tint": 0.55,
+          "clearcoat": 0.6,
+          "clearcoatRoughness": 0.12,
+          "envIntensity": 1.3
+        }
+      }
+    },
+    {
+      "id": "shared",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "media": {
+        "src": "assets/fairywren-share-dark-phone.mp4",
+        "kind": "video",
+        "startMs": 5625,
+        "inMs": 1800,
+        "speed": 1.15,
+        "at": "bar:6"
+      },
+      "placement": {
+        "position": [-2.05, 0.079, -0.318],
+        "rotationDeg": [0, 42, 0],
+        "scale": 1.39,
+        "ground": true
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "none",
+      "finish": {
+        "frame": {
+          "roughness": 0.3,
+          "metalness": 1,
+          "anisotropy": 0.4,
+          "grain": 1,
+          "grainScale": 20000,
+          "brushedMap": 0,
+          "chamferRoughness": 0.08,
+          "envIntensity": 1.6,
+          "iblTaps": 7
+        },
+        "polished": {
+          "roughness": 0.06,
+          "envIntensity": 1.8
+        },
+        "glass": {
+          "roughness": 0.05,
+          "ior": 1.5,
+          "specularIntensity": 1,
+          "envIntensity": 1.5
+        },
+        "back": {
+          "roughness": 0.45,
+          "metalness": 0,
+          "tint": 0.55,
+          "clearcoat": 0.6,
+          "clearcoatRoughness": 0.12,
+          "envIntensity": 1.3
+        }
+      }
+    }
+  ],
+  "deviceTrack": {
+    "keys": [
+      {
+        "id": "d1",
+        "tMs": 0,
+        "pose": {
+          "planned": {
+            "offset": [0, 0, 0]
+          },
+          "typed": {
+            "offset": [0, 0, 400]
+          },
+          "moved": {
+            "offset": [0, 0, 400]
+          },
+          "shared": {
+            "offset": [0, 0, 400]
+          }
+        }
+      },
+      {
+        "id": "d2",
+        "tMs": 1875,
+        "pose": {
+          "planned": {
+            "offset": [0, 0, 400]
+          },
+          "typed": {
+            "offset": [0, 0, 0]
+          },
+          "moved": {
+            "offset": [0, 0, 400]
+          },
+          "shared": {
+            "offset": [0, 0, 400]
+          }
+        },
+        "at": "bar:4"
+      },
+      {
+        "id": "d3",
+        "tMs": 3750,
+        "pose": {
+          "planned": {
+            "offset": [0, 0, 400]
+          },
+          "typed": {
+            "offset": [0, 0, 400]
+          },
+          "moved": {
+            "offset": [0, 0, 0]
+          },
+          "shared": {
+            "offset": [0, 0, 400]
+          }
+        },
+        "at": "bar:5"
+      },
+      {
+        "id": "d4",
+        "tMs": 5625,
+        "pose": {
+          "planned": {
+            "offset": [0, 0, 400]
+          },
+          "typed": {
+            "offset": [0, 0, 400]
+          },
+          "moved": {
+            "offset": [0, 0, 400]
+          },
+          "shared": {
+            "offset": [0, 0, 0]
+          }
+        },
+        "at": "bar:6"
+      }
+    ],
+    "segments": [
+      {
+        "from": "d1",
+        "to": "d2",
+        "ease": "jump"
+      },
+      {
+        "from": "d2",
+        "to": "d3",
+        "ease": "jump"
+      },
+      {
+        "from": "d3",
+        "to": "d4",
+        "ease": "jump"
+      }
+    ]
+  },
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "g1a",
+        "tMs": 0,
+        "pose": {
+          "position": [1.3045, 0.3607, 5.0018],
+          "aim": {
+            "mode": "point",
+            "at": [-1.9509, 0.3607, -0.208]
+          },
+          "fov": 18,
+          "dof": {
+            "mode": "lens",
+            "fStop": 16,
+            "focus": "auto"
+          }
+        }
+      },
+      {
+        "id": "g1b",
+        "tMs": 1874,
+        "pose": {
+          "position": [1.1418, 0.3607, 4.7413],
+          "aim": {
+            "mode": "point",
+            "at": [-1.9509, 0.3607, -0.208]
+          },
+          "fov": 18,
+          "dof": {
+            "mode": "lens",
+            "fStop": 16,
+            "focus": "auto"
+          }
+        }
+      },
+      {
+        "id": "g2a",
+        "tMs": 1875,
+        "pose": {
+          "position": [0.3744, 0.4858, 3.5133],
+          "aim": {
+            "mode": "point",
+            "at": [-1.9509, 0.4858, -0.208]
+          },
+          "fov": 18,
+          "dof": {
+            "mode": "lens",
+            "fStop": 16,
+            "focus": "auto"
+          }
+        },
+        "at": "bar:4"
+      },
+      {
+        "id": "g2b",
+        "tMs": 3749,
+        "pose": {
+          "position": [0.2582, 0.4858, 3.3272],
+          "aim": {
+            "mode": "point",
+            "at": [-1.9509, 0.4858, -0.208]
+          },
+          "fov": 18,
+          "dof": {
+            "mode": "lens",
+            "fStop": 16,
+            "focus": "auto"
+          }
+        }
+      },
+      {
+        "id": "g3a",
+        "tMs": 3750,
+        "pose": {
+          "position": [0.6069, 0.18, 3.8854],
+          "aim": {
+            "mode": "point",
+            "at": [-1.9509, 0.18, -0.208]
+          },
+          "fov": 18,
+          "dof": {
+            "mode": "lens",
+            "fStop": 16,
+            "focus": "auto"
+          }
+        },
+        "at": "bar:5"
+      },
+      {
+        "id": "g3b",
+        "tMs": 5624,
+        "pose": {
+          "position": [0.4791, 0.18, 3.6807],
+          "aim": {
+            "mode": "point",
+            "at": [-1.9509, 0.18, -0.208]
+          },
+          "fov": 18,
+          "dof": {
+            "mode": "lens",
+            "fStop": 16,
+            "focus": "auto"
+          }
+        }
+      },
+      {
+        "id": "g4a",
+        "tMs": 5625,
+        "pose": {
+          "position": [0.8395, -1.1683, 4.2575],
+          "aim": {
+            "mode": "point",
+            "at": [-1.9509, -1.1683, -0.208]
+          },
+          "fov": 18,
+          "dof": {
+            "mode": "lens",
+            "fStop": 16,
+            "focus": "auto"
+          }
+        },
+        "at": "bar:6"
+      },
+      {
+        "id": "g4b",
+        "tMs": 7500,
+        "pose": {
+          "position": [0.7, -1.1683, 4.0343],
+          "aim": {
+            "mode": "point",
+            "at": [-1.9509, -1.1683, -0.208]
+          },
+          "fov": 18,
+          "dof": {
+            "mode": "lens",
+            "fStop": 16,
+            "focus": "auto"
+          }
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "g1a",
+        "to": "g1b",
+        "ease": "linear"
+      },
+      {
+        "from": "g1b",
+        "to": "g2a",
+        "ease": "jump"
+      },
+      {
+        "from": "g2a",
+        "to": "g2b",
+        "ease": "linear"
+      },
+      {
+        "from": "g2b",
+        "to": "g3a",
+        "ease": "jump"
+      },
+      {
+        "from": "g3a",
+        "to": "g3b",
+        "ease": "linear"
+      },
+      {
+        "from": "g3b",
+        "to": "g4a",
+        "ease": "jump"
+      },
+      {
+        "from": "g4a",
+        "to": "g4b",
+        "ease": "linear"
+      }
+    ]
+  },
+  "lighting": {
+    "ambient": 0,
+    "fills": [],
+    "sun": {
+      "azimuthDeg": -55,
+      "elevationDeg": 32,
+      "intensity": 0,
+      "color": "#ffc888",
+      "castShadow": false
+    },
+    "environment": {
+      "source": "kookaburra:strips",
+      "intensity": 1.0,
+      "rotationDeg": 0,
+      "strips": [
+        {
+          "azimuthDeg": -107.33,
+          "elevationDeg": 34,
+          "rollDeg": -13.82,
+          "lengthDeg": 59.49,
+          "widthDeg": 24.19,
+          "color": "#fff0e0",
+          "intensity": 14,
+          "feather": 0.95,
+          "falloff": 0.85
+        },
+        {
+          "azimuthDeg": 179.1,
+          "elevationDeg": 6.22,
+          "rollDeg": 14.95,
+          "lengthDeg": 45.24,
+          "widthDeg": 5.72,
+          "color": "#9ccfff",
+          "intensity": 80,
+          "feather": 0.6,
+          "falloff": 0.5
+        },
+        {
+          "azimuthDeg": -79.81,
+          "elevationDeg": 49.47,
+          "rollDeg": 0,
+          "lengthDeg": 12.2,
+          "widthDeg": 12.2,
+          "color": "#ffb070",
+          "intensity": 119,
+          "feather": 0.3,
+          "falloff": 0.3
+        },
+        {
+          "azimuthDeg": 76,
+          "elevationDeg": 27,
+          "rollDeg": 90,
+          "lengthDeg": 70,
+          "widthDeg": 12,
+          "color": "#e9efff",
+          "intensity": 12,
+          "feather": 1,
+          "falloff": 0.4
+        },
+        {
+          "rollDeg": 0,
+          "lengthDeg": 50,
+          "widthDeg": 9,
+          "color": "#fff0e0",
+          "intensity": 2,
+          "feather": 1,
+          "falloff": 0.4,
+          "azimuthDeg": 107.9,
+          "elevationDeg": 7.6
+        }
+      ]
+    },
+    "lights": [
+      {
+        "id": "key",
+        "type": "spot",
+        "intensity": 360,
+        "placement": {
+          "mode": "point",
+          "position": [-7, 4.85, -7.6]
+        },
+        "target": [-2.15, -0.4, -0.3],
+        "angleDeg": 38,
+        "penumbra": 1,
+        "color": "#ffc79a",
+        "decay": 2,
+        "castShadow": true,
+        "volumetric": {
+          "box": {
+            "min": [-14, -1.905, -30],
+            "max": [8, 9, -0.8]
+          },
+          "haze": {
+            "density": 0.028,
+            "anisotropy": 0.65,
+            "strength": 1,
+            "heightFalloff": 0,
+            "groundFade": 1.5
+          },
+          "extinction": true,
+          "shadowMapSize": 2048,
+          "smoke": {
+            "scale": 0.4,
+            "warp": 1.6,
+            "contrast": [0.4, 0.6],
+            "floor": 0.15,
+            "drift": [0.12, 0.08, 0],
+            "evolve": 0.08
+          },
+          "dust": {
+            "count": 280,
+            "min": [-6.5, 0.3, -7],
+            "max": [-1.9, 3.6, -0.9],
+            "radius": [0.006, 0.012],
+            "gain": 0.26,
+            "drift": [0.05, 0.06, 0]
+          }
+        }
+      },
+      {
+        "id": "fill",
+        "type": "spot",
+        "intensity": 30,
+        "placement": {
+          "mode": "point",
+          "position": [-4.5, 0.5, -1]
+        },
+        "target": [-3, -1.9, 0.2],
+        "angleDeg": 50,
+        "penumbra": 1,
+        "color": "#ffb880",
+        "decay": 2
+      }
+    ],
+    "keys": [],
+    "segments": [],
+    "shadow": {
+      "technique": "map",
+      "softness": 0.375,
+      "opacity": 0.85,
+      "mapSize": 2048,
+      "bias": -0.0005
+    }
+  },
+  "background": {
+    "type": "gradient",
+    "spec": {
+      "type": "linear",
+      "angleDeg": 135,
+      "stops": [["#140c07", 0], ["#060504", 0.3], ["#030303", 1]],
+      "space": "oklch"
+    }
+  },
+  "backdrop": {
+    "type": "satin",
+    "color": "#22201e",
+    "roughness": 0.35,
+    "specular": 0.3,
+    "centre": [-2.2, 0.3],
+    "fade": [1.2, 5.5],
+    "reflection": {
+      "strength": 1.3,
+      "blur": 24,
+      "heightBlur": 0.9,
+      "contact": 0.75
+    },
+    "glitter": {
+      "scale": 90,
+      "density": 0,
+      "roughness": 0.15,
+      "tilt": 0.5,
+      "weight": 0,
+      "grain": 0.5,
+      "seed": 5
+    },
+    "pools": [
+      {
+        "at": [-2.4, 0.5],
+        "radius": [1.3, 0.5],
+        "angleDeg": -10,
+        "color": "#ffb070",
+        "intensity": 0.1
+      }
+    ]
+  }
+}

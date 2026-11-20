@@ -25,7 +25,9 @@ they say just start, propose a one-line brief from what is in the folder and con
 
 ## Principles
 
-1. One idea per scene. If a scene needs two sentences to describe, split it.
+1. One idea per scene. If a scene needs two sentences to describe, split it. Each scene
+   shows something new: a close look after a proof moves to another part of the product,
+   never the same card nearer.
 2. One hero per frame: a headline, a device, a number or a chart. Everything else
    supports it, smaller and quieter.
 3. Restraint. One accent colour moment per scene, two type sizes, at most two things
@@ -39,26 +41,65 @@ they say just start, propose a one-line brief from what is in the folder and con
    a build), so nothing reads as a slideshow or PowerPoint, a deck included. Bullets stay
    at two or three short lines; a longer list becomes beats, one point per scene.
 7. Legibility first: every word readable on a phone, in both aspects, for long enough.
+8. Plain words. A claim says what the product does the way a customer would: "Plans your
+   week for you." beats "Plans itself."; "Share with one tap." beats "Shared in a tap."
 
 ## Pacing
 
-The shipped templates run 13 to 27 seconds with scenes of 2 to 5 seconds. Norms:
+Pace comes from the music and from how often something new appears, not from the scene
+count: a strong launch film can run ten scenes over 32 bars and still change something
+about twice a bar. These are defaults that help, not rules: the person decides. When they
+want a longer hold, a slower read or another length, do it their way, and keep the
+warning with their reason (`./kb pacing accept S --kind still --why "..."`) so it isn't raised again.
 
-| Scene | Length | Notes |
-| --- | --- | --- |
-| Hook or title | 1.8 to 3 s | Reveal done by 0.9 s; hold the rest |
-| Feature on a device | 3.2 to 4.5 s | Or the recording's length (follow-media) |
-| Panel or overlay | 2.5 s + 0.6 s per line | Present holds it for the speaker, so never pad it |
-| Number or stat | 2.4 to 3.4 s | Count over 1 to 1.8 s, hold at least 1 s |
-| Chart | 3.6 to 5 s | Build-in about 0.9 s, then hold or morph |
-| Before/after | 4 to 4.5 s | Divider sweeps over most of the scene |
-| Closing card | 2.2 to 3.8 s | Hold the call to action at least 1.5 s |
+1. **Plan from the song.** No soundtrack yet? Ask for one first: the pulse comes from it.
+   Then `./kb song analyse --accept` (the grid, the song's parts and its final hit) and
+   `./kb beats plan`: a scene per slot in bars, how often something new lands in each and
+   how many words each holds (reference/beats.md). Show the person the plan before
+   writing scenes. With no song at all, count a bar as 2 s.
+2. **Keep a pulse.** Something visibly changes at least this often:
 
-- Reading time: allow about 250 ms per word plus 1 s after the reveal completes.
+   | Part of the song | Something new every | Cut every |
+   | --- | --- | --- |
+   | Intro, build, breakdown | bar | 2 to 4 bars |
+   | Peak, chorus, drop | half a bar (2 beats in 4/4) | 1 to 2 bars |
+   | Burst (a montage, double time) | beat | inside one scene |
+   | After the final hit | hold at most a bar | none |
+
+   A change is a cut, a line or word landing or leaving, an element entering, a camera
+   key or kick landing, or a screen moving to its next state; a playing recording counts.
+   A slow drift or a looping background alone does not. Nothing sits still past about
+   2.4 s at any tempo.
+3. **Read once, then move on.** A line needs 0.2 s a word plus 0.6 s once its last word
+   lands, rounded up to the beat (five words at 128 BPM: 1.6 s, so 4 beats). Then it
+   leaves, or the frame changes around it within a bar. Changes around a line never hide
+   or move it while it is read.
+4. **Let the song set the scene count.** Quiet parts take fewer, busier scenes; peaks take
+   short cuts; a burst stays one scene with its cuts inside, since every scene is one more
+   thing to fill. 32 bars at 128 BPM lands near 16 to 20 scenes.
+5. **Land on the beat.** Reveals finish on the beat: give `AnimatedHeadline` a `hitAt` (it
+   starts the motion early for you) and camera keys an `at` on the bar line. The reveal,
+   the name and the payoff take the strongest moments and the starts of parts.
+6. **Pay off on the final hit.** The name or the call to action lands on the song's final
+   hit and holds at most a bar while it rings out; arriving earlier leaves it sitting still.
+
+The `unveil` template is the worked example: 32 bars at 128 BPM in 16 scenes, something
+new each bar through the build (bars 1 to 8) and the breakdown, every two beats through
+the peaks, a montage that doubles from every two beats to every beat (bars 25 to 28), and
+"Available today." on the final hit (bar 32) with a bar of ring-out.
+
+Decks hold each slide for the speaker (Present), so the pulse covers a slide's build, not
+its hold. Other norms:
+
 - Social cuts 12 to 20 s; launch films 30 to 60 s; explainers under 2 minutes.
-- Reveal windows 500 to 900 ms; subtitles 150 to 350 ms behind titles.
+- Reveal windows 500 to 900 ms, finishing on the beat; subtitles 150 to 350 ms behind
+  titles. Counters run 1 to 1.8 s; a chart builds in about 0.9 s, then holds or morphs.
 - Transitions 400 to 700 ms (whip and glitch 300 to 500). Long transitions eat scenes:
   the overlap comes out of both neighbours.
+
+`./kb check film pacing --file exports/<name>.mp4` measures it on the film: every stretch
+where nothing new appears against its part of the song, words against their reading time,
+and the payoff against the final hit (reference/export.md).
 
 ## Composition
 
@@ -97,7 +138,12 @@ unit is about 261 px. The safe inset is 0.249 units (65 px).
 - Two families at most (the theme's headline and body). Contrast by weight and size,
   not by a third font.
 - Tighten long titles with `textStyle.<key>LineHeight` 1.05 to 1.15.
-- Numbers: big, single, with the unit smaller beside or below.
+- Numbers: big, single, with the unit smaller beside or below. A stat that lives in its
+  icon takes a shaped emphasis: `"Up to *24 hours* of battery"` with
+  `textStyle.<key>Emphasis: "accent battery"`.
+- Ideas with no screen to show (a price, a fund, a protocol): let one `DotField` carry
+  the numbers (a waffle that greys as a counter rolls, a window clearing for the hero
+  figure, dots merging into a `fill`ed tile) rather than a slide of figures.
 
 ## Colour
 
@@ -123,11 +169,11 @@ imagery instead of the recipe below, and treat them as guidance rather than rule
    `muted` (secondary labels and subtitles: at least 5.5:1 on a light background and
    7:1 on a dark one, so mix text no more than about 25% toward background).
 3. Fonts: use the brand family only if `./kb fonts check` passes; otherwise the closest
-   bundled family: neo-grotesk sans to Inter; geometric sans to Jost or Space Grotesk;
-   humanist sans to Open Sans or Nunito; technical or corporate sans to IBM Plex Sans
-   or Libre Franklin; condensed to Barlow Condensed; editorial serif to Instrument
-   Serif, Playfair Display, Lora or Cormorant Garamond; soft display serif to Fraunces;
-   mono to JetBrains Mono.
+   bundled family: neo-grotesk sans to Inter, or Inter Tight for tight display type;
+   geometric sans to Jost or Space Grotesk; humanist sans to Open Sans or Nunito;
+   technical or corporate sans to IBM Plex Sans or Libre Franklin; condensed to Barlow
+   Condensed; editorial serif to Instrument Serif, Playfair Display, Lora or Cormorant
+   Garamond; soft display serif to Fraunces; mono to JetBrains Mono.
 4. Apply: for a whole video, a workspace theme (reference/project.md) so charts and
    backgrounds follow too; for a light touch, `project.json` `typography` plus a brand
    gradient `background` (oklch spec) and `textStyle` colours on key lines.
@@ -214,6 +260,8 @@ focus plane.
 - Data and finance: `graph-grid`, `horizon-grid`, `contour-field`.
 - Moving cameras: 3D looks, so the background parallaxes.
 - Use the same spec on consecutive scenes; shaders flow continuously across cuts.
+- A text card between staged scenes stays in their world: the same stage and light family,
+  with the light from a different side on each card, never a flat card on its own backdrop.
 
 ## Recipes
 
@@ -229,7 +277,9 @@ with real recordings and one-line captions, `feature-compare` for the key improv
 expanding to isometric, `hero-device` scenes cut on the beat, `comparison` with a
 `toe-in` layout, `chart-reveal` or `stat-counter`, `appversion`, `closing-cta`. Dark
 theme (`kookaburra-onyx`, `kookaburra-afterglow`, `kookaburra-night-drive`), music
-with beats. Templates: `whats-new-social-cut`, `redesign-reveal`.
+with beats. Templates: `whats-new-social-cut`, `redesign-reveal`. Name and icon appear once,
+on the closing lockup: give the last product shot a slogan instead, and carry its light
+across the cut (the lockup's glow opening behind the product) so the two read as one move.
 
 **Presentation deck.** A deck is a film that waits for the speaker: Present holds each
 scene at its settled moment until they advance, so every slide still needs a moving
@@ -280,7 +330,8 @@ or `b.background`. Templates: `before-after-update`, `dark-mode-launch`,
 - [ ] All text inside the safe area, nothing clipped, nothing overlapping a device.
 - [ ] Legible at phone size: no text under the sizes above; contrast holds over moving
       backgrounds.
-- [ ] Durations give every line its reading time; nothing exits before it is read.
+- [ ] Paced to the song: `./kb check film pacing --file <the export>` clean, or each
+      warning fixed or kept by the person with their reason (`./kb pacing accept`).
 - [ ] One theme, consistent transitions, accent used once per scene.
 - [ ] Branded project: checked against `BRAND.md`, and any guideline you bent is named
       in your reply with the reason.

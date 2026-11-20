@@ -132,7 +132,7 @@ export function stagedBackdrop(
   return backdrop && backdrop.type !== "none" ? backdrop : undefined;
 }
 
-/** Check one applied pose against whatever the scene stages. Rules, in order: a scene laid out in depth bands (nothing to check, it sizes itself), a cyclorama floor, then a vertical backdrop plane. Nothing staged is always ok; a video window floats over the scene's own staging, so it follows the same rules. */
+/** Check one applied pose against whatever the scene stages. Rules, in order: a scene laid out in depth bands (nothing to check, it sizes itself), a cyclorama floor, a satin floor (it fades into the void, so any pose is ok), then a vertical backdrop plane. Nothing staged is always ok; a video window floats over the scene's own staging, so it follows the same rules. */
 export function checkCameraBounds(
   pose: CameraPose,
   aspect: number,
@@ -153,6 +153,7 @@ export function checkCameraBounds(
     const covered = cornerRays(pose, aspect).every((dir) => cycRayHits(pose.position, dir, floorY));
     return covered ? OK : { ok: false, reason: "The cyclorama's edge comes into frame." };
   }
+  if (backdrop.type === "satin") return OK;
   return checkPlane(
     pose,
     aspect,

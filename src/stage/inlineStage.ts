@@ -12,7 +12,7 @@ import {
 import { setExporting } from "../engine/exportState";
 import { gizmoHandleAt } from "../engine/gizmoRegistry";
 import { glContextCensus } from "../engine/glContexts";
-import { memoryCensus } from "../engine/memoryCensus";
+import { applyStageMemoryLever, memoryCensus } from "../engine/memoryCensus";
 import { perfColdWaits } from "../engine/perfProbe";
 import type { LoadedProject } from "../engine/project";
 import { beginRangeRun, endRangeRun, type RangeRun, renderRangeFrame } from "../engine/rangeRun";
@@ -120,6 +120,9 @@ export function createInlineStage(element?: HTMLCanvasElement): StageHandle {
     },
     setClipCacheCapacity(n) {
       setClipCacheCapacity(n);
+    },
+    memoryLever(lever) {
+      applyStageMemoryLever(lever);
     },
     async forceContextLoss() {
       canvasHandle.current?.gl.forceContextLoss();

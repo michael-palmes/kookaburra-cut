@@ -43,7 +43,7 @@ import { gizmoHandleAt, gizmoPickerHandles, subscribeGizmoPickers } from "../eng
 import { cameraFrameOf, projectGizmoTargets } from "../engine/gizmoTargetFrames";
 import { glContextCensus, onGlContextLoss, tagGlCanvas } from "../engine/glContexts";
 import { ensureRectAreaLightUniforms } from "../engine/lightingState";
-import { memoryCensus } from "../engine/memoryCensus";
+import { applyStageMemoryLever, memoryCensus } from "../engine/memoryCensus";
 import { perfColdWaits, runPerfProbe } from "../engine/perfProbe";
 import { setPresentSlideshowActive } from "../engine/presentMode";
 import {
@@ -737,6 +737,9 @@ takeWorkerInbox((ev: MessageEvent<ToWorker>) => {
       return;
     case "clipCacheCapacity":
       setClipCacheCapacity(msg.n);
+      return;
+    case "memoryLever":
+      applyStageMemoryLever(msg.lever);
       return;
     case "previewFlags":
       if (msg.clipStride !== undefined) setPreviewClipStride(msg.clipStride);

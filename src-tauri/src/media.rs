@@ -1156,7 +1156,7 @@ pub struct UnusedAsset {
     pub kind: String, // "video" | "image"
 }
 
-/// Every media file in a project's `assets/` that nothing references (the shared rule, `AssetRefs`), newest added first (the grid's order). One pass over the project's text files answers every asset, and the answer comes from the same guard `delete_media` enforces, so the list can never drift from what a delete will allow. Media extensions only: fonts, HDRIs, 3D objects and chart data can be referenced from files this guard never reads, so sweeping them would risk trashing something in use. The samples `ensure_sample_assets` restores at every project load are left out, since deleting one only brings it back.
+/// Every media file in a project's `assets/` that nothing references (the shared rule, `AssetRefs`), newest added first (the grid's order). One pass over the project's text files answers every asset, and the answer comes from the same guard `delete_media` enforces, so the list can never drift from what a delete will allow. Media extensions only: fonts, HDRIs, 3D objects and chart data can be referenced from files this guard never reads, so sweeping them would risk trashing something in use. Bundled pool samples are left out (`workspace::backfilled_sample_names`): they are the app's seeded copies, not the user's imports.
 #[tauri::command]
 pub fn unused_media(
     app: AppHandle,
@@ -2274,7 +2274,7 @@ fn status_of(verdict: &crate::conform::Verdict) -> ConformStatus {
     }
 }
 
-/// Files the library never flags: editor renders, mezzanines this app wrote, and the samples every load restores.
+/// Files the library never flags: editor renders, mezzanines this app wrote, and the bundled pool samples.
 fn conform_exempt(app: &AppHandle, project: &Path, rel: &str) -> bool {
     let name = rel.strip_prefix("assets/").unwrap_or(rel);
     name.ends_with("-edited.mp4")

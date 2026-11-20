@@ -18,6 +18,11 @@ pub struct ScannedItem {
 /// A person's accepted flash warnings, their decision about their own film: it never travels and never lands (docs/packs.md).
 pub const ACCEPTED_FLASHES_FILE: &str = "flashes.accepted.json";
 
+/// A person's kept pacing warnings, with their reasons: handled exactly as the flashes file.
+pub const ACCEPTED_PACING_FILE: &str = "pacing.accepted.json";
+
+pub const ACCEPTED_WARNING_FILES: [&str; 2] = [ACCEPTED_FLASHES_FILE, ACCEPTED_PACING_FILE];
+
 /// An author's notes: they travel only when ticked and never count towards an item's identity, so a project reads `identical` to its own pack either way.
 pub fn is_agent_note(rel: &str) -> bool {
     let name = rel.rsplit('/').next().unwrap_or(rel);
@@ -34,7 +39,9 @@ pub fn is_agent_note(rel: &str) -> bool {
 pub fn is_excluded(rel: &str) -> bool {
     let first = rel.split('/').next().unwrap_or("");
     if matches!(first, "exports" | ".git" | ".kookaburra" | ".kb")
-        || first.eq_ignore_ascii_case(ACCEPTED_FLASHES_FILE)
+        || ACCEPTED_WARNING_FILES
+            .iter()
+            .any(|file| first.eq_ignore_ascii_case(file))
     {
         return true;
     }
@@ -229,17 +236,23 @@ mod tests {
         assert!(is_excluded("flashes.accepted.json"));
         assert!(is_excluded("Flashes.Accepted.JSON"));
         assert!(!is_excluded("assets/flashes.accepted.json"));
+        assert!(is_excluded("pacing.accepted.json"));
+        assert!(is_excluded("Pacing.Accepted.JSON"));
+        assert!(is_excluded("pacing.accepted.json/nested.json"));
+        assert!(!is_excluded("assets/pacing.accepted.json"));
     }
 
     /// A project's own acceptances do not change what it is, so it still reads identical to its own pack.
     #[test]
-    fn accepted_flashes_do_not_change_the_content_hash() {
+    fn accepted_warnings_do_not_change_the_content_hash() {
         let base = std::env::temp_dir().join("kbpack-scan-accepted-test");
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
         std::fs::write(base.join("project.json"), b"{}").unwrap();
         let before = scan_dir(&base).unwrap();
-        std::fs::write(base.join(ACCEPTED_FLASHES_FILE), br#"{"accepted":[]}"#).unwrap();
+        for file in ACCEPTED_WARNING_FILES {
+            std::fs::write(base.join(file), br#"{"accepted":[]}"#).unwrap();
+        }
         let after = scan_dir(&base).unwrap();
         assert_eq!(before.content_hash, after.content_hash);
         assert_eq!(before.bytes, after.bytes);

@@ -19,6 +19,9 @@ vi.mock("react", async (importOriginal) => {
       return fn;
     },
     useEffect() {},
+    useRef<T>(initial: T) {
+      return { current: initial };
+    },
     useState<T>(initial: T) {
       return [initial, () => {}] as const;
     },

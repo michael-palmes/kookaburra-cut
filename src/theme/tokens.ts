@@ -21,9 +21,26 @@ export interface LutParams {
   intensity: number;
 }
 
-/** Film-grain params. `intensity` 0 = no grain. Seeded from the frame only (see grainSeed). */
+/** Film-grain params. `intensity` 0 = no grain. Seeded from the frame only (see grainSeed); `hold` keeps each pattern for that many frames, the paper boil (5 is 12 fps). */
 export interface GrainParams {
   intensity: number;
+  hold?: number;
+}
+
+/** Lens response for hot highlights (engine/LensEffect.ts): energy-conserving bloom, halation and glare on the linear HDR buffer. `intensity` 0 = off. */
+export interface LensParams {
+  intensity: number;
+  bloom?: number;
+  bloomRadius?: number;
+  karis?: number;
+  halation?: number;
+  halationColor?: string;
+  halationThreshold?: number;
+  glare?: number;
+  glarePoints?: number;
+  glareAngleDeg?: number;
+  glareThreshold?: number;
+  glareFalloff?: number;
 }
 
 /** The postprocessing stack: every field is a plain number/string set on the CPU, never time-derived, so effect frames stay a pure function of the timeline. Omitting a key omits that effect. A theme with NO `effects` keeps the byte-identical (composer-free) render path. See docs/determinism.md. */
@@ -32,6 +49,7 @@ export interface EffectsConfig {
   vignette?: VignetteParams;
   lut?: LutParams;
   grain?: GrainParams;
+  lens?: LensParams;
 }
 
 /** A per-scene override: any subset of the effect stack, each effect itself partial. */
@@ -92,6 +110,30 @@ export interface EnvironmentSpec {
   source: string;
   intensity: number;
   rotationDeg: number;
+  /** Emissive strips baked into a black environment (engine/stripSpec.ts); present, they replace `source`. */
+  strips?: EnvStripSpec[];
+  /** Linear floor of the strips' sphere. */
+  stripsAmbient?: number;
+}
+
+/** One environment strip: reflection-only light. Azimuth from +Z toward +X, elevation up, like the light rig. */
+export interface EnvStripSpec {
+  azimuthDeg: number;
+  elevationDeg: number;
+  /** Angular length along the strip's long axis. */
+  lengthDeg: number;
+  /** Angular width across it. */
+  widthDeg: number;
+  /** 0 stands the strip upright; 90 lays it level. */
+  rollDeg?: number;
+  /** sRGB hex. */
+  color: string;
+  /** Linear radiance: 10 to 60 reads as a hot line on polished metal. */
+  intensity: number;
+  /** 0 even, 1 falls to black at both ends. */
+  falloff?: number;
+  /** 0 hard edge, 1 fades to black across the width. */
+  feather?: number;
 }
 
 /** The promoted key light. `azimuthDeg`/`elevationDeg`/`intensity`/`color` are byte-compatible with `ThemeLightSpec`, so a v8 `key` block parses straight in. */
@@ -133,6 +175,72 @@ interface LightBase {
   target?: [number, number, number];
 }
 
+type Vec3 = [number, number, number];
+type Pair = [number, number];
+
+/** A spot's visible beam (engine/volumetricSpec.ts parses it): single-scatter haze in its cone, lit through its shadow map, with optional bars aimed at the lens, moving smoke and dust. Absent, the spot is a plain light. */
+export interface LightVolumetricSpec {
+  /** Bars parallel to the line from the light to the lens, so every shadow plane holds the lens and the rays fan crisply from the source. World lights only. */
+  grate?: {
+    /** The lens the bars aim at; "camera" (the default) takes the scene's opening camera. */
+    lens?: Vec3 | "camera";
+    offset?: number;
+    along?: Pair;
+    width?: number;
+    slat?: Pair;
+    gap?: Pair;
+    wideGap?: { p: number; range: Pair };
+    seed?: number;
+    /** Explicit bars across the row, in place of the seeded layout. */
+    bars?: Pair[];
+    /** The light's radius: how far each bar's shadow edge blurs. */
+    soft?: number;
+  };
+  /** Haze only inside this world box. */
+  box?: { min: Vec3; max: Vec3 };
+  haze?: {
+    /** Scattering per world unit. */
+    density?: number;
+    /** Henyey-Greenstein g: towards 1 the haze glows looking into the light. */
+    anisotropy?: number;
+    strength?: number;
+    heightFalloff?: number;
+    /** Height over which the haze thins into the floor. */
+    groundFade?: number;
+  };
+  smoke?: {
+    scale?: number;
+    warp?: number;
+    warpScale?: number;
+    contrast?: Pair;
+    floor?: number;
+    drift?: Vec3;
+    evolve?: number;
+    warpEvolve?: number;
+    offset?: Vec3;
+    frontFade?: { z0: number; z1: number; min: number };
+  };
+  /** The haze dims light on its way in and out. */
+  extinction?: boolean;
+  /** Motes that glint only in the beam; they fill the haze box, else the cone at rest, unless `min` and `max` are set. */
+  dust?: {
+    count?: number;
+    min?: Vec3;
+    max?: Vec3;
+    radius?: Pair;
+    seed?: number;
+    drift?: Vec3;
+    jitter?: number;
+    jitterScale?: number;
+    jitterSpeed?: number;
+    color?: string;
+    forward?: number;
+    gain?: number;
+  };
+  /** This light's shadow map size, in place of the stage's. */
+  shadowMapSize?: number;
+}
+
 /** One free light. `angleDeg` is the FULL cone in degrees (three's `angle` is radian half-angle); `distance`/`decay` default to three's own defaults (0 and 2). */
 export type LightSpec =
   | (LightBase & { type: "directional" })
@@ -143,6 +251,7 @@ export type LightSpec =
       penumbra: number;
       distance?: number;
       decay?: number;
+      volumetric?: LightVolumetricSpec;
     })
   | (LightBase & { type: "area"; width: number; height: number });
 
@@ -301,7 +410,41 @@ export type ThemeBackdrop =
   | { type: "floor"; color: string; filletRadius?: number }
   /** `gradient` names a THEME gradient; `spec` carries an inline self-contained gradient (the unified Background editor's write-through). One must be present; `spec` wins when both are. */
   | { type: "gradient"; gradient?: string; spec?: GradientSpec }
-  | { type: "image"; src: string; fit?: "cover" | "contain" };
+  | { type: "image"; src: string; fit?: "cover" | "contain" }
+  | SatinBackdropSpec;
+
+/** A lit satin floor that fades into the void: a reflection blurred with height, sheen, glitter and floor-only pools. It stands at the stage's floorY like the cyclorama and takes real shadows itself. */
+export interface SatinBackdropSpec {
+  type: "satin";
+  color: string;
+  roughness?: number;
+  /** Dielectric reflectance, 0.5 being the usual 4%. */
+  specular?: number;
+  /** Where the fade is centred, [x, z]. */
+  centre?: [number, number];
+  /** The floor dissolves into the layers behind it between these radii. */
+  fade?: [number, number];
+  /** `false` turns the reflection off. `blur` is in pixels of a 1080p frame; `heightBlur` is the height over which a reflection goes from sharp to fully blurred; `contact` is the blur kept even at the contact. */
+  reflection?: false | { strength?: number; blur?: number; heightBlur?: number; contact?: number };
+  /** Glossy flakes: `scale` flakes per unit, `density` the share that is flake, `grain` how much the sheen varies grain to grain. */
+  glitter?: {
+    scale?: number;
+    density?: number;
+    roughness?: number;
+    tilt?: number;
+    weight?: number;
+    grain?: number;
+    seed?: number;
+  };
+  /** Up to four soft patches the floor alone receives, such as light thrown off a polished rail. */
+  pools?: {
+    at: [number, number];
+    radius: [number, number];
+    angleDeg?: number;
+    color: string;
+    intensity: number;
+  }[];
+}
 
 /** Camera-locked, frame-filling background, drawn behind ALL world content and COMPOSABLE with `backdrop` (a fixed image can sit behind a shadowed cyclorama). Vocabulary: `colors.background` clears the frame, `background` is a camera-locked fill over that clear and behind world content, `backdrop` is world-space staging. Image/gradient fills cover-crop, centred, one asset serves every aspect. `parallax` (0..0.5, default 0 = hard-locked) drifts the fill at that fraction of the content's screen motion; `image.src` is `kookaburra:<name>` (bundled) or a project-relative path. */
 export type ThemeBackground =

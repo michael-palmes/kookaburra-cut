@@ -1,0 +1,560 @@
+{
+  "version": 1,
+  "name": "Hero",
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "media": {
+        "src": "assets/fairywren-today-dark-phone.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [-2.05, 0.079, -0.318],
+        "rotationDeg": [0, 30, 0],
+        "scale": 1.39,
+        "ground": true
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "none",
+      "finish": {
+        "frame": {
+          "roughness": 0.3,
+          "metalness": 1,
+          "anisotropy": 0.4,
+          "grain": 1,
+          "grainScale": 20000,
+          "brushedMap": 0,
+          "chamferRoughness": 0.08,
+          "envIntensity": 1.6,
+          "iblTaps": 7
+        },
+        "polished": {
+          "roughness": 0.06,
+          "envIntensity": 1.8
+        },
+        "glass": {
+          "roughness": 0.05,
+          "ior": 1.5,
+          "specularIntensity": 1,
+          "envIntensity": 1.5
+        },
+        "back": {
+          "roughness": 0.45,
+          "metalness": 0,
+          "tint": 0.55,
+          "clearcoat": 0.6,
+          "clearcoatRoughness": 0.12,
+          "envIntensity": 1.3
+        }
+      }
+    }
+  ],
+  "deviceTrack": {
+    "keys": [
+      {
+        "id": "d1",
+        "tMs": 0,
+        "pose": {
+          "hero": {
+            "rotationDeg": [0, -100, 0],
+            "screenPower": 0.35
+          }
+        }
+      },
+      {
+        "id": "d2",
+        "tMs": 937,
+        "at": "bar:29.3",
+        "pose": {
+          "hero": {
+            "rotationDeg": [0, 0, 0],
+            "screenPower": 1
+          }
+        }
+      },
+      {
+        "id": "d3",
+        "tMs": 3750,
+        "pose": {
+          "hero": {
+            "rotationDeg": [0, -3, 0],
+            "screenPower": 1
+          }
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "d1",
+        "to": "d2",
+        "ease": "outCubic"
+      },
+      {
+        "from": "d2",
+        "to": "d3",
+        "ease": "inOutSine"
+      }
+    ]
+  },
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "h1",
+        "tMs": 0,
+        "pose": {
+          "position": [-1.8, -0.25, 12.8],
+          "aim": {
+            "mode": "point",
+            "at": [-2.05, 0.15, -0.3]
+          },
+          "fov": 21
+        }
+      },
+      {
+        "id": "h2",
+        "tMs": 937,
+        "pose": {
+          "position": [-1.83, -0.22, 12.3],
+          "aim": {
+            "mode": "point",
+            "at": [-2.05, 0.15, -0.3]
+          },
+          "fov": 21
+        },
+        "at": "bar:29.3"
+      },
+      {
+        "id": "h3",
+        "tMs": 1875,
+        "pose": {
+          "position": [-1.85, 0.85, 17.2],
+          "aim": {
+            "mode": "point",
+            "at": [-2.05, -0.3, -0.3]
+          },
+          "fov": 21
+        },
+        "at": "bar:30"
+      },
+      {
+        "id": "h4",
+        "tMs": 2812,
+        "pose": {
+          "position": [-1.86, 0.9, 17.5],
+          "aim": {
+            "mode": "point",
+            "at": [-2.05, -0.3, -0.3]
+          },
+          "fov": 21
+        },
+        "at": "bar:30.3"
+      },
+      {
+        "id": "h5",
+        "tMs": 3750,
+        "pose": {
+          "position": [-1.86, 2.5, 17.5],
+          "aim": {
+            "mode": "point",
+            "at": [-2.05, 1.3, -0.3]
+          },
+          "fov": 21
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "h1",
+        "to": "h2",
+        "ease": "outSine",
+        "smooth": false
+      },
+      {
+        "from": "h2",
+        "to": "h3",
+        "ease": "inOutCubic",
+        "smooth": false
+      },
+      {
+        "from": "h3",
+        "to": "h4",
+        "ease": "linear",
+        "smooth": false
+      },
+      {
+        "from": "h4",
+        "to": "h5",
+        "ease": "inSine",
+        "smooth": false
+      }
+    ]
+  },
+  "lighting": {
+    "ambient": 0,
+    "fills": [],
+    "sun": {
+      "azimuthDeg": -55,
+      "elevationDeg": 32,
+      "intensity": 0,
+      "color": "#ffc888",
+      "castShadow": false
+    },
+    "environment": {
+      "source": "kookaburra:strips",
+      "intensity": 1,
+      "rotationDeg": 0,
+      "strips": [
+        {
+          "azimuthDeg": -107.33,
+          "elevationDeg": 34,
+          "rollDeg": -13.82,
+          "lengthDeg": 59.49,
+          "widthDeg": 24.19,
+          "color": "#fff0e0",
+          "intensity": 14,
+          "feather": 0.95,
+          "falloff": 0.85
+        },
+        {
+          "azimuthDeg": 179.1,
+          "elevationDeg": 6.22,
+          "rollDeg": 14.95,
+          "lengthDeg": 45.24,
+          "widthDeg": 5.72,
+          "color": "#9ccfff",
+          "intensity": 200,
+          "feather": 0.6,
+          "falloff": 0.5
+        },
+        {
+          "azimuthDeg": -79.81,
+          "elevationDeg": 49.47,
+          "rollDeg": 0,
+          "lengthDeg": 12.2,
+          "widthDeg": 12.2,
+          "color": "#ffb070",
+          "intensity": 119,
+          "feather": 0.3,
+          "falloff": 0.3
+        },
+        {
+          "azimuthDeg": 76,
+          "elevationDeg": 27,
+          "rollDeg": 90,
+          "lengthDeg": 70,
+          "widthDeg": 12,
+          "color": "#e9efff",
+          "intensity": 12,
+          "feather": 1,
+          "falloff": 0.4
+        },
+        {
+          "azimuthDeg": 110,
+          "elevationDeg": 5,
+          "rollDeg": 0,
+          "lengthDeg": 50,
+          "widthDeg": 9,
+          "color": "#fff0e0",
+          "intensity": 4,
+          "feather": 1,
+          "falloff": 0.4
+        }
+      ]
+    },
+    "lights": [
+      {
+        "id": "key",
+        "type": "spot",
+        "intensity": 640,
+        "placement": {
+          "mode": "point",
+          "position": [-7, 4.85, -7.6]
+        },
+        "target": [-2.15, -0.4, -0.3],
+        "angleDeg": 38,
+        "penumbra": 1,
+        "color": "#ffc79a",
+        "decay": 2,
+        "castShadow": true,
+        "volumetric": {
+          "box": {
+            "min": [-14, -1.905, -30],
+            "max": [8, 9, -0.8]
+          },
+          "haze": {
+            "density": 0.028,
+            "anisotropy": 0.65,
+            "strength": 1,
+            "heightFalloff": 0,
+            "groundFade": 1.5
+          },
+          "extinction": true,
+          "shadowMapSize": 2048,
+          "smoke": {
+            "scale": 0.4,
+            "warp": 1.6,
+            "contrast": [0.4, 0.6],
+            "floor": 0.15,
+            "drift": [0.12, 0.08, 0],
+            "evolve": 0.08
+          },
+          "dust": {
+            "count": 380,
+            "min": [-6.5, 0.3, -7],
+            "max": [-1.9, 3.6, -0.9],
+            "radius": [0.002, 0.005],
+            "gain": 0.45,
+            "drift": [0.05, 0.06, 0]
+          }
+        }
+      },
+      {
+        "id": "fill",
+        "type": "spot",
+        "intensity": 30,
+        "placement": {
+          "mode": "point",
+          "position": [-4.5, 0.5, -1]
+        },
+        "target": [-3, -1.9, 0.2],
+        "angleDeg": 50,
+        "penumbra": 1,
+        "color": "#ffb880",
+        "decay": 2
+      },
+      {
+        "id": "rake",
+        "type": "spot",
+        "intensity": 0,
+        "color": "#ffd9b8",
+        "angleDeg": 18,
+        "penumbra": 0.4,
+        "castShadow": false,
+        "placement": {
+          "mode": "point",
+          "position": [-5.5, 3.2, 2.6]
+        },
+        "target": [-2.05, 0.4, -0.3]
+      },
+      {
+        "id": "halo",
+        "type": "spot",
+        "intensity": 0,
+        "placement": {
+          "mode": "point",
+          "position": [-1.9823, 1.2035, -12.4791]
+        },
+        "target": [-1.86, 2.5, 17.5],
+        "angleDeg": 44,
+        "penumbra": 1,
+        "color": "#ffb070",
+        "decay": 2,
+        "castShadow": true,
+        "volumetric": {
+          "box": {
+            "min": [-18, -1.905, -34],
+            "max": [14, 14, -0.8]
+          },
+          "haze": {
+            "density": 0.028,
+            "anisotropy": 0.65,
+            "strength": 1,
+            "heightFalloff": 0,
+            "groundFade": 1.5
+          },
+          "extinction": true,
+          "shadowMapSize": 2048,
+          "smoke": {
+            "scale": 0.4,
+            "warp": 1.6,
+            "contrast": [0.4, 0.6],
+            "floor": 0.15,
+            "drift": [0.12, 0.08, 0],
+            "evolve": 0.08
+          }
+        }
+      }
+    ],
+    "keys": [
+      {
+        "id": "l1",
+        "tMs": 0,
+        "pose": {
+          "lights": {
+            "key": {
+              "intensity": 420,
+              "placement": {
+                "mode": "point",
+                "position": [-7, 4.85, -7.6]
+              }
+            },
+            "rake": {
+              "intensity": 0
+            },
+            "halo": {
+              "intensity": 0
+            }
+          },
+          "environmentIntensity": 0.9,
+          "environmentRotationDeg": -20
+        }
+      },
+      {
+        "id": "l2",
+        "tMs": 937,
+        "at": "bar:29.3",
+        "pose": {
+          "lights": {
+            "key": {
+              "intensity": 420
+            }
+          },
+          "environmentIntensity": 0.9,
+          "environmentRotationDeg": -6
+        }
+      },
+      {
+        "id": "l3",
+        "tMs": 1500,
+        "pose": {
+          "lights": {
+            "key": {
+              "intensity": 680
+            }
+          },
+          "environmentIntensity": 1.2,
+          "environmentRotationDeg": 0
+        }
+      },
+      {
+        "id": "l4",
+        "tMs": 2812,
+        "at": "bar:30.3",
+        "pose": {
+          "lights": {
+            "key": {
+              "intensity": 680,
+              "placement": {
+                "mode": "point",
+                "position": [-7, 4.85, -7.6]
+              }
+            },
+            "rake": {
+              "intensity": 0
+            },
+            "halo": {
+              "intensity": 0
+            }
+          },
+          "environmentRotationDeg": 0
+        }
+      },
+      {
+        "id": "l5",
+        "tMs": 3750,
+        "pose": {
+          "lights": {
+            "key": {
+              "intensity": 80.0,
+              "placement": {
+                "mode": "point",
+                "position": [-3.2, 4.85, -8.8]
+              }
+            },
+            "halo": {
+              "intensity": 900.0
+            }
+          },
+          "environmentRotationDeg": 40
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "l1",
+        "to": "l2",
+        "ease": "linear"
+      },
+      {
+        "from": "l2",
+        "to": "l3",
+        "ease": "outCubic"
+      },
+      {
+        "from": "l3",
+        "to": "l4",
+        "ease": "linear"
+      },
+      {
+        "from": "l4",
+        "to": "l5",
+        "ease": "linear"
+      }
+    ],
+    "shadow": {
+      "technique": "map",
+      "softness": 0.375,
+      "opacity": 0.85,
+      "mapSize": 2048,
+      "bias": -0.0005
+    },
+    "environmentIntensity": 1.2,
+    "environmentRotationDeg": 0
+  },
+  "background": {
+    "type": "gradient",
+    "spec": {
+      "type": "linear",
+      "angleDeg": 135,
+      "stops": [["#140c07", 0], ["#060504", 0.3], ["#030303", 1]],
+      "space": "oklch"
+    }
+  },
+  "backdrop": {
+    "type": "satin",
+    "color": "#22201e",
+    "roughness": 0.35,
+    "specular": 0.3,
+    "centre": [-2.2, 0.3],
+    "fade": [1.2, 5.5],
+    "reflection": {
+      "strength": 1.3,
+      "blur": 24,
+      "heightBlur": 0.9,
+      "contact": 0.75
+    },
+    "glitter": {
+      "scale": 90,
+      "density": 0,
+      "roughness": 0.15,
+      "tilt": 0.5,
+      "weight": 0,
+      "grain": 0.5,
+      "seed": 5
+    },
+    "pools": [
+      {
+        "at": [-2.4, 0.5],
+        "radius": [1.3, 0.5],
+        "angleDeg": -10,
+        "color": "#ffb070",
+        "intensity": 0.1
+      }
+    ]
+  },
+  "text": {
+    "slogan": "Your week, sorted."
+  },
+  "textStyle": {
+    "sloganColor": "#fffaf0"
+  },
+  "textAnimation": {
+    "in": "stamp",
+    "out": "fade"
+  }
+}

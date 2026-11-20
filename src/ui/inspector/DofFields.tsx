@@ -7,8 +7,10 @@ import {
   DOF_SQUEEZE_MAX,
   type DofMode,
   type EffectiveDof,
+  LENS_DOF_DEFAULTS,
   type SceneDocDof,
 } from "../../engine/dof";
+import { LENS_FSTOP_MAX, LENS_FSTOP_MIN } from "../../engine/lensDof";
 import { DrillGroup, NumberField, SegmentedRow } from "./rows";
 
 /** The Depth-of-field group, shared by the free-mode fields and the orbit grid: an Off/Depth/Tilt-shift family switch, the mode's numeric fields, presets, and the fov-style inherit affordances. Values shown are the key's EFFECTIVE dof (carry-forward along the track, the sampler's rule); edits write the sparse authored block on the current key. */
@@ -81,6 +83,29 @@ function DofIcon({ id, size = 17 }: { id: string; size?: number }) {
         );
       case "swipe":
         return <path d="M4 6.5h9M4 10h12M4 13.5h7" />;
+      case "lens":
+        return (
+          <>
+            <circle cx="10" cy="10" r="6.5" />
+            <path d="M10 3.5l2.6 5.4M16.2 8l-4.6 3.9M13 15.9l-4-2.6M4.6 13.6l5-1.3M5 5.4l3.7 4.2" />
+          </>
+        );
+      case "wide":
+        return (
+          <>
+            <circle cx="10" cy="10" r="6.5" />
+            <circle cx="10" cy="10" r="4.2" />
+          </>
+        );
+      case "stopped":
+        return (
+          <>
+            <circle cx="10" cy="10" r="6.5" />
+            <circle cx="10" cy="10" r="1.6" />
+          </>
+        );
+      case "sensor":
+        return <path d="M4 6.5h12v7H4z" />;
       case "split":
         return (
           <>
@@ -108,7 +133,7 @@ function DofIcon({ id, size = 17 }: { id: string; size?: number }) {
   );
 }
 
-/** The blur-family picker: seven options, so a wrapping chip row rather than a segmented pill. */
+/** The blur-family picker: eight options, so a wrapping chip row rather than a segmented pill. */
 const MODE_OPTIONS: { value: "off" | DofMode; label: string; icon: string; title: string }[] = [
   { value: "off", label: "Off", icon: "off", title: "No depth of field in this scene" },
   { value: "depth", label: "Depth", icon: "depth", title: "Blur by distance from a focus plane" },
@@ -117,6 +142,31 @@ const MODE_OPTIONS: { value: "off" | DofMode; label: string; icon: string; title
   { value: "radial", label: "Burst", icon: "burst", title: "Zoom streaks from a centre point" },
   { value: "directional", label: "Swipe", icon: "swipe", title: "A smear along one angle" },
   { value: "split", label: "Split", icon: "split", title: "Two focus distances across a divider" },
+  {
+    value: "lens",
+    label: "Lens",
+    icon: "lens",
+    title: "A real lens: blur from the f-stop and depth",
+  },
+];
+
+/** Lens-mode apertures; values are pose fields, nothing of their own. */
+const LENS_PRESETS: { icon: string; label: string; title: string; fStop: number }[] = [
+  { icon: "wide", label: "f/2", title: "Wide open: a thin focus plane, big bokeh", fStop: 2 },
+  {
+    icon: "subtle",
+    label: "f/5.6",
+    title: "Product depth: the subject sharp, the set soft",
+    fStop: 5.6,
+  },
+  { icon: "stopped", label: "f/16", title: "Stopped down: what a macro needs", fStop: 16 },
+];
+
+/** Sensor sizes along the fov axis; the focal length follows the fov on whichever is picked. */
+const SENSORS: { value: string; label: string; title: string }[] = [
+  { value: "24", label: "Full frame", title: "24 mm: the stills and large-format look" },
+  { value: "13.9", label: "Super 35", title: "13.9 mm: the cinema standard" },
+  { value: "8.8", label: "1-inch", title: "8.8 mm: deeper focus, close-up rigs" },
 ];
 
 /** Preset looks (decision 13); depth mode only, values are pose fields, nothing of their own. */
@@ -133,17 +183,43 @@ const DEPTH_PRESETS: { icon: string; label: string; title: string; blur: number;
     { icon: "macro", label: "Macro", title: "Razor-thin focus", blur: 0.9, range: 0.5 },
   ];
 
-/** A key as the dof carry walk sees it. */
+/** A camera or rig track key, as the dof carry walk reads it. */
 export interface DofKeyView {
   id: string;
   tMs: number;
-  dof?: SceneDocDof;
+  pose: { dof?: SceneDocDof };
+}
+
+/** The scene-wide family switch. Blur scales the lens aperture, so a switch into lens drops depth's blur and range; a switch out drops the lens fields and gives only the first dof key a fallback blur, so later keys keep inheriting. */
+export function dofModeSwitch(
+  keys: readonly DofKeyView[],
+  next: DofMode,
+): (dof: SceneDocDof | undefined, keyId: string) => SceneDocDof | undefined {
+  const first = [...keys].sort((a, b) => a.tMs - b.tMs).find((k) => k.pose.dof);
+  const fromLens = first?.pose.dof?.mode === "lens";
+  return (dof, keyId) => {
+    if (!dof) return dof;
+    if (next === "lens") {
+      const { blur: _blur, range: _range, ...rest } = dof;
+      return { ...rest, mode: next };
+    }
+    const { fStop: _fStop, focalMm: _focalMm, sensorMm: _sensorMm, ...rest } = dof;
+    return fromLens && keyId === first?.id
+      ? { ...rest, blur: dof.blur ?? 0.5, mode: next }
+      : { ...rest, mode: next };
+  };
 }
 
 /** An effective dof rewritten as a full authored block (the "Set on this key" write). */
 function effectiveToDoc(e: EffectiveDof, mode: DofMode): SceneDocDof {
-  const out: SceneDocDof = { mode, blur: e.blur, range: e.range };
+  const out: SceneDocDof = { mode, blur: e.blur };
+  if (mode !== "lens") out.range = e.range;
   if (e.focus !== null) out.focus = e.focus;
+  if (mode === "lens") {
+    out.fStop = e.fStop;
+    out.sensorMm = e.sensorMm;
+    if (e.focalMm !== null) out.focalMm = e.focalMm;
+  }
   out.band = e.band;
   out.offset = e.offset;
   out.angleDeg = e.angleDeg;
@@ -178,20 +254,22 @@ export function DofFields({
   preview: (next: SceneDocDof | undefined) => void;
   commit: (next: SceneDocDof | undefined) => void;
   /** Rewrite every key's dof in one commit (scene-wide off, family switches). */
-  commitAll: (map: (dof: SceneDocDof | undefined) => SceneDocDof | undefined) => void;
+  commitAll: (
+    map: (dof: SceneDocDof | undefined, keyId: string) => SceneDocDof | undefined,
+  ) => void;
 }) {
   const sorted = [...keys].sort((a, b) => a.tMs - b.tMs);
   const targetIndex = targetKeyId ? sorted.findIndex((k) => k.id === targetKeyId) : -1;
+  const firstDof = sorted.find((k) => k.pose.dof)?.pose.dof;
+  const sceneMode = firstDof ? (firstDof.mode ?? "depth") : undefined;
   let carriedBefore: EffectiveDof | null = null;
   for (let i = 0; i < (targetIndex < 0 ? sorted.length : targetIndex); i++) {
-    carriedBefore = carryDof(carriedBefore, sorted[i].dof);
+    carriedBefore = carryDof(carriedBefore, sorted[i].pose.dof, sceneMode);
   }
-  const effective = carryDof(carriedBefore, authored);
-  const sceneMode =
-    sorted.find((k) => k.dof?.mode)?.dof?.mode ?? sorted.find((k) => k.dof)?.dof?.mode;
-  const sceneHasDof = !!authored || sorted.some((k) => k.dof);
+  const effective = carryDof(carriedBefore, authored, sceneMode ?? authored?.mode);
+  const sceneHasDof = !!authored || sorted.some((k) => k.pose.dof);
   const mode = sceneHasDof ? (sceneMode ?? authored?.mode ?? "depth") : "off";
-  const shown = effective ?? DOF_DEFAULTS;
+  const shown = effective ?? (mode === "lens" ? LENS_DOF_DEFAULTS : DOF_DEFAULTS);
   const manual = shown.focus !== null;
 
   /** Merge one field into the current key's authored block. */
@@ -207,14 +285,17 @@ export function DofFields({
       commit(
         next === "split"
           ? { mode: next, blur: 0.5, focusB: Math.round(autoDistance * 50) / 100 }
-          : { mode: next, blur: 0.5 },
+          : next === "lens"
+            ? { mode: next, fStop: LENS_DOF_DEFAULTS.fStop }
+            : { mode: next, blur: 0.5 },
       );
       return;
     }
-    commitAll((dof) => (dof ? { ...dof, mode: next } : dof));
+    commitAll(dofModeSwitch(keys, next));
   };
 
   const depthFamily = mode === "depth" || mode === "split";
+  const focusFamily = depthFamily || mode === "lens";
 
   return (
     <DrillGroup label="Depth of field">
@@ -248,6 +329,71 @@ export function DofFields({
             </button>
           ))}
         </div>
+      )}
+
+      {mode === "lens" && (
+        <>
+          <div className="camera-loop-modes">
+            {LENS_PRESETS.map((p) => (
+              <button
+                key={p.label}
+                type="button"
+                className={`chip${shown.fStop === p.fStop ? " selected" : ""}`}
+                title={p.title}
+                onClick={() => commit(patch({ fStop: p.fStop }))}
+              >
+                <DofIcon id={p.icon} size={13} />
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <div className="inspector-pose-grid">
+            <NumberField
+              label="f-stop"
+              value={shown.fStop}
+              decimals={1}
+              dragScale={0.05}
+              min={LENS_FSTOP_MIN}
+              max={LENS_FSTOP_MAX}
+              onInput={(n) => preview(patch({ fStop: n }))}
+              onCommit={(n) => commit(patch({ fStop: n }))}
+            />
+            <NumberField
+              label="blur %"
+              value={shown.blur * 100}
+              decimals={0}
+              dragScale={0.5}
+              min={0}
+              max={100}
+              onInput={(n) => preview(patch({ blur: n / 100 }))}
+              onCommit={(n) => commit(patch({ blur: n / 100 }))}
+            />
+          </div>
+          <SegmentedRow
+            ariaLabel="Sensor size"
+            options={SENSORS.map((o) => ({ ...o, icon: <DofIcon id="sensor" /> }))}
+            value={String(shown.sensorMm)}
+            disabled={shown.focalMm !== null}
+            onChange={(next) => commit(patch({ sensorMm: Number(next) }))}
+          />
+          <div className="inspector-note">
+            {shown.focalMm !== null
+              ? `A ${shown.focalMm} mm lens; the fov sets the sensor.`
+              : "The focal length follows the fov on this sensor."}
+          </div>
+          <div className="inspector-pose-grid">
+            <NumberField
+              label="squeeze ×"
+              value={shown.squeeze}
+              decimals={2}
+              dragScale={0.01}
+              min={1}
+              max={DOF_SQUEEZE_MAX}
+              onInput={(n) => preview(patch({ squeeze: n }))}
+              onCommit={(n) => commit(patch({ squeeze: n }))}
+            />
+          </div>
+        </>
       )}
 
       {depthFamily && (
@@ -322,6 +468,11 @@ export function DofFields({
               />
             </div>
           )}
+        </>
+      )}
+
+      {focusFamily && (
+        <>
           <SegmentedRow
             ariaLabel="Focus mode"
             options={[

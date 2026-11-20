@@ -46,6 +46,60 @@ describe("parseRenderSettings", () => {
       expect("exactText" in parsed).toBe(false);
     }
   });
+
+  it("carries textBlur only when it is optical", () => {
+    expect(parseRenderSettings({ textBlur: "optical" }, "t")).toEqual({
+      ...DEFAULT_RENDER_SETTINGS,
+      textBlur: "optical",
+    });
+    for (const textBlur of ["edge", "gaussian", true, null]) {
+      const parsed = parseRenderSettings({ textBlur }, "t");
+      expect(parsed).toEqual(DEFAULT_RENDER_SETTINGS);
+      expect("textBlur" in parsed).toBe(false);
+    }
+  });
+
+  it("carries a known supersample count only", () => {
+    for (const supersample of [4, 8, 16] as const) {
+      expect(parseRenderSettings({ supersample }, "t")).toEqual({
+        ...DEFAULT_RENDER_SETTINGS,
+        supersample,
+      });
+    }
+    for (const supersample of [2, 1, "4", true, null]) {
+      const parsed = parseRenderSettings({ supersample }, "t");
+      expect(parsed).toEqual(DEFAULT_RENDER_SETTINGS);
+      expect("supersample" in parsed).toBe(false);
+    }
+  });
+
+  it("carries a known antialias mode only", () => {
+    for (const antialias of ["fxaa", "smaa"] as const) {
+      expect(parseRenderSettings({ antialias }, "t")).toEqual({
+        ...DEFAULT_RENDER_SETTINGS,
+        antialias,
+      });
+    }
+    for (const antialias of [true, "msaa", 1, null]) {
+      const parsed = parseRenderSettings({ antialias }, "t");
+      expect(parsed).toEqual(DEFAULT_RENDER_SETTINGS);
+      expect("antialias" in parsed).toBe(false);
+    }
+  });
+
+  it("carries dither and specularAA only when true", () => {
+    for (const key of ["dither", "specularAA"] as const) {
+      expect(parseRenderSettings({ [key]: true }, "t")).toEqual({
+        ...DEFAULT_RENDER_SETTINGS,
+        [key]: true,
+      });
+      for (const value of [false, "static", 1, null]) {
+        const parsed = parseRenderSettings({ [key]: value }, "t");
+        expect(parsed).toEqual(DEFAULT_RENDER_SETTINGS);
+        expect(key in parsed).toBe(false);
+      }
+    }
+  });
 });
 
 describe("mode mapping (the two render paths MUST agree)", () => {

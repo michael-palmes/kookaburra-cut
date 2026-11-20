@@ -62,7 +62,46 @@ Set `"cameraMode": "rig"`. A pose is a position plus an aim:
 | segment `smooth` | Absent means the path curves through neighbouring keys; `false` is a straight dolly |
 | segment `easePosition`, `easeRotation`, `easeLens`, `easeDof` | Per-channel ease overrides (a dolly zoom lags its lens) |
 
+A run of cuts in one rig (a montage): give every moving segment `"smooth": false` and no
+orbit, one straight push per cut at one pace (about 6% of the distance a second). A curved
+segment bends towards the keys of the shots either side, and a few degrees of orbit a cut
+changes side from shot to shot, so the picture sways left and right (20 to 110 px of
+drift inside a cut, measured).
+
 `<DepthStage>` (reference/scenes.md) gives a rig layers to fly through.
+
+## Screen portal
+
+A pull-out from inside a screen starts on a rig key whose camera fills the frame with the
+device's display; a push through a screen ends on one. Each display in `./kb catalog devices
+--json` carries `fillDistance`: how far off the glass a 45 degree camera fills a 16:9 frame at
+placement scale 1. For a device facing the camera (rotation 0) at `position` `[x, y, z]`,
+drawn at scale `s` (its placement scale times any multiplier its TSX applies, such as the
+device presets' 0.92), with that display's `centre` `[cx, cy]` and `z`:
+
+- `aim`: `{ "mode": "point", "at": [x + s*cx, y + s*cy, z + s*z] }` (an `object` aim follows
+  the device's origin, not its glass)
+- `position`: the aim point plus `[0, 0, s * fillDistance]`, with `fov` 45; at another lens,
+  multiply the distance by `tan(22.5°) / tan(fov / 2)` and set that `fov` on the key
+- a turned device, or a laptop lid off 90 degrees: `screenFillPose(model, pose, { fovDeg })` in
+  the toolkit is the same maths in any orientation, rolled to the display's own up
+
+Matching the cut between a full-bleed `VideoClip` and the screen:
+
+1. One source time for both sides: `project.json` `"shared": { "portal": { "sourceMs": 2000 } }`,
+   on a whole frame (a multiple of 50 ms), read with `useProjectShared("portal.sourceMs")`.
+2. `cut` is the outgoing scene's `durationMs` minus the incoming scene's transition overlap.
+   A straight cut (no transition) is the exact hand-off; through an overlap both play at once.
+3. Pull-out (clip, then screen): the outgoing scene ends on
+   `<VideoClip src="assets/app.mp4" fit="cover" startMs={0} inMs={sourceMs - cut} />`; the
+   incoming device plays `inMs: sourceMs` (reference/devices.md, "Screen portal") and its first
+   rig key is the fill. The screen picks up on the very next frame.
+4. Push-through (screen, then clip): the device plays `inMs: sourceMs - cut` (so `sourceMs` is
+   at least `cut`: a device's `inMs` can't be negative), its last key is
+   the fill, and the next scene opens on `<VideoClip ... startMs={0} inMs={sourceMs} />`. The
+   screen's own frame rule can skip one frame at a cut that lands exactly on a frame.
+5. Hand off with the camera at rest: hold the fill key (no segment into or out of it at the
+   cut), with no kick, motion preset or device key moving at that moment.
 
 ## Placing by depth
 
@@ -115,9 +154,23 @@ the scene's; blur animates, the mode does not.
 | `radial` | Burst: zoom streaks from a centre | `blur`, `centerX`, `centerY` -1..1 |
 | `directional` | Swipe: smear along an angle | `blur`, `angleDeg` -90..90 |
 | `split` | Split diopter: two focus planes | `blur`, `range`, `focus`, `focusB`, `offset`, `angleDeg`, `squeeze` |
+| `lens` | A real lens: blur from the f-stop and true depth | `fStop` 0.7..64, `focus`, `sensorMm` 2..70 (24 full frame), `focalMm` 4..1200, `blur` 0..1 (starts at 1), `squeeze` |
 
 - `focus` absent or `"auto"` follows the aim distance (orbit: the distance to target),
-  so the subject stays sharp through a move.
+  so the subject stays sharp through a move. It follows the aim, not what sits in front
+  of it: for a subject off the aim (a card lifted above a screen), key `focus` to the
+  subject's own distance on every camera key, or it softens as the camera travels.
+- Prefer `lens` for product and device shots. `depth`'s `blur` is an arbitrary
+  amount, so a macro reads as a half-resolution smear; `lens` keeps the focus band
+  at full resolution and its bokeh round and bright. One unit is ~56 mm (a phone is
+  2.6 units tall), so a camera 2 units from a phone is a 10 cm macro: start at
+  `fStop` 11 to 16 there, 4 to 5.6 for a hero shot across the set. The focal length
+  follows the fov on `sensorMm`; set `focalMm` only to name a lens. `range` is
+  ignored, and a focus closer than the focal length saturates the blur.
+
+```json
+"dof": { "mode": "lens", "fStop": 11, "focus": "auto" }
+```
 - Everything blurs by its true depth, text and screens included: keep text you need
   legible on the focus plane. `blur: 0` frames are unchanged. Inspector depth presets:
   Subtle (blur 0.25, range 2), Cinematic (0.6, 1.2), Macro (0.9, 0.5).

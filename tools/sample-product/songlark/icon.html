@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <title>Songlark icon</title>
+    <link rel="stylesheet" href="../shared/base.css" />
+    <link rel="stylesheet" href="../shared/icon.css" />
+  </head>
+  <body>
+    <div class="tile" id="tile"></div>
+    <script type="module">
+      import { ready } from "../shared/motion.js";
+      import { MARK } from "./mark.js";
+
+      document.getElementById("tile").innerHTML = MARK;
+      window.render = () => {};
+      window.pageReady = ready();
+    </script>
+  </body>
+</html>

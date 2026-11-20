@@ -8,9 +8,10 @@ import { ChartStage3D, ChartText3D } from "./axes3d";
 import { Bars3D } from "./bars3d";
 import { chart2dLook } from "./chart2dMath";
 import { Pie3D } from "./pie3d";
-import { Series3D } from "./ribbon3d";
+import { Series3D, type Series3DTrail } from "./ribbon3d";
 import { chart3dSpace } from "./space3d";
 import { CHART_STYLE_DEFAULT_ID, CHART_STYLE_PRESETS, chartStackSurface } from "./stylePresets";
+import { chartTrailReach } from "./trailMath";
 import type { ChartRendererProps, ChartStyleSurface, ChartType } from "./types";
 
 /** Lift amounts from the theme background toward its text colour, so the furniture sits on light and dark themes alike; the gridline lift takes the preset's `gridStyleWeight`. */
@@ -62,6 +63,20 @@ export function Chart3D(props: Chart3DProps) {
   );
 
   const pie = chart.type === "pie";
+  // No furniture: no floor, no wall grid and no label of any kind, whatever the block switches on.
+  const bare = surface.furniture === "none";
+  // The trail core takes the preset's stroke in the same proportion of the plot as the flat path.
+  const trail = useMemo<Series3DTrail | null>(
+    () =>
+      chart.type === "line" && surface.lineFinish === "trail"
+        ? {
+            reach: chartTrailReach(look.strokeFraction * look.strokeWidthScale * space.unit),
+            travel: surface.threed.trailDepth * space.unit,
+            background: theme.colors.background,
+          }
+        : null,
+    [chart.type, surface, look, space.unit, theme.colors.background],
+  );
   const cornerRadius = Math.min(
     1,
     Math.max(0, chart.style.cornerRadius * surface.cornerRadiusScale),
@@ -77,22 +92,24 @@ export function Chart3D(props: Chart3DProps) {
 
   return (
     <group>
-      <ChartStage3D
-        layout={layout}
-        space={space}
-        floor={!pie && stageFloorY === null && surface.threed.floorShadow}
-        floorColour={floorColour}
-        gridColour={gridColour}
-        wallGrid={surface.threed.wallGrid && surface.gridStyleWeight > 0}
-        dash={{ length: look.dashFraction, gap: look.dashGapFraction }}
-        opacity={opacity}
-        shadows={shadows}
-      />
+      {!bare && (
+        <ChartStage3D
+          layout={layout}
+          space={space}
+          floor={!pie && stageFloorY === null && surface.threed.floorShadow}
+          floorColour={floorColour}
+          gridColour={gridColour}
+          wallGrid={surface.threed.wallGrid && surface.gridStyleWeight > 0}
+          dash={{ length: look.dashFraction, gap: look.dashGapFraction }}
+          opacity={opacity}
+          shadows={shadows}
+        />
+      )}
       {BAR_TYPES.includes(chart.type) && (
         <Bars3D layout={layout} space={space} cornerRadius={cornerRadius} {...marks} />
       )}
       {chart.type === "line" && (
-        <Series3D layout={layout} space={space} filled={false} {...marks} />
+        <Series3D layout={layout} space={space} filled={false} trail={trail} {...marks} />
       )}
       {AREA_TYPES.includes(chart.type) && (
         <Series3D layout={layout} space={space} filled {...marks} />
@@ -100,18 +117,20 @@ export function Chart3D(props: Chart3DProps) {
       {pie && layout.pie && (
         <Pie3D pie={layout.pie} space={space} pieGap={look.pieGap} {...marks} />
       )}
-      <ChartText3D
-        chart={chart}
-        layout={layout}
-        space={space}
-        colours={colours}
-        textColour={theme.colors.text}
-        mutedColour={tickColour}
-        legendChrome={surface.legendChrome}
-        bold={surface.fontEmphasis === "headline"}
-        reveal={reveal}
-        opacity={opacity}
-      />
+      {!bare && (
+        <ChartText3D
+          chart={chart}
+          layout={layout}
+          space={space}
+          colours={colours}
+          textColour={theme.colors.text}
+          mutedColour={tickColour}
+          legendChrome={surface.legendChrome}
+          bold={surface.fontEmphasis === "headline"}
+          reveal={reveal}
+          opacity={opacity}
+        />
+      )}
     </group>
   );
 }

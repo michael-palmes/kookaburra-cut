@@ -35,7 +35,9 @@ the user's own Cancel.
   memory, and the error names the frame, scene and render rate. Don't change the project to
   work around it and don't rerun as is: ask the user to quit and reopen Kookaburra Cut, then
   rerun. `exports/<name>.health.json` keeps the details; `./kb status` shows the editor's memory
-  and says when it has reloaded (any reload means restart before a long export).
+  and says when it has reloaded (any reload means restart before a long export). A locked
+  screen or a sleeping display does the same about a minute into a large film, because macOS
+  gives a hidden window far less memory: ask the user to keep the Mac unlocked and awake.
 - Every export saves a record kb reads back, so `./kb verify-export` knows what was asked for.
 - Never record a baseline or compare hashes from `./kb export` against the app's own: a
   headless run and the editor may differ at glyph edges.
@@ -53,6 +55,9 @@ the user's own Cancel.
 ./kb verify --last                           the last verdict, exiting with its code
 ```
 
+- Build with frames and spans (`./kb capture`, `./kb preview --range`, the ranged check) and
+  keep `./kb export` for the finished film: exports run one at a time on a Mac, and
+  `supersample` multiplies their time (a 60 s 4K film at 16 took about half an hour).
 - The ranged check renders the span in the running app at 360p and 30 fps through the export
   path and runs the export's own flash detector. The editor stays usable. Check each bright
   or fast moment as you make it (fly-throughs, flashes of white, cuts on the beat); polishing
@@ -73,7 +78,7 @@ the user's own Cancel.
 ./kb verify-export exports/<name>.mp4               size, rate, frames, audio, loudness, flashes, swatches, a contact sheet
 ./kb verify-export exports/<name>.mp4 --loudness-target -14
 ./kb check film --file exports/<name>.mp4           flashes, colour, handoffs and pacing on the real film
-./kb check film pacing                              static: words per second, long still stretches, very short scenes
+./kb check film pacing                              static: reading time, still stretches against the song, very short scenes
 ./kb verify --film                                  a 720p 30 fps draft (kept in .kb/verify/, never exports/), then every film check on it
 ./kb sync-check exports/<name>.mp4                  each cut against its nearest beat, in ms (--bpm N [--offset MS] without music)
 ```
@@ -87,10 +92,23 @@ the user's own Cancel.
   The film's last scene never counts as short: the end holds.
 - `check film colour` warns when effects tone-map flat colours (reference/gotchas.md). It
   reads corners at each scene's settled moment, and skips a corner a device covers.
-- `check film pacing` counts only words above label size (card labels and eyebrows are left
-  out), aims for about 3 a second (and reports words per beat with a beat grid), and flags
-  stretches over 6 s with no motion: keyed moves or TSX animation, or with `--file` frame
-  differences on the film.
+- `check film pacing` holds the film to DESIGN.md's pacing against the song's parts: each
+  scene's words above label size against their reading time (0.2 s a word and 0.6 s a
+  line, to the beat; card labels and eyebrows left out), every stretch where nothing new
+  appears against its part's pulse (a bar in quiet parts, half a bar in peaks, never past
+  2.4 s, a bar after the final hit, 2 s with no song), the payoff against the final hit,
+  and scenes under 334 ms. Statically it sees cuts, keys and kicks (a compare sweep and a
+  screenshot stack's animation too), TSX that drives motion, and playing videos (device
+  screens, `media`, a video background, `VideoClip`, `VideoWindow`); it can't see lines
+  landing through text animation. `--file` measures the film itself (a slow drift or a
+  looping background is not a change), so check the export.
+- Pacing warnings are advice and the person decides. Each warning line starts with its id
+  and the scene it is keyed to. When they keep something it flags,
+  `./kb pacing accept ID --why "..."` keeps that warning with their reason, and later
+  checks list it as kept. `./kb pacing accept S --kind still --why "..."` does the same by
+  scene and kind (`still`, `read`, `short`, `final-hit` or `end`); a scene with no `--kind`
+  keeps only the kinds open on it in the last check. `./kb pacing` lists them;
+  `./kb pacing forget ID` drops one.
 - `sync-check` times cuts and big picture changes as a player shows them, poster frame
   taken off. 0 to one frame late (33 ms at 30 fps, 17 at 60) is the frame grid: a cut on a
   beat shows on the first frame at or after it. Never nudge the beat grid to close that; a

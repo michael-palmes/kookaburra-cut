@@ -335,6 +335,14 @@
         "doc": "0..1, multiplied into every fade (default 1)."
       },
       {
+        "name": "emphasisAt",
+        "type": "number",
+        "required": false,
+        "default": "when the line has landed",
+        "units": "ms",
+        "doc": "Scene ms a shaped emphasis (`textStyle.<key>Emphasis` ending in `pill` or `battery`) starts drawing on; default when the line has landed."
+      },
+      {
         "name": "stagger",
         "type": "\"char\" | \"word\"",
         "required": false,
@@ -540,7 +548,7 @@
   },
   "AnimatedHeadlineProps": {
     "kind": "type",
-    "signature": "interface AnimatedHeadlineProps { text: string; from?: number; to?: number; preset?: TextPresetName; outPreset?: TextPresetName; outAt?: number; outDurationMs?: number; hitAt?: number; opacity?: number; stagger?: \"char\" | \"word\"; staggerMs?: number; delayMs?: number; durationMs?: number | \"authored\"; startScale?: number; shine?: boolean; direction?: TextDirection; buildShiftEm?: number; delivery?: TextDelivery; ease?: EaseName; face?: \"headline\" | \"body\"; color?: \"text\" | \"muted\" | \"accent\" | (string & {}); textKey?: string; styleKey?: string; motionKey?: string; defaultColor?: \"text\" | \"muted\" | \"accent\" | (string & {}); position?: V3; fontSize?: number; fontRef?: FontRef; textAlign?: \"left\" | \"center\" | \"right\"; anchorX?: \"left\" | \"center\" | \"right\"; anchorY?: \"top\" | \"middle\" | \"bottom\"; maxWidth?: number; fit?: \"width\"; depth?: boolean | HeadlineDepth; lineHeight?: number; managedTextRole?: ManagedTextRenderRole; managedTextCodedMotion?: TextAnimationSpec; look?: string; lookParams?: Partial<TextLookSpec>; }"
+    "signature": "interface AnimatedHeadlineProps { text: string; from?: number; to?: number; preset?: TextPresetName; outPreset?: TextPresetName; outAt?: number; outDurationMs?: number; hitAt?: number; opacity?: number; emphasisAt?: number; stagger?: \"char\" | \"word\"; staggerMs?: number; delayMs?: number; durationMs?: number | \"authored\"; startScale?: number; shine?: boolean; direction?: TextDirection; buildShiftEm?: number; delivery?: TextDelivery; ease?: EaseName; face?: \"headline\" | \"body\"; color?: \"text\" | \"muted\" | \"accent\" | (string & {}); textKey?: string; styleKey?: string; motionKey?: string; defaultColor?: \"text\" | \"muted\" | \"accent\" | (string & {}); position?: V3; fontSize?: number; fontRef?: FontRef; textAlign?: \"left\" | \"center\" | \"right\"; anchorX?: \"left\" | \"center\" | \"right\"; anchorY?: \"top\" | \"middle\" | \"bottom\"; maxWidth?: number; fit?: \"width\"; depth?: boolean | HeadlineDepth; lineHeight?: number; managedTextRole?: ManagedTextRenderRole; managedTextCodedMotion?: TextAnimationSpec; look?: string; lookParams?: Partial<TextLookSpec>; }"
   },
   "BeatGrid": {
     "kind": "type",
@@ -974,6 +982,11 @@
     "summary": "Every catalogue device id.",
     "signature": "const DEVICE_IDS: DeviceId[];"
   },
+  "DOT_ORDERS": {
+    "kind": "constant",
+    "summary": "The orders a DotField count or reveal walks: reading, rows-up, ...",
+    "signature": "const DOT_ORDERS: readonly DotOrder[];"
+  },
   "DashedBracket": {
     "kind": "component",
     "summary": "Dashed bracket over a span: span, depth, side top|bottom|left|right, plus the DashedRule style; progress draws out from the middle.",
@@ -1303,6 +1316,12 @@
         "doc": "Motion blur override; absent inherits the scene's Objects switch."
       },
       {
+        "name": "finish",
+        "type": "DeviceFinish",
+        "required": false,
+        "doc": "Opt-in hero finish for the body (a preset id or a spec); absent keeps the glb's materials."
+      },
+      {
         "name": "children",
         "type": "ReactNode",
         "required": false,
@@ -1397,7 +1416,7 @@
   },
   "DeviceProps": {
     "kind": "type",
-    "signature": "interface DeviceProps { id?: string; model: DeviceId; colour?: string; media?: DeviceMediaSpec; coverMedia?: DeviceMediaSpec; placement?: DevicePlacement; motion?: DeviceMotionSpec; shadow?: DeviceShadowMode; lit?: boolean; lidDeg?: number; foldDeg?: number; bothScreensOn?: boolean; foldTransition?: DeviceFoldTransitionSpec; motionBlur?: MotionBlurOverride; children?: ReactNode; }"
+    "signature": "interface DeviceProps { id?: string; model: DeviceId; colour?: string; media?: DeviceMediaSpec; coverMedia?: DeviceMediaSpec; placement?: DevicePlacement; motion?: DeviceMotionSpec; shadow?: DeviceShadowMode; lit?: boolean; lidDeg?: number; foldDeg?: number; bothScreensOn?: boolean; foldTransition?: DeviceFoldTransitionSpec; motionBlur?: MotionBlurOverride; finish?: DeviceFinish; children?: ReactNode; }"
   },
   "DeviceScreen": {
     "kind": "type",
@@ -1457,6 +1476,10 @@
     "signature": "interface DeviceScreenHinge { display?: DeviceScreenDisplay; lidDeg?: number; foldDeg?: number; }",
     "doc": "The hinge pose a point is read at; absent angles take the device's defaults."
   },
+  "DeviceScreenPointOptions": {
+    "kind": "type",
+    "signature": "interface DeviceScreenPointOptions { lift?: number; display?: DeviceScreenDisplay; }"
+  },
   "DeviceScreenPose": {
     "kind": "type",
     "signature": "interface DeviceScreenPose extends DeviceScreenHinge { position: V3; rotationDeg?: V3; scale?: number; }",
@@ -1467,6 +1490,11 @@
     "signature": "interface DeviceScreenRect { width: number; height: number; centre: [number, number]; z: number; cornerRadius: number; frame?: { lidDeg?: number; foldDeg?: number }; }",
     "doc": "Where a display's media sits, measured off the glb (`screenGeometry.ts`) in the frame `Device` renders in at placement scale 1 (recentred and fitted). UV (0, 0) is the top-left corner, u runs right and v down."
   },
+  "DeviceScreenSample": {
+    "kind": "type",
+    "signature": "interface DeviceScreenSample { position: V3; rotation: V3; scale: number; }",
+    "doc": "A screen point this frame: where it is, how its display is turned, and the world size of one fitted unit."
+  },
   "DeviceShadowMode": {
     "kind": "type",
     "signature": "type DeviceShadowMode = | \"soft\" | \"long\" | \"sun\" | \"studio\" | \"overhead\" | \"drop\" | \"backlight\" | \"feather\" | \"window\" | \"wetfloor\" | \"none\";",
@@ -1475,6 +1503,214 @@
   "DeviceSpec": {
     "kind": "type",
     "signature": "interface DeviceSpec { id: DeviceId; name: string; form: DeviceForm; glbUrl: string; screen: DeviceScreenSpec; coverScreen?: DeviceScreenSpec; colours: DeviceColourSpec[]; defaultColour: string; previews: Record<string, string>; fit?: DeviceFitSpec; layoutWidth: number; fittedHeight: number; shadow: DeviceShadowSpec; lid?: { node: string; openDeg: number; defaultDeg: number; pivot?: V3 }; fold?: DeviceFoldSpec; }"
+  },
+  "DotAdjust": {
+    "kind": "type",
+    "signature": "interface DotAdjust { offset?: readonly [number, number]; scale?: number; alpha?: number; }",
+    "doc": "What the per-dot callback may change."
+  },
+  "DotCount": {
+    "kind": "type",
+    "signature": "interface DotCount { value: number; color?: string; order?: DotOrder; seed?: number; }",
+    "doc": "A run of dots recoloured in order: `value` dots (fractional values blend the next one) take `color`. Several runs stack one after another."
+  },
+  "DotField": {
+    "kind": "component",
+    "summary": "Grid or waffle of dots in one draw: reveal, wave, window, count, funnel, gather, merge, fill.",
+    "signature": "function DotField(props: DotFieldProps): ReactElement;",
+    "doc": "Hundreds of dots in ONE instanced draw, laid out as a grid or waffle, each dot's size, place and colour a pure function of the authored fields: a pop-in, a halftone wave, a window that clears for a hero number, counts recolouring dots in order as a counter rolls, a funnel, a gather into one dot and a merge into a solid tile. Flat and colour-exact like `RoundedRect`, or filled with the fluid gradient. Drive every field from `useTimeline()`; the field itself reads no clock.",
+    "props": [
+      {
+        "name": "columns",
+        "type": "number",
+        "required": false,
+        "default": "10",
+        "doc": "Dots across (default 10)."
+      },
+      {
+        "name": "rows",
+        "type": "number",
+        "required": false,
+        "default": "10",
+        "doc": "Dots down (default 10)."
+      },
+      {
+        "name": "pitch",
+        "type": "number | readonly [number, number]",
+        "required": false,
+        "default": "0.3",
+        "units": "world units",
+        "doc": "Centre-to-centre spacing in world units, or [across, down] (default 0.3)."
+      },
+      {
+        "name": "size",
+        "type": "number",
+        "required": false,
+        "default": "0.72",
+        "doc": "Dot diameter as a fraction of the pitch (default 0.72)."
+      },
+      {
+        "name": "shape",
+        "type": "\"circle\" | \"square\"",
+        "required": false,
+        "default": "\"circle\"",
+        "doc": "\"circle\" (default) or \"square\", a waffle cell."
+      },
+      {
+        "name": "roundness",
+        "type": "number",
+        "required": false,
+        "default": "0.25",
+        "units": "0..1",
+        "doc": "A square's corner radius, 0..1 of half its side (default 0.25)."
+      },
+      {
+        "name": "color",
+        "type": "string",
+        "required": false,
+        "default": "text",
+        "doc": "Theme token (`text`, `muted`, `accent`, `background`) or hex (default `text`)."
+      },
+      {
+        "name": "fill",
+        "type": "FluidFill | boolean",
+        "required": false,
+        "doc": "A fluid gradient instead of the flat colour, sampled in screen space so the dots and any filled `RoundedRect` share one gradient; `true` takes colours from the theme accent."
+      },
+      {
+        "name": "opacity",
+        "type": "number",
+        "required": false,
+        "default": "1"
+      },
+      {
+        "name": "reveal",
+        "type": "DotReveal",
+        "required": false,
+        "doc": "Dots pop in one by one."
+      },
+      {
+        "name": "wave",
+        "type": "DotWave",
+        "required": false,
+        "doc": "A travelling wave of dot sizes."
+      },
+      {
+        "name": "window",
+        "type": "DotWindow",
+        "required": false,
+        "doc": "A clearing that opens for a hero number."
+      },
+      {
+        "name": "count",
+        "type": "DotCount | readonly DotCount[]",
+        "required": false,
+        "doc": "Dots recoloured in order as a value rolls: one run, or several stacked."
+      },
+      {
+        "name": "funnel",
+        "type": "DotFunnel",
+        "required": false,
+        "doc": "Columns narrowing into an arrow."
+      },
+      {
+        "name": "gather",
+        "type": "DotGather",
+        "required": false,
+        "doc": "Every dot drawn into one."
+      },
+      {
+        "name": "merge",
+        "type": "number",
+        "required": false,
+        "default": "0",
+        "units": "0..1",
+        "doc": "0..1: the dots swell and merge into one solid tile covering the grid (displaced dots return home first)."
+      },
+      {
+        "name": "tileRadius",
+        "type": "number",
+        "required": false,
+        "default": "half the pitch",
+        "units": "world units",
+        "doc": "The merged tile's corner radius, world units (default half the pitch)."
+      },
+      {
+        "name": "dot",
+        "type": "(info: DotInfo) => DotAdjust | undefined",
+        "required": false,
+        "doc": "Per-dot adjustment, called for every dot every frame: keep it a pure function of its argument and the clock."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]"
+      },
+      {
+        "name": "rotation",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]",
+        "doc": "Radians."
+      },
+      {
+        "name": "scale",
+        "type": "number",
+        "required": false,
+        "default": "1"
+      },
+      {
+        "name": "renderOrder",
+        "type": "number",
+        "required": false,
+        "default": "0"
+      }
+    ],
+    "example": "<DotField columns={10} rows={10} pitch={0.26} reveal={{ progress: ramp(localMs, 0, 900) }} count={{ value: 40 * ramp(localMs, 1200, 2950, \"outCubic\"), order: \"rows-up\" }} />",
+    "timing": [
+      "The field reads no clock: every progress, phase and value is a number the scene derives from useTimeline(), so put each on a beat with ramp and keep a count on its counter's own window and ease.",
+      "merge closes every gap at once and pulls displaced dots home over its first half; gather's last stretch hands the final dot's edge to the dot nearest its point."
+    ]
+  },
+  "DotFieldProps": {
+    "kind": "type",
+    "signature": "interface DotFieldProps { columns?: number; rows?: number; pitch?: number | readonly [number, number]; size?: number; shape?: \"circle\" | \"square\"; roundness?: number; color?: string; fill?: FluidFill | boolean; opacity?: number; reveal?: DotReveal; wave?: DotWave; window?: DotWindow; count?: DotCount | readonly DotCount[]; funnel?: DotFunnel; gather?: DotGather; merge?: number; tileRadius?: number; dot?: (info: DotInfo) => DotAdjust | undefined; position?: V3; rotation?: V3; scale?: number; renderOrder?: number; }"
+  },
+  "DotFunnel": {
+    "kind": "type",
+    "signature": "interface DotFunnel { progress: number; to?: number; stagger?: number; }",
+    "doc": "Columns narrowing into an arrow: each column keeps fewer slots than the one before and the extra dots stack onto them."
+  },
+  "DotGather": {
+    "kind": "type",
+    "signature": "interface DotGather { progress: number; to?: readonly [number, number]; size?: number; }",
+    "doc": "Every dot drawn to one point, merging into one dot."
+  },
+  "DotInfo": {
+    "kind": "type",
+    "signature": "interface DotInfo { index: number; col: number; row: number; x: number; y: number; radius: number; alpha: number; }",
+    "doc": "What the per-dot callback sees: the dot after the reveal, wave, window and funnel."
+  },
+  "DotOrder": {
+    "kind": "type",
+    "signature": "type DotOrder = \"reading\" | \"rows-up\" | \"columns\" | \"centre\" | \"random\";",
+    "doc": "Which dot goes first: `reading` (left to right, top row down), `rows-up` (left to right, bottom row up, the waffle-chart fill), `columns` (top to bottom, left column first), `centre` (nearest the middle first) or `random` (seeded)."
+  },
+  "DotReveal": {
+    "kind": "type",
+    "signature": "interface DotReveal { progress: number; order?: DotOrder; seed?: number; span?: number; overshoot?: number; }",
+    "doc": "Dots popping in one after another."
+  },
+  "DotWave": {
+    "kind": "type",
+    "signature": "interface DotWave { amount?: number; angleDeg?: number; wavelength?: number; phase?: number; min?: number; }",
+    "doc": "A travelling wave of dot sizes (the halftone wave)."
+  },
+  "DotWindow": {
+    "kind": "type",
+    "signature": "interface DotWindow { open: number; radius?: number; softness?: number; centre?: readonly [number, number]; roundness?: number; ripple?: number; }",
+    "doc": "A clearing that opens from a point: the dots there shrink away, the nearest first, leaving a window for a hero number."
   },
   "EASE_NAMES": {
     "kind": "constant",
@@ -1584,6 +1820,11 @@
     "summary": "android: what unknown or unavailable models render as.",
     "signature": "const FALLBACK_DEVICE_ID: DeviceId;"
   },
+  "FluidFill": {
+    "kind": "type",
+    "signature": "interface FluidFill { shader?: string; colors?: readonly string[]; params?: Readonly<Record<string, number>>; speed?: number; scale?: number; }",
+    "doc": "A fluid fill for `RoundedRect`, `Pill` and `DotField`. Every field is optional: `true` (or `{}`) is the mesh gradient in colours drawn from the theme accent."
+  },
   "FormatInfo": {
     "kind": "type",
     "signature": "interface FormatInfo { width: number; height: number; aspect: number; shape: FormatShape; frame: { width: number; height: number }; safe: { top: number; right: number; bottom: number; left: number }; }"
@@ -1592,6 +1833,11 @@
     "kind": "type",
     "signature": "type FormatShape = \"wide\" | \"square\" | \"tall\";",
     "doc": "How a frame reads for layout, from `FormatInfo.aspect`: \"wide\" at 1.2 and up (16:9, 3:2, 5:4), \"tall\" at 0.85 and below (9:16, 2:3, 4:5, phone), \"square\" between (1:1)."
+  },
+  "GlyphBox": {
+    "kind": "type",
+    "signature": "interface GlyphBox { text: string; index: number; line: number; x: number; width: number; baseline: number; capHeight: number; ink: readonly [number, number, number, number] | null; }",
+    "doc": "One glyph of a measured block, in the text's own space: world units from its `position` under the measured anchors, y up."
   },
   "Gradient": {
     "kind": "component",
@@ -1892,7 +2138,7 @@
   },
   "MeasureTextOptions": {
     "kind": "type",
-    "signature": "interface MeasureTextOptions { font: FontRef | string; fontSize: number; letterSpacing?: number; lineHeight?: number; }"
+    "signature": "interface MeasureTextOptions { font: FontRef | string; fontSize: number; letterSpacing?: number; lineHeight?: number; anchorX?: \"left\" | \"center\" | \"right\"; anchorY?: \"top\" | \"middle\" | \"bottom\"; textAlign?: \"left\" | \"center\" | \"right\"; }"
   },
   "MeasuredText": {
     "kind": "type",
@@ -2010,7 +2256,7 @@
   },
   "Pill": {
     "kind": "component",
-    "summary": "RoundedRect with fully round ends: width, height, color, opacity, stroke.",
+    "summary": "RoundedRect with fully round ends: width, height, color, opacity, stroke, fill.",
     "signature": "function Pill(props: PillProps): ReactElement;",
     "doc": "A RoundedRect whose radius is half the shorter side.",
     "props": [
@@ -2057,6 +2303,12 @@
         "doc": "Border colour; defaults to the theme text colour."
       },
       {
+        "name": "fill",
+        "type": "FluidFill | boolean",
+        "required": false,
+        "doc": "A fluid gradient fill sampled in screen space, so several shapes look through one gradient; `true` takes colours from the theme accent. Replaces `color`."
+      },
+      {
         "name": "position",
         "type": "V3",
         "required": false,
@@ -2086,7 +2338,7 @@
   },
   "PillProps": {
     "kind": "type",
-    "signature": "interface PillProps { width: number; height: number; color?: string; opacity?: number; strokeWidth?: number; strokeColor?: string; position?: V3; rotation?: V3; scale?: number | V3; renderOrder?: number; }"
+    "signature": "interface PillProps { width: number; height: number; color?: string; opacity?: number; strokeWidth?: number; strokeColor?: string; fill?: FluidFill | boolean; position?: V3; rotation?: V3; scale?: number | V3; renderOrder?: number; }"
   },
   "PlacedObjectProps": {
     "kind": "type",
@@ -2193,6 +2445,10 @@
     "kind": "type",
     "signature": "interface PulseOptions { attackMs?: number; holdMs?: number; releaseMs: number; ease?: EaseName | ((t: number) => number); }",
     "doc": "One pulse's shape in ms: rise over `attackMs` (default 0, a snap), hold for `holdMs` (default 0), fall over `releaseMs`; `ease` (default `\"outQuad\"`) shapes both ramps."
+  },
+  "RegionLiftTiming": {
+    "kind": "type",
+    "signature": "interface RegionLiftTiming { at?: number; durationMs?: number; ease?: string; outAt?: number; outDurationMs?: number; }"
   },
   "ResolvedChart": {
     "kind": "type",
@@ -2362,9 +2618,9 @@
   },
   "RoundedRect": {
     "kind": "component",
-    "summary": "Flat, colour-exact rounded rect: width, height, radius, color, opacity, stroke.",
+    "summary": "Flat, colour-exact rounded rect: width, height, radius, color, opacity, stroke; fill for a fluid gradient.",
     "signature": "function RoundedRect(props: RoundedRectProps): ReactElement;",
-    "doc": "An unlit, antialiased rounded rectangle with an optional border ring; colour-exact like ImageCard, and size, radius and colours animate without rebuilding geometry.",
+    "doc": "An unlit, antialiased rounded rectangle with an optional border ring; colour-exact like ImageCard, and size, radius and colours animate without rebuilding geometry. With `fill` it shows a fluid gradient instead of a flat colour.",
     "props": [
       {
         "name": "radius",
@@ -2415,6 +2671,12 @@
         "required": false,
         "default": "the theme text colour",
         "doc": "Border colour; defaults to the theme text colour."
+      },
+      {
+        "name": "fill",
+        "type": "FluidFill | boolean",
+        "required": false,
+        "doc": "A fluid gradient fill sampled in screen space, so several shapes look through one gradient; `true` takes colours from the theme accent. Replaces `color`."
       },
       {
         "name": "position",
@@ -2511,7 +2773,7 @@
         "type": "number",
         "required": false,
         "default": "−1.5",
-        "doc": "Stage floor height for a floor backdrop (world y; default −1.5)."
+        "doc": "Stage floor height for a floor or satin backdrop (world y; default −1.5)."
       }
     ],
     "example": "<SceneStage />"
@@ -2525,6 +2787,10 @@
     "kind": "type",
     "signature": "interface SceneTime { localMs: number; globalMs: number; progress: number; }",
     "doc": "Time exposed to a scene, all derived purely from the global clock."
+  },
+  "ScreenFillOptions": {
+    "kind": "type",
+    "signature": "interface ScreenFillOptions { fovDeg?: number; aspect?: number; overscan?: number; }"
   },
   "ScreenFillProps": {
     "kind": "type",
@@ -2559,6 +2825,152 @@
   "ScreenLayerProps": {
     "kind": "type",
     "signature": "interface ScreenLayerProps { order?: \"front\" | \"back\"; children?: ReactNode; }"
+  },
+  "ScreenRegion": {
+    "kind": "component",
+    "summary": "Child of Device: lifts a rect of its own screen towards the camera with a soft shadow, or variant lens magnifies a point.",
+    "signature": "function ScreenRegion(props: ScreenRegionProps): ReactElement | null;",
+    "doc": "Lifts part of the parent `Device`'s own display towards the camera, a card with a soft shadow on the glass, or a round lens that magnifies a point: the control that matters rising out of the screen, then settling back. It samples the texture the display shows this frame (video or still), so it never adds a decode. A child of `Device`, like `DeviceScreenAnchor`.",
+    "props": [
+      {
+        "name": "rect",
+        "type": "ScreenUvRect",
+        "required": false,
+        "default": "[0.1, 0.4, 0.9, 0.5]",
+        "doc": "The card's display rectangle, `[u0, v0, u1, v1]` (u right, v down from the top-left)."
+      },
+      {
+        "name": "variant",
+        "type": "\"card\" | \"lens\"",
+        "required": false,
+        "default": "\"card\"",
+        "doc": "`\"lens\"`: a round magnifier over `centre` instead of a card."
+      },
+      {
+        "name": "centre",
+        "type": "[number, number]",
+        "required": false,
+        "default": "the centre",
+        "doc": "Lens: the display point it magnifies (default the centre)."
+      },
+      {
+        "name": "radius",
+        "type": "number",
+        "required": false,
+        "default": "0.32",
+        "doc": "Lens radius in fitted units (default 0.32; a phone display is about 1.15 wide)."
+      },
+      {
+        "name": "zoom",
+        "type": "number",
+        "required": false,
+        "default": "2",
+        "doc": "Lens magnification (default 2)."
+      },
+      {
+        "name": "lift",
+        "type": "number",
+        "required": false,
+        "default": "0.35 for a card",
+        "doc": "How far it rises off the glass at full lift, in fitted units (default 0.35 for a card, 0.22 for a lens)."
+      },
+      {
+        "name": "scale",
+        "type": "number",
+        "required": false,
+        "default": "1.12 for a card",
+        "doc": "Size at full lift (default 1.12 for a card, 1 for a lens)."
+      },
+      {
+        "name": "offset",
+        "type": "[number, number]",
+        "required": false,
+        "default": "none",
+        "doc": "Slide across the display at full lift, `[x, y]` in fitted units (default none)."
+      },
+      {
+        "name": "cornerRadius",
+        "type": "number",
+        "required": false,
+        "default": "22% of the short side",
+        "doc": "Card corner radius in fitted units (default 22% of the short side)."
+      },
+      {
+        "name": "shadow",
+        "type": "number",
+        "required": false,
+        "default": "0.35",
+        "doc": "Shadow strength at full lift, 0 to 1 (default 0.35): on the glass under it, and a softer one round its own edge."
+      },
+      {
+        "name": "rimColour",
+        "type": "string",
+        "required": false,
+        "default": "the theme's text colour",
+        "doc": "Lens rim colour (default the theme's text colour)."
+      },
+      {
+        "name": "display",
+        "type": "DeviceScreenDisplay",
+        "required": false,
+        "default": "\"main\"",
+        "doc": "A foldable's display (default `\"main\"`, the inside one)."
+      },
+      {
+        "name": "glassEdge",
+        "type": "number",
+        "required": false,
+        "doc": "Card only: render it as glass with a bevel this wide (fitted units), lit by the scene's environment; absent keeps the flat card."
+      },
+      {
+        "name": "at",
+        "type": "number",
+        "required": false,
+        "default": "0",
+        "units": "ms",
+        "doc": "Scene ms the lift starts (default 0)."
+      },
+      {
+        "name": "durationMs",
+        "type": "number",
+        "required": false,
+        "default": "600",
+        "units": "ms",
+        "doc": "Lift length in ms (default 600)."
+      },
+      {
+        "name": "ease",
+        "type": "string",
+        "required": false,
+        "default": "outCubic",
+        "doc": "Both ways (default `outCubic`, so it lands softly too)."
+      },
+      {
+        "name": "outAt",
+        "type": "number",
+        "required": false,
+        "units": "ms",
+        "doc": "Scene ms it starts settling back onto the glass; absent stays up."
+      },
+      {
+        "name": "outDurationMs",
+        "type": "number",
+        "required": false,
+        "default": "durationMs",
+        "units": "ms",
+        "doc": "Settle length in ms (default `durationMs`)."
+      }
+    ],
+    "example": "<ScreenRegion />"
+  },
+  "ScreenRegionProps": {
+    "kind": "type",
+    "signature": "interface ScreenRegionProps extends RegionLiftTiming { rect?: ScreenUvRect; variant?: \"card\" | \"lens\"; centre?: [number, number]; radius?: number; zoom?: number; lift?: number; scale?: number; offset?: [number, number]; cornerRadius?: number; shadow?: number; rimColour?: string; display?: DeviceScreenDisplay; glassEdge?: number; }"
+  },
+  "ScreenUvRect": {
+    "kind": "type",
+    "signature": "type ScreenUvRect = [number, number, number, number];",
+    "doc": "A display rectangle in screen UV, `[u0, v0, u1, v1]`: u runs right and v down from the top-left."
   },
   "Scrim": {
     "kind": "component",
@@ -2865,6 +3277,31 @@
     "kind": "type",
     "signature": "interface StampScaleOptions { from?: number; peak?: number; inMs?: number; settleMs?: number; }"
   },
+  "SteppedTime": {
+    "kind": "component",
+    "summary": "SteppedTime fps: its subtree's time steps at a whole fps (12 is the hand-made look) while the camera moves every frame.",
+    "signature": "function SteppedTime(props: { fps?: number; children: ReactNode }): ReactElement;",
+    "doc": "Steps its subtree's time at a whole `fps` (default 12, the hand-made look), counted from the scene's first frame: every pose holds for whole frames while the camera, and anything outside, moves every frame. 60 or more runs every frame.",
+    "props": [
+      {
+        "name": "fps",
+        "type": "number",
+        "required": false,
+        "default": "12"
+      },
+      {
+        "name": "children",
+        "type": "ReactNode",
+        "required": true
+      }
+    ],
+    "example": "<SteppedTime fps={12}><AnimatedHeadline text={title} preset=\"fade-up\" /></SteppedTime>",
+    "timing": [
+      "Steps count whole frames from the scene's first frame: 12 fps holds each pose 5 frames at 60 fps, and every frame of a step shows that step's first frame exactly.",
+      "A 30 fps export can't split 12 fps evenly, so poses alternate 3 and 2 frames there (10 and 15 fps stay even). The camera, and anything outside, moves every frame; fps 60 runs every frame, so a nested one opts a child out.",
+      "Motion blur smears a held pose around its own instant, never into the next step."
+    ]
+  },
   "TEXT_PRESET_NAMES": {
     "kind": "constant",
     "summary": "Every text motion preset name.",
@@ -2926,13 +3363,13 @@
   },
   "TextMetrics": {
     "kind": "type",
-    "signature": "interface TextMetrics { width: number; height: number; ascent: number; descent: number; lines: number; }",
+    "signature": "interface TextMetrics { width: number; height: number; ascent: number; descent: number; lines: number; glyphs: GlyphBox[]; }",
     "doc": "A typeset block in world units: `ascent` runs from the block top to the first baseline and `descent` from the last baseline to the block bottom, so one line has `ascent + descent === height`."
   },
   "TextMetricsOptions": {
     "kind": "type",
-    "signature": "interface TextMetricsOptions { fontSize?: number; face?: \"headline\" | \"body\"; fontRef?: FontRef; lineHeight?: number; letterSpacing?: number; styleKey?: string; }",
-    "doc": "The AnimatedHeadline props that shape the measured block; pass the same values the headline gets."
+    "signature": "interface TextMetricsOptions { fontSize?: number; face?: \"headline\" | \"body\"; fontRef?: FontRef; lineHeight?: number; letterSpacing?: number; styleKey?: string; anchorX?: \"left\" | \"center\" | \"right\"; anchorY?: \"top\" | \"middle\" | \"bottom\"; textAlign?: \"left\" | \"center\" | \"right\"; }",
+    "doc": "The AnimatedHeadline props that shape the measured block; pass the same values the headline gets. The anchors and `textAlign` only place the glyph boxes."
   },
   "TextPresetName": {
     "kind": "type",
@@ -3050,6 +3487,11 @@
     "kind": "type",
     "signature": "interface TitleBlockProps { title: string; subtitle?: string; align?: SceneTextAlign; from?: number; to?: number; fontSize?: number; position?: V3; maxWidth?: number; titleColor?: \"text\" | \"muted\" | \"accent\" | (string & {}); subtitleColor?: \"text\" | \"muted\" | \"accent\" | (string & {}); subtitleDelayMs?: number; register?: boolean; managedTextRole?: ManagedTextRenderRole; icon?: string; }"
   },
+  "TrackedDevice": {
+    "kind": "type",
+    "signature": "interface TrackedDevice { id?: string; model: string; placement?: DevicePlacement; lidDeg?: number; foldDeg?: number; motionBlur?: MotionBlurOverride; }",
+    "doc": "A device as the scene hands it to `Device`: the same props, so the point lands where that device renders."
+  },
   "V3": {
     "kind": "type",
     "signature": "type V3 = [number, number, number];",
@@ -3057,7 +3499,7 @@
   },
   "VideoClip": {
     "kind": "component",
-    "summary": "Deterministic video plane (pre-extracted 60 fps frames).",
+    "summary": "Deterministic video plane (pre-extracted 60 fps frames); radius and opacity make it a card.",
     "signature": "function VideoClip(props: VideoClipProps): ReactElement;",
     "doc": "Embedded video clip: the ffmpeg sidecar pre-extracts the source to a CFR frame sequence, and frame selection is a pure function of the timeline (never `HTMLVideoElement` seeking) so preview and export pick the identical frame; the sampling/binding core lives in `engine/clipTexture.ts` (shared with the Device screen), and this primitive is the plane-mesh consumer, sized via `fit`. See docs/determinism.md.",
     "props": [
@@ -3073,6 +3515,13 @@
         "required": true,
         "units": "ms",
         "doc": "When the clip starts, in ms (local scene time)."
+      },
+      {
+        "name": "inMs",
+        "type": "number",
+        "required": false,
+        "units": "ms",
+        "doc": "Source ms shown at `startMs` (held before it), so a full-bleed clip can carry on a device screen's video; with it the clip shows every source frame exactly once."
       },
       {
         "name": "fit",
@@ -3092,13 +3541,30 @@
         "type": "number",
         "required": false,
         "default": "1"
+      },
+      {
+        "name": "radius",
+        "type": "number",
+        "required": false,
+        "doc": "Rounds the corners, as a fraction of the short edge (0 to 0.5), so a clip reads as a card."
+      },
+      {
+        "name": "opacity",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "units": "0..1",
+        "doc": "0..1 (default 1), so a card can fade as it rides a carousel."
       }
     ],
-    "example": "<VideoClip src=\"...\" startMs={1} />"
+    "example": "<VideoClip src=\"assets/clip.mp4\" startMs={0} scale={0.3} radius={0.06} opacity={0.8} position={[1.2, 0, 0]} />",
+    "timing": [
+      "Holds the first frame before startMs and the last after the end. radius is a fraction of the short edge; with radius or opacity set it draws as a card, blended and without a depth write."
+    ]
   },
   "VideoClipProps": {
     "kind": "type",
-    "signature": "interface VideoClipProps { src: string; startMs: number; fit?: \"cover\" | \"contain\"; position?: V3; scale?: number; }"
+    "signature": "interface VideoClipProps { src: string; startMs: number; inMs?: number; fit?: \"cover\" | \"contain\"; position?: V3; scale?: number; radius?: number; opacity?: number; }"
   },
   "VideoWindow": {
     "kind": "component",
@@ -3257,6 +3723,12 @@
     "kind": "type",
     "signature": "interface WireGridProps { size?: number; divisions?: number; amplitude?: number; wavelength?: number; speed?: number; tone?: \"text\" | \"accent\" | \"muted\"; opacity?: number; glow?: number; position?: V3; rotation?: V3; }"
   },
+  "accentFluidColours": {
+    "kind": "function",
+    "summary": "accentFluidColours(hex): the default fill's deep, mid and highlight shades of a colour.",
+    "signature": "function accentFluidColours(accent: string): string[];",
+    "doc": "Deep, mid, highlight and a hue-shifted shade of the theme accent: the cobalt-to-ice value material, in any brand colour."
+  },
   "clamp01": {
     "kind": "function",
     "summary": "clamp01(x): x clamped to 0..1.",
@@ -3374,7 +3846,7 @@
   },
   "measureText": {
     "kind": "function",
-    "summary": "measureText(text, { font, fontSize, letterSpacing?, lineHeight? }): { width, height, ascent, descent, lines } in world units, or null.",
+    "summary": "measureText(text, { font, fontSize, letterSpacing?, lineHeight?, anchorX?, anchorY?, textAlign? }): { width, height, ascent, descent, lines, glyphs } in world units, or null.",
     "signature": "function measureText(text: string, opts: MeasureTextOptions): TextMetrics | null;",
     "doc": "Metrics for one string; null until its face has been parsed."
   },
@@ -3423,6 +3895,12 @@
     "summary": "Samples a persistent-module keyframe track at globalMs.",
     "signature": "function sampleSharedTransform(track: SharedKeyframe[], globalMs: number): SharedTransform;",
     "doc": "Samples the morph track at a global time: linear interpolation between the surrounding keys that define each property, clamped outside the keyed range. Pure: same (track, t) → same transform, so preview and export agree by construction."
+  },
+  "screenFillPose": {
+    "kind": "function",
+    "summary": "screenFillPose(model, pose, { fovDeg }): the cameraRig pose that fills the frame with a device's screen.",
+    "signature": "function screenFillPose(model: string, pose: DeviceScreenPose, options?: ScreenFillOptions): SceneDocRigPose | null;",
+    "doc": "A rig pose square on to a device's display, close enough that the display covers the frame and rolled to the display's own up: the first key of a pull-out from inside a screen, or the last of a push into one. `pose` is the device as it renders (placement, layout and grounding, its scale times any multiplier the scene's TSX applies) and the maths reads the model this build renders, so the Android stand-in gets its own display. A point aim at the display's centre, since an object aim follows the device's origin, not its glass."
   },
   "screenUvToMediaPixel": {
     "kind": "function",
@@ -3486,6 +3964,12 @@
     "signature": "function useDeviceScreen(): DeviceScreen | null;",
     "doc": "Inside a `Device`: the screen it renders this frame, else null."
   },
+  "useDeviceScreenPoint": {
+    "kind": "hook",
+    "summary": "useDeviceScreenPoint(device, u, v): this frame's { position, rotation, scale } of a screen point on a moving device.",
+    "signature": "function useDeviceScreenPoint(device: TrackedDevice, u: number, v: number, options?: DeviceScreenPointOptions): DeviceScreenSample;",
+    "doc": "In a scene: where a point on one of its devices' displays is this frame, with the scene's device track and staged floor applied, for a match move into a moving screen. Pass the same props the scene hands that `Device`."
+  },
   "useFormat": {
     "kind": "hook",
     "summary": "{ width, height, aspect, shape, frame, safe }: frame and safe in world units at z=0, shape \"wide\", \"square\" or \"tall\".",
@@ -3501,6 +3985,22 @@
     "summary": "Lets a custom child join an AnimatedGroup's alpha and shine.",
     "signature": "function useGroupAnimation(): GroupAnimationState | null;",
     "doc": "The enclosing group's animation state, or null outside groups; the hook custom primitives use to participate (multiply `alpha` into your own opacity CPU-side)."
+  },
+  "useHeldLocalMs": {
+    "kind": "hook",
+    "summary": "useHeldLocalMs(localMs): the time pinned at the scene's Present hold; raw in video.",
+    "signature": "function useHeldLocalMs(rawLocalMs: number): number;",
+    "doc": "The scene-local time staged primitives animate from: the raw timeline unless this scene is held."
+  },
+  "usePresentTiming": {
+    "kind": "hook",
+    "summary": "usePresentTiming(toMs, outAtMs?): Present and automatic stills hold the scene once a set piece settles.",
+    "signature": "function usePresentTiming(toMs: number, outAtMs?: number): void;",
+    "doc": "Tells Present and the automatic stills when a hand-built set piece settles: the scene holds after `toMs` (scene-local) and before `outAtMs`, its outro. Drive the piece from `useHeldLocalMs` so it pauses there too. Video export never reads it.",
+    "example": "const { localMs: raw } = useTimeline();\nconst localMs = useHeldLocalMs(raw);\nusePresentTiming(2400);",
+    "timing": [
+      "Present and the automatic stills hold the scene 150 ms after the latest toMs any element reports, and before the earliest outAtMs; useHeldLocalMs pins the time there. Video export always runs the raw time."
+    ]
   },
   "useProjectShared": {
     "kind": "hook",
@@ -3524,7 +4024,7 @@
     "kind": "hook",
     "summary": "The scene camera's pose this frame: { position, lookAt, fov }.",
     "signature": "function useSceneCamera(): SceneCamera;",
-    "doc": "The scene camera's current pose: the scene's free-flight rig or orbit track at this scene time, else the project camera track, else the base camera."
+    "doc": "The scene camera's current pose: the scene's free-flight rig or orbit track at this scene time, else the project camera track, else the base camera. It moves every frame inside `SteppedTime` too, as the camera does."
   },
   "useSceneChart": {
     "kind": "hook",
@@ -3570,12 +4070,13 @@
   },
   "useTextMetrics": {
     "kind": "hook",
-    "summary": "useTextMetrics(textKey, text, opts?): the block an AnimatedHeadline with those props typesets, sidecar overrides included, plus fitFontSize(maxWidth); null until its face has loaded.",
+    "summary": "useTextMetrics(textKey, text, opts?): the block an AnimatedHeadline with those props typesets, sidecar overrides included, with each glyph's box and fitFontSize(maxWidth); null until its face has loaded.",
     "signature": "function useTextMetrics(key: string | undefined, text: string, opts?: TextMetricsOptions): MeasuredText | null;",
-    "doc": "The world-size block an `AnimatedHeadline` with this `textKey`, text and options typesets (sidecar Font, Size and LineHeight overrides included), or null until its face has loaded and it has measured real ink: never a 0-wide first measure, so a scene can divide by `width` once it has one. Captures wait for it, so exported frames always see the measured layout.",
-    "example": "const metrics = useTextMetrics(\"title\", title, { fontSize: 0.6 });\nconst size = metrics?.fitFontSize(2) ?? 0.6;",
+    "doc": "The world-size block an `AnimatedHeadline` with this `textKey`, text and options typesets (sidecar Font, Size and LineHeight overrides included), or null until its face has loaded and it has measured real ink: never a 0-wide first measure, so a scene can divide by `width` once it has one. Its `glyphs` sit where the headline draws each one relative to its `position`, sidecar OffsetX and OffsetY included (a tilt is not). Captures wait for it, so exported frames always see the measured layout.",
+    "example": "const metrics = useTextMetrics(\"title\", title, { fontSize: 0.6 });\nconst size = metrics?.fitFontSize(2) ?? 0.6;\nconst slots = metrics?.glyphs.filter((g) => g.ink) ?? [];",
     "timing": [
-      "Null until the face has loaded, so never divide by a width you haven't checked. Captures wait for the measure."
+      "Null until the face has loaded, so never divide by a width you haven't checked. Captures wait for the measure.",
+      "glyphs sit where the headline draws each one, from its position (pass the same anchorX, anchorY and textAlign), at the measured size: scale them by fitFontSize(w) / fontSize when you fit."
     ]
   },
   "useTheme": {
@@ -3588,6 +4089,6 @@
     "kind": "hook",
     "summary": "{ localMs, globalMs, progress }; progress is PROJECT-wide.",
     "signature": "function useTimeline(scale?: number): SceneTime;",
-    "doc": "Reactive scene time for the active scrub position. `localMs` is relative to the enclosing scene's start (supplied by `<SceneHost>` via `SceneContext`); with no scene context it falls back to project time so a lone scene anchored at t=0 keeps `localMs === globalMs` (the v0 contract). `progress` stays project-global per the `SceneTime` type; authors derive scene-local progress from `localMs / scene.durationMs`. Inside a motion blur sample the time moves by the scene's shutter offset times `scale` (default: the `MotionBlurContext`); 0 never moves and never re-renders for a sample."
+    "doc": "Reactive scene time for the active scrub position. `localMs` is relative to the enclosing scene's start (supplied by `<SceneHost>` via `SceneContext`); with no scene context it falls back to project time so a lone scene anchored at t=0 keeps `localMs === globalMs` (the v0 contract). `progress` stays project-global per the `SceneTime` type; authors derive scene-local progress from `localMs / scene.durationMs`. Inside a motion blur sample the time moves by the scene's shutter offset times `scale` (default: the `MotionBlurContext`); 0 never moves and never re-renders for a sample. Inside `SteppedTime` the frame instant steps BEFORE that offset, so a held pose blurs around itself and never ghosts into the next step."
   }
 }

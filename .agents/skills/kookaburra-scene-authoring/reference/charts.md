@@ -79,9 +79,16 @@ Only `type` and `data` are required. `null` means auto (axis bounds nice themsel
 | classic | `boardroom` (default), `print`, `paperCut`, `terminal` | Matte, editorial, grid-forward |
 | studio | `studio`, `gradientRise`, `glass`, `velvet`, `horizon` | Gloss, gradients, glass |
 | market | `midnightGold`, `neonLedger`, `pulseGlass` | Premium finance and crypto |
-| dark | `nightEditorial`, `launchGlow`, `obsidian` | Dark-stage editorial and luminous dashboards |
+| dark | `nightEditorial`, `launchGlow`, `obsidian`, `lightTrail` | Dark-stage editorial, luminous dashboards, a trend as light |
 
 Dark-first presets relax automatically on light themes.
+
+`lightTrail` draws a line as a glowing trail of light with NO axes, gridlines, labels,
+legend or value labels (the block's `axis` and `labels` switches are ignored, and the
+chart fills its rect). Use it when the numbers live elsewhere in the scene, such as a
+trend behind hero stats. Pair it with `trace` or `draw` so the bright head draws on; in
+3D the trail's start recedes into depth. Bars, areas and pies under it keep their shapes
+with glowing edges. On a light theme it draws as ink instead of light.
 
 ## Build-in presets (`animation.preset`)
 
@@ -141,6 +148,8 @@ segments morph. `animatedTrack: "chart"` puts the track on the app's lane.
 - Safe default: `boardroom` + `rise`, 2D hero, legend bottom.
 - Money: `labels.values.format: { "prefix": "$", "compact": true }` with `ticker`.
 - Crypto or markets: `neonLedger` + `marketPulse` on a line, dark theme.
+- By the numbers: a 3D `line` with `lightTrail` + `trace` behind the stat objects, dark
+  theme; `palette: "outback"` gives a warm gold trail with a white-hot core.
 - Chart beside a phone: `mount: "staged"`, `placement: { "position": [1.8, 0, 0], "rotationDeg": [0, -12, 0], "scale": 0.8 }`.
 - Capture in landscape AND portrait: hero charts refit, but long category labels crowd
   portrait.

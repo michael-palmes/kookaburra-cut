@@ -41,10 +41,20 @@ const KINDS = {
     itemsDir: (root) => join(root, "projects"),
     manifest: "template.json",
     ledger: (root) => join(root, "src", "assets", "template-previews", "ledger.json"),
-    art: (root, slug) =>
-      [1, 2, 3, 4].map((i) => join(root, "src", "assets", "template-previews", `${slug}-${i}.jpg`)),
+    art: (root, slug) => {
+      const dir = join(root, "src", "assets", "template-previews");
+      const stills = [1, 2, 3, 4].map((i) => join(dir, `${slug}-${i}.jpg`));
+      return declaresLoop(root, slug) ? [...stills, join(dir, `${slug}-loop.mp4`)] : stills;
+    },
   },
 };
+
+/** Whether a template's manifest asks for a card loop (`preview.loop`), so its art includes `<slug>-loop.mp4`. A missing manifest has no loop; an unreadable one throws rather than hiding a declared loop. */
+function declaresLoop(root, slug) {
+  const path = join(root, "projects", slug, "template.json");
+  if (!existsSync(path)) return false;
+  return JSON.parse(readFileSync(path, "utf8"))?.preview?.loop != null;
+}
 
 function kindSpec(kind) {
   const spec = KINDS[kind];

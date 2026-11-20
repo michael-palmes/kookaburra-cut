@@ -29,6 +29,7 @@ EPILOG = """\
   ./kb beats cue set drop bar:29          named times: a position or a time (12.5s, 12500ms)
   ./kb beats section set chorus --from bar:17 --to bar:25 --label Chorus
   ./kb beats resolve bar:13.3+40ms        project and scene-local ms
+  ./kb beats plan                         a scene plan drafted from the song; --apply retimes the scenes to it
 Positions: bar:B[.beat[.16th]] (1-based, bar 0 and below are pickups), cue:ID, section:ID (its start), each with an
 optional +Nms or -Nms nudge. Times: 12.5s, 12500ms, or bare seconds. Sidecar keys follow a position through a sibling
 "at" (camera, rig and lighting keys); every write here refreshes their cached tMs in the same transaction."""
@@ -596,9 +597,11 @@ def cmd_section(ctx: Any) -> int:
 
 
 def cmd_beats(ctx: Any) -> int:
+    from .plan import cmd_plan
+
     op = getattr(ctx.args, "op", None)
     handlers = {None: cmd_show, "resolve": cmd_resolve, "set-grid": cmd_set_grid, "set-downbeat": cmd_set_downbeat,
-                "clear-grid": cmd_clear_grid, "cue": cmd_cue, "section": cmd_section}
+                "clear-grid": cmd_clear_grid, "cue": cmd_cue, "section": cmd_section, "plan": cmd_plan}
     return handlers[op](ctx)
 
 
@@ -655,6 +658,14 @@ def register(sub: Any, common: argparse.ArgumentParser, Formatter: Any) -> None:
     y.add_argument("--label", metavar="L", help="a display label (kept when omitted)")
     y = secs.add_parser("rm", help="remove a section", parents=writes, formatter_class=Formatter)
     y.add_argument("id", metavar="ID")
+    from .plan import EPILOG as PLAN_EPILOG
+
+    x = op("plan", "a scene plan drafted from the song: its parts, scenes in bars, the pulse in each; --apply retimes the scenes", writes,
+           epilog=PLAN_EPILOG)
+    x.add_argument("--scenes", type=int, metavar="N", help="plan this many scenes (default: what the song's parts suit)")
+    x.add_argument("--from", dest="from_", metavar="POS", help="start the film here (default bar:1)")
+    x.add_argument("--to", metavar="POS", help="end the film here (default: a bar after the final hit, else the song's end)")
+    x.add_argument("--apply", action="store_true", help="retime the project's scenes to the plan, in one checkpointed write")
     x = op("resolve", "a position or time as project and scene-local ms", [common])
     x.add_argument("position", metavar="POS")
     x.add_argument("--scene", dest="resolve_scene", metavar="S", help="scene-local ms in this scene (default: the scene that owns it)")

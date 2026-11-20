@@ -304,11 +304,14 @@ function ThemeCard({
   dragging = false,
   dropTarget = false,
   markOwn = false,
+  suggested = false,
 }: {
   choice: ThemeChoice;
   selected: boolean;
   /** Flag the user's own themes with a Yours badge on the poster. */
   markOwn?: boolean;
+  /** A look the template was made with. */
+  suggested?: boolean;
   tabIndex: number;
   cardRef: (node: HTMLDivElement | null) => void;
   onFocus: () => void;
@@ -331,13 +334,15 @@ function ThemeCard({
   const thumbRef = useRef<HTMLDivElement>(null);
   const previews = choice.previews;
   const src = previews ? previews[Math.min(frame, previews.length - 1)] : null;
+  const own = markOwn && choice.source === "workspace";
+  const mark = suggested ? ", suggested" : own ? ", yours" : "";
   return (
     <div
       ref={cardRef}
       role="option"
       tabIndex={tabIndex}
       aria-selected={selected}
-      aria-label={`${choice.name}, ${choice.useLabel}`}
+      aria-label={`${choice.name}, ${choice.useLabel}${mark}`}
       className={`theme-card${selected ? " selected" : ""}${dragging ? " dragging" : ""}${
         dropTarget ? " drop-target" : ""
       }`}
@@ -398,7 +403,11 @@ function ThemeCard({
             <span className="theme-card-accent" style={{ background: choice.accent }} />
           </div>
         )}
-        {markOwn && choice.source === "workspace" && <span className="theme-card-own">Yours</span>}
+        {suggested ? (
+          <span className="theme-card-own suggested">Suggested</span>
+        ) : (
+          own && <span className="theme-card-own">Yours</span>
+        )}
         {previewIntent &&
           previews
             ?.slice(1)
@@ -439,6 +448,8 @@ export interface ThemeGridProps {
   /** Present only where the listing has a writable order; a drag lands as one move (`from` lifted out, dropped at `to`). */
   onReorder?: (from: number, to: number) => void;
   markOwn?: boolean;
+  /** Theme ids badged Suggested: the template's looks. */
+  suggestedIds?: readonly string[];
 }
 
 const PAGE_JUMP = 6;
@@ -454,6 +465,7 @@ export function ThemeGrid({
   ariaLabel = "Themes",
   onReorder,
   markOwn = false,
+  suggestedIds,
 }: ThemeGridProps) {
   const initialFocus = choices.some(({ id }) => id === value) ? value : choices[0]?.id;
   const [focusId, setFocusId] = useState<string | undefined>(initialFocus);
@@ -606,6 +618,7 @@ export function ThemeGrid({
           selected={value === choice.id}
           tabIndex={focusId === choice.id ? 0 : -1}
           markOwn={markOwn}
+          suggested={suggestedIds?.includes(choice.id) ?? false}
           drag={dragHandlers(index)}
           dragging={drag?.from === index}
           dropTarget={drag !== null && drag.over === index && drag.from !== index}
@@ -626,7 +639,8 @@ export function ThemeGrid({
   );
 }
 
-export interface ThemeBrowserProps extends Omit<ThemeGridProps, "onReorder" | "markOwn"> {
+export interface ThemeBrowserProps
+  extends Omit<ThemeGridProps, "onReorder" | "markOwn" | "suggestedIds"> {
   layout?: "full" | "compact";
   initialCollection?: ThemeCollectionId;
   recentIds?: readonly string[];

@@ -179,6 +179,7 @@ export const DEVICE_LAYOUT_PRESETS = [
   "cascade",
   "hero",
   "depth-pair",
+  "v",
 ] as const;
 export type DeviceLayoutPreset = (typeof DEVICE_LAYOUT_PRESETS)[number];
 
@@ -199,6 +200,8 @@ export interface SceneDocDeviceLayout {
 
 /** One device's pose at a key: a DELTA on whatever the scene already resolves for it (the layout block, or its own placement), so the motion presets keep layering on top and deleting the track reverts exactly. Offsets and rotations add, scale multiplies, and the hinge angles (`lidDeg`, `foldDeg`) and screen powers are the absolutes (an angle has no meaningful delta). Every field is optional and an absent one holds the device's resting value, the lighting-pose rule. */
 export interface SceneDocDevicePose {
+  /** Another device's id: this pose's offset, rotation and scale measure from that device's resting slot instead of this one's, so a line-up can start stacked behind its hero. */
+  slot?: string;
   offset?: [number, number, number];
   rotationDeg?: [number, number, number];
   scale?: number;
@@ -612,7 +615,7 @@ export interface SceneDoc {
   text?: Record<string, string>;
   /** Layout for the scene's text block; consumed by TitleBlock (inert when a scene positions text by hand, the `backdrop` precedent). */
   textLayout?: { align?: SceneTextAlign };
-  /** Per-text-element overrides keyed `<textKey><Suffix>`: `Color` (raw hex fill, the one narrow exception to "colours stay tokens"), `Font` ("Family" or "Family@weight"), `Size` (multiplier of the element's default, 1 = unchanged), `OffsetX`/`OffsetY` (world-unit nudges from the scene's layout), `LineHeight` (line spacing as a multiple of the font size, clamped 0.8..2; absent means troika's own "normal") `RotationDeg` (clockwise tilt in degrees about the block's anchor; absent or 0 is upright) and `Emphasis` (`*word*` emphasis: "<colour>" or "<colour>@<weight>", a token or hex and a CSS weight; absent is the accent one weight step bolder); consumed by text primitives given a matching `textKey`, inert otherwise. */
+  /** Per-text-element overrides keyed `<textKey><Suffix>`: `Color` (raw hex fill, the one narrow exception to "colours stay tokens"), `Font` ("Family" or "Family@weight"), `Size` (multiplier of the element's default, 1 = unchanged), `OffsetX`/`OffsetY` (world-unit nudges from the scene's layout), `LineHeight` (line spacing as a multiple of the font size, clamped 0.8..2; absent means troika's own "normal") `RotationDeg` (clockwise tilt in degrees about the block's anchor; absent or 0 is upright) and `Emphasis` (`*word*` emphasis: "<colour>" or "<colour>@<weight>", a token or hex and a CSS weight, optionally followed by a `pill` or `battery` shape; absent is the accent one weight step bolder); consumed by text primitives given a matching `textKey`, inert otherwise. */
   textStyle?: Record<string, string | number>;
   /** Header icon for a plain (non-overlay) scene's text: an emoji or an `assets/` image path, drawn above the headline by `TextFallback`/`TitleBlock`. Overlay scenes carry their icon on `frame.icon` instead; both scale by `textStyle.iconSize`. */
   headerIcon?: string;
@@ -834,12 +837,19 @@ export interface SceneDocCompareGrip {
   style?: SceneDocCompareGripStyle;
 }
 
-/** The exported chrome: a divider line along the mask edge, a grip riding a linear divider, label chips per half, per-side tints. `line.colour` and both tints are each a THEME TOKEN NAME (background | text | accent | muted) resolved against the scene's theme at plan build, or a `#rrggbb` hex used as authored. Absent sub-blocks are off, and `grip: true` is the legacy chevrons handle at size 1. */
+/** The glass edge as authored: `width` is the bar's full width in 1080-tall reference pixels, `strength` scales its refraction and rim light. */
+export interface SceneDocCompareGlass {
+  width?: number;
+  strength?: number;
+}
+
+/** The exported chrome: a divider line along the mask edge, a grip riding a linear divider, label chips per half, per-side tints, and a refracting glass bar along a linear or circle edge. `line.colour` and both tints are each a THEME TOKEN NAME (background | text | accent | muted) resolved against the scene's theme at plan build, or a `#rrggbb` hex used as authored. Absent sub-blocks are off, `grip: true` is the legacy chevrons handle at size 1, and `glass: true` the default bar. */
 export interface SceneDocCompareChrome {
   line?: { width?: number; colour?: string; softness?: number };
   grip?: boolean | SceneDocCompareGrip;
   chips?: boolean;
   tint?: { a?: string; b?: string; amount?: number };
+  glass?: boolean | SceneDocCompareGlass;
 }
 
 /** The comparison block. `mask.type`: `linear` (a straight divider, `angleDeg` is the LINE's angle, 90 = vertical), `circle` (the after inside a growing circle at `center`), `radial` (the after sweeps around `center`), `blend` (the after fades over the before). `softness` feathers the edge; `value` is the static divider position when no track keys exist (default 0.5). `mask.angleDeg` is the STATIC angle: a track key carrying its own `pose.angleDeg` overrides it and rides the track. */
@@ -1254,6 +1264,7 @@ const isChartColour = (v: unknown): v is string =>
   typeof v === "string" && (THEME_COLOUR_TOKENS.includes(v) || CHART_HEX.test(v));
 
 const DEVICE_POSE_FIELDS: string[] = [
+  "slot",
   "offset",
   "rotationDeg",
   "scale",
@@ -1282,6 +1293,12 @@ function parseDeviceTrack(raw: unknown, source: string): SceneDoc["deviceTrack"]
       const out = Object.fromEntries(
         Object.entries(raw).filter(([field]) => !DEVICE_POSE_FIELDS.includes(field)),
       ) as SceneDocDevicePose;
+      if (typeof raw.slot === "string" && raw.slot.length > 0) out.slot = raw.slot;
+      else if (raw.slot !== undefined) {
+        parseWarn(
+          `[sceneDoc] ${source}: deviceTrack pose "${deviceId}" slot isn't a device id, dropped`,
+        );
+      }
       if (finiteV3(raw.offset)) out.offset = [...raw.offset];
       if (finiteV3(raw.rotationDeg)) out.rotationDeg = [...raw.rotationDeg];
       if (finiteNum(raw.scale)) out.scale = raw.scale;
@@ -1610,6 +1627,27 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
           t.amount = Math.min(1, Math.max(0, tint.amount));
         }
         chrome.tint = t;
+      }
+      if (typeof raw.glass === "boolean") chrome.glass = raw.glass;
+      else if (raw.glass && typeof raw.glass === "object" && !Array.isArray(raw.glass)) {
+        const g = raw.glass as { width?: unknown; strength?: unknown };
+        const glass: SceneDocCompareGlass = {};
+        if (typeof g.width === "number" && Number.isFinite(g.width) && g.width > 0) {
+          glass.width = g.width;
+        } else if (g.width !== undefined) {
+          parseWarn(
+            `[sceneDoc] ${source}: compare.chrome.glass.width isn't a positive number, dropped`,
+          );
+        }
+        if (typeof g.strength === "number" && Number.isFinite(g.strength) && g.strength >= 0) {
+          glass.strength = g.strength;
+        } else if (g.strength !== undefined) {
+          parseWarn(`[sceneDoc] ${source}: compare.chrome.glass.strength isn't a number, dropped`);
+        }
+        // Like the grip: a glass block that loses every field stays on at the defaults.
+        chrome.glass = glass.width === undefined && glass.strength === undefined ? true : glass;
+      } else if (raw.glass !== undefined) {
+        parseWarn(`[sceneDoc] ${source}: compare.chrome.glass is malformed, dropped`);
       }
       out.chrome = chrome;
     } else {

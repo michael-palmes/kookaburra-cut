@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "name": "preset still for the \"sunroom\" 3D background (\"Newrybar\")",
+  "background": {
+    "type": "scene3d",
+    "look": "sunroom",
+    "colors": ["#b9bcc0", "#f6f6f1", "#b3b2ad"],
+    "speed": 1,
+    "params": {
+      "sunSide": 45,
+      "sunHeight": 32,
+      "drift": 2,
+      "patch": 0.35,
+      "slatPitch": 0.45,
+      "opening": 0.55,
+      "panes": 2,
+      "softness": 1,
+      "wallDistance": 10
+    },
+    "backing": {
+      "type": "color",
+      "color": "#e3e5e6"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

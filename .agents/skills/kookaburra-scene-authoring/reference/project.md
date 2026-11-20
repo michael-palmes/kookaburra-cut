@@ -39,7 +39,7 @@ transitions with `./kb scene ...` (manifest-safe, atomic); other fields with
 | `typography` | | `{ headline, body, chart }`, each `"Family"` or `"Family@weight"`. Beats every theme; sidecar `textStyle` still wins. |
 | `audio` | | One soundtrack (below). |
 | `defaultTransition` | | Seeded onto new boundaries; `null` means hard cut. |
-| `render` | | `{ toneMapping, exposure, exactText }` (reference/lighting.md) and `motionBlur` (reference/camera.md). Absent is aces at 1, tone-mapped text, no blur. |
+| `render` | | `{ toneMapping, exposure, exactText, antialias, supersample, dither, specularAA }` (reference/lighting.md), `motionBlur` (reference/camera.md) and `textBlur` (reference/text.md). Absent is aces at 1, tone-mapped text, no blur, edge-softened text blur. |
 | `lighting` | | Project lighting layer between theme and scene (reference/lighting.md). |
 | `frame` | | Deck-wide overlay merged into every scene (reference/sidecar.md). |
 | `camera` | | Project camera keys on the global clock (reference/camera.md). |
@@ -153,9 +153,9 @@ line (`--json` adds palette and faces); `./kb theme show <id>` prints tokens. Se
 `./kb project set themeId kookaburra-ivory`, or one scene's with
 `./kb doc S set themeId kookaburra-onyx`.
 
-Twenty-two themes in four collections, every one tuned for readability first: strong
+Thirty-five themes in four collections, every one tuned for readability first: strong
 secondary-label contrast and calm, low-contrast backgrounds (slow mesh gradients, faint
-grids or one soft 3D dome at most).
+grids or one faint 3D look at most, such as Frost's dome or Obsidian Stage's light shafts).
 
 | Theme | Mode | Mood | Faces |
 | --- | --- | --- | --- |
@@ -163,18 +163,31 @@ grids or one soft 3D dome at most).
 | `kookaburra-onyx` | dark | Essentials: keynote-style reveals | Inter |
 | `kookaburra-ivory` | light | Essentials: thoughtful AI and research stories | Instrument Serif / Inter |
 | `kookaburra-ink` | dark | Essentials: warm, considered dark stories | Instrument Serif / Inter |
+| `kookaburra-white-canvas` | light | Essentials: AI and prompt-led launches | Space Grotesk / Inter |
+| `kookaburra-paper-and-ink` | light | Essentials: editorial launch stories on textured paper | Instrument Serif / Inter |
+| `kookaburra-ink-and-fluid` | light | Essentials: concept and finance explainers (a `fluid` gradient for value fills) | Inter Tight / Inter |
 | `kookaburra-afterglow` | dark | Studio: AI and developer tool launches | Space Grotesk / Inter |
 | `kookaburra-blue-hour` | dark | Studio: calm, cinematic stories | IBM Plex Sans |
 | `kookaburra-soft-field` | light | Studio: friendly consumer launches | Jost / Inter |
 | `kookaburra-frost` | light | Studio: hardware and device reveals (pale 3D wash dome) | Inter |
 | `kookaburra-lilac` | light | Studio: creative and lifestyle apps | Instrument Serif / Inter |
 | `kookaburra-moss` | dark | Studio: health, climate and wellbeing | Fraunces / IBM Plex Sans |
+| `kookaburra-obsidian-stage` | dark | Studio: hero product reveals (warm key, cool rim) | Inter Tight / Inter |
+| `kookaburra-signal` | dark | Studio: teasers and countdowns (rim light, one red) | Barlow Condensed / JetBrains Mono |
+| `kookaburra-daylight-studio` | light | Studio: calm feature spotlights in warm daylight | Inter Tight / Inter |
+| `kookaburra-split-light` | light | Studio: redesigns and before and after (cool to warm) | Inter Tight / Inter |
+| `kookaburra-exhibition` | light | Studio: product tours hung like a show | Instrument Serif / Inter |
+| `kookaburra-instrument` | dark | Studio: stats and impact numbers (graphite and glass) | Inter Tight / Inter |
+| `kookaburra-aurora` | dark | Studio: AI launches after dark | Space Grotesk / Inter |
+| `kookaburra-blueprint` | dark | Studio: developer releases and changelogs (navy grid) | JetBrains Mono / Space Grotesk |
 | `kookaburra-sage` | light | Colour (subtle green): calm health and wellbeing | Jost / Inter |
 | `kookaburra-sky` | light | Colour (subtle blue): fresh product updates | Inter |
 | `kookaburra-blush` | light | Colour (subtle pink): beauty, fashion and lifestyle | Instrument Serif / Inter |
 | `kookaburra-citrus` | light | Colour (bold yellow): loud launches and announcements | Inter |
 | `kookaburra-tangerine` | light | Colour (bold orange): energetic consumer and food apps | IBM Plex Sans |
 | `kookaburra-lagoon` | light | Colour (bold turquoise): playful fintech and travel | Space Grotesk / Inter |
+| `kookaburra-colour-studio` | dark | Colour (bold cobalt): release reels and what's new | Inter Tight / JetBrains Mono |
+| `kookaburra-continuum` | light | Colour (sky to dawn): cross-device launches | Inter Tight / Inter |
 | `kookaburra-basel` | light | Retro (Swiss 1960s): announcements | Inter |
 | `kookaburra-hi-fi` | light | Retro (1960s to 70s): hardware and industrial design | IBM Plex Sans |
 | `kookaburra-mid-century` | light | Retro (1960s): warm lifestyle and travel | Jost |
@@ -184,7 +197,7 @@ grids or one soft 3D dome at most).
 
 Older projects may name a retired theme (`kookaburra-midnight`, `kookaburra-paper` and
 the rest). Those still render exactly as before but are hidden from pickers;
-`./kb catalog themes` lists them. Prefer the twenty-two above for new work. On the bold
+`./kb catalog themes` lists them. Prefer the thirty-five above for new work. On the bold
 Colour themes keep charts on the theme's own palette: the named `chart.palette` schemes
 are mid-tones that cannot clear 3:1 on a mid-tone fill.
 
@@ -316,7 +329,7 @@ project. A scene can override fields in its manifest entry:
 | `bloom` | `intensity` (0 off), `luminanceThreshold`, `luminanceSmoothing` |
 | `vignette` | `offset`, `darkness` (0 off) |
 | `lut` | `url` (project `.cube`), `intensity` 0..1; all LUTs in a project share one size |
-| `grain` | `intensity` (0 off) |
+| `grain` | `intensity` (0 off), `hold` (frames each pattern stays, default 1: 5 is a 12 fps paper boil, 1 to 60) |
 
 Overrides merge field by field onto the theme's effect. When the theme lacks that
 effect, give every field. Effects blend across transitions. A LUT that fails to load is
@@ -351,5 +364,6 @@ beat timings, repeated sizes. Nothing renders from it directly.
 - The app icon is the fixed path `assets/app-icon.png` (BrandLockup reads it). Replace
   that file to change it; keep it square.
 - `*-sample.*` files, `sample-*-recording.mp4` and `app-icon.png` are bundled
-  placeholders the app restores on load. Use them for drafts; deleting them only
-  brings them back.
+  placeholders. A project holds the ones its files name, plus `app-icon.png`; the rest
+  are listed in `catalog.json` `samplePool`. Name one in a scene and the app copies it
+  into `assets/` on the next load. Use them for drafts.

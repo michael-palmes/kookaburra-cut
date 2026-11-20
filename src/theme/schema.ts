@@ -1,11 +1,15 @@
+import { GRAIN_HOLD_MAX } from "../engine/effectParams";
 import { parseMotionBlurOverride } from "../engine/motionBlur";
 import { parseWarn } from "../engine/parseWarnings";
 import { normalizeLighting, resolveLighting } from "../engine/sceneLighting";
 import { parseFontString } from "./fontRef";
+import { parseSatinBackdrop } from "./satinBackdrop";
 import type {
   EffectsConfig,
+  EffectsOverride,
   FontRef,
   GradientSpec,
+  LensParams,
   LightingSpec,
   TextAnimationSpec,
   TextLookSpec,
@@ -131,6 +135,8 @@ export function parseBackdropSpec(v: unknown, source: string): ThemeBackdrop | u
       }
       break;
     }
+    case "satin":
+      return parseSatinBackdrop(v, source);
     case "image":
       if (isStr(v.src)) {
         return {
@@ -386,6 +392,50 @@ export function parseTextLookSpec(v: unknown, source: string): TextLookSpec | un
   return spec;
 }
 
+/** What `LensEffect` draws for each numeric lens field; a value inside passes through exactly. */
+const LENS_RANGES = new Map<string, readonly [number, number]>([
+  ["intensity", [0, 1]],
+  ["bloom", [0, 0.5]],
+  ["bloomRadius", [0, 1]],
+  ["karis", [0, 1]],
+  ["halation", [0, 4]],
+  ["halationThreshold", [0, 64]],
+  ["glare", [0, 4]],
+  ["glarePoints", [2, 6]],
+  ["glareAngleDeg", [-360, 360]],
+  ["glareThreshold", [0, 64]],
+  ["glareFalloff", [0.5, 0.98]],
+]);
+
+/** The lens block's fields, shared by a theme's `effects.lens` and a project.json scene entry's partial override: numbers clamp to `LENS_RANGES`, the halation colour must be hex, and a wrong-typed field drops with a warning. Unknown fields are ignored. */
+export function parseLensFields(v: unknown, source: string): Partial<LensParams> | undefined {
+  if (!isRecord(v)) {
+    parseWarn(`[effects] ${source}: invalid "effects.lens", dropped`);
+    return undefined;
+  }
+  const out: Record<string, number | string> = {};
+  for (const [key, value] of Object.entries(v)) {
+    if (key === "halationColor") {
+      if (isStr(value) && HEX_COLOR.test(value)) out[key] = value;
+      else parseWarn(`[effects] ${source}: invalid "effects.lens.halationColor", dropped`);
+      continue;
+    }
+    const range = LENS_RANGES.get(key);
+    if (!range) continue;
+    if (isNum(value)) out[key] = Math.min(range[1], Math.max(range[0], value));
+    else parseWarn(`[effects] ${source}: invalid "effects.lens.${key}", dropped`);
+  }
+  return out as Partial<LensParams>;
+}
+
+/** A project.json scene entry's partial `effects` override, with its lens block validated; an entry without one comes back as it was. */
+export function parseSceneEffectsOverride(v: EffectsOverride, source: string): EffectsOverride {
+  if (v.lens === undefined) return v;
+  const { lens, ...rest } = v;
+  const parsed = parseLensFields(lens, source);
+  return parsed ? { ...rest, lens: parsed } : rest;
+}
+
 /** Validate one effect block; wrong-typed fields drop the single effect, not the stack. */
 function parseEffects(v: unknown, source: string): EffectsConfig | undefined {
   if (!isRecord(v)) return undefined;
@@ -416,7 +466,16 @@ function parseEffects(v: unknown, source: string): EffectsConfig | undefined {
   const n = v.grain;
   if (isRecord(n) && isNum(n.intensity)) {
     out.grain = { intensity: n.intensity };
+    if (isNum(n.hold) && n.hold >= 1) out.grain.hold = Math.min(GRAIN_HOLD_MAX, Math.round(n.hold));
+    else if (n.hold !== undefined) {
+      parseWarn(`[theme] ${source}: invalid "effects.grain.hold", dropped`);
+    }
   } else if (n !== undefined) parseWarn(`[theme] ${source}: invalid "effects.grain", dropped`);
+  if (v.lens !== undefined) {
+    const lens = parseLensFields(v.lens, source);
+    if (lens?.intensity !== undefined) out.lens = { ...lens, intensity: lens.intensity };
+    else if (lens) parseWarn(`[theme] ${source}: "effects.lens" needs an intensity, dropped`);
+  }
   return Object.keys(out).length > 0 ? out : undefined;
 }
 

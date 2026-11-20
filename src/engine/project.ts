@@ -7,6 +7,7 @@ import { parseFontString } from "../theme/fontRef";
 import { vetProjectFonts } from "../theme/fontSafety";
 import { collectThemeFontRefs, preloadAppFonts } from "../theme/fonts";
 import { memoThemeReader, resolveThemeReport, WORKSPACE_THEME_PREFIX } from "../theme/registry";
+import { parseSceneEffectsOverride } from "../theme/schema";
 import type {
   EffectsConfig,
   EffectsOverride,
@@ -897,7 +898,7 @@ for (const tree of ["presets", "projects"] as const) {
   });
 }
 
-/** Bundled templates ship no `assets/` folder: their scenes reference the shared pool by name and `create_project` seeds the copies. Opening one in place resolves the same way, by name, against `projects/_samples/`; only the bundled library scopes fall back, so a genuinely missing asset elsewhere still throws. */
+/** Bundled templates name the shared pool's media without shipping copies (their own `assets/` holds only what is theirs, a song say), and `create_project` seeds the samples a project names. Opening one in place resolves the same way, by name, against `projects/_samples/`; only the bundled library scopes fall back, so a genuinely missing asset elsewhere still throws. */
 function samplePoolName(scope: ProjectScope, key: string, clean: string): string | null {
   if (scope !== "template" && scope !== "preset") return null;
   if (bundledAssetKeys.has(key)) return null;
@@ -1485,7 +1486,11 @@ export async function loadProject(
   // Collect per-scene effect overrides (sparse, only scenes that declare `effects`), with any LUT urls resolved from project-relative to their project asset keys.
   const effectOverrides: Record<number, EffectsOverride> = {};
   manifest.scenes.forEach((entry, i) => {
-    if (entry.effects) effectOverrides[i] = resolveLutUrls(id, entry.effects);
+    const effects = entry.effects;
+    if (!effects) return;
+    const source = `${projectSource} scene ${i + 1}`;
+    const parsed = parseManifest(() => parseSceneEffectsOverride(effects, source));
+    effectOverrides[i] = resolveLutUrls(id, parsed);
   });
   let effects = resolveLutUrls(id, theme.effects ?? {});
 

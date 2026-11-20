@@ -1,8 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
-
-export const reducedMotion = () =>
-  typeof window !== "undefined" &&
-  (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
+import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 
 /** One option-picker card: a still image, or a clip while hovered/selected; missing assets fall back to a text swatch. A selected clip plays once and holds its last frame (WCAG 2.2.2); hover or focus plays it again. */
 export function OptionCard({
@@ -35,8 +32,9 @@ export function OptionCard({
 }) {
   const [near, setNear] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const reduceMotion = usePrefersReducedMotion();
   // Under Reduce motion a clip plays only while the pointer or focus is on its card.
-  const live = !!clip && (reducedMotion() ? near : playing || near);
+  const live = !!clip && (reduceMotion ? near : playing || near);
   useEffect(() => {
     if (near) videoRef.current?.play().catch(() => {});
   }, [near]);

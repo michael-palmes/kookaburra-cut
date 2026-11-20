@@ -86,6 +86,7 @@ the cwd, or uses $CLAUDE_PROJECT_DIR.
                     [--verify] [--headless] [--allow-flashes] [--timeout S] [--progress-every S]
              verify-export FILE [--no-sheet] [--no-flashes] [--allow-flashes] [--loudness-target LUFS]
              check film [flashes colour handoffs pacing] [--file F] [--standard wcag|itu|both]
+             pacing [accept ID|S --why TEXT [--kind K] | forget ID|S]   (pacing warnings the person kept)
              sync-check FILE [--bpm N [--offset MS]] [--poster-frame auto|on|off]
   History    checkpoint [MESSAGE] [--scene S]... [--files P]... | history [--scene S]
              undo [REV] [--scene S | --all] | diff [REV] [--scene S] | plan COMMAND ...
@@ -93,6 +94,7 @@ the cwd, or uses $CLAUDE_PROJECT_DIR.
              note TEXT [--scene S] | notes [--all]
              events [--follow] [--since 10m|CURSOR|all] [--kinds ...] [--source ...] [--all-agents] [--exit-after S]
   Music      beats [--scene S] | beats set-grid|set-downbeat|clear-grid|cue|section|resolve ...
+             beats plan [--scenes N] [--from POS] [--to POS] [--apply]   (a scene plan drafted from the song)
              timeline | timeline apply PLAN [--ripple]   (cuts and transitions in bars and ms)
              song analyse [--file PATH] [--force] [--tracker nn|dsp] [--lyrics] [--accept]
              song hits [--bars A-B] [--band low|mid|high] [--min-strength N] [--file PATH]
@@ -1397,9 +1399,10 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
 
     verify.register(sub, common, Formatter)
     plan.register(sub, common, Formatter)
-    from . import flashes_cli, preview
+    from . import flashes_cli, pacing_cli, preview
 
     flashes_cli.register(sub, common, Formatter)
+    pacing_cli.register(sub, common, Formatter)
     preview.register(sub, common, Formatter)
 
     from .beats import commands as beatsmod

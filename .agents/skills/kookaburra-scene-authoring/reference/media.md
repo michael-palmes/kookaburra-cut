@@ -212,8 +212,14 @@ See reference/backgrounds.md.
   adds a hard (unblurred) offset shadow behind it: offset and radius are fractions of the
   card's short edge (x right, y up), colour defaults to the theme text colour, and the
   shadow fades with the card. Use `radius` to match an icon's rounded corners.
+- `<VideoClip ... radius={0.08} opacity={0.8} />` draws a clip as a card: `radius` rounds the
+  corners as a fraction of the short edge, `opacity` fades it (cards riding a carousel).
+  Leave both unset for a plain full-frame clip.
 - `<VideoClip src="assets/clip.mp4" startMs={0} fit="contain" | "cover" position scale />`:
   a video plane; holds the first frame before `startMs` and the last after the end.
+  `inMs` is the source ms shown at `startMs` (held before it), so a full-bleed clip carries on
+  a device screen's video (the screen portal, reference/camera.md); with it the clip shows every
+  source frame exactly once.
 
 ## Split field (`mosaic`)
 

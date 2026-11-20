@@ -8,6 +8,7 @@ import { awaitVideoFramesReady } from "./clips";
 import { NO_SHUTTER, type ShutterSample, useClockStore } from "./clock";
 import { renderComposited } from "./compositor";
 import { dropDevPerformanceEntries } from "./devPerformance";
+import { useEffectsStore } from "./effectsStore";
 import {
   canvasCommittedClockMs,
   canvasCommittedHoldsVersion,
@@ -40,6 +41,7 @@ import {
   type ShutterPlan,
 } from "./shutterPlan";
 import type { snapshotSceneStageFloors } from "./stageRegistry";
+import { beginSupersample, endSupersample } from "./supersample";
 import { textDerivedPendingCount } from "./textDerivedState";
 
 /** The per-frame body the deterministic loops share (video export and stills): barriers, camera/state/lighting/compare plans, `renderComposited`, readback. Moved verbatim out of exporter.ts, so the video loop's GL call sequence is unchanged. See docs/determinism.md. */
@@ -339,7 +341,11 @@ export async function drawPlannedFrame(
   const objects = plans.shutter
     ? frameObjectShutter(plans.shutter, resolved, plans.sceneTracks, count)
     : null;
-  if (!cameras && !objects && isExporting()) releaseShutterLane();
+  // Supersampled export: each draw averages jittered renders through the same accumulation lane, for frames with no motion blur.
+  const supersample = isExporting()
+    ? (useEffectsStore.getState().renderSettings.supersample ?? 1)
+    : 1;
+  if (!cameras && !objects && isExporting() && supersample <= 1) releaseShutterLane();
   const renderSample = (k: number) => {
     const sample = cameras ? cameras.plans[k] : plan;
     if (!sample) applyCameraTrack(cam, cameraTrack, cameras ? cameras.globalMs[k] : tMs);
@@ -349,7 +355,16 @@ export async function drawPlannedFrame(
     if (objects)
       await drawObjectSamples(gl, scene, width, height, objects, !!cameras, renderSample);
     else if (cameras) accumulateFrame(gl, width, height, cameras.plans.length, renderSample);
-    else renderWith(plan);
+    else if (supersample > 1 && cam.isPerspectiveCamera) {
+      try {
+        accumulateFrame(gl, width, height, supersample, (k) => {
+          beginSupersample(cam, width, height, k, supersample);
+          renderWith(plan);
+        });
+      } finally {
+        endSupersample(cam);
+      }
+    } else renderWith(plan);
   }
 }
 

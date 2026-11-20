@@ -93,7 +93,6 @@ import {
   emptyMediaChangeBatch,
   noteMediaChange,
 } from "./engine/mediaChangedEvent";
-import { isDefaultMotionBlur } from "./engine/motionBlur";
 import { canQueuePresetPoster, queuePresetPoster } from "./engine/presetPosters";
 import {
   refreshUserPresets,
@@ -269,6 +268,7 @@ import { PlaybackBar } from "./ui/PlaybackBar";
 import { PresentModal } from "./ui/PresentModal";
 import { writeCutCaches, writeCutsForMusic } from "./ui/pinnedCuts";
 import { ALL_PROJECTS } from "./ui/projectLibrary";
+import { renderBlockFor } from "./ui/renderBlock";
 import { SceneWebsiteOverlay } from "./ui/SceneWebsiteOverlay";
 import { SceneWizardHost } from "./ui/SceneWizardHost";
 import { ShortcutsSheet } from "./ui/ShortcutsSheet";
@@ -925,18 +925,9 @@ export default function App() {
       const slug = nativeProjectSlug(current.id);
       const manifestBefore = await readProjectManifestSnapshot(slug);
       const manifest = JSON.parse(manifestBefore);
-      // ACES at 1.0 with no motion blur is the byte-identical default: stored as ABSENCE so untouched projects never carry the block.
-      const { motionBlur, exactText, ...display } = settings;
-      const blur = isDefaultMotionBlur(motionBlur) ? undefined : motionBlur;
-      const isDefault = display.toneMapping === "aces" && display.exposure === 1;
-      if (isDefault && !blur && !exactText) delete manifest.render;
-      else {
-        manifest.render = {
-          ...display,
-          ...(blur ? { motionBlur: blur } : {}),
-          ...(exactText ? { exactText } : {}),
-        };
-      }
+      const render = renderBlockFor(settings);
+      if (render) manifest.render = render;
+      else delete manifest.render;
       await writeProjectManifestSnapshot(
         slug,
         JSON.stringify(manifest, null, 2),

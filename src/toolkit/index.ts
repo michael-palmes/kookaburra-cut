@@ -3,8 +3,12 @@
 // Named eases (the camera and text presets' curves) for code-authored motion.
 export { EASE_NAMES, type EaseOptions, ease, easeFn, isEaseName } from "../engine/ease";
 export { frameAtDepth, useFormat } from "../engine/format";
+// The scene-local time a set piece animates from: its raw time, pinned while Present holds the scene.
+export { useHeldLocalMs } from "../engine/presentHold";
 // project.json `shared`: author constants every scene reads.
 export { type ProjectShared, useProjectShared } from "../engine/projectShared";
+// The screen portal's camera key: a pose that fills the frame with a device's display.
+export { type ScreenFillOptions, screenFillPose } from "../engine/rigFraming";
 // Seeded RNG for generative geometry; scenes must never call Math.random.
 export { createSeededRandom, type SeededRandom } from "../engine/rng";
 // The resolved sidecar chart block: every default baked and the data track sorted.
@@ -30,15 +34,23 @@ export type {
 export type { RoomFloodSample, RoomSample } from "../engine/sceneRoom";
 // Shared-element morph sampling for persistent (hoisted) modules.
 export {
+  type DeviceScreenPointOptions,
+  type DeviceScreenSample,
   type SharedKeyframe,
   type SharedTransform,
   sampleSharedTransform,
+  type TrackedDevice,
 } from "../engine/sharedElement";
 // Time / format / theme hooks
 export { useTimeline } from "../engine/timeline";
 export { useTheme } from "../theme";
-// Text metrics from the parsed faces: size a pill or underline to a headline without capturing frames.
-export { type MeasureTextOptions, measureText, type TextMetrics } from "../theme/fontMetrics";
+// Text metrics from the parsed faces: size a pill or underline to a headline, or place things on its letters, without capturing frames.
+export {
+  type GlyphBox,
+  type MeasureTextOptions,
+  measureText,
+  type TextMetrics,
+} from "../theme/fontMetrics";
 export type { Theme } from "../theme/tokens";
 // Data charts: `<Chart />` draws the sidecar block, flat or as staged 3D solids; the fallback covers scenes that never mount it.
 export { Chart, type ChartProps } from "./chart/Chart";
@@ -104,6 +116,7 @@ export {
   useDeviceScreen,
 } from "./device/DeviceScreenAnchor";
 export { resolveDeviceLayout } from "./device/layout";
+export { ScreenRegion, type ScreenRegionProps } from "./device/ScreenRegion";
 export {
   type DeviceScreenDisplay,
   type DeviceScreenHinge,
@@ -115,6 +128,9 @@ export {
   SCREEN_LIFT,
   screenUvToMediaPixel,
 } from "./device/screenAnchor";
+export type { RegionLiftTiming, ScreenUvRect } from "./device/screenRegionMath";
+// A moving device's screen point this frame, for a word that flies into its screen.
+export { useDeviceScreenPoint } from "./device/useDeviceScreenPoint";
 // Icon + text lockups animated as one unit through the text presets.
 export { AnimatedGroup, type AnimatedGroupProps } from "./group/AnimatedGroup";
 export { type GroupAnimationState, useGroupAnimation } from "./group/context";
@@ -132,9 +148,13 @@ export { VideoWindow, type VideoWindowProps } from "./media/VideoWindow";
 export { MotionBlur } from "./motion/MotionBlur";
 // Motion helpers: eased ramps, keyed tracks and the stamp pop, all pure functions of the clock.
 export { clamp01, lerp, ramp } from "./motion/math";
+// Present holds for hand-built set pieces: report when one settles (read the held time with useHeldLocalMs).
+export { usePresentTiming } from "./motion/presentTiming";
 // Attack, hold, release levels fired at given times (beats, cues); overlapping pulses take the max.
 export { type PulseOptions, pulse } from "./motion/pulse";
 export { Stamp, type StampProps } from "./motion/Stamp";
+// A hand-made passage: its subtree's time steps at a low frame rate while the camera moves every frame.
+export { SteppedTime } from "./motion/SteppedTime";
 export { type MotionKey, type SampleKeysOptions, sampleKeys } from "./motion/sampleKeys";
 export { type StampScaleOptions, stampScale } from "./motion/stampScale";
 // Musical time from the authored audio.grid and audio.cues: null and {} without them.
@@ -176,6 +196,22 @@ export {
   DashedRule,
   type DashedRuleProps,
 } from "./shapes/DashedRule";
+// Hundreds of dots in one instanced draw: grids and waffles whose sizes, places and colours follow fields (a wave, a window, counts, a funnel, a gather, a merge into a tile).
+export { DotField, type DotFieldProps } from "./shapes/DotField";
+export {
+  DOT_ORDERS,
+  type DotAdjust,
+  type DotCount,
+  type DotFunnel,
+  type DotGather,
+  type DotInfo,
+  type DotOrder,
+  type DotReveal,
+  type DotWave,
+  type DotWindow,
+} from "./shapes/dotFieldMath";
+// The fluid gradient as a shape fill, sampled in screen space so filled shapes share one gradient.
+export { accentFluidColours, type FluidFill } from "./shapes/fluidFill";
 // Generative shapes: all randomness via createSeededRandom, all motion via the clock.
 export { ParticleField, type ParticleFieldProps } from "./shapes/ParticleField";
 export { Ribbon, type RibbonProps } from "./shapes/Ribbon";

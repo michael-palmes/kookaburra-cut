@@ -1,0 +1,84 @@
+{
+  "version": 2,
+  "id": "kookaburra-aurora",
+  "name": "Aurora",
+  "mode": "dark",
+  "catalogue": {
+    "category": "studio",
+    "useLabel": "AI launches after dark",
+    "tags": ["dark", "ai", "aurora", "atmospheric", "prompt", "cinematic"],
+    "stage": "lighting-only",
+    "order": 130
+  },
+  "colors": {
+    "background": "#0b0a1c",
+    "text": "#f4f2ff",
+    "accent": "#a98cff",
+    "muted": "#bdb8d8"
+  },
+  "chartColors": ["#a98cff", "#5eead4", "#ffb59a", "#f4f2ff", "#7cb8ff", "#ff8fc0"],
+  "typography": {
+    "headline": {
+      "family": "Space Grotesk",
+      "weight": 400
+    },
+    "body": "Inter",
+    "scale": 1.2
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 540,
+      "slow": 980
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "blur-in",
+    "out": "fade",
+    "staggerMs": 50,
+    "stagger": "word"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -30,
+      "elevationDeg": 42,
+      "intensity": 1.8,
+      "color": "#ebe6ff"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 140,
+        "elevationDeg": 12,
+        "intensity": 0.6,
+        "color": "#3b2f7a"
+      },
+      {
+        "azimuthDeg": 165,
+        "elevationDeg": 38,
+        "intensity": 0.9,
+        "color": "#7fe3d4"
+      }
+    ],
+    "ambient": 0.35
+  },
+  "environment": {
+    "source": "kookaburra:monochrome-studio",
+    "intensity": 0.55,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "shader",
+    "shader": "mesh-gradient",
+    "colors": ["#0b0a1c", "#2a1858", "#0a2c30", "#34182a"],
+    "speed": 0.12,
+    "params": {
+      "distortion": 0.9,
+      "swirl": 0.35,
+      "grainOverlay": 0.03
+    }
+  }
+}

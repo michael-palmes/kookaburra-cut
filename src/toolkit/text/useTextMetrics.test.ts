@@ -8,6 +8,7 @@ const metrics = (width: number): TextMetrics => ({
   ascent: 0.8,
   descent: 0.2,
   lines: 1,
+  glyphs: [],
 });
 
 describe("fitFontSize", () => {

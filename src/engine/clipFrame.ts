@@ -69,6 +69,28 @@ function sourceFrame(ms: number, fps: number, round: (x: number) => number): num
   return frame > 0 ? frame : 0;
 }
 
+/** Slack in frames: the export clock's `frame * 1000 / FPS` is inexact, so a whole-frame source time can land a hair under its integer and floor a frame early (about a third of whole-frame instants do). */
+const FRAME_SLACK = 1e-6;
+
+/**
+ * `VideoClip` with `inMs`: the source frame at `inMs + (localMs - startMs)`, floored from the whole source time with slack, so every export frame shows the next source frame and none repeats or skips. Holds the `inMs` frame before `startMs` and the last frame past the end. Device screens keep `deviceClipFrameIndex`.
+ *
+ * @param inMs source ms shown at `startMs`; a negative one holds the first frame until playback reaches it, non-finite reads as 0
+ */
+export function clipSourceFrameIndex(
+  localMs: number,
+  startMs: number,
+  inMs: number,
+  fps: number,
+  frameCount: number,
+): number {
+  if (frameCount <= 0) return 0;
+  const from = Number.isFinite(inMs) ? inMs : 0;
+  const elapsed = localMs > startMs ? localMs - startMs : 0;
+  const frame = Math.floor(((from + elapsed) * fps) / 1000 + FRAME_SLACK);
+  return Math.min(frameCount - 1, Math.max(0, frame));
+}
+
 /** World-space plane size for a clip inside the format's frame rectangle, honouring `fit` (`contain` letterboxes, `cover` fills and lets overflow clip via the frustum); returns `[0, 0]` until the clip geometry is known. */
 export function clipPlaneSize(
   fit: "cover" | "contain",

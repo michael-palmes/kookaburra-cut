@@ -52,4 +52,13 @@ describe("withHitAt", () => {
       2000 - textImpactMs(cycling, 600, 2),
     );
   });
+
+  it("counts the keystrokes a shaped emphasis pads in, and only then", () => {
+    const typing = { ...anim, preset: "typewriter" as const };
+    const props = { text: "a *b* c", hitAt: 2000, to: 600 };
+    expect(withHitAt(props, typing).from).toBe(2000 - textImpactMs(typing, 600, 5));
+    expect(withHitAt(props, typing, "pill").from).toBe(2000 - textImpactMs(typing, 600, 7));
+    const plain = { ...props, text: "a b c" };
+    expect(withHitAt(plain, typing, "pill").from).toBe(withHitAt(plain, typing).from);
+  });
 });

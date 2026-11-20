@@ -2912,6 +2912,51 @@
       "effects": []
     },
     {
+      "id": "kookaburra-white-canvas",
+      "label": "White Canvas",
+      "summary": "AI and prompt-led launches",
+      "mode": "light",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["clean", "white", "ai", "prompt", "minimal", "bright"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#fafafb",
+        "text": "#111216",
+        "accent": "#1f60e8",
+        "muted": "#575c66"
+      },
+      "chartColors": ["#1f60e8", "#111216", "#7a4fe0", "#c8562a", "#0f8a6e", "#b8327a"],
+      "typography": {
+        "headline": "Space Grotesk",
+        "body": "Inter",
+        "scale": 1.2
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 500,
+          "slow": 900
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "build",
+        "out": "fade",
+        "staggerMs": 0
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:softbox",
+      "lighting": true,
+      "effects": []
+    },
+    {
       "id": "kookaburra-loft",
       "label": "Loft",
       "summary": "Lifestyle product scenes",
@@ -2954,6 +2999,97 @@
       "background": "gradient",
       "backdrop": "image",
       "environment": "kookaburra:ferndale-studio",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-paper-and-ink",
+      "label": "Paper and Ink",
+      "summary": "Editorial launch stories",
+      "mode": "light",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["paper", "handmade", "journal", "warm", "print", "storytelling"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#f4efe4",
+        "text": "#111111",
+        "accent": "#b01e17",
+        "muted": "#55504a"
+      },
+      "chartColors": ["#b01e17", "#111111", "#1f4f7a", "#8a6d00", "#3f6b4a", "#7a4a8a"],
+      "typography": {
+        "headline": "Instrument Serif",
+        "body": "Inter",
+        "scale": 1.333
+      },
+      "motion": {
+        "durations": {
+          "fast": 220,
+          "base": 560,
+          "slow": 1000
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "mask-reveal",
+        "out": "fade",
+        "staggerMs": 0
+      },
+      "textLook": null,
+      "background": "shader:mesh-gradient",
+      "backdrop": null,
+      "environment": "kookaburra:story-studio",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-ink-and-fluid",
+      "label": "Ink and Fluid",
+      "summary": "Concept and finance explainers",
+      "mode": "light",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["minimal", "explainer", "finance", "numbers", "calm", "teal"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#fbfaf7",
+        "text": "#0e0e10",
+        "accent": "#0f6e6e",
+        "muted": "#5c5c58"
+      },
+      "chartColors": ["#0f6e6e", "#0e0e10", "#23876a", "#767672", "#b8572a", "#3a5a9a"],
+      "typography": {
+        "headline": "Inter Tight@300",
+        "body": "Inter",
+        "scale": 1.25
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 520,
+          "slow": 940
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outBack"
+        }
+      },
+      "gradients": ["brand", "fluid"],
+      "textAnimation": {
+        "in": "spring-pop",
+        "out": "fade",
+        "staggerMs": 40,
+        "stagger": "word"
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:softbox",
       "lighting": true,
       "effects": []
     },
@@ -3505,6 +3641,372 @@
       "effects": []
     },
     {
+      "id": "kookaburra-obsidian-stage",
+      "label": "Obsidian Stage",
+      "summary": "Hero product reveals",
+      "mode": "dark",
+      "category": "studio",
+      "categoryLabel": "Studio",
+      "tags": ["dark", "keynote", "cinematic", "product", "reveal", "launch"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#070504",
+        "text": "#efe9df",
+        "accent": "#e8a867",
+        "muted": "#c2bbaf"
+      },
+      "chartColors": ["#e8a867", "#5da9e9", "#efe9df", "#8c8577", "#f06c5b", "#7fb28a"],
+      "typography": {
+        "headline": "Inter Tight@800",
+        "body": "Inter",
+        "scale": 1.25
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 560,
+          "slow": 1000
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "tracking",
+        "out": "fade",
+        "staggerMs": 0,
+        "staggerExact": true
+      },
+      "textLook": null,
+      "background": "scene3d:clerestory-shafts",
+      "backdrop": null,
+      "environment": "kookaburra:monochrome-studio",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-signal",
+      "label": "Signal",
+      "summary": "Teasers and countdowns",
+      "mode": "dark",
+      "category": "studio",
+      "categoryLabel": "Studio",
+      "tags": ["dark", "teaser", "countdown", "minimal", "dramatic", "launch"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#050506",
+        "text": "#f4f4f2",
+        "accent": "#f23a2e",
+        "muted": "#b8bbc1"
+      },
+      "chartColors": ["#f23a2e", "#f4f4f2", "#c9ccd1", "#8a8d93", "#ff8a3d", "#6fa8ff"],
+      "typography": {
+        "headline": "Barlow Condensed@600",
+        "body": "JetBrains Mono",
+        "scale": 1.333
+      },
+      "motion": {
+        "durations": {
+          "fast": 160,
+          "base": 420,
+          "slow": 800
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "rise-mask",
+        "out": "fade",
+        "staggerMs": 40,
+        "stagger": "word"
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:monochrome-studio",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-daylight-studio",
+      "label": "Daylight Studio",
+      "summary": "Calm feature spotlights",
+      "mode": "light",
+      "category": "studio",
+      "categoryLabel": "Studio",
+      "tags": ["warm", "daylight", "calm", "feature", "lifestyle", "product"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#f3efe8",
+        "text": "#22252a",
+        "accent": "#b33e2b",
+        "muted": "#57524b"
+      },
+      "chartColors": ["#b33e2b", "#3d7a4f", "#9a6b22", "#8a5a7a", "#22252a", "#4a6fa5"],
+      "typography": {
+        "headline": "Inter Tight@600",
+        "body": "Inter",
+        "scale": 1.2
+      },
+      "motion": {
+        "durations": {
+          "fast": 220,
+          "base": 560,
+          "slow": 1000
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "fade-up",
+        "out": "fade",
+        "staggerMs": 40,
+        "stagger": "word"
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:interior",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-split-light",
+      "label": "Split Light",
+      "summary": "Redesigns and before and after",
+      "mode": "light",
+      "category": "studio",
+      "categoryLabel": "Studio",
+      "tags": ["redesign", "comparison", "before", "after", "dawn", "upgrade"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#edeff2",
+        "text": "#121418",
+        "accent": "#4f35c2",
+        "muted": "#3e454e"
+      },
+      "chartColors": ["#4f35c2", "#121418", "#b4501e", "#3d6f8f", "#9a3a6a", "#2f7a5a"],
+      "typography": {
+        "headline": "Inter Tight@600",
+        "body": "Inter",
+        "scale": 1.2
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 520,
+          "slow": 940
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "fade-up",
+        "out": "fade",
+        "staggerMs": 30,
+        "stagger": "word"
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:dawn",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-exhibition",
+      "label": "Exhibition",
+      "summary": "Product tours, hung like a show",
+      "mode": "light",
+      "category": "studio",
+      "categoryLabel": "Studio",
+      "tags": ["gallery", "portfolio", "serif", "warm", "tour", "art"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#f2eee7",
+        "text": "#262626",
+        "accent": "#7a5a2a",
+        "muted": "#57524b"
+      },
+      "chartColors": ["#7a5a2a", "#262626", "#4f7a95", "#8a4a3a", "#8f74ab", "#5a6b3a"],
+      "typography": {
+        "headline": "Instrument Serif",
+        "body": "Inter",
+        "scale": 1.25
+      },
+      "motion": {
+        "durations": {
+          "fast": 240,
+          "base": 600,
+          "slow": 1100
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "fade",
+        "out": "fade",
+        "staggerMs": 80,
+        "stagger": "word"
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:interior",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-instrument",
+      "label": "Instrument",
+      "summary": "Stats and impact numbers",
+      "mode": "dark",
+      "category": "studio",
+      "categoryLabel": "Studio",
+      "tags": ["dark", "data", "numbers", "glass", "technical", "premium"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#15171a",
+        "text": "#f1eee8",
+        "accent": "#7ce0ff",
+        "muted": "#b4bac2"
+      },
+      "chartColors": ["#7ce0ff", "#f1eee8", "#ffc57a", "#9aa3ad", "#8ef0c4", "#c4a7ff"],
+      "typography": {
+        "headline": "Inter Tight@300",
+        "body": "Inter",
+        "scale": 1.25
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 520,
+          "slow": 940
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "chromatic",
+        "out": "fade",
+        "staggerMs": 0
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:softbox",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-aurora",
+      "label": "Aurora",
+      "summary": "AI launches after dark",
+      "mode": "dark",
+      "category": "studio",
+      "categoryLabel": "Studio",
+      "tags": ["dark", "ai", "aurora", "atmospheric", "prompt", "cinematic"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#0b0a1c",
+        "text": "#f4f2ff",
+        "accent": "#a98cff",
+        "muted": "#bdb8d8"
+      },
+      "chartColors": ["#a98cff", "#5eead4", "#ffb59a", "#f4f2ff", "#7cb8ff", "#ff8fc0"],
+      "typography": {
+        "headline": "Space Grotesk",
+        "body": "Inter",
+        "scale": 1.2
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 540,
+          "slow": 980
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "blur-in",
+        "out": "fade",
+        "staggerMs": 50,
+        "stagger": "word"
+      },
+      "textLook": null,
+      "background": "shader:mesh-gradient",
+      "backdrop": null,
+      "environment": "kookaburra:monochrome-studio",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-blueprint",
+      "label": "Blueprint",
+      "summary": "Developer releases and changelogs",
+      "mode": "dark",
+      "category": "studio",
+      "categoryLabel": "Studio",
+      "tags": ["developer", "code", "dark", "grid", "technical", "release"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#0a1022",
+        "text": "#e6edf7",
+        "accent": "#4fd8f5",
+        "muted": "#b4bfd1"
+      },
+      "chartColors": ["#4fd8f5", "#9be564", "#e6edf7", "#ffb454", "#c792ea", "#ff7a90"],
+      "typography": {
+        "headline": "JetBrains Mono",
+        "body": "Space Grotesk",
+        "scale": 1.25
+      },
+      "motion": {
+        "durations": {
+          "fast": 160,
+          "base": 420,
+          "slow": 800
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "typewriter",
+        "out": "fade",
+        "staggerMs": 0
+      },
+      "textLook": null,
+      "background": "shader:graph-grid",
+      "backdrop": null,
+      "environment": "kookaburra:monochrome-studio",
+      "lighting": true,
+      "effects": []
+    },
+    {
       "id": "kookaburra-sage",
       "label": "Sage",
       "summary": "Calm health and wellbeing",
@@ -3774,6 +4276,99 @@
       "background": "gradient",
       "backdrop": null,
       "environment": "kookaburra:cyclorama",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-colour-studio",
+      "label": "Colour Studio",
+      "summary": "Release reels and what's new",
+      "mode": "dark",
+      "category": "colour",
+      "categoryLabel": "Colour",
+      "tags": ["bold", "blue", "release", "update", "energetic", "launch"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#1129b4",
+        "text": "#ffffff",
+        "accent": "#ff9457",
+        "muted": "#dde2ff"
+      },
+      "chartColors": ["#ff9457", "#f7f5f0", "#3ed6a6", "#b69cff", "#ffd43b", "#ff8fc0"],
+      "typography": {
+        "headline": "Inter Tight@900",
+        "body": "JetBrains Mono",
+        "scale": 1.25
+      },
+      "motion": {
+        "durations": {
+          "fast": 180,
+          "base": 460,
+          "slow": 860
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outBack"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "slam",
+        "out": "fade",
+        "staggerMs": 50,
+        "stagger": "word"
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:cyclorama",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-continuum",
+      "label": "Continuum",
+      "summary": "Cross-device launches",
+      "mode": "light",
+      "category": "colour",
+      "categoryLabel": "Colour",
+      "tags": ["sunrise", "gradient", "devices", "platforms", "fresh", "bright"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#f8f6f3",
+        "text": "#15171c",
+        "accent": "#2a4fd6",
+        "muted": "#4a505c"
+      },
+      "chartColors": ["#2a4fd6", "#15171c", "#c8562a", "#7a4fe0", "#0f7a8a", "#b8327a"],
+      "typography": {
+        "headline": "Inter Tight@700",
+        "body": "Inter",
+        "scale": 1.2
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 520,
+          "slow": 940
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "fade-scale",
+        "out": "fade",
+        "staggerMs": 30,
+        "stagger": "word",
+        "startScale": 0.96
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:dawn",
       "lighting": true,
       "effects": []
     },
@@ -4126,6 +4721,20 @@
         "id": "image",
         "summary": "Image plane behind the content.",
         "fields": ["src", "fit"]
+      },
+      {
+        "id": "satin",
+        "summary": "Lit satin floor fading into the void: blurred reflection, glitter, pools.",
+        "fields": [
+          "color",
+          "roughness",
+          "specular",
+          "centre",
+          "fade",
+          "reflection",
+          "glitter",
+          "pools"
+        ]
       }
     ],
     "shaders": [
@@ -13692,6 +14301,393 @@
         ]
       },
       {
+        "id": "gallery",
+        "label": "Gallery",
+        "family": "deco",
+        "familyLabel": "Deco and architecture",
+        "lit": false,
+        "colorSlots": [
+          {
+            "label": "Plaster",
+            "fallback": "#3b3530"
+          },
+          {
+            "label": "Oak",
+            "fallback": "#4a2f22"
+          },
+          {
+            "label": "Shade",
+            "fallback": "#15120f"
+          },
+          {
+            "label": "Brass",
+            "fallback": "#705c3b"
+          },
+          {
+            "label": "Lamp",
+            "fallback": "#a8895c",
+            "glow": true
+          }
+        ],
+        "params": [
+          {
+            "id": "bayWidth",
+            "label": "Bay width",
+            "default": 9,
+            "min": 6,
+            "max": 14,
+            "step": 0.5
+          },
+          {
+            "id": "pierDepth",
+            "label": "Pier depth",
+            "default": 0.6,
+            "min": 0.2,
+            "max": 1.2,
+            "step": 0.05
+          },
+          {
+            "id": "lampHeight",
+            "label": "Lamp height",
+            "default": 2.6,
+            "min": 1.5,
+            "max": 4.5,
+            "step": 0.1
+          },
+          {
+            "id": "pools",
+            "label": "Picture lights",
+            "default": 0.85,
+            "min": 0,
+            "max": 1,
+            "step": 0.01
+          },
+          {
+            "id": "daylight",
+            "label": "Daylight",
+            "default": 0.25,
+            "min": 0,
+            "max": 1,
+            "step": 0.01
+          },
+          {
+            "id": "clouds",
+            "label": "Passing cloud",
+            "default": 0.4,
+            "min": 0,
+            "max": 1,
+            "step": 0.01
+          },
+          {
+            "id": "boards",
+            "label": "Board width",
+            "default": 0.42,
+            "min": 0.25,
+            "max": 0.8,
+            "step": 0.01
+          }
+        ],
+        "presets": [
+          {
+            "id": "p1",
+            "label": "Tasmanian Oak",
+            "colors": ["#c9bbb1", "#b49579", "#a99c94", "#bfa06e", "#ffe8c4"],
+            "backing": "#e2d8cd",
+            "speed": 1,
+            "params": {
+              "bayWidth": 9,
+              "pierDepth": 0.6,
+              "lampHeight": 2.6,
+              "pools": 1,
+              "daylight": 0.6,
+              "clouds": 0.5,
+              "boards": 0.42
+            },
+            "mode": "light",
+            "textColor": "#000000",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.7,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": 0,
+                "elevationDeg": 68,
+                "intensity": 1.8,
+                "kelvin": 3800,
+                "angularDeg": 4
+              },
+              "ambient": 0.5
+            }
+          },
+          {
+            "id": "p2",
+            "label": "Celery Top",
+            "colors": ["#ddd3c3", "#c9a774", "#b3a690", "#c6a466", "#fff3d8"],
+            "backing": "#ece5d9",
+            "speed": 0.9,
+            "params": {
+              "bayWidth": 9,
+              "pierDepth": 0.45,
+              "lampHeight": 2.6,
+              "pools": 0.65,
+              "daylight": 0.8,
+              "clouds": 0.65,
+              "boards": 0.34
+            },
+            "mode": "light",
+            "textColor": "#000000",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.7,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": 0,
+                "elevationDeg": 68,
+                "intensity": 1.7,
+                "kelvin": 4400,
+                "angularDeg": 4
+              },
+              "ambient": 0.5
+            }
+          },
+          {
+            "id": "p3",
+            "label": "Spotted Gum",
+            "colors": ["#c4c3bf", "#b0a593", "#a3a3a2", "#b9a073", "#f6f3ec"],
+            "backing": "#e1e0dd",
+            "speed": 1.1,
+            "params": {
+              "bayWidth": 9,
+              "pierDepth": 0.85,
+              "lampHeight": 2.6,
+              "pools": 0.8,
+              "daylight": 0.45,
+              "clouds": 0.35,
+              "boards": 0.55
+            },
+            "mode": "light",
+            "textColor": "#000000",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.7,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": 0,
+                "elevationDeg": 68,
+                "intensity": 1.6,
+                "kelvin": 5000,
+                "angularDeg": 4
+              },
+              "ambient": 0.5
+            }
+          },
+          {
+            "id": "p4",
+            "label": "Blackbutt",
+            "colors": ["#bcc2b0", "#c4a988", "#a2a796", "#c3a46c", "#fbf3df"],
+            "backing": "#e3e6dc",
+            "speed": 1,
+            "params": {
+              "bayWidth": 9,
+              "pierDepth": 0.35,
+              "lampHeight": 2.6,
+              "pools": 0.55,
+              "daylight": 0.9,
+              "clouds": 0.75,
+              "boards": 0.65
+            },
+            "mode": "light",
+            "textColor": "#000000",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.7,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": 0,
+                "elevationDeg": 68,
+                "intensity": 1.7,
+                "kelvin": 4800,
+                "angularDeg": 4
+              },
+              "ambient": 0.5
+            }
+          },
+          {
+            "id": "p5",
+            "label": "Silky Oak",
+            "colors": ["#d8c1b8", "#c49d86", "#b39d96", "#c09b70", "#ffeedd"],
+            "backing": "#eadcd6",
+            "speed": 0.85,
+            "params": {
+              "bayWidth": 9,
+              "pierDepth": 1,
+              "lampHeight": 2.6,
+              "pools": 1,
+              "daylight": 0.35,
+              "clouds": 0.4,
+              "boards": 0.46
+            },
+            "mode": "light",
+            "textColor": "#000000",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.7,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": 0,
+                "elevationDeg": 68,
+                "intensity": 1.8,
+                "kelvin": 3500,
+                "angularDeg": 4
+              },
+              "ambient": 0.5
+            }
+          },
+          {
+            "id": "p6",
+            "label": "Rosewood",
+            "colors": ["#3b3530", "#4a2f22", "#15120f", "#705c3b", "#a8895c"],
+            "backing": "#110f0d",
+            "speed": 1,
+            "params": {
+              "bayWidth": 9,
+              "pierDepth": 0.6,
+              "lampHeight": 2.6,
+              "pools": 0.85,
+              "daylight": 0.25,
+              "clouds": 0.4,
+              "boards": 0.42
+            },
+            "mode": "dark",
+            "textColor": "#ffffff",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.3,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": 0,
+                "elevationDeg": 68,
+                "intensity": 1.2,
+                "kelvin": 3000,
+                "angularDeg": 4
+              },
+              "ambient": 0.2
+            }
+          },
+          {
+            "id": "p7",
+            "label": "Buloke",
+            "colors": ["#2f3540", "#3a2e26", "#111317", "#6c5839", "#a0875f"],
+            "backing": "#0d0f12",
+            "speed": 0.9,
+            "params": {
+              "bayWidth": 9,
+              "pierDepth": 0.8,
+              "lampHeight": 2.6,
+              "pools": 0.75,
+              "daylight": 0.35,
+              "clouds": 0.3,
+              "boards": 0.36
+            },
+            "mode": "dark",
+            "textColor": "#ffffff",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.3,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": 0,
+                "elevationDeg": 68,
+                "intensity": 1.1,
+                "kelvin": 3400,
+                "angularDeg": 4
+              },
+              "ambient": 0.2
+            }
+          },
+          {
+            "id": "p8",
+            "label": "Gidgee",
+            "colors": ["#2b322c", "#2f231b", "#0e110e", "#66523a", "#a5845a"],
+            "backing": "#0b0d0b",
+            "speed": 1.1,
+            "params": {
+              "bayWidth": 9,
+              "pierDepth": 0.4,
+              "lampHeight": 2.6,
+              "pools": 1,
+              "daylight": 0.15,
+              "clouds": 0.2,
+              "boards": 0.6
+            },
+            "mode": "dark",
+            "textColor": "#ffffff",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.3,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": 0,
+                "elevationDeg": 68,
+                "intensity": 1,
+                "kelvin": 2800,
+                "angularDeg": 4
+              },
+              "ambient": 0.2
+            }
+          },
+          {
+            "id": "p9",
+            "label": "Red Gum",
+            "colors": ["#42292a", "#4d2c22", "#170e0e", "#74583b", "#a78560"],
+            "backing": "#130c0c",
+            "speed": 0.95,
+            "params": {
+              "bayWidth": 9,
+              "pierDepth": 1,
+              "lampHeight": 2.6,
+              "pools": 0.9,
+              "daylight": 0.3,
+              "clouds": 0.5,
+              "boards": 0.5
+            },
+            "mode": "dark",
+            "textColor": "#ffffff",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.3,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": 0,
+                "elevationDeg": 68,
+                "intensity": 1.15,
+                "kelvin": 3200,
+                "angularDeg": 4
+              },
+              "ambient": 0.2
+            }
+          }
+        ]
+      },
+      {
         "id": "iris-screen",
         "label": "Iris screen",
         "family": "deco",
@@ -17065,6 +18061,418 @@
                 "intensity": 1.7,
                 "kelvin": 2800
               }
+            }
+          }
+        ]
+      },
+      {
+        "id": "sunroom",
+        "label": "Sunroom",
+        "family": "atmosphere",
+        "familyLabel": "Texture and atmosphere",
+        "lit": false,
+        "colorSlots": [
+          {
+            "label": "Plaster",
+            "fallback": "#2b221c"
+          },
+          {
+            "label": "Sunlight",
+            "fallback": "#795b3e"
+          },
+          {
+            "label": "Floor",
+            "fallback": "#1f1914"
+          }
+        ],
+        "params": [
+          {
+            "id": "sunSide",
+            "label": "Sun side",
+            "default": -30,
+            "min": -70,
+            "max": 70,
+            "step": 1
+          },
+          {
+            "id": "sunHeight",
+            "label": "Sun height",
+            "default": 24,
+            "min": 14,
+            "max": 50,
+            "step": 1
+          },
+          {
+            "id": "drift",
+            "label": "Drift",
+            "default": 2,
+            "min": 0,
+            "max": 8,
+            "step": 0.1
+          },
+          {
+            "id": "patch",
+            "label": "Light patch",
+            "default": -0.25,
+            "min": -1,
+            "max": 1,
+            "step": 0.01
+          },
+          {
+            "id": "slatPitch",
+            "label": "Slat pitch",
+            "default": 0.68,
+            "min": 0.25,
+            "max": 0.9,
+            "step": 0.01
+          },
+          {
+            "id": "opening",
+            "label": "Slat opening",
+            "default": 0.66,
+            "min": 0.3,
+            "max": 0.85,
+            "step": 0.01
+          },
+          {
+            "id": "panes",
+            "label": "Window panes",
+            "default": 3,
+            "min": 1,
+            "max": 4,
+            "step": 1
+          },
+          {
+            "id": "softness",
+            "label": "Softness",
+            "default": 1.3,
+            "min": 0.3,
+            "max": 3,
+            "step": 0.05
+          },
+          {
+            "id": "wallDistance",
+            "label": "Wall distance",
+            "default": 9,
+            "min": 7,
+            "max": 14,
+            "step": 0.5
+          }
+        ],
+        "presets": [
+          {
+            "id": "p1",
+            "label": "Bangalow",
+            "colors": ["#d0bfb5", "#fff4ea", "#c9b7ab"],
+            "backing": "#efe6de",
+            "speed": 1,
+            "params": {
+              "sunSide": -22,
+              "sunHeight": 24,
+              "drift": 2,
+              "patch": -0.25,
+              "slatPitch": 0.68,
+              "opening": 0.66,
+              "panes": 3,
+              "softness": 1.3,
+              "wallDistance": 9
+            },
+            "mode": "light",
+            "textColor": "#000000",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.65,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": -22,
+                "elevationDeg": 24,
+                "intensity": 2.2,
+                "kelvin": 3800,
+                "angularDeg": 1.5
+              },
+              "ambient": 0.45
+            }
+          },
+          {
+            "id": "p2",
+            "label": "Newrybar",
+            "colors": ["#b9bcc0", "#f6f6f1", "#b3b2ad"],
+            "backing": "#e3e5e6",
+            "speed": 1,
+            "params": {
+              "sunSide": 45,
+              "sunHeight": 32,
+              "drift": 2,
+              "patch": 0.35,
+              "slatPitch": 0.45,
+              "opening": 0.55,
+              "panes": 2,
+              "softness": 1,
+              "wallDistance": 10
+            },
+            "mode": "light",
+            "textColor": "#000000",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.65,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": 45,
+                "elevationDeg": 32,
+                "intensity": 2.2,
+                "kelvin": 5200,
+                "angularDeg": 1.5
+              },
+              "ambient": 0.45
+            }
+          },
+          {
+            "id": "p3",
+            "label": "Tintenbar",
+            "colors": ["#b4bba6", "#f5f2e2", "#b8b09c"],
+            "backing": "#e3e5d9",
+            "speed": 1.1,
+            "params": {
+              "sunSide": -55,
+              "sunHeight": 20,
+              "drift": 3,
+              "patch": -0.2,
+              "slatPitch": 0.66,
+              "opening": 0.68,
+              "panes": 4,
+              "softness": 1.7,
+              "wallDistance": 8
+            },
+            "mode": "light",
+            "textColor": "#000000",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.65,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": -55,
+                "elevationDeg": 20,
+                "intensity": 2.2,
+                "kelvin": 4400,
+                "angularDeg": 1.5
+              },
+              "ambient": 0.45
+            }
+          },
+          {
+            "id": "p4",
+            "label": "Lennox Head",
+            "colors": ["#d1ad9f", "#fde9dc", "#c9a594"],
+            "backing": "#f0dcd2",
+            "speed": 0.9,
+            "params": {
+              "sunSide": 30,
+              "sunHeight": 38,
+              "drift": 2,
+              "patch": 0.1,
+              "slatPitch": 0.48,
+              "opening": 0.5,
+              "panes": 1,
+              "softness": 1.1,
+              "wallDistance": 11
+            },
+            "mode": "light",
+            "textColor": "#000000",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.65,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": 30,
+                "elevationDeg": 38,
+                "intensity": 2.2,
+                "kelvin": 3400,
+                "angularDeg": 1.5
+              },
+              "ambient": 0.45
+            }
+          },
+          {
+            "id": "p5",
+            "label": "Brunswick Heads",
+            "colors": ["#cdbb98", "#fdf3d8", "#c2ae8c"],
+            "backing": "#ece2cc",
+            "speed": 1,
+            "params": {
+              "sunSide": -25,
+              "sunHeight": 30,
+              "drift": 2.5,
+              "patch": 0.25,
+              "slatPitch": 0.6,
+              "opening": 0.62,
+              "panes": 3,
+              "softness": 1.4,
+              "wallDistance": 12
+            },
+            "mode": "light",
+            "textColor": "#000000",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.65,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": -25,
+                "elevationDeg": 30,
+                "intensity": 2.2,
+                "kelvin": 4000,
+                "angularDeg": 1.5
+              },
+              "ambient": 0.45
+            }
+          },
+          {
+            "id": "p6",
+            "label": "Nightcap",
+            "colors": ["#2b221c", "#795b3e", "#1f1914"],
+            "backing": "#130f0c",
+            "speed": 1,
+            "params": {
+              "sunSide": -40,
+              "sunHeight": 22,
+              "drift": 2.5,
+              "patch": -0.35,
+              "slatPitch": 0.55,
+              "opening": 0.55,
+              "panes": 3,
+              "softness": 1.3,
+              "wallDistance": 9
+            },
+            "mode": "dark",
+            "textColor": "#ffffff",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.3,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": -40,
+                "elevationDeg": 22,
+                "intensity": 2,
+                "kelvin": 2900,
+                "angularDeg": 1.5
+              },
+              "ambient": 0.2
+            }
+          },
+          {
+            "id": "p7",
+            "label": "Border Ranges",
+            "colors": ["#161b26", "#566279", "#121621"],
+            "backing": "#0a0d14",
+            "speed": 0.9,
+            "params": {
+              "sunSide": 50,
+              "sunHeight": 34,
+              "drift": 1.5,
+              "patch": 0.3,
+              "slatPitch": 0.48,
+              "opening": 0.45,
+              "panes": 2,
+              "softness": 0.9,
+              "wallDistance": 10
+            },
+            "mode": "dark",
+            "textColor": "#ffffff",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.3,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": 50,
+                "elevationDeg": 34,
+                "intensity": 2,
+                "kelvin": 7500,
+                "angularDeg": 1.5
+              },
+              "ambient": 0.2
+            }
+          },
+          {
+            "id": "p8",
+            "label": "Minyon",
+            "colors": ["#261a20", "#7a5464", "#1d1418"],
+            "backing": "#110b0e",
+            "speed": 1.1,
+            "params": {
+              "sunSide": -60,
+              "sunHeight": 18,
+              "drift": 3,
+              "patch": -0.1,
+              "slatPitch": 0.64,
+              "opening": 0.62,
+              "panes": 4,
+              "softness": 1.8,
+              "wallDistance": 8
+            },
+            "mode": "dark",
+            "textColor": "#ffffff",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.3,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": -60,
+                "elevationDeg": 18,
+                "intensity": 2,
+                "kelvin": 3100,
+                "angularDeg": 1.5
+              },
+              "ambient": 0.2
+            }
+          },
+          {
+            "id": "p9",
+            "label": "Terania",
+            "colors": ["#18201b", "#55684f", "#141a15"],
+            "backing": "#0b100c",
+            "speed": 1,
+            "params": {
+              "sunSide": 25,
+              "sunHeight": 28,
+              "drift": 2,
+              "patch": 0.2,
+              "slatPitch": 0.58,
+              "opening": 0.58,
+              "panes": 1,
+              "softness": 1.5,
+              "wallDistance": 12
+            },
+            "mode": "dark",
+            "textColor": "#ffffff",
+            "matchingLighting": {
+              "environment": {
+                "source": "kookaburra:interior",
+                "intensity": 0.3,
+                "rotationDeg": 0
+              },
+              "sun": {
+                "azimuthDeg": 25,
+                "elevationDeg": 28,
+                "intensity": 2,
+                "kelvin": 3600,
+                "angularDeg": 1.5
+              },
+              "ambient": 0.2
             }
           }
         ]
@@ -21991,9 +23399,9 @@
       },
       {
         "id": "spot",
-        "summary": "Cone light; angleDeg is the FULL cone (1..179), penumbra 0..1.",
+        "summary": "Cone light; angleDeg is the FULL cone (1..179), penumbra 0..1; volumetric shows its beam in haze.",
         "required": ["id", "intensity", "placement", "angleDeg", "penumbra"],
-        "optional": ["distance", "decay", "castShadow", "target"]
+        "optional": ["distance", "decay", "castShadow", "target", "volumetric"]
       },
       {
         "id": "area",
@@ -22188,7 +23596,18 @@
       "id": "grain",
       "summary": "Seeded film grain.",
       "fields": {
-        "intensity": "0 turns it off"
+        "intensity": "0 turns it off",
+        "hold": "frames each pattern holds, the paper boil (5 is 12 fps; default 1)"
+      }
+    },
+    {
+      "id": "lens",
+      "summary": "Lens response for hot highlights: energy-conserving bloom, warm halation, glare.",
+      "fields": {
+        "intensity": "0 turns it off",
+        "bloom": "0..0.3 mix of the wide glow (default 0.05)",
+        "halation": "warm glow round hot edges (default 0)",
+        "glare": "streaks on the hottest speculars (default 0)"
       }
     }
   ],
@@ -22223,7 +23642,8 @@
         "height": 2.5038,
         "centre": [0, 0],
         "z": 0.1149,
-        "cornerRadius": 0.1906
+        "cornerRadius": 0.1906,
+        "fillDistance": 0.782
       },
       "fittedHeight": 2.6,
       "layoutWidth": 1.25
@@ -22257,7 +23677,8 @@
         "cornerRadius": 0.2173,
         "frame": {
           "foldDeg": 180
-        }
+        },
+        "fillDistance": 2.3772
       },
       "coverScreen": {
         "width": 1.7151,
@@ -22267,7 +23688,8 @@
         "cornerRadius": 0.2278,
         "frame": {
           "foldDeg": 0
-        }
+        },
+        "fillDistance": 1.1645
       },
       "fittedHeight": 2.6,
       "layoutWidth": 3.65,
@@ -22304,7 +23726,8 @@
         "cornerRadius": 0.0552,
         "frame": {
           "lidDeg": 90
-        }
+        },
+        "fillDistance": 2.2454
       },
       "fittedHeight": 2.305,
       "layoutWidth": 3.4,
@@ -22339,7 +23762,8 @@
         "height": 2.4085,
         "centre": [0.0048, -0.0024],
         "z": 0.0436,
-        "cornerRadius": 0.1046
+        "cornerRadius": 0.1046,
+        "fillDistance": 2.1645
       },
       "fittedHeight": 2.6,
       "layoutWidth": 3.4
@@ -22379,7 +23803,8 @@
         "height": 2.4996,
         "centre": [0, 0.0011],
         "z": 0.1065,
-        "cornerRadius": 0.1678
+        "cornerRadius": 0.1678,
+        "fillDistance": 0.7843
       },
       "fittedHeight": 2.6,
       "layoutWidth": 1.25
@@ -22414,7 +23839,8 @@
         "height": 2.5014,
         "centre": [-0.0127, 0.0068],
         "z": 0.1303,
-        "cornerRadius": 0.1354
+        "cornerRadius": 0.1354,
+        "fillDistance": 0.7643
       },
       "fittedHeight": 2.6,
       "layoutWidth": 1.22
@@ -22541,6 +23967,11 @@
       "id": "depth-pair",
       "label": "Depth",
       "summary": "Two devices split front and back (exactly 2, else toe-in)."
+    },
+    {
+      "id": "v",
+      "label": "V",
+      "summary": "Device 1 forward, pairs stepping back and out, turned in."
     }
   ],
   "deviceMedia": {
@@ -23006,6 +24437,12 @@
         "label": "Split",
         "summary": "Two focus distances across a divider.",
         "fields": ["blur", "range", "focus", "focusB", "offset", "angleDeg", "squeeze"]
+      },
+      {
+        "id": "lens",
+        "label": "Lens",
+        "summary": "A real lens: blur from the f-stop and true depth.",
+        "fields": ["fStop", "focus", "focalMm", "sensorMm", "blur", "squeeze"]
       }
     ],
     "motionBlur": {
@@ -23406,6 +24843,11 @@
         "id": "obsidian",
         "label": "Obsidian",
         "tier": "dark"
+      },
+      {
+        "id": "lightTrail",
+        "label": "Light trail",
+        "tier": "dark"
       }
     ],
     "animations": [
@@ -23727,6 +25169,10 @@
         "weights": [400, 600]
       },
       {
+        "id": "Inter Tight",
+        "weights": [300, 400, 600, 700, 800, 900]
+      },
+      {
         "id": "JetBrains Mono",
         "weights": [400]
       },
@@ -23837,7 +25283,7 @@
         "summary": "Multi-device arrangement preset resolved per aspect.",
         "type": "object",
         "ref": "devices",
-        "values": ["row", "toe-in", "arc", "cascade", "hero", "depth-pair"]
+        "values": ["row", "toe-in", "arc", "cascade", "hero", "depth-pair", "v"]
       },
       {
         "id": "deviceTrack",
@@ -24086,7 +25532,7 @@
       },
       {
         "id": "render",
-        "summary": "Display transform { toneMapping, exposure }, exactText (true keeps SDF text off tone mapping) and motionBlur { enabled, shutterDeg, samples, camera, objects }; absent is aces at 1, tone-mapped text, no blur.",
+        "summary": "Display transform { toneMapping, exposure }, exactText (true keeps SDF text off tone mapping), textBlur (optical turns preset text soften into a true gaussian defocus), antialias (smaa|fxaa), supersample (4|8|16), dither (true: no banding in dark gradients), specularAA (true: device metal stops sparkling) and motionBlur { enabled, shutterDeg, samples, camera, objects }; absent is aces at 1, tone-mapped text, edge-softened text, no blur, no dither.",
         "type": "object"
       },
       {
@@ -24210,6 +25656,11 @@
         "summary": "Every catalogue device id."
       },
       {
+        "id": "DOT_ORDERS",
+        "kind": "constant",
+        "summary": "The orders a DotField count or reveal walks: reading, rows-up, ..."
+      },
+      {
         "id": "DashedBracket",
         "kind": "component",
         "summary": "Dashed bracket over a span: span, depth, side top|bottom|left|right, plus the DashedRule style; progress draws out from the middle."
@@ -24239,6 +25690,11 @@
         "id": "DeviceScreenAnchor",
         "kind": "component",
         "summary": "Child of Device: <DeviceScreenAnchor u v> pins content to its screen (u right, v down, 0..1)."
+      },
+      {
+        "id": "DotField",
+        "kind": "component",
+        "summary": "Grid or waffle of dots in one draw: reveal, wave, window, count, funnel, gather, merge, fill."
       },
       {
         "id": "EASE_NAMES",
@@ -24310,7 +25766,7 @@
       {
         "id": "Pill",
         "kind": "component",
-        "summary": "RoundedRect with fully round ends: width, height, color, opacity, stroke."
+        "summary": "RoundedRect with fully round ends: width, height, color, opacity, stroke, fill."
       },
       {
         "id": "PromptBar",
@@ -24335,7 +25791,7 @@
       {
         "id": "RoundedRect",
         "kind": "component",
-        "summary": "Flat, colour-exact rounded rect: width, height, radius, color, opacity, stroke."
+        "summary": "Flat, colour-exact rounded rect: width, height, radius, color, opacity, stroke; fill for a fluid gradient."
       },
       {
         "id": "SCREEN_LIFT",
@@ -24351,6 +25807,11 @@
         "id": "ScreenLayer",
         "kind": "component",
         "summary": "Camera-locked layer in frame units with no depth test: order=\"front\" over the finished frame, \"back\" behind everything 3D."
+      },
+      {
+        "id": "ScreenRegion",
+        "kind": "component",
+        "summary": "Child of Device: lifts a rect of its own screen towards the camera with a soft shadow, or variant lens magnifies a point."
       },
       {
         "id": "Scrim",
@@ -24371,6 +25832,11 @@
         "id": "Stamp",
         "kind": "component",
         "summary": "<Stamp at|hitAt rotateDeg? position rotation scale>: stamps children in at `at` ms (or landing on `hitAt`) with the stampScale pop and an optional rotation settle."
+      },
+      {
+        "id": "SteppedTime",
+        "kind": "component",
+        "summary": "SteppedTime fps: its subtree's time steps at a whole fps (12 is the hand-made look) while the camera moves every frame."
       },
       {
         "id": "TEXT_PRESET_NAMES",
@@ -24396,7 +25862,7 @@
       {
         "id": "VideoClip",
         "kind": "component",
-        "summary": "Deterministic video plane (pre-extracted 60 fps frames)."
+        "summary": "Deterministic video plane (pre-extracted 60 fps frames); radius and opacity make it a card."
       },
       {
         "id": "VideoWindow",
@@ -24419,6 +25885,11 @@
         "id": "WireGrid",
         "kind": "component",
         "summary": "Travelling-wave wire grid on the clock."
+      },
+      {
+        "id": "accentFluidColours",
+        "kind": "function",
+        "summary": "accentFluidColours(hex): the default fill's deep, mid and highlight shades of a colour."
       },
       {
         "id": "clamp01",
@@ -24541,7 +26012,7 @@
       {
         "id": "measureText",
         "kind": "function",
-        "summary": "measureText(text, { font, fontSize, letterSpacing?, lineHeight? }): { width, height, ascent, descent, lines } in world units, or null."
+        "summary": "measureText(text, { font, fontSize, letterSpacing?, lineHeight?, anchorX?, anchorY?, textAlign? }): { width, height, ascent, descent, lines, glyphs } in world units, or null."
       },
       {
         "id": "mediaPixelToScreenUv",
@@ -24614,6 +26085,11 @@
         "summary": "Samples a persistent-module keyframe track at globalMs."
       },
       {
+        "id": "screenFillPose",
+        "kind": "function",
+        "summary": "screenFillPose(model, pose, { fovDeg }): the cameraRig pose that fills the frame with a device's screen."
+      },
+      {
         "id": "screenUvToMediaPixel",
         "kind": "function",
         "summary": "screenUvToMediaPixel(model, [u, v], { width, height }): screen UV to media pixel."
@@ -24659,6 +26135,11 @@
         "summary": "Inside Device: { rect, coverRect, local(u, v) } for the screen it renders, or null."
       },
       {
+        "id": "useDeviceScreenPoint",
+        "kind": "hook",
+        "summary": "useDeviceScreenPoint(device, u, v): this frame's { position, rotation, scale } of a screen point on a moving device."
+      },
+      {
         "id": "useFormat",
         "kind": "hook",
         "summary": "{ width, height, aspect, shape, frame, safe }: frame and safe in world units at z=0, shape \"wide\", \"square\" or \"tall\"."
@@ -24667,6 +26148,16 @@
         "id": "useGroupAnimation",
         "kind": "hook",
         "summary": "Lets a custom child join an AnimatedGroup's alpha and shine."
+      },
+      {
+        "id": "useHeldLocalMs",
+        "kind": "hook",
+        "summary": "useHeldLocalMs(localMs): the time pinned at the scene's Present hold; raw in video."
+      },
+      {
+        "id": "usePresentTiming",
+        "kind": "hook",
+        "summary": "usePresentTiming(toMs, outAtMs?): Present and automatic stills hold the scene once a set piece settles."
       },
       {
         "id": "useProjectShared",
@@ -24726,7 +26217,7 @@
       {
         "id": "useTextMetrics",
         "kind": "hook",
-        "summary": "useTextMetrics(textKey, text, opts?): the block an AnimatedHeadline with those props typesets, sidecar overrides included, plus fitFontSize(maxWidth); null until its face has loaded."
+        "summary": "useTextMetrics(textKey, text, opts?): the block an AnimatedHeadline with those props typesets, sidecar overrides included, with each glyph's box and fitFontSize(maxWidth); null until its face has loaded."
       },
       {
         "id": "useTheme",
@@ -24870,16 +26361,52 @@
         "id": "DeviceScreenHinge"
       },
       {
+        "id": "DeviceScreenPointOptions"
+      },
+      {
         "id": "DeviceScreenPose"
       },
       {
         "id": "DeviceScreenRect"
       },
       {
+        "id": "DeviceScreenSample"
+      },
+      {
         "id": "DeviceShadowMode"
       },
       {
         "id": "DeviceSpec"
+      },
+      {
+        "id": "DotAdjust"
+      },
+      {
+        "id": "DotCount"
+      },
+      {
+        "id": "DotFieldProps"
+      },
+      {
+        "id": "DotFunnel"
+      },
+      {
+        "id": "DotGather"
+      },
+      {
+        "id": "DotInfo"
+      },
+      {
+        "id": "DotOrder"
+      },
+      {
+        "id": "DotReveal"
+      },
+      {
+        "id": "DotWave"
+      },
+      {
+        "id": "DotWindow"
       },
       {
         "id": "EaseName"
@@ -24891,10 +26418,16 @@
         "id": "ExtrudedTextProps"
       },
       {
+        "id": "FluidFill"
+      },
+      {
         "id": "FormatInfo"
       },
       {
         "id": "FormatShape"
+      },
+      {
+        "id": "GlyphBox"
       },
       {
         "id": "GradientProps"
@@ -24954,6 +26487,9 @@
         "id": "PulseOptions"
       },
       {
+        "id": "RegionLiftTiming"
+      },
+      {
         "id": "ResolvedChart"
       },
       {
@@ -25011,10 +26547,19 @@
         "id": "SceneTime"
       },
       {
+        "id": "ScreenFillOptions"
+      },
+      {
         "id": "ScreenFillProps"
       },
       {
         "id": "ScreenLayerProps"
+      },
+      {
+        "id": "ScreenRegionProps"
+      },
+      {
+        "id": "ScreenUvRect"
       },
       {
         "id": "ScrimProps"
@@ -25063,6 +26608,9 @@
       },
       {
         "id": "TitleBlockProps"
+      },
+      {
+        "id": "TrackedDevice"
       },
       {
         "id": "V3"
@@ -25442,6 +26990,9 @@
       "tier": "safe",
       "uses": [],
       "highlights": [],
+      "bring": [],
+      "song": null,
+      "looks": [],
       "sceneCount": 1,
       "durationMs": 4000,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
@@ -25456,10 +27007,269 @@
       ]
     },
     {
+      "id": "unveil",
+      "label": "Unveil",
+      "summary": "The big reveal: out of the dark on the first hit, three features, the name on the final hit.",
+      "category": "launch",
+      "tags": ["launch", "reveal", "hero", "keynote", "music", "beat cut"],
+      "personas": ["marketer", "co-founder"],
+      "level": "showcase",
+      "tier": "bold",
+      "uses": ["audio", "background", "camera-rig", "device", "multi-device", "text-motion"],
+      "highlights": [
+        "Cut to an original song: the device rises into the light on bar 9",
+        "Three features, each a claim, its proof and a close look",
+        "The name, then the call to action on the final hit"
+      ],
+      "bring": [
+        "An opening line",
+        "Product name",
+        "Three features, one line each",
+        "Five screen recordings and five screenshots",
+        "A closing slogan",
+        "App icon",
+        "A date or call to action"
+      ],
+      "song": {
+        "title": "First Light",
+        "bpm": 128
+      },
+      "looks": ["kookaburra-obsidian-stage", "kookaburra-onyx", "kookaburra-ink"],
+      "sceneCount": 16,
+      "durationMs": 59983,
+      "aspects": ["16:9"],
+      "themeId": "kookaburra-obsidian-stage",
+      "scenes": [
+        {
+          "file": "scenes/01-edge.tsx",
+          "durationMs": 1858,
+          "transition": null,
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "deviceTrack",
+            "devices",
+            "lighting"
+          ]
+        },
+        {
+          "file": "scenes/02-glass.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "deviceTrack",
+            "devices",
+            "lighting"
+          ]
+        },
+        {
+          "file": "scenes/03-glimpses.tsx",
+          "durationMs": 7500,
+          "transition": null,
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "deviceTrack",
+            "devices",
+            "lighting"
+          ]
+        },
+        {
+          "file": "scenes/04-reveal.tsx",
+          "durationMs": 11250,
+          "transition": null,
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraKicks",
+            "cameraMode",
+            "cameraRig",
+            "deviceTrack",
+            "devices",
+            "lighting",
+            "motionBlur",
+            "text",
+            "textAnimation",
+            "textAnimationOverrides",
+            "textStyle"
+          ]
+        },
+        {
+          "file": "scenes/05-claim-1.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": [
+            "backdrop",
+            "background",
+            "camera",
+            "cameraKicks",
+            "lighting",
+            "text",
+            "textAnimation",
+            "textStyle"
+          ]
+        },
+        {
+          "file": "scenes/06-proof-1.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["backdrop", "background", "cameraMode", "cameraRig", "devices", "lighting"]
+        },
+        {
+          "file": "scenes/07-detail-1.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "motionBlur"
+          ]
+        },
+        {
+          "file": "scenes/08-claim-2.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": [
+            "backdrop",
+            "background",
+            "camera",
+            "lighting",
+            "text",
+            "textAnimation",
+            "textStyle"
+          ]
+        },
+        {
+          "file": "scenes/09-proof-2.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["backdrop", "background", "cameraMode", "cameraRig", "devices", "lighting"]
+        },
+        {
+          "file": "scenes/10-detail-2.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "motionBlur"
+          ]
+        },
+        {
+          "file": "scenes/11-claim-3.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": [
+            "backdrop",
+            "background",
+            "camera",
+            "cameraKicks",
+            "lighting",
+            "text",
+            "textAnimation",
+            "textStyle"
+          ]
+        },
+        {
+          "file": "scenes/12-lineup.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "deviceTrack",
+            "devices",
+            "lighting",
+            "motionBlur"
+          ]
+        },
+        {
+          "file": "scenes/13-flyby.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "deviceTrack",
+            "devices",
+            "lighting"
+          ]
+        },
+        {
+          "file": "scenes/14-montage.tsx",
+          "durationMs": 7500,
+          "transition": null,
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "deviceTrack",
+            "devices",
+            "lighting"
+          ]
+        },
+        {
+          "file": "scenes/15-hero.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "deviceTrack",
+            "devices",
+            "lighting",
+            "text",
+            "textAnimation",
+            "textStyle"
+          ]
+        },
+        {
+          "file": "scenes/16-lockup.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraKicks",
+            "cameraMode",
+            "cameraRig",
+            "lighting",
+            "text",
+            "textAnimation",
+            "textAnimationOverrides",
+            "textStyle"
+          ]
+        }
+      ]
+    },
+    {
       "id": "whats-new-social-cut",
       "label": "What's New (social cut)",
       "summary": "Name the version, show three shipped things, end on the update CTA.",
-      "category": "app-updates",
+      "category": "update",
       "tags": ["release", "changelog", "social", "vertical", "feature cards", "version"],
       "personas": ["marketer", "pm"],
       "level": "standard",
@@ -25470,6 +27280,9 @@
         "Authored 9:16 first, exports all four aspects",
         "Reads with the sound off"
       ],
+      "bring": [],
+      "song": null,
+      "looks": [],
       "sceneCount": 6,
       "durationMs": 14260,
       "aspects": ["9:16", "16:9", "1:1", "4:5"],
@@ -25517,7 +27330,7 @@
       "id": "app-store-preview-30",
       "label": "App Store Preview 30",
       "summary": "A store-legal app preview: real captured screen, type pinned over it, no device frames.",
-      "category": "app-updates",
+      "category": "update",
       "tags": ["app store", "preview", "store legal", "portrait", "capture", "release"],
       "personas": ["marketer"],
       "level": "standard",
@@ -25528,6 +27341,9 @@
         "No device frames, hands or recreated UI, so it passes review",
         "Swap five app screens and four lines of text"
       ],
+      "bring": [],
+      "song": null,
+      "looks": [],
       "sceneCount": 6,
       "durationMs": 20000,
       "aspects": ["9:16"],
@@ -25575,7 +27391,7 @@
       "id": "changelog-rundown",
       "label": "Changelog Rundown",
       "summary": "A dated rundown of the whole release, regenerated each sprint by editing text.",
-      "category": "app-updates",
+      "category": "update",
       "tags": ["changelog", "release notes", "version", "bullets", "sprint", "overlay"],
       "personas": ["pm", "developer"],
       "level": "standard",
@@ -25586,6 +27402,9 @@
         "A floating window for the headline feature",
         "Version and date set in mono"
       ],
+      "bring": [],
+      "song": null,
+      "looks": [],
       "sceneCount": 6,
       "durationMs": 17250,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
@@ -25665,7 +27484,7 @@
       "id": "feature-deep-dive",
       "label": "Feature Deep Dive",
       "summary": "One feature, the whole runtime: the problem, the flow, the detail, the payoff.",
-      "category": "app-updates",
+      "category": "update",
       "tags": [
         "feature",
         "deep dive",
@@ -25684,6 +27503,9 @@
         "Screen stack expands to isometric on its own animated track",
         "Ink payoff scene, warm against the black the rest of the film runs on"
       ],
+      "bring": [],
+      "song": null,
+      "looks": [],
       "sceneCount": 7,
       "durationMs": 20850,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
@@ -25754,7 +27576,7 @@
       "id": "quality-release-notes",
       "label": "Quality Release (bug fixes)",
       "summary": "The unglamorous release said well: what broke, what is fixed, how much faster it feels.",
-      "category": "app-updates",
+      "category": "update",
       "tags": ["release notes", "bug fixes", "changelog", "stability", "patch", "quality"],
       "personas": ["pm", "developer"],
       "level": "standard",
@@ -25765,6 +27587,9 @@
         "Crash-rate chart on a full axis from zero",
         "Cold-start counter for the payoff"
       ],
+      "bring": [],
+      "song": null,
+      "looks": [],
       "sceneCount": 5,
       "durationMs": 13600,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
@@ -25806,7 +27631,7 @@
       "id": "redesign-reveal",
       "label": "Redesign Reveal",
       "summary": "Show the old app, wipe to the new, then earn it across three screens.",
-      "category": "app-updates",
+      "category": "update",
       "tags": ["redesign", "before and after", "compare", "refresh", "relaunch", "app update"],
       "personas": ["co-founder", "marketer"],
       "level": "showcase",
@@ -25817,6 +27642,9 @@
         "One rig fly-through, one orbit push, nothing else",
         "Three handsets on an arc for the wider tour"
       ],
+      "bring": [],
+      "song": null,
+      "looks": [],
       "sceneCount": 7,
       "durationMs": 22930,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
@@ -25897,7 +27725,7 @@
       "id": "onboarding-refresh",
       "label": "Onboarding Refresh",
       "summary": "The new first run in three steps, shown as real screens rather than a tutorial.",
-      "category": "app-updates",
+      "category": "update",
       "tags": ["onboarding", "first run", "setup", "activation", "screens", "app update"],
       "personas": ["pm", "marketer"],
       "level": "standard",
@@ -25908,6 +27736,9 @@
         "A live screen recording on a real device",
         "Closes on an activation counter"
       ],
+      "bring": [],
+      "song": null,
+      "looks": [],
       "sceneCount": 6,
       "durationMs": 18220,
       "aspects": ["9:16", "1:1", "4:5", "16:9"],
@@ -25963,7 +27794,7 @@
       "id": "dark-mode-launch",
       "label": "Dark Mode Launch",
       "summary": "Light to dark on a wipe, then the details only dark mode makes possible.",
-      "category": "app-updates",
+      "category": "update",
       "tags": ["dark mode", "theme switch", "before after", "app update", "feature drop"],
       "personas": ["marketer", "co-founder"],
       "level": "standard",
@@ -25974,6 +27805,9 @@
         "Edge-lit orbit with keyframed rim light",
         "Swap two screenshots and the copy"
       ],
+      "bring": [],
+      "song": null,
+      "looks": [],
       "sceneCount": 6,
       "durationMs": 16210,
       "aspects": ["1:1", "9:16", "16:9", "4:5"],
@@ -26047,7 +27881,7 @@
       "id": "performance-release-stats",
       "label": "Performance Release (stats)",
       "summary": "A release whose whole pitch is numbers: faster, smaller, steadier, each on a chart that does not lie.",
-      "category": "app-updates",
+      "category": "update",
       "tags": ["performance", "stats", "benchmarks", "metrics", "release notes", "charts"],
       "personas": ["pm", "co-founder"],
       "level": "standard",
@@ -26058,6 +27892,9 @@
         "Cold start, frame rate and download size",
         "Method notes and sample size on screen"
       ],
+      "bring": [],
+      "song": null,
+      "looks": [],
       "sceneCount": 6,
       "durationMs": 19550,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
@@ -26113,7 +27950,7 @@
       "id": "subscriber-feature-drop",
       "label": "Subscriber Feature Drop",
       "summary": "A gated feature landing for a tier or a flagged cohort: what it is, who gets it, how to turn it on.",
-      "category": "app-updates",
+      "category": "update",
       "tags": ["subscription", "pro tier", "feature flag", "rollout", "upgrade", "paywall"],
       "personas": ["marketer", "pm"],
       "level": "showcase",
@@ -26124,6 +27961,9 @@
         "Who-gets-it panel with a Pro chip and three lines",
         "Settings stack that spreads to show the toggle"
       ],
+      "bring": [],
+      "song": null,
+      "looks": [],
       "sceneCount": 6,
       "durationMs": 17580,
       "aspects": ["9:16", "4:5", "1:1", "16:9"],
@@ -26186,7 +28026,7 @@
       "id": "dev-release-notes",
       "label": "Dev Release Notes",
       "summary": "The changelog for people who read diffs: breaking changes, a real terminal and the migration steps.",
-      "category": "app-updates",
+      "category": "update",
       "tags": ["release notes", "changelog", "sdk", "api", "developer", "terminal", "migration"],
       "personas": ["developer"],
       "level": "standard",
@@ -26197,6 +28037,9 @@
         "A real terminal recording in a floating window",
         "Adoption charted in the terminal look"
       ],
+      "bring": [],
+      "song": null,
+      "looks": [],
       "sceneCount": 6,
       "durationMs": 23100,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
@@ -26252,7 +28095,7 @@
       "id": "before-after-update",
       "label": "Before / After Update",
       "summary": "The old way, the wipe, the new way, the number.",
-      "category": "app-updates",
+      "category": "update",
       "tags": ["before after", "comparison", "wipe", "redesign", "vertical", "short"],
       "personas": ["marketer"],
       "level": "standard",
@@ -26263,6 +28106,9 @@
         "The before stays flat, the after takes your theme",
         "Fourteen seconds, authored 9:16 first"
       ],
+      "bring": [],
+      "song": null,
+      "looks": [],
       "sceneCount": 5,
       "durationMs": 12980,
       "aspects": ["9:16", "16:9", "1:1", "4:5"],
@@ -26552,6 +28398,39 @@
   "samplePool": [
     {
       "id": "app-icon.png"
+    },
+    {
+      "id": "fairywren-focus-dark-phone.jpg"
+    },
+    {
+      "id": "fairywren-icon.png"
+    },
+    {
+      "id": "fairywren-insights-dark-phone.jpg"
+    },
+    {
+      "id": "fairywren-month-dark-phone.jpg"
+    },
+    {
+      "id": "fairywren-plan-dark-phone.mp4"
+    },
+    {
+      "id": "fairywren-quickadd-dark-phone.mp4"
+    },
+    {
+      "id": "fairywren-reschedule-dark-phone.mp4"
+    },
+    {
+      "id": "fairywren-share-dark-phone.jpg"
+    },
+    {
+      "id": "fairywren-share-dark-phone.mp4"
+    },
+    {
+      "id": "fairywren-sorted-dark-phone.mp4"
+    },
+    {
+      "id": "fairywren-today-dark-phone.jpg"
     },
     {
       "id": "home-dark-sample.jpg"

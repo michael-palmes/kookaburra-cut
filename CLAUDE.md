@@ -71,7 +71,8 @@ pnpm kookaburra:run --action stillsverify --project showcase-tour --stills png
 pnpm kookaburra:run --action create --project blank
 
 # Template card art: create each template in the throwaway root, capture its manifest's
-# four preview frames (16:9, 640px JPEG), promote into src/assets/template-previews/.
+# four preview frames (16:9, 640px JPEG) and its preview.loop as a 6 s H.264 card loop,
+# promote into src/assets/template-previews/.
 pnpm kookaburra:run --action template-previews          # --project <id,...> selects
 
 # Scene-preset card art: load each bundled preset through its scoped id, capture its
@@ -178,7 +179,7 @@ Project skills are authored only in `.agents/skills`. Keep `.claude/skills` as t
 - Skill `kookaburra-commit`: plan and create every commit (review, logical grouping, conventional messages).
 - Skill `kookaburra-pr-descriptions`: the fixed PR title/description standard; use for every PR opened in this repo.
 - Docs `docs/agent-kit.md`: how Claude Code edits user projects (kit layout and stamping, `kb`, hooks, the bridge v2 heartbeat and requests, load safety, conflict-aware live edits, the headless edit CLI and `kb video`, the catalogue). Read it before touching `.agents/skills/kookaburra-scene-authoring/`, `.agents/skills/kookaburra-video-editing/`, `src-tauri/src/kit.rs`, `bridge.rs`, `cli.rs`, `edit.rs`, `live_edits.rs`, `src/engine/editOps.ts`, `src/editor/editLiveSync.ts`, `src/render/bridge*.ts`, `src/engine/sceneDoc*.ts`, `src/theme/fontSafety.ts`/`fontVet.ts` or `src/agentKit/`.
-- Docs `docs/content-library.md`: editable templates, the shared Add a scene/App presets catalogue and standalone theme editing, including scoped IDs, reuse and preview ownership.
+- Docs `docs/content-library.md`: editable templates, the template contract (manifest v2's `bring`, `song`, `looks` and loop window, the categories and test bands, referenced-only sample seeding), the shared Add a scene/App presets catalogue and standalone theme editing, including scoped IDs, reuse and preview ownership. Read it before touching `src/engine/templates.ts` or a `template.json`.
 - Docs `docs/brands.md`: workspace brands (the folder and `brand.json`, the project `brand` field and `BRAND.md`, the Project picker, brand images in the Library, brand colours in the colour picker, the pack kind). Read it before touching `src-tauri/src/brands.rs` or `.agents/skills/kookaburra-brand-packs/`.
 - Docs `docs/packs.md`: the `.kbpack` format (archive layout, manifest, signing and TOFU, the extraction checklist, the conflict table). Read it before touching `src-tauri/src/pack/`.
 - Docs `docs/charts.md`: the chart subsystem (the sidecar `chart` block, the three mounts, the appearance and build-in preset catalogues, palette and number-formatting rules, the keyframed data track). Read it before touching `src/toolkit/chart/` or `src/engine/sceneChart.ts`.
@@ -306,3 +307,11 @@ intuition before the probe settled it).
   half way; 7.1 GB measured over five spikes). Exports now keep two a clip and
   release idle frames at start and end. Probe memory with `--action memory`
   (`docs/determinism.md`, "Memory probe"), not fps alone: a big Mac hides it.
+- **Fifth measured impactor (2026-11-18): passed stage scenes.** Every scene
+  kept its satin-floor mirror, volumetric pre-pass, shadow maps and screen
+  images for the whole export, and each floor's own mirror camera left a
+  ~490 MB transmission target three never frees, so a 16-stage 4K film died at
+  17.9 GB. Floors now share mirror cameras, and exports release a scene's
+  owners once the film passes it (`src/engine/sceneRelease.ts`,
+  `useSceneRelease`): peak 6.3 GB, bytes unchanged. A new per-scene GPU owner
+  registers there.

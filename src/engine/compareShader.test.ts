@@ -1,6 +1,12 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { COMPARE_GRIP_CATALOG } from "./compareCatalog";
-import { compareFragmentShader, compareFragmentShaderHdr } from "./compareShader";
+import {
+  compareFragmentShader,
+  compareFragmentShaderGlass,
+  compareFragmentShaderGlassHdr,
+  compareFragmentShaderHdr,
+} from "./compareShader";
 import { COMPARE_GRIP_ID } from "./sceneCompare";
 
 /** Source pins, not maths: the grip dispatch is export path, and style 0 must compile from the SAME expressions as the pre-style shader (the byte-identical null proof, docs/determinism.md). If a change here is deliberate, re-verify ws:compare-spike before touching this file. */
@@ -34,6 +40,28 @@ describe("compare fragment shader", () => {
     }
     expect(src).not.toContain("gripStyle == 0");
     expect(src).not.toContain(`gripStyle == ${COMPARE_GRIP_CATALOG.length}`);
+  });
+
+  it("keeps the plain programs source-identical to the pre-glass shader", () => {
+    const sha = (src: string) => createHash("sha256").update(src).digest("hex");
+    expect(sha(compareFragmentShader)).toBe(
+      "61b3cbcbe9c398b1fdc0ef11606e59a9b1f20a24bbc9cc0417b54b3692ec508a",
+    );
+    expect(sha(compareFragmentShaderHdr)).toBe(
+      "8865293f4c4f81605acf31a84c70f603f172e0769d5dd131b3d359b6f6229982",
+    );
+  });
+
+  it.each([
+    ["sdr", compareFragmentShaderGlass, "sampleDisplay(texA, vUv + gOff * 0.96)"],
+    ["hdr", compareFragmentShaderGlassHdr, "sampleGlass(texA, vUv + gOff * 0.96)"],
+  ])("%s glass program refracts both sides and keeps the chrome", (_name, src, sample) => {
+    expect(src).toContain("uniform float glassWidth;");
+    expect(src).toContain("float gHalf = glassWidth * 0.5 * lineScale;");
+    expect(src).toContain(sample);
+    expect(src).toContain("vec3 outC = clamp(mix(colB, colA, m) + rim, 0.0, 1.0);");
+    expect(src).not.toMatch(/SAMPLE_[AB]|GLASS\(|OUTPUT_LINE/);
+    expect(src).toContain(CHEVRONS_BRANCH);
   });
 
   it("draws every grip inside the one linear-mask guard, after the line", () => {

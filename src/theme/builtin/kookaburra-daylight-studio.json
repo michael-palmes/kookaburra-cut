@@ -1,0 +1,88 @@
+{
+  "version": 2,
+  "id": "kookaburra-daylight-studio",
+  "name": "Daylight Studio",
+  "mode": "light",
+  "catalogue": {
+    "category": "studio",
+    "useLabel": "Calm feature spotlights",
+    "tags": ["warm", "daylight", "calm", "feature", "lifestyle", "product"],
+    "stage": "lighting-only",
+    "order": 90
+  },
+  "colors": {
+    "background": "#f3efe8",
+    "text": "#22252a",
+    "accent": "#b33e2b",
+    "muted": "#57524b"
+  },
+  "gradients": {
+    "brand": {
+      "type": "linear",
+      "angleDeg": 115,
+      "stops": [["#f7f3ec", 0], ["#efe9e0", 0.55], ["#e9e3d9", 1]],
+      "space": "oklch"
+    }
+  },
+  "chartColors": ["#b33e2b", "#3d7a4f", "#9a6b22", "#8a5a7a", "#22252a", "#4a6fa5"],
+  "typography": {
+    "headline": {
+      "family": "Inter Tight",
+      "weight": 600
+    },
+    "body": "Inter",
+    "scale": 1.2
+  },
+  "motion": {
+    "durations": {
+      "fast": 220,
+      "base": 560,
+      "slow": 1000
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 40,
+    "stagger": "word"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -60,
+      "elevationDeg": 38,
+      "intensity": 2.3,
+      "color": "#fff0d9"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 110,
+        "elevationDeg": 15,
+        "intensity": 0.7,
+        "color": "#e9eef8"
+      }
+    ],
+    "ambient": 0.75,
+    "shadow": {
+      "technique": "map",
+      "softness": 0.8,
+      "opacity": 0.26,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#4a3d2e"
+    }
+  },
+  "environment": {
+    "source": "kookaburra:interior",
+    "intensity": 0.9,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "gradient",
+    "gradient": "brand",
+    "parallax": 0.03
+  }
+}

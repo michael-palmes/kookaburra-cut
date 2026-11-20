@@ -233,6 +233,7 @@ const DEVICE_LAYOUT_LABELS: Record<NonNullable<SceneDoc["deviceLayout"]>["preset
   cascade: "Cascade",
   hero: "Hero",
   "depth-pair": "Depth",
+  v: "V",
 };
 
 export function assetBasename(src: string): string {

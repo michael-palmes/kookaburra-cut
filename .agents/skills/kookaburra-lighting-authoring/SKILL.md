@@ -97,6 +97,10 @@ of being compressed by the display transform. Consequences worth stating to the 
   backgrounds ignore them. That is three's LTC limitation, not a bug.
 - **Over-budget fixtures THIN, they do not truncate.** A corridor lit only at the near end
   looks broken; every second tube looks deliberate.
+- **A tiny, very hot light shimmers in metal at any sample count.** A reflection far brighter
+  than white and thinner than a pixel cannot be averaged away (a phone's brushed edge under a
+  1,583x environment strip: 16 samples alone removed 55%, a softer light alone 46%, both 88%).
+  Size the light up and its intensity down for the same fill before raising `supersample`.
 
 ### Axis conventions (get these wrong and the fixture lights the wrong way)
 

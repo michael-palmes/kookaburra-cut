@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "name": "preset still for the \"sunroom\" 3D background (\"Minyon\")",
+  "background": {
+    "type": "scene3d",
+    "look": "sunroom",
+    "colors": ["#261a20", "#7a5464", "#1d1418"],
+    "speed": 1.1,
+    "params": {
+      "sunSide": -60,
+      "sunHeight": 18,
+      "drift": 3,
+      "patch": -0.1,
+      "slatPitch": 0.64,
+      "opening": 0.62,
+      "panes": 4,
+      "softness": 1.8,
+      "wallDistance": 8
+    },
+    "backing": {
+      "type": "color",
+      "color": "#110b0e"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

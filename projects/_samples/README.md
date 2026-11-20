@@ -1,14 +1,60 @@
 # Shared sample pool
 
-Seeded into every new project's `assets/` by `create_project` (media files only,
-ancient-stamped so they sort below the user's own media). Templates reference
-these by name and never ship a copy.
+`create_project` seeds the samples a project names into its `assets/`, plus
+`app-icon.png` (media files only, ancient-stamped so they sort below the user's
+own media), and a load restores a named one that has gone missing. Templates
+reference these by name and never ship a copy.
 
-The Kooka set is filler UI for the app-update templates: one consistent
-fictional day-planning app so every screenshot shares a design language.
-Generated with gpt-image-2 via the Codex CLI; fictional brand and content only,
-no real marks, apps or people. Screens 828x1792 JPEG, icons 512 PNG, badge PNG
-with alpha, each file under 150 KB.
+## Product family
+
+Unveil shows one fictional product, Fairywren (a calm planner). Its screens are
+rendered from HTML and CSS by `tools/sample-product/` (`pnpm assets:sample-product`),
+which steps a deterministic clock frame by frame in headless Chrome. Fictional brand,
+people and data only; the name was checked against IP Australia, USPTO and the App
+Store (see that README). The tool also draws light twins and two sibling products,
+Thornbill and Songlark; only the files a bundled template names are kept here.
+
+- Phone screens are 1206x2622 JPEG.
+- Recordings are 30 fps H.264, yuv420p, BT.709 tagged, faststart, 4 to 6 s and at
+  most 1.5 MB each. Each still at a recording's settled moment matches its frame.
+- The icon is a 1024 PNG with transparent corners.
+- Keep the family under 18 MiB.
+- Fairywren's phone screens are drawn for the camera: type about a fifth larger than a
+  real app and fewer rows, so they read on a phone inside a film frame.
+
+| File | Purpose |
+| --- | --- |
+| `fairywren-icon.png` | Fairywren app icon |
+| `fairywren-today-dark-phone.jpg` | Today |
+| `fairywren-focus-dark-phone.jpg` | Focus mode |
+| `fairywren-insights-dark-phone.jpg`, `fairywren-month-dark-phone.jpg` | Two more screens for a line-up |
+| `fairywren-share-dark-phone.jpg` | A shared list |
+| `fairywren-plan-dark-phone.mp4` | Plans land, one is ticked off, a new plan is typed |
+| `fairywren-sorted-dark-phone.mp4` | "Plans your week for you": the week sorts itself under a "This week, sorted" card |
+| `fairywren-quickadd-dark-phone.mp4` | A plan typed in plain words is parsed and added |
+| `fairywren-reschedule-dark-phone.mp4` | A meeting runs over and two plans move to fit |
+| `fairywren-share-dark-phone.mp4` | A list shared with three people, who tick items off |
+
+### Timings and regions
+
+Regions are screen UV `[u0, v0, u1, v1]` (`ScreenRegion rect`), times are seconds into the clip.
+
+- Plan: the first plan's tick is at `(0.886, 0.340)` and lands at 1.75 s; the round plus button is
+  at `(0.883, 0.930)`, pressed at 3.25 s. The New plan sheet is `[0.02, 0.588, 0.98, 0.991]`, up
+  from 3.95 s. The Today still is the frame at 3.1 s.
+- "This week, sorted" card: `[0.04, 0.172, 0.96, 0.40]`, still from 2.0 s.
+- Quick add field and parsed plan: `[0.04, 0.27, 0.96, 0.444]`, still from 2.8 to 3.4 s apart from the
+  blinking caret (Add at 3.45 s). The schedule below slides down to make room from 2.25 s and back
+  up from 3.9 s.
+- Reschedule card: `[0.04, 0.27, 0.96, 0.531]`, still from 1.3 to 3.3 s (Keep at 3.35 s).
+- Share sheet: `[0.02, 0.613, 0.98, 0.991]`, still from 1.6 to 2.3 s (Share at 2.3 s).
+
+## Kooka set
+
+Filler UI for the older app-update templates: one consistent fictional day-planning
+app so every screenshot shares a design language. Generated with gpt-image-2 via the
+Codex CLI; fictional brand and content only, no real marks, apps or people. Screens
+828x1792 JPEG, icons 512 PNG, badge PNG with alpha, each file under 150 KB.
 
 | File | Purpose |
 | --- | --- |

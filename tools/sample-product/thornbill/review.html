@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <title>Thornbill review</title>
+    <link rel="stylesheet" href="../shared/base.css" />
+    <link rel="stylesheet" href="../shared/window.css" />
+    <link rel="stylesheet" href="app.css" />
+    <style>
+      .body {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+      }
+      .content {
+        flex: 1;
+        min-width: 0;
+        padding: 30px 40px 0;
+      }
+      .eyebrow {
+        font: 400 13px "JetBrains Mono", monospace;
+        letter-spacing: 0.08em;
+        color: var(--cyan);
+      }
+      h1 {
+        margin: 8px 0 0;
+        font-size: 34px;
+        font-weight: 800;
+        letter-spacing: -0.025em;
+      }
+      .sub {
+        margin-top: 8px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 14px;
+        color: var(--muted);
+      }
+      .plus {
+        color: var(--lime);
+        font-family: "JetBrains Mono", monospace;
+      }
+      .minus {
+        color: var(--rose);
+        font-family: "JetBrains Mono", monospace;
+      }
+      .files {
+        width: 280px;
+        flex: none;
+        padding: 26px 14px;
+        border-right: 1px solid var(--line);
+        font-size: 13.5px;
+        color: var(--muted);
+      }
+      .files h5 {
+        margin: 0 0 10px;
+        padding-left: 10px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--faint);
+      }
+      .files div {
+        height: 34px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 10px;
+        border-radius: 8px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 13px;
+      }
+      .files div svg.i {
+        font-size: 15px;
+        color: var(--cyan);
+      }
+      .files div.on {
+        color: var(--ink);
+        background: var(--cyan-soft);
+      }
+      .files div em {
+        margin-left: auto;
+        white-space: nowrap;
+        font-style: normal;
+        font-size: 12px;
+      }
+      .diff {
+        margin-top: 22px;
+        border-radius: 14px;
+        overflow: hidden;
+        box-shadow: inset 0 0 0 1px var(--line);
+        background: #0b1224;
+      }
+      .diff .fh {
+        height: 46px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 16px;
+        border-bottom: 1px solid var(--line);
+        font: 400 14px "JetBrains Mono", monospace;
+      }
+      .diff .fh .grow {
+        flex: 1;
+      }
+      .rows {
+        padding: 8px 0;
+        font: 400 15px/28px "JetBrains Mono", monospace;
+        font-variant-ligatures: none;
+        white-space: pre;
+      }
+      .r {
+        display: flex;
+        height: 28px;
+      }
+      .r .n {
+        width: 46px;
+        flex: none;
+        padding-right: 12px;
+        text-align: right;
+        color: #3b4760;
+      }
+      .r .s {
+        width: 28px;
+        flex: none;
+        text-align: center;
+        color: var(--faint);
+      }
+      .r.add {
+        background: rgba(163, 230, 53, 0.09);
+      }
+      .r.add .s,
+      .r.add .n {
+        color: var(--lime);
+      }
+      .r.del {
+        background: rgba(251, 113, 133, 0.09);
+      }
+      .r.del .s,
+      .r.del .n {
+        color: var(--rose);
+      }
+      .r.add mark {
+        background: rgba(163, 230, 53, 0.24);
+        color: inherit;
+        border-radius: 4px;
+      }
+      .r.del mark {
+        background: rgba(251, 113, 133, 0.26);
+        color: inherit;
+        border-radius: 4px;
+      }
+      .bench {
+        display: grid;
+        grid-template-columns: 1fr 300px;
+        gap: 28px;
+        margin-top: 26px;
+      }
+      .metric {
+        padding: 20px 22px;
+        margin-bottom: 14px;
+        border-radius: 16px;
+        background: var(--panel);
+        box-shadow: inset 0 0 0 1px var(--line);
+      }
+      .metric h3 {
+        margin: 0 0 14px;
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        font-size: 16px;
+        font-weight: 600;
+      }
+      .metric h3 span {
+        font-size: 13px;
+        font-weight: 400;
+        color: var(--faint);
+      }
+      .metric h3 .delta {
+        margin-left: auto;
+        padding: 3px 10px;
+        border-radius: 11px;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--lime);
+        background: var(--lime-soft);
+      }
+      .bar {
+        display: grid;
+        grid-template-columns: 70px 1fr;
+        align-items: center;
+        gap: 12px;
+        height: 34px;
+        font: 400 13px "JetBrains Mono", monospace;
+        color: var(--muted);
+      }
+      .bar .track {
+        position: relative;
+        height: 22px;
+      }
+      .bar .fill {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        border-radius: 6px;
+        background: #33415f;
+      }
+      .bar.new .fill {
+        background: linear-gradient(90deg, #22d3ee, #67e8f9);
+      }
+      .bar .val {
+        position: absolute;
+        top: 1px;
+        padding-left: 10px;
+        font-size: 14px;
+        color: var(--ink);
+      }
+      .callout {
+        border-radius: 18px;
+        padding: 26px;
+        background:
+          radial-gradient(90% 80% at 80% 0%, rgba(163, 230, 53, 0.18), transparent 60%),
+          var(--panel);
+        box-shadow: inset 0 0 0 1px var(--line);
+        align-self: start;
+      }
+      .callout b {
+        display: block;
+        font-family: "Inter Tight", sans-serif;
+        font-size: 96px;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+        line-height: 1;
+        color: var(--lime);
+      }
+      .callout span {
+        display: block;
+        margin-top: 10px;
+        font-size: 18px;
+        font-weight: 600;
+      }
+      .callout small {
+        display: block;
+        margin-top: 14px;
+        font-size: 13px;
+        line-height: 1.5;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="win" id="win"></div>
+    <script type="module">
+      import { fillIcons, icon } from "../shared/icons.js";
+      import { params, ready } from "../shared/motion.js";
+
+      const page = params().page ?? "diff";
+      const k = (s) => `<span class="kw">${s}</span>`;
+      const st = (s) => `<span class="str">${s}</span>`;
+      const f = (s) => `<span class="fn">${s}</span>`;
+      const ROWS = [
+        [" ", 1, 1, `${k("import")} { defineConfig } ${k("from")} ${st('"thornbill"')};`],
+        ["+", "", 2, `<mark>${k("import")} { env } ${k("from")} ${st('"thornbill/env"')};</mark>`],
+        [" ", 2, 3, ""],
+        [" ", 3, 4, `${k("export default")} ${f("defineConfig")}({`],
+        ["-", 4, "", `  env: <mark>process.env</mark>,`],
+        ["+", "", 5, `  env: <mark>${f("env")}({</mark>`],
+        ["+", "", 6, `    DATABASE_URL: env.${f("url")}(),`],
+        ["+", "", 7, `    PAYMENTS_KEY: env.${f("secret")}(),`],
+        ["+", "", 8, "  }),"],
+        [" ", 5, 9, `  regions: [${st('"eu-west"')}, ${st('"ap-southeast"')}],`],
+        ["-", 6, "", `  coldStart: ${st('"<mark>default</mark>"')},`],
+        ["+", "", 10, `  coldStart: ${st('"<mark>snapshot</mark>"')},`],
+        [" ", 7, 11, `  preview: ${k("true")},`],
+        [" ", 8, 12, "});"],
+      ];
+      const BENCH = [
+        ["Cold start", "lower is better", "38% faster", ["181 ms", 100], ["112 ms", 62]],
+        ["p95 latency", "lower is better", "21% faster", ["107 ms", 100], ["84 ms", 79]],
+        ["Throughput", "higher is better", "35% more", ["18.2k req/s", 74], ["24.6k req/s", 100]],
+      ];
+
+      const toolbar = `<div class="toolbar"><div class="lights"><i></i><i></i><i></i></div>${icon("sidebar")}${icon("chevronLeft")}${icon("chevronRight")}<div class="address">${icon("lock")}${page === "diff" ? "Upgrade to 4.2 · Thornbill" : "Benchmarks · Thornbill Docs"}</div>${icon("share")}${icon("plus")}</div>`;
+      const diff = `<div class="body"><aside class="files"><h5>3 files changed</h5><div class="on">${icon("code")}thornbill.config.ts<em><span class="plus">+6</span> <span class="minus">-2</span></em></div><div>${icon("code")}routes/orders.ts<em><span class="plus">+4</span> <span class="minus">-3</span></em></div><div>${icon("note")}package.json<em><span class="plus">+1</span> <span class="minus">-1</span></em></div></aside>
+        <main class="content"><div class="eyebrow">MIGRATION · 4.1 TO 4.2</div><h1 class="display">Upgrade to Thornbill 4.2</h1><div class="sub"><span class="tag latest">4.2.0</span><span><span class="plus">+11</span> <span class="minus">-6</span> across 3 files</span><span>Generated by thornbill upgrade</span></div>
+          <div class="diff"><div class="fh">${icon("code")}thornbill.config.ts<span class="grow"></span><span class="plus">+6</span><span class="minus">-2</span></div><div class="rows">${ROWS.map(([s, a, b, code]) => `<div class="r${s === "+" ? " add" : s === "-" ? " del" : ""}"><span class="n">${a}</span><span class="n">${b}</span><span class="s">${s === " " ? "" : s}</span><span>${code}</span></div>`).join("")}</div></div></main></div>`;
+      const bench = `<div class="body"><main class="content"><div class="eyebrow">BENCHMARKS</div><h1 class="display">Thornbill 4.2, measured</h1><div class="sub">shop-api on the same hardware, median of 20 runs</div>
+        <div class="bench"><div>${BENCH.map(([name, hint, delta, [a, wa], [b, wb]]) => `<div class="metric"><h3>${name}<span>${hint}</span><span class="delta">${delta}</span></h3><div class="bar"><span>4.1.3</span><div class="track"><div class="fill" style="width:${wa * 0.8}%"></div><span class="val" style="left:${wa * 0.8}%">${a}</span></div></div><div class="bar new"><span>4.2.0</span><div class="track"><div class="fill" style="width:${wb * 0.8}%"></div><span class="val" style="left:${wb * 0.8}%">${b}</span></div></div></div>`).join("")}</div>
+          <div class="callout"><b>38%</b><span>faster cold starts</span><small>Snapshot cold starts are on by default in 4.2. Every route warms from a saved image instead of booting from scratch.</small></div></div></main></div>`;
+
+      const win = document.getElementById("win");
+      win.innerHTML = `${toolbar}${page === "diff" ? diff : bench}`;
+      fillIcons(win);
+      window.render = () => {};
+      window.pageReady = ready();
+    </script>
+  </body>
+</html>

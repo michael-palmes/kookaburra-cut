@@ -63,6 +63,7 @@ import { collectSceneDocFontRefs } from "./sceneDocSchema";
 import { getSceneHosts } from "./sceneHostRegistry";
 import { resolveSceneDocMedia } from "./sceneMedia";
 import { mosaicTileKind } from "./sceneMosaic";
+import { releaseScene, scenesPassed } from "./sceneRelease";
 import { resolveAt } from "./sceneTimeline";
 import type { StageExportOptions } from "./stageProtocol";
 import { clipSourceKey } from "./stageRealm";
@@ -274,6 +275,8 @@ export interface ExportRun {
   poster: ReturnType<typeof posterFrameSample> | undefined;
   opts: StageExportOptions;
   restore: () => void;
+  /** Scenes whose GPU memory this run has let go (engine/sceneRelease). */
+  released: Set<number>;
 }
 
 /** The preview state a run or capture snapshots first and gives back whole in its finally, so a failed preamble leaves no export-sized buffer, aspect or clip lane behind. Returns the playhead the run started from. */
@@ -371,7 +374,7 @@ export async function beginExportRun(
     }
     // Preview-only light helpers can never reach a capture: their layer is disabled on the camera for the whole run (the second guard on top of their mount gating) and given back in the restore.
     cam.layers.disable(HELPER_LAYER);
-    return { rig, total, poster, opts, restore };
+    return { rig, total, poster, opts, restore, released: new Set() };
   } catch (e) {
     restore();
     throw e;
@@ -396,6 +399,14 @@ export async function renderExportFrame(
   if (buffer && buffer.byteLength === bytes) rig.rgba = new Uint8Array(buffer);
   else if (rig.rgba.byteLength !== bytes) rig.rgba = new Uint8Array(bytes);
   const resolved = frame === 0 && poster ? poster.resolved : resolveAt(opts.slots, tMs);
+  // After the poster, frames only step forward, so a scene that has ended is never drawn again this run.
+  if (!(frame === 0 && poster)) {
+    for (const index of scenesPassed(opts.slots, tMs)) {
+      if (run.released.has(index)) continue;
+      run.released.add(index);
+      releaseScene(index);
+    }
+  }
   let fingerprint: RenderStateFingerprint | null = null;
   await renderFrameInto(
     rig,

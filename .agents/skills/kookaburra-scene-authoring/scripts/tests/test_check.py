@@ -178,6 +178,12 @@ class CheckTests(KbTestCase):
         self.assertTrue(any("extraThing" in w for w in warnings))
         self.assertTrue(any("is not a theme token" in w for w in warnings))
 
+    def test_satin_backdrop_needs_a_hex_colour(self) -> None:
+        write_json(self.root / "scenes" / "02-hero.json", {"version": 1, "backdrop": {"type": "satin", "roughness": 0.3}})
+        self.assertHasError(self.run_check(["scenes/02-hero.json"]), "a satin floor needs a hex colour")
+        write_json(self.root / "scenes" / "02-hero.json", {"version": 1, "backdrop": {"type": "satin", "color": "#3a2c22"}})
+        self.assertEqual(messages(self.run_check(["scenes/02-hero.json"]), "error"), [])
+
     def test_text_colour_takes_theme_tokens(self) -> None:
         doc = {"version": 1, "textStyle": {"titleColor": "text", "subtitleColor": "muted", "statColor": "accent", "bodyColor": "#ff5a36"}}
         write_json(self.root / "scenes" / "02-hero.json", doc)
@@ -204,15 +210,23 @@ class CheckTests(KbTestCase):
         doc = {
             "version": 1,
             "text": {"title": "Ship *twice*\nas fast", "tag": "One line", "sub": "Two\nlines"},
-            "textStyle": {"titleEmphasis": "accent@700", "tagEmphasis": "bold", "subEmphasis": "#fff@2000"},
+            "textStyle": {
+                "titleEmphasis": "accent@700",
+                "tagEmphasis": "bold",
+                "subEmphasis": "#fff@2000",
+                "capEmphasis": "accent battery",
+                "kickerEmphasis": "accent blob",
+            },
             "textAnimation": {"in": "build", "out": "none", "staggerMs": 200, "buildShiftEm": "far"},
             "textAnimationOverrides": {"sub": {"in": "fade", "out": "none", "staggerMs": 0}},
             "textLook": {"preset": "offset-print", "offsetDir": "left", "offsetOpacity": 2},
         }
         write_json(self.root / "scenes" / "02-hero.json", doc)
         report = self.run_check(["scenes/02-hero.json"])
-        self.assertHasError(report, "textStyle.tagEmphasis", "textStyle.subEmphasis", "buildShiftEm", "textLook.offsetDir")
-        self.assertFalse(any("titleEmphasis" in e for e in messages(report)))
+        self.assertHasError(
+            report, "textStyle.tagEmphasis", "textStyle.subEmphasis", "textStyle.kickerEmphasis", "buildShiftEm", "textLook.offsetDir"
+        )
+        self.assertFalse(any("titleEmphasis" in e or "capEmphasis" in e for e in messages(report)))
         warnings = messages(report, "warning")
         self.assertTrue(any("text.title" in w and "build is single line" in w for w in warnings))
         self.assertFalse(any("text.sub" in w and "build is single line" in w for w in warnings))
@@ -652,6 +666,45 @@ class CheckTests(KbTestCase):
         self.project = Project(self.root)
         unresolved = [i.message for i in self.kick_scene([{"at": "bar:2", "zoom": 1.1, "releaseMs": 100}]).issues if i.severity == "warning"]
         self.assertTrue(any("no audio.grid" in w and "./kb beats set-grid" in w for w in unresolved), unresolved)
+
+    def test_camera_dof_blocks(self) -> None:
+        def key(i: int, dof: object) -> dict:
+            return {"id": f"k{i}", "tMs": i * 500, "pose": {"position": [0, 0, 4], "aim": {"mode": "point", "at": [0, 0, 0]}, "dof": dof}}
+
+        rig = {
+            "keys": [
+                key(0, {"mode": "lens", "fStop": 11, "focus": "auto"}),
+                key(1, {"fStop": 0.2, "range": 1, "focalMm": "long"}),
+                key(2, {"mode": "depth", "aperture": 2}),
+                key(3, "nope"),
+            ],
+            "segments": [],
+        }
+        write_json(self.root / "scenes" / "02-hero.json", {"version": 1, "cameraMode": "rig", "cameraRig": rig})
+        report = self.run_check(["scenes/02-hero.json"])
+        errors, warnings = messages(report), messages(report, "warning")
+        self.assertTrue(any("keys[1].pose.dof.focalMm" in e and "must be a number" in e for e in errors), "\n".join(errors))
+        self.assertTrue(any("keys[3].pose.dof" in e and "must be an object" in e for e in errors), "\n".join(errors))
+        for path, needle in (
+            ("keys[1].pose.dof.fStop", "clamps"),
+            ("keys[1].pose.dof.range", "lens mode ignores range"),
+            ("keys[2].pose.dof.mode", "first key's"),
+            ("keys[2].pose.dof.aperture", "unknown dof field"),
+        ):
+            self.assertTrue(any(path in w and needle in w for w in warnings), f"{path}: {needle}\n" + "\n".join(warnings))
+        self.assertFalse(any("keys[0]" in m for m in errors + warnings), "\n".join(errors + warnings))
+        rig["keys"] = [key(0, {"mode": "depth", "blur": 0.5, "fStop": 4})]
+        write_json(self.root / "scenes" / "02-hero.json", {"version": 1, "cameraMode": "rig", "cameraRig": rig})
+        warnings = messages(self.run_check(["scenes/02-hero.json"]), "warning")
+        self.assertTrue(any("only lens mode reads fStop" in w for w in warnings), "\n".join(warnings))
+        rig["keys"] = [key(0, {"blur": 0.5}), key(1, {"mode": "lens", "fStop": 8})]
+        write_json(self.root / "scenes" / "02-hero.json", {"version": 1, "cameraMode": "rig", "cameraRig": rig})
+        warnings = messages(self.run_check(["scenes/02-hero.json"]), "warning")
+        self.assertTrue(any("keys[1].pose.dof.mode" in w and '"depth" wins' in w for w in warnings), "\n".join(warnings))
+        self.assertTrue(any("keys[1].pose.dof.fStop" in w and "only lens mode" in w for w in warnings), "\n".join(warnings))
+        rig["keys"] = [key(0, {"mode": "bokeh"})]
+        write_json(self.root / "scenes" / "02-hero.json", {"version": 1, "cameraMode": "rig", "cameraRig": rig})
+        self.assertTrue(any('unknown dof mode "bokeh"' in e for e in messages(self.run_check(["scenes/02-hero.json"]))))
 
     def test_duplicate_ids_flag_only_the_later_scene(self) -> None:
         write(self.root / "scenes" / "03-outro.tsx", SCENE_TSX.format(id="hero"))

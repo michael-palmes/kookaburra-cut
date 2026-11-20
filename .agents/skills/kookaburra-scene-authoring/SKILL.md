@@ -1,6 +1,6 @@
 ---
 name: kookaburra-scene-authoring
-description: Edit Kookaburra Cut video projects safely and see the result. Use for ANY change in this project folder (project.json, scenes/*.tsx, scenes/*.json sidecars, assets/) and for any question about what is on screen. Triggers on new scene, edit scene, text, title, font, theme, colour, brand, "use our brand", "use the <name> brand", "on brand", brand guidelines, background, shader, 3D background, device, phone, laptop, mockup, screen recording, screenshot stack, image, video, chart, graph, camera move, depth of field, motion blur, lighting, transition, timing, duration, music, beats, overlay, slide, panel, before/after, comparison, stills, PDF handout, presentation, product demo, launch video, release notes, export, render the film, flashes, "what's in this scene", "how does it look", "check the video".
+description: Edit Kookaburra Cut video projects safely and see the result. Use for ANY change in this project folder (project.json, scenes/*.tsx, scenes/*.json sidecars, assets/) and for any question about what is on screen. Triggers on new scene, edit scene, text, title, font, theme, colour, brand, "use our brand", "use the <name> brand", "on brand", brand guidelines, background, shader, 3D background, device, phone, laptop, mockup, screen recording, screenshot stack, image, video, chart, graph, camera move, depth of field, motion blur, lighting, transition, timing, duration, music, beats, pacing, rhythm, "sits too long", overlay, slide, panel, before/after, comparison, stills, PDF handout, presentation, product demo, launch video, release notes, export, render the film, flashes, "what's in this scene", "how does it look", "check the video".
 when_to_use: Load before editing any project file, before answering what a scene shows (capture a frame and look), and when planning a video, deck or demo (then read DESIGN.md).
 allowed-tools: Bash(./kb *), Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/kb.py *)
 ---
@@ -39,7 +39,8 @@ ok; 1 problems (fix what it names); 2 usage or environment (tell the user); 3 tr
 
 For a new video, deck or demo, the person's insight leads and you do the heavy lifting.
 Before planning, draw out what shipped, who it's for and why it matters (DESIGN.md, Brief
-first), then build around their real product. Small edits skip this.
+first), then build around their real product, paced to the song (DESIGN.md, Pacing:
+`./kb beats plan`). Small edits skip this.
 
 ## The loop (every change)
 
@@ -241,9 +242,9 @@ scenes under the app's Resources folder (`./kb status` prints it):
 | `./kb plan <command ...>` | What a structural command would write or refuse; writes nothing |
 | `./kb checkpoint [MSG] [--scene S]`, `history`, `undo [REV] [--scene S]`, `diff` | Git safety net |
 | `./kb lease S`, `leases`, `note TEXT [--scene S]`, `notes`, `events [--follow]` | Several agents: who edits what, messages, the event feed |
-| `./kb export [--aspect A] [--preset ID]`, `./kb verify-export FILE`, `./kb check film` | The finished film and its checks (reference/export.md) |
+| `./kb export [--aspect A] [--preset ID]`, `./kb verify-export FILE`, `./kb check film`, `./kb pacing accept S --kind K --why T` | The finished film and its checks; a pacing warning the person keeps (reference/export.md) |
 | `./kb song analyse [--accept] [--lyrics]` | The soundtrack's tempo fit, downbeat, sections (reference/beats.md) |
-| `./kb beats [--scene S]`, `set-grid`, `set-downbeat`, `clear-grid`, `cue`, `section`, `resolve` | The beat grid, cues, sections, positions |
+| `./kb beats [--scene S]`, `plan [--scenes N] [--apply]`, `set-grid`, `set-downbeat`, `clear-grid`, `cue`, `section`, `resolve` | The beat grid, a scene plan drafted from the song, cues, sections, positions |
 | `./kb chart ...` | Chart data and keys |
 | `./kb video ...` | Edit recordings: cuts, speed, taps, masks, fit (kookaburra-video-editing skill) |
 | `./kb debug contexts` | The app's WebGL contexts, when captures keep stalling |

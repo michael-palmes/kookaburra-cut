@@ -64,6 +64,10 @@
     {
       "file": "scenes/chart-obsidian.tsx",
       "durationMs": 2400
+    },
+    {
+      "file": "scenes/chart-lightTrail.tsx",
+      "durationMs": 2400
     }
   ]
 }

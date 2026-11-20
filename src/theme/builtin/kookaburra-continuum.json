@@ -1,0 +1,95 @@
+{
+  "version": 2,
+  "id": "kookaburra-continuum",
+  "name": "Continuum",
+  "mode": "light",
+  "catalogue": {
+    "category": "colour",
+    "useLabel": "Cross-device launches",
+    "tags": ["sunrise", "gradient", "devices", "platforms", "fresh", "bright"],
+    "stage": "lighting-only",
+    "order": 80
+  },
+  "colors": {
+    "background": "#f8f6f3",
+    "text": "#15171c",
+    "accent": "#2a4fd6",
+    "muted": "#4a505c"
+  },
+  "gradients": {
+    "brand": {
+      "type": "linear",
+      "angleDeg": 180,
+      "stops": [["#cfe0f5", 0], ["#f3ece8", 0.6], ["#fcd9c4", 1]],
+      "space": "oklch"
+    }
+  },
+  "chartColors": ["#2a4fd6", "#15171c", "#c8562a", "#7a4fe0", "#0f7a8a", "#b8327a"],
+  "typography": {
+    "headline": {
+      "family": "Inter Tight",
+      "weight": 700
+    },
+    "body": "Inter",
+    "scale": 1.2
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 520,
+      "slow": 940
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "fade-scale",
+    "out": "fade",
+    "staggerMs": 30,
+    "stagger": "word",
+    "startScale": 0.96
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 30,
+      "elevationDeg": 35,
+      "intensity": 1.9,
+      "color": "#fff1e6"
+    },
+    "fills": [
+      {
+        "azimuthDeg": -110,
+        "elevationDeg": 25,
+        "intensity": 0.8,
+        "color": "#dbe7fa"
+      },
+      {
+        "azimuthDeg": 170,
+        "elevationDeg": 12,
+        "intensity": 0.9,
+        "color": "#ffcfa8"
+      }
+    ],
+    "ambient": 0.85,
+    "shadow": {
+      "technique": "map",
+      "softness": 0.8,
+      "opacity": 0.22,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#2a3550"
+    }
+  },
+  "environment": {
+    "source": "kookaburra:dawn",
+    "intensity": 1,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "gradient",
+    "gradient": "brand",
+    "parallax": 0.03
+  }
+}

@@ -1,16 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
+import { BUILTIN_THEME_CATALOGUE, filterThemeCatalogue } from "../theme/catalogue";
+import { clipFrameIndex } from "./clipFrame";
 import { FORMATS } from "./format";
-import type { ProjectManifest } from "./project";
+import { type ProjectManifest, sanitiseAudioMusic } from "./project";
 import { parseSceneDoc, type SceneDoc } from "./sceneDocSchema";
 import { resolveSceneDocMedia } from "./sceneMedia";
 import {
   BLANK_TEMPLATE_ID,
   findTemplate,
+  loopRangeInSlots,
   TEMPLATE_CATEGORIES,
+  TEMPLATE_CATEGORY_ALIASES,
   TEMPLATE_PERSONAS,
   TEMPLATE_USES,
   type TemplateManifest,
   type TemplateManifestResult,
+  templateLoopRange,
+  templateLoopTimes,
   templateManifestSchema,
   templateProjectId,
 } from "./templates";
@@ -41,17 +47,20 @@ const assetGlob = import.meta.glob("../../projects/*/assets/**", { query: "?url"
 const sharedSampleGlob = import.meta.glob("../../projects/_samples/*", { query: "?url" });
 const fixtureManifestGlob = import.meta.glob("../../fixtures/**/template.json");
 
-/** The four aspects every template serves; `app-store-preview-30` is the one sanctioned exception (Apple takes portrait captures only). */
-const TEMPLATE_ASPECTS = ["16:9", "9:16", "1:1", "4:5"];
-const ASPECT_EXCEPTIONS: Record<string, string[]> = { "app-store-preview-30": ["9:16"] };
+/** Version 1: the four aspects every template serves; `app-store-preview-30` is the one sanctioned exception (Apple takes portrait captures only). */
+const V1_ASPECTS = ["16:9", "9:16", "1:1", "4:5"];
+const V1_ASPECT_EXCEPTIONS: Record<string, string[]> = { "app-store-preview-30": ["9:16"] };
+/** Version 2 is 16:9 only; Blank keeps all four, so a blank project starts in any shape. */
+const V2_ASPECTS = ["16:9"];
+const V2_ASPECT_EXCEPTIONS: Record<string, string[]> = { [BLANK_TEMPLATE_ID]: V1_ASPECTS };
 
 interface Band {
   scenes: [number, number];
   totalMs: [number, number];
 }
 
-/** Scene-count and runtime bands per category, the per-category authoring contract for template batches, slack at the floor. */
-const CATEGORY_BANDS: Record<string, Band> = {
+/** Version 1 scene-count and runtime bands, keyed by the category as authored, slack at the floor. */
+const V1_CATEGORY_BANDS: Record<string, Band> = {
   "app-updates": { scenes: [4, 8], totalMs: [12_000, 40_000] },
   "product-launch": { scenes: [4, 9], totalMs: [20_000, 50_000] },
   "marketing-social": { scenes: [4, 10], totalMs: [10_000, 35_000] },
@@ -59,13 +68,30 @@ const CATEGORY_BANDS: Record<string, Band> = {
   "finance-crypto": { scenes: [4, 8], totalMs: [15_000, 40_000] },
   "ai-developer": { scenes: [4, 8], totalMs: [20_000, 65_000] },
 };
-const DEFAULT_BAND: Band = { scenes: [4, 8], totalMs: [8_000, 60_000] };
+const V1_DEFAULT_BAND: Band = { scenes: [4, 8], totalMs: [8_000, 60_000] };
+/** Version 2: launch films, one band per category so a category can diverge later. */
+const LAUNCH_FILM_BAND: Band = { scenes: [8, 20], totalMs: [15_000, 60_000] };
+const V2_CATEGORY_BANDS: Record<string, Band> = Object.fromEntries(
+  TEMPLATE_CATEGORIES.map(({ id }) => [id, LAUNCH_FILM_BAND]),
+);
+/** One-take films: a single long scene is the form, so they keep the runtime band only. */
+const ONE_TAKE_BAND: Band = { scenes: [1, 1], totalMs: LAUNCH_FILM_BAND.totalMs };
+const V2_BAND_EXCEPTIONS: Record<string, Band> = {
+  exhibition: ONE_TAKE_BAND,
+  "one-dot": ONE_TAKE_BAND,
+};
 /** Apple's window, armed by `storeLegal`. */
 const STORE_LEGAL_BAND: Band = { scenes: [4, 8], totalMs: [15_000, 30_000] };
 /** The documented floor: Blank is one headline scene and belongs to no category. */
 const BLANK_BAND: Band = { scenes: [1, 1], totalMs: [1_000, 10_000] };
 
-const ASSET_FILE = /\.(png|jpe?g|webp|gif|svg|mp4|mov|m4v|webm|mp3|wav|m4a|glb|gltf|hdr|exr|csv)$/i;
+const ASSET_FILE =
+  /\.(png|jpe?g|webp|gif|svg|mp4|mov|m4v|webm|mp3|wav|m4a|flac|glb|gltf|hdr|exr|csv)$/i;
+
+/** The looks a version 2 template may name: bundled themes the Look step lists. */
+const VISIBLE_THEME_IDS = new Set(
+  filterThemeCatalogue(BUILTIN_THEME_CATALOGUE).map(({ id }) => id),
+);
 
 const categoryIds: readonly string[] = TEMPLATE_CATEGORIES.map((category) => category.id);
 const personaIds: readonly string[] = TEMPLATE_PERSONAS;
@@ -80,6 +106,8 @@ const isDevFixture = (id: string) => id.startsWith("preview-lab") || id.endsWith
 
 interface TemplateFolder {
   id: string;
+  /** As authored, so a version 1 band keys on the category it actually names. */
+  raw: unknown;
   parsed: TemplateManifestResult;
   manifest: TemplateManifest | undefined;
   project: ProjectManifest | undefined;
@@ -98,7 +126,8 @@ const templates: TemplateFolder[] = Object.entries(manifestGlob)
       const sidecar = sceneDocGlob[`../../projects/${id}/${file}`];
       if (sidecar !== undefined) sidecars.push({ file, raw: sidecar });
     }
-    return { id, parsed, manifest: parsed.success ? parsed.data : undefined, project, sidecars };
+    const manifest = parsed.success ? parsed.data : undefined;
+    return { id, raw, parsed, manifest, project, sidecars };
   })
   .sort((a, b) => a.id.localeCompare(b.id));
 
@@ -176,11 +205,92 @@ function collectAssetRefs(value: unknown, out: string[] = []): string[] {
   return out;
 }
 
+const isV2 = (entry: TemplateFolder) => (entry.manifest?.version ?? 1) >= 2;
+
+function aspectsFor(entry: TemplateFolder): string[] {
+  return isV2(entry)
+    ? (V2_ASPECT_EXCEPTIONS[entry.id] ?? V2_ASPECTS)
+    : (V1_ASPECT_EXCEPTIONS[entry.id] ?? V1_ASPECTS);
+}
+
 function bandFor(entry: TemplateFolder): Band {
   if (entry.id === BLANK_TEMPLATE_ID) return BLANK_BAND;
+  if (isV2(entry)) {
+    return (
+      V2_BAND_EXCEPTIONS[entry.id] ??
+      V2_CATEGORY_BANDS[entry.manifest?.category ?? ""] ??
+      LAUNCH_FILM_BAND
+    );
+  }
   if (entry.manifest?.storeLegal) return STORE_LEGAL_BAND;
-  const category = entry.manifest?.category;
-  return (category && CATEGORY_BANDS[category]) || DEFAULT_BAND;
+  const raw = entry.raw as { category?: unknown } | undefined;
+  const authored = typeof raw?.category === "string" ? raw.category : "";
+  return V1_CATEGORY_BANDS[authored] ?? V1_DEFAULT_BAND;
+}
+
+/** Runs `fn`, collecting what it warns instead of printing it. */
+function warningsOf<T>(fn: () => T): { result: T; warnings: string[] } {
+  const warnings: string[] = [];
+  const warn = vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => {
+    warnings.push(args.map(String).join(" "));
+  });
+  try {
+    return { result: fn(), warnings };
+  } finally {
+    warn.mockRestore();
+  }
+}
+
+/** Version 2's added rules for a bundled template, as problems; empty is a pass. Version 1 manifests never reach it, so the old set keeps today's contract. */
+function v2Problems(entry: TemplateFolder): string[] {
+  const manifest = entry.manifest;
+  const project = entry.project;
+  if (!manifest || !project) return ["no parsed manifest or project.json"];
+  const problems: string[] = [];
+  if ((manifest.bring ?? []).length === 0) problems.push("bring lists nothing to supply");
+
+  const audio = project.audio;
+  if (manifest.song && !audio) problems.push("song names a track project.json doesn't play");
+  if (!manifest.song && audio) problems.push("project.json plays audio with no song chip");
+  if (manifest.song && audio) {
+    const { result: music, warnings } = warningsOf(() => sanitiseAudioMusic(audio));
+    problems.push(...warnings.map((warning) => `sanitiseAudioMusic: ${warning}`));
+    if (!music.grid) problems.push("the song has no tempo grid");
+    else {
+      if (music.grid.bpm !== manifest.song.bpm) {
+        problems.push(`song.bpm ${manifest.song.bpm} isn't the grid's ${music.grid.bpm}`);
+      }
+      if (!audio.grid?.source) problems.push("the grid ships without its source");
+    }
+    if ((music.sections?.length ?? 0) !== (audio.sections?.length ?? 0)) {
+      problems.push("audio.sections lost entries to sanitiseAudioMusic");
+    }
+    const cues = Object.keys(audio.cues ?? {}).length;
+    if (Object.keys(music.cues ?? {}).length !== cues) {
+      problems.push("audio.cues lost entries to sanitiseAudioMusic");
+    }
+  }
+
+  const looks = manifest.looks ?? [];
+  for (const id of looks) {
+    if (!VISIBLE_THEME_IDS.has(id)) problems.push(`look ${id} isn't a visible bundled theme`);
+  }
+  if (looks[0] !== project.themeId) {
+    problems.push(`the first look (${looks[0]}) isn't project.json's themeId (${project.themeId})`);
+  }
+  for (const sidecar of entry.sidecars) {
+    const doc = sidecar.raw as { themeId?: unknown } | null;
+    if (doc && typeof doc === "object" && doc.themeId !== undefined) {
+      problems.push(`${sidecar.file} pins themeId, which overrides the look`);
+    }
+  }
+
+  const loop = manifest.preview.loop;
+  if (!loop) problems.push("preview.loop names no window for the card loop");
+  else if (!templateLoopRange(project, loop)) {
+    problems.push("preview.loop starts outside its scene or runs past the end of the film");
+  }
+  return problems;
 }
 
 describe("bundled templates", () => {
@@ -229,6 +339,285 @@ describe("bundled templates", () => {
       else seen.set(key, entry.id);
     }
     expect(clashes).toEqual([]);
+  });
+});
+
+describe("template manifest categories", () => {
+  const v1 = (category: string) => ({
+    version: 1,
+    name: "Older template",
+    tagline: "",
+    category,
+    tags: [],
+    personas: [],
+    level: "standard",
+    tier: "safe",
+    uses: [],
+    preview: { poster: 0, frames: [0, 0, 0, 0] },
+    order: 10,
+    status: "stable",
+  });
+
+  it.each(Object.entries(TEMPLATE_CATEGORY_ALIASES))(
+    "reads version 1's %s as %s",
+    (alias, category) => {
+      expect(templateManifestSchema.parse(v1(alias)).category).toBe(category);
+    },
+  );
+
+  it("files every alias under a shipped category", () => {
+    const ids: readonly string[] = TEMPLATE_CATEGORIES.map(({ id }) => id);
+    expect(Object.values(TEMPLATE_CATEGORY_ALIASES).filter((id) => !ids.includes(id))).toEqual([]);
+  });
+
+  it("refuses a category nobody knows, prototype keys included", () => {
+    expect(templateManifestSchema.safeParse(v1("finance")).success).toBe(false);
+    expect(templateManifestSchema.safeParse(v1("constructor")).success).toBe(false);
+  });
+});
+
+/** A version 2 manifest that passes the schema; tests override one field at a time. */
+const v2Manifest = (over: Record<string, unknown> = {}) => ({
+  version: 2,
+  name: "Launch",
+  tagline: "The one.",
+  category: "launch",
+  tags: [],
+  personas: [],
+  level: "standard",
+  tier: "safe",
+  uses: ["audio"],
+  bring: ["Logo", "Three screen recordings"],
+  song: { title: "First light", bpm: 128 },
+  looks: ["kookaburra-onyx", "kookaburra-daylight", "kookaburra-ink"],
+  preview: {
+    poster: 0,
+    frames: [0, 1, 2, 3],
+    loop: { scene: 1, atMs: 500, durationMs: 6000 },
+  },
+  order: 1,
+  status: "beta",
+  ...over,
+});
+
+const issuePaths = (raw: unknown) => {
+  const parsed = templateManifestSchema.safeParse(raw);
+  return parsed.success ? [] : parsed.error.issues.map((issue) => issue.path);
+};
+
+describe("template manifest version 2", () => {
+  it("parses bring, song, looks and the loop window", () => {
+    const manifest = templateManifestSchema.parse(v2Manifest());
+    expect(manifest.bring).toEqual(["Logo", "Three screen recordings"]);
+    expect(manifest.song).toEqual({ title: "First light", bpm: 128 });
+    expect(manifest.looks).toEqual(["kookaburra-onyx", "kookaburra-daylight", "kookaburra-ink"]);
+    expect(manifest.preview.loop).toEqual({ scene: 1, atMs: 500, durationMs: 6000 });
+  });
+
+  it("lets a template without a song or a loop leave them out", () => {
+    const { song: _song, ...rest } = v2Manifest();
+    const manifest = templateManifestSchema.parse({
+      ...rest,
+      preview: { poster: 0, frames: [0, 0, 0, 0] },
+    });
+    expect(manifest.song).toBeUndefined();
+    expect(manifest.preview.loop).toBeUndefined();
+  });
+
+  it("needs bring and at least one look", () => {
+    const { bring: _bring, looks: _looks, ...rest } = v2Manifest();
+    expect(issuePaths(rest)).toEqual(["bring", "looks"]);
+    expect(issuePaths(v2Manifest({ looks: [] }))).toEqual(["looks"]);
+    expect(issuePaths(v2Manifest({ looks: ["a", "a"] }))).toEqual(["looks"]);
+  });
+
+  it("rejects a malformed song and loop field by field", () => {
+    expect(issuePaths(v2Manifest({ song: { title: " ", bpm: 900, key: "D" } }))).toEqual([
+      "song.key",
+      "song.title",
+      "song.bpm",
+    ]);
+    const preview = {
+      poster: 0,
+      frames: [0, 0, 0, 0],
+      loop: { scene: -1, atMs: -5, durationMs: 0 },
+    };
+    expect(issuePaths(v2Manifest({ preview }))).toEqual([
+      "preview.loop.scene",
+      "preview.loop.atMs",
+      "preview.loop.durationMs",
+    ]);
+  });
+
+  it("keeps the version 1 ids out of a version 2 manifest", () => {
+    expect(issuePaths(v2Manifest({ category: "app-updates" }))).toEqual(["category"]);
+  });
+
+  it("keeps the version 2 fields out of a version 1 manifest", () => {
+    const { bring, song, looks } = v2Manifest();
+    const preview = {
+      poster: 0,
+      frames: [0, 0, 0, 0],
+      loop: { scene: 0, atMs: 0, durationMs: 6000 },
+    };
+    expect(
+      issuePaths(v2Manifest({ version: 1, category: "update", bring, song, looks, preview })),
+    ).toEqual(["bring", "song", "looks", "preview.loop"]);
+  });
+
+  it("ignores a manifest from a newer schema", () => {
+    expect(issuePaths(v2Manifest({ version: 3 }))).toEqual(["version"]);
+  });
+});
+
+describe("template loop window", () => {
+  const film = {
+    themeId: "kookaburra-studio-white",
+    scenes: [
+      { file: "scenes/01-a.tsx", durationMs: 4000 },
+      {
+        file: "scenes/02-b.tsx",
+        durationMs: 4000,
+        transition: { type: "crossfade", durationMs: 500 },
+      },
+      { file: "scenes/03-c.tsx", durationMs: 4000 },
+    ],
+  } as unknown as ProjectManifest;
+
+  it("places the window in film time, across a transition and a cut", () => {
+    expect(templateLoopRange(film, { scene: 1, atMs: 500, durationMs: 6000 })).toEqual({
+      startMs: 4000,
+      endMs: 10_000,
+    });
+  });
+
+  it("refuses a window that starts outside its scene or overruns the film", () => {
+    expect(templateLoopRange(film, { scene: 3, atMs: 0, durationMs: 1000 })).toBeNull();
+    expect(templateLoopRange(film, { scene: 0, atMs: 4000, durationMs: 1000 })).toBeNull();
+    expect(templateLoopRange(film, { scene: 2, atMs: 0, durationMs: 9000 })).toBeNull();
+  });
+
+  it("agrees with a loaded project's timeline", () => {
+    const slots = [
+      { startMs: 0, durationMs: 4000 },
+      { startMs: 3500, durationMs: 4000 },
+      { startMs: 7500, durationMs: 4000 },
+    ];
+    expect(loopRangeInSlots(slots, 11_500, { scene: 1, atMs: 500, durationMs: 6000 })).toEqual(
+      templateLoopRange(film, { scene: 1, atMs: 500, durationMs: 6000 }),
+    );
+  });
+
+  it("samples a six-second loop as 180 frames on the 30 fps clock", () => {
+    const times = templateLoopTimes({ startMs: 4000, endMs: 10_000 });
+    expect(times).toHaveLength(180);
+    expect(times[0]).toBe(4000);
+    expect(times[1]).toBe(4000 + 1000 / 30);
+    expect(times.at(-1)).toBe(4000 + 179 * (1000 / 30));
+  });
+
+  it("steps a 60 fps clip evenly, not 1, 3, 2 frames", () => {
+    const times = templateLoopTimes({ startMs: 0, endMs: 1000 });
+    const clipFrames = times.slice(0, 6).map((t) => clipFrameIndex(t, 0, 60, 600));
+    expect(clipFrames).toEqual([0, 2, 4, 6, 8, 10]);
+  });
+});
+
+describe("template contract version 2", () => {
+  const scene = (file: string, durationMs: number) => ({ file, durationMs });
+  const folder = (
+    manifest: Record<string, unknown> = {},
+    project: Record<string, unknown> = {},
+    sidecars: { file: string; raw: unknown }[] = [],
+  ): TemplateFolder => {
+    const raw = v2Manifest(manifest);
+    const parsed = templateManifestSchema.safeParse(raw);
+    return {
+      id: "launch",
+      raw,
+      parsed,
+      manifest: parsed.success ? parsed.data : undefined,
+      project: {
+        id: "launch",
+        name: "Launch",
+        themeId: "kookaburra-onyx",
+        formats: ["16:9"],
+        scenes: Array.from({ length: 8 }, (_, i) => scene(`scenes/0${i + 1}.tsx`, 2000)),
+        audio: {
+          file: "assets/first-light.flac",
+          grid: {
+            bpm: 128,
+            offsetMs: 0,
+            beatsPerBar: 4,
+            source: { sha256: "0".repeat(64), analysisVersion: 1, tracker: "nn" },
+          },
+          sections: [{ id: "drop", from: "bar:9", to: "bar:13" }],
+          cues: { hit: "bar:9" },
+        },
+        ...project,
+      } as unknown as ProjectManifest,
+      sidecars,
+    };
+  };
+
+  it("passes a template that keeps every rule", () => {
+    expect(v2Problems(folder())).toEqual([]);
+  });
+
+  it("ties the song chip to the soundtrack both ways", () => {
+    expect(v2Problems(folder({}, { audio: undefined }))).toEqual([
+      "song names a track project.json doesn't play",
+    ]);
+    const { song: _song, ...unsung } = v2Manifest();
+    expect(v2Problems({ ...folder(), manifest: templateManifestSchema.parse(unsung) })).toEqual([
+      "project.json plays audio with no song chip",
+    ]);
+    expect(v2Problems(folder({ song: { title: "First light", bpm: 120 } }))).toEqual([
+      "song.bpm 120 isn't the grid's 128",
+    ]);
+  });
+
+  it("needs the grid, its source, sections and cues to survive sanitising", () => {
+    const audio = folder().project?.audio;
+    const broken = folder(
+      {},
+      {
+        audio: {
+          ...audio,
+          grid: { bpm: 128, offsetMs: 0 },
+          sections: [{ id: "Drop", from: 1, to: 2 }],
+        },
+      },
+    );
+    const problems = v2Problems(broken);
+    expect(problems).toContain("the grid ships without its source");
+    expect(problems).toContain("audio.sections lost entries to sanitiseAudioMusic");
+    expect(problems.some((problem) => problem.startsWith("sanitiseAudioMusic:"))).toBe(true);
+  });
+
+  it("holds the looks to visible bundled themes, the project theme first, unpinned by scenes", () => {
+    const problems = v2Problems(
+      folder({ looks: ["kookaburra-daylight", "kookaburra-studio-white"] }, {}, [
+        { file: "scenes/01.json", raw: { version: 1, themeId: "kookaburra-onyx" } },
+      ]),
+    );
+    expect(problems).toEqual([
+      "look kookaburra-studio-white isn't a visible bundled theme",
+      "the first look (kookaburra-daylight) isn't project.json's themeId (kookaburra-onyx)",
+      "scenes/01.json pins themeId, which overrides the look",
+    ]);
+  });
+
+  it("needs something to bring and a loop window inside the film", () => {
+    const preview = {
+      poster: 0,
+      frames: [0, 0, 0, 0],
+      loop: { scene: 7, atMs: 0, durationMs: 6000 },
+    };
+    expect(v2Problems(folder({ bring: [], preview }))).toEqual([
+      "bring lists nothing to supply",
+      "preview.loop starts outside its scene or runs past the end of the film",
+    ]);
   });
 });
 
@@ -311,10 +700,10 @@ describe.skipIf(templateIds.length === 0)("each bundled template", () => {
     expect(docs.length).toBe(entry.sidecars.length);
   });
 
-  it.each(templateIds)("%s targets every aspect a template must serve", (id) => {
+  it.each(templateIds)("%s targets the aspects its manifest version asks for", (id) => {
     const formats = template(id).project?.formats ?? [];
     expect(formats.filter((aspect) => !(aspect in FORMATS))).toEqual([]);
-    expect([...formats].sort()).toEqual([...(ASPECT_EXCEPTIONS[id] ?? TEMPLATE_ASPECTS)].sort());
+    expect([...formats].sort()).toEqual([...aspectsFor(template(id))].sort());
   });
 
   it.each(templateIds)("%s declares exactly the capabilities its scenes use", (id) => {
@@ -355,6 +744,11 @@ describe.skipIf(templateIds.length === 0)("each bundled template", () => {
       ...preview.frames.map((frame) => (typeof frame === "number" ? frame : frame.scene)),
     ];
     expect(indices.filter((index) => index >= count)).toEqual([]);
+  });
+
+  it.each(templateIds)("%s keeps the version 2 contract when it declares version 2", (id) => {
+    const entry = template(id);
+    expect(isV2(entry) ? v2Problems(entry) : []).toEqual([]);
   });
 
   it.each(templateIds)("%s stays inside its scene-count and runtime band", (id) => {

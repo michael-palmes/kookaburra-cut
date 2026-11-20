@@ -49,6 +49,35 @@ describe("resolveDeviceLayout", () => {
     expect(Math.sign(w1.position?.[0] ?? 0)).toBe(-Math.sign(w2.position?.[0] ?? 0));
   });
 
+  it("v puts device 1 forward and steps each pair back, out and further turned in", () => {
+    const placements = resolveDeviceLayout(phones(5), layout({ preset: "v" }), wide);
+    const [hero, r1, l1, r2, l2] = placements;
+    expect(hero.position?.[0]).toBeCloseTo(0);
+    expect(hero.rotationDeg?.[1]).toBeCloseTo(0);
+    expect(r1.position?.[0]).toBeGreaterThan(0);
+    expect(l1.position?.[0]).toBeCloseTo(-(r1.position?.[0] ?? 0));
+    expect(r2.position?.[0]).toBeGreaterThan(r1.position?.[0] ?? 0);
+    expect(l2.position?.[0]).toBeCloseTo(-(r2.position?.[0] ?? 0));
+    expect(r1.position?.[2]).toBeLessThan(hero.position?.[2] ?? 0);
+    expect(r2.position?.[2]).toBeLessThan(r1.position?.[2] ?? 0);
+    expect(l2.position?.[2]).toBeCloseTo(r2.position?.[2] ?? 0);
+    // Turned toward the centre line, more on each step out.
+    expect(r1.rotationDeg?.[1]).toBeLessThan(0);
+    expect(l1.rotationDeg?.[1]).toBeCloseTo(-(r1.rotationDeg?.[1] ?? 0));
+    expect(Math.abs(r2.rotationDeg?.[1] ?? 0)).toBeGreaterThan(Math.abs(r1.rotationDeg?.[1] ?? 0));
+    for (const p of placements) expect(p.scale).toBeCloseTo(hero.scale ?? 0);
+  });
+
+  it("v tucks each wing behind its inner neighbour and compresses in a tall frame", () => {
+    const [hero, r1] = resolveDeviceLayout(phones(3), layout({ preset: "v", gap: 0 }), wide);
+    const half = (resolveAvailableDeviceSpec("iphone-17-pro").layoutWidth * 0.92) / 2;
+    const r1Inner = (r1.position?.[0] ?? 0) - half * Math.cos((22 * Math.PI) / 180);
+    expect(r1Inner).toBeLessThan((hero.position?.[0] ?? 0) + half);
+    const tallRow = resolveDeviceLayout(phones(5), layout({ preset: "v" }), tall);
+    const wideRow = resolveDeviceLayout(phones(5), layout({ preset: "v" }), wide);
+    expect(tallRow[4].scale ?? 1).toBeLessThan(wideRow[4].scale ?? 1);
+  });
+
   it("Depth preserves the two-device endpoints and steps any larger group through them", () => {
     const [front, back] = resolveDeviceLayout(phones(2), layout({ preset: "depth-pair" }), wide);
     expect(front.position?.[2]).toBeCloseTo(0.25);

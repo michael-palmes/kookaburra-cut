@@ -4,6 +4,7 @@ import {
   DOF_DEFAULTS,
   DOF_FOCUS_MIN,
   holdDof,
+  LENS_DOF_DEFAULTS,
   mixDof,
   mixFocusDistance,
   normalizeDocDof,
@@ -143,5 +144,39 @@ describe("holdDof", () => {
     expect(holdDof(null, 5)).toBeNull();
     expect(holdDof({ ...DOF_DEFAULTS, blur: 0.5 }, 3.3)?.focus).toBe(3.3);
     expect(holdDof({ ...DOF_DEFAULTS, blur: 0.5, focus: 7 }, 3.3)?.focus).toBe(7);
+  });
+});
+
+describe("lens fields", () => {
+  it("clamps the lens fields to a real lens", () => {
+    const warnings: string[] = [];
+    expect(
+      normalizeDocDof({ mode: "lens", fStop: 0.1, focalMm: 5000, sensorMm: 1 }, (m) =>
+        warnings.push(m),
+      ),
+    ).toEqual({ mode: "lens", fStop: 0.7, focalMm: 1200, sensorMm: 2 });
+    expect(warnings).toHaveLength(3);
+  });
+
+  it("a lens track's first key starts from full aperture; other modes still start at blur 0", () => {
+    expect(carryDof(null, { fStop: 8 }, "lens")).toEqual({ ...LENS_DOF_DEFAULTS, fStop: 8 });
+    expect(carryDof(null, { fStop: 8 }, "lens")?.blur).toBe(1);
+    expect(carryDof(null, { range: 2 }, "depth")?.blur).toBe(0);
+    expect(carryDof(null, { range: 2 })?.blur).toBe(0);
+  });
+
+  it("stops and focal lengths mix in log space, like focus", () => {
+    const a = { ...LENS_DOF_DEFAULTS, fStop: 2, focalMm: 50 };
+    const b = { ...LENS_DOF_DEFAULTS, fStop: 8, focalMm: 200 };
+    const mid = mixDof(a, b, 0.5, 3);
+    expect(mid?.fStop).toBeCloseTo(4, 12);
+    expect(mid?.focalMm).toBeCloseTo(100, 12);
+  });
+
+  it("a derived focal length holds until a key names one", () => {
+    const a = { ...LENS_DOF_DEFAULTS };
+    const b = { ...LENS_DOF_DEFAULTS, focalMm: 85 };
+    expect(mixDof(a, a, 0.5, 3)?.focalMm).toBeNull();
+    expect(mixDof(a, b, 0.2, 3)?.focalMm).toBe(85);
   });
 });

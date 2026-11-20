@@ -2580,7 +2580,8 @@ button.beat-status {
   overflow: hidden;
 }
 
-.template-card-thumb img {
+.template-card-thumb img,
+.template-card-thumb video {
   width: 100%;
   height: 100%;
   object-fit: contain;
@@ -2685,7 +2686,12 @@ button.beat-status {
   border: 0;
 }
 
-/* ── New project wizard: Start and Look share a fixed-height scroller so filters never resize it ── */
+/* ── New project wizard: Start (grid plus detail strip) and Look share one fixed-height pane so neither filters nor steps resize it ── */
+.modal.new-project {
+  --new-project-pane: min(35rem, 52vh);
+  --new-project-details: 78px;
+}
+
 .modal.new-project.wide {
   width: min(86rem, calc(100vw - 4rem));
 }
@@ -2763,7 +2769,7 @@ button.beat-status {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   align-content: start;
   gap: var(--space-6);
-  height: min(35rem, 52vh);
+  height: calc(var(--new-project-pane) - var(--new-project-details) - var(--space-5));
   overflow-y: auto;
   padding: var(--space-1);
   min-width: 0;
@@ -2771,13 +2777,112 @@ button.beat-status {
 
 .new-project-empty {
   box-sizing: border-box;
-  height: min(35rem, 52vh);
+  height: var(--new-project-pane);
+}
+
+.new-project-start .new-project-empty {
+  height: calc(var(--new-project-pane) - var(--new-project-details) - var(--space-5));
 }
 
 .new-project-look .theme-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  height: min(35rem, 52vh);
+  height: var(--new-project-pane);
   max-height: none;
+}
+
+.new-project-details {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-2);
+  height: var(--new-project-details);
+  padding: var(--space-4) var(--space-5);
+  min-width: 0;
+  overflow: hidden;
+  background: var(--surface-recessed);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.new-project-details-head,
+.new-project-details-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.new-project-details-name {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+  font-weight: 590;
+  color: var(--text-primary);
+}
+
+.new-project-details-tagline,
+.new-project-details-items {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+  color: var(--text-secondary);
+}
+
+.new-project-details-meta {
+  flex: none;
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.new-project-details-label {
+  flex: none;
+  inline-size: 6.5rem;
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+  color: var(--text-tertiary);
+}
+
+.new-project-details-row .template-rail-icon {
+  color: var(--text-tertiary);
+}
+
+.new-project-details-items {
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.new-project-details-items li {
+  display: inline;
+}
+
+.new-project-details-items li + li::before {
+  content: " · ";
+  color: var(--text-tertiary);
+}
+
+.template-chip.song {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--accent-text);
+  border-color: var(--accent-border);
+}
+
+.template-chip.song .template-rail-icon {
+  inline-size: 12px;
+  block-size: 12px;
 }
 
 /* Create with Claude: wide, first and recommended, painted in Claude's own palette. Scoped to this card, which stands for Claude the way a template poster stands for its theme. */
@@ -3337,6 +3442,11 @@ button.beat-status {
   background: var(--surface-elevated);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-full);
+}
+
+.theme-card-own.suggested {
+  color: var(--accent-text);
+  border-color: var(--accent-border);
 }
 
 .theme-card-meta {

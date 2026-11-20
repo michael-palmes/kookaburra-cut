@@ -57,6 +57,8 @@ GPU/driver, not across fleets.)
 | **A lit primitive's environment rebuilt every frame** (measured 2026-10-02): `Device`, `DeviceMockup` and `HeroObject` each mounted drei's `<Environment frames={1}>`, whose layout effect re-runs whenever its children change, and the parent re-renders every clock tick, so every mounted lit primitive re-rendered its cube (six renders) and rebuilt its PMREM every frame: a 2 to 3x export slowdown and about 4 MB of GPU memory each. On a cold boot (hidden window or `--cold`, no preview frames) frame 0 used the mount-time build and every later frame a mid-run rebuild, and the two differed on a few highlight pixels (2 px, 131 vs 187), so cold pass A diverged from pass B at frame 0: a gate that passed or failed on window visibility. | One studio environment per renderer (`toolkit/lighting/studioEnvironment.ts`): the same three Lightformer rects, one cube render and one PMREM, built at the first lit mount and held on the root scene while any lit primitive is mounted (restored when the last unmounts). Nothing rebuilds it per frame, so cold and warm runs light devices identically. Frame 0 also draws twice and captures the second, so no frame is ever a run's first draw. |
 | **A screen video registered after the extract barrier** (2026-10-10): a Device's screen clip registered only when the Device mounted, behind its model's suspense. With a cold clip cache (an acceptance bundle's first launch: it owns its own `$APPDATA`) the mount landed after `preextractClips` had read the registry, nothing awaited the extraction, and the consumer's pending readiness resolved at once, so pass A's frame 0 captured the black pending screen and pass B (cache now warm) the video. Not `--cold` or packaging: a dev run with the clip's cache dirs moved aside fails the same way. | The preamble registers every sidecar device video (`deviceVideoSlots`: both displays, both comparison sides) beside the media entries, and runs `prepareExportClips` again after `awaitSceneHostsCommitted` for anything registered at mount. A pending consumer's readiness (`pendingFrameReady`) waits for its current extraction (following a lane switch) and then its first completed bind; a cancelled bind run never releases it, an unmount does, a failed extraction or first bind fails an export (see the next row), and a bind that has not started `FIRST_BIND_STALL_MS` after its extraction fails the run (one timer: hidden pages throttle spin chains). `useClipEntry` re-renders even when extraction settles between render and effect. |
 | **A clip failure resolving the capture barrier** (2026-11-14, a busy Mac): the barrier released a screen whose clip had failed instead of failing the run. A failed extraction (a sticky `clip_info` error for the boot) and a failed first bind released `pendingFrameReady`, and any frame load error other than `ClipChunkError` was logged and resolved, so the capture drew the blank pending screen or the previous frame. The `showcase-tour` stills PDF exported every `sample-phone-recording.mp4` screen black, and both passes agreed because the failed entry outlived them; only the baseline caught it. | While exporting (exports and captures, not preview snapshots), a consumer's extraction failure, first-bind failure, frame load failure or a bitmap still detached at bind rejects its `videoFrameReady`, so the run fails with the clip's name and reason before `readPixels`. A failure is not a dead end: the preamble's first `prepareExportClips` pass gives every clip the run uses that failed before it (its extraction, or chunks past their attempts) one fresh entry, so a transient failure heals and only a clip that fails again stops the run. A run that binds every screen never takes these paths and finds nothing to retry, so good exports are untouched. Pinned by `clips.test.ts` (`pendingFrameReady`, `prepareExportClips`). |
+| **Every stage scene kept its GPU memory for the whole export** (measured 2026-11-18: a 60 s, 16-scene 4K film of satin-floor stages grew the editor's WebContent about 0.6 to 1.3 GB at each scene's first draw and never gave it back, so WebKit replaced the page at 17.9 GB in scene 17). The owners, from a tally of every GL allocation: the floor's mirror (4×MSAA half-float colour and depth, its resolves and blur pair, ~530 MB), three's transmission target for each floor's own mirror camera (~490 MB, kept by three for the renderer's life, keyed by camera), the volumetric pre-pass, VSM shadow maps and device screen images (25 to 170 MB a scene) | Mirror cameras are pooled by nesting depth across every floor, so three keeps one mirror transmission target, not one a floor. An export releases what a scene owns once a frame passes its end (`engine/sceneRelease.ts`: owners register with `useSceneRelease`; the export loop calls them, never for the last scene, never on the poster frame), plus its lights' shadow maps. Each released owner is cleared or re-uploaded before it is read, so later runs and the preview draw as before. Same film: peak 6.3 GB, growth 443 MB, bytes unchanged (`--lever scene-release=off` is the A/B). |
+| **A locked screen or sleeping display during a large export** (2026-11-17 to 19, dev autoruns on a 64 GB Mac): once the window is hidden WebKit holds the editor to about 5 GB where a visible one reached 18 GB, so a 4K film whose page passes that dies about 60 s in with the WebContent process replaced. Five runs died at 5.0 to 5.1 GB while locked; the same export passed in 32 minutes unlocked. Single-frame screenshots still pass | Not fixed in code. Check `ioreg -n Root -d1 \| grep CGSSessionScreenIsLocked` and `pmset -g log` before a long run, and keep the Mac unlocked with the display on. A film under the hidden ceiling is unaffected |
 | **Dev React's performance entries** (React 19.2 development builds, which every autorun and gate runs): react-dom and r3f's reconciler record a `performance.measure` with a props diff for every re-render whose props changed, and WebKit never evicts them. Every mounted scene re-renders per tick, about 1 MB a frame on a 40-scene project, so a Verify reached the 4 GB WebContent ceiling near frame 1250, and live preview playback of `ws:device-env-40` in `pnpm tauri dev` grew about 1.3 GB a minute (measured 2026-10-09). The packaged app runs production React and records none. | Every window entry installs a dev-only drain (`installDevPerformanceDrain` in `engine/devPerformance.ts`: a `PerformanceObserver` that clears marks and measures as they land), so preview, Present, the editor windows and DOM-only re-renders are all covered; the export loop also clears them synchronously every frame. The same preview playback holds flat at 1.2 to 1.6 GB. |
 | **WebKit kills the WebContent process near its 4 GB footprint ceiling** (measured 2026-07-25: a 4K verify's page footprint rode at ~3.9–4.5 GB, dominated by never-freed compositor/composer MSAA render-target pools, ~285–886 MB each; when a periodic check under system memory pressure catches it over 4096 MB the process is killed ("Unable to shrink memory footprint … Killed" in the unified log) and wry auto-reloads the page; window focus does NOT lift the ceiling) | Export frames release the pools they did not touch (`releaseIdlePools` in compositor.ts, `releaseComposer` in effects.ts; the multi-project autorun also resets between legs), dropping the 4K plateau to ~3.2 GB; the SDR pair is lazy so fx projects never allocate it, and verify releases confirmed-identical retained frames early. Transient fx-transition-window spikes can still crest ~4.1 GB on heavy projects (launch-2026), so `runAutoRun`'s reload latch stays the backstop: one benign reload tolerated, then a fast, retryable failure naming this mode. Since 2026-11-04 a transition's two sides share one MSAA target, the first side blitted out (same size, nearest, exact) to a flat keep target before the second renders: ~410 MB off a 4K fx transition. Diagnose with `log stream --predicate 'process == "kookaburra-cut" AND composedMessage CONTAINS "footprint"'`. |
 | **Stills: Present holds leaking into a video export or capture.** A held scene's text, groups and decorations freeze at the hold, so a frame rendered while the stills export holds scenes is not a pure function of `t`. | Guarded: `exportProjectHeld` and `captureFrameRgbaHeld` refuse to start while `hasSceneHolds()` (`assertNoSceneHolds`). The stills run writes its holds once (`replaceSceneHolds`) and clears them in `finally` before `setExporting(false)`, so the preview never draws a held scene either. |
@@ -182,6 +184,14 @@ Determinism rules specific to the composite path:
   measures each crossfade's midpoint against the solo frames either side (the
   outgoing scene's least-squares weight must sit within 0.15 of the eased
   progress); `pnpm ready` runs it whenever the compositor or timeline changes.
+- **A glass edge is its own program.** `compare.chrome.glass` composites through
+  `compareFragmentShaderGlass` / `...GlassHdr`, picked per plan (solo and both
+  pre-composites), so a plain comparison keeps the plain program, whose SDR and
+  HDR sources are SHA-256 pinned in `compareShader.test.ts`. The bar is the
+  glass sweep transition's optics held still: a cylinder profile across the
+  edge, per-channel offsets along the edge normal and a rim light, every value a
+  CPU uniform; refraction and rim fade over the bar's last pixel and a half
+  (`fwidth`), so the edge stays antialiased.
 
 - **Tone-map once, encode once, per path.** No-effects: every SDR target is a
   **display target** (`engine/displayTarget.ts`): three (r185, r186) applies tone
@@ -372,7 +382,15 @@ the field lands.
   export agree. `engine/clipFrame.ts` (unit-tested). Looping consumers (video
   background fills) use the modulo branch (`((raw % n) + n) % n`, exact even for
   negative time), while the clamp path stays byte-untouched for every holding
-  consumer.
+  consumer. That floor lands a frame early at about a third of whole-frame
+  instants (`frame * 1000 / FPS` is inexact), a repeat then a skip, and stays
+  frozen for every legacy consumer. A `VideoClip` with `inMs` takes
+  `clipSourceFrameIndex` instead: the floor of the whole source time
+  (`inMs + localMs − startMs`) with 1e-6 frames of slack, so it shows every
+  source frame exactly once. A screen portal's straight cut from a clip to a
+  screen therefore lands the next frame exactly (unit-tested over scene starts
+  on and off the frame grid); a cut from a screen can skip one, the screen's
+  own floor.
 - **Stream with a small LRU.** Frames load via a Rust `read_clip_frame` command
   (raw bytes → `createImageBitmap` → `THREE.Texture`); only ~12 decoded textures
   are resident at once, so a long 4K clip never holds thousands in memory.
@@ -395,7 +413,10 @@ the field lands.
 
 Layout uses `fit` (`contain` letterboxes, `cover` fills+crops) computed from
 `useFormat().frame` and the clip aspect. One clip serves every aspect. Clips are
-picture-only; sound belongs to the project soundtrack (below).
+picture-only; sound belongs to the project soundtrack (below). A clip given
+`radius` or `opacity` draws as a card: blended, no depth write, and the shared
+rounded-card mask program for the corners; both unset keep the opaque legacy
+plane and its program.
 
 ## Audio
 
@@ -498,6 +519,11 @@ fixed a real divergent-verify bug:
   INTERLEAVED: reading `attribute.array[i * 2]` gets positions, not UVs; use
   `getX`/`getY`.
 
+`ScreenRegion` (a lifted card or lens of the screen) adds no clip consumer: it
+reads the display material's `map`, power and baked crop
+(`userData.screenUvMap`) in its mesh's `onBeforeRender`, so it samples the
+frame the barrier already awaited, never a stale one from render time.
+
 ### Foldables
 
 A folding device (`docs/foldables.md`) adds a posed skeleton and a second
@@ -547,6 +573,13 @@ allow-listed time-free effects exist (film grain is `DeterministicGrainEffect`,
 seeded from the frame index). The composer owns the project's **single** ACES
 tone-map + sRGB encode; on transition frames the scenes reach the A/B targets
 un-tone-mapped and the composite feeds the composer linear.
+
+**Grain hold (the paper boil).** `grain.hold` keeps one pattern for N frames:
+`heldGrainSeed` integer-divides the frame seed (`floor(frame / hold)`, never a
+floored time), so the pattern changes on whole frames of the 60 grid from frame
+0. A 30 fps lane sees the even frames, so a hold of 5 alternates 3 and 2 output
+frames there. Absent or 1 is the frame seed exactly; across a transition `hold`
+snaps at the midpoint instead of lerping (`blendEffectParams`).
 
 **Colour-grade (3D LUT).** The ordering decision and its invariants:
 
@@ -661,6 +694,50 @@ the paper's default constants, which are **export contract**. Pure per-pixel
 math on fixed geometry → deterministic like any shader. Scope discipline: the
 filter applies ONLY to `Device`'s private material clones, never the shared drei
 glTF cache; `DeviceMockup`/`HeroObject` read the same glb.
+
+**Post-tone-map AA and supersampled export** (opt-in project `render` settings;
+absent keeps today's chain and bytes). MSAA resolves linear HDR, so a highlight
+many times brighter than white keeps a hard edge whatever the sample count.
+
+- **`render.antialias: "smaa" | "fxaa"`** adds one EffectPass after the tone map
+  on effect frames, so it sees display values. Fixed shaders and taps; part of
+  the composer's rebuild key. SMAA's lookup images decode in
+  `preloadEffectLuts` into byte textures (`createImageBitmap`: the stage realm's
+  GL context rejects the page's image elements), and the effect builds from
+  them synchronously. An export never renders a frame without them; the preview
+  shows FXAA until they land.
+- **`render.supersample: 4 | 8 | 16`** (export only) is the escalation path
+  above. Each draw averages that many renders of the same instant, the camera's
+  projection offset by a fixed sub-pixel table (`engine/supersample.ts`: a
+  rotated grid at 4, Halton (2, 3) beyond; export contract), through the
+  motion blur lane's accumulator after the tone map. Each render also sets
+  `supersampleSeed` to its sample index, and screen-fixed noise the jitter
+  cannot move (the lens gather's rotation, the haze march's step offset)
+  shifts by it, so the samples average that noise too; it is 0 on every
+  single-sample frame, which therefore stays bit-identical. Pure in t. It fixes
+  geometry thinner than MSAA's sample spacing, such as an edge-on band dotting
+  along a rim, at about 2.2× the export cost at 4. Frames on a shutter lane keep
+  their own samples, and transition frames jitter only the main camera. The
+  paused preview settles to the same supersampled frame once the playhead
+  rests (`CompositorDriver`'s settle timer, the paused motion blur's), so what
+  the editor shows at rest is the export's edge quality; playback stays single.
+- **`render.specularAA: true`** swaps the device GSAA above for Tokuyoshi and
+  Kaplanyan's filter in GGX alpha space: `α'² = α² + min(|∇n|²/π, 0.18)` (σ² =
+  1/2π, κ = 0.18; export contract), with three's anisotropic `alphaT`
+  recomputed from the widened roughness (`toolkit/device/specularAA.ts`). The
+  legacy filter widens perceptual roughness (`r'² = r² + k`), so it filters
+  smooth metal least, exactly where it sparkles. On a `finish` the hairline
+  grain also fades per octave before its cells reach two pixels (the legacy fade
+  let the 3.1× octave run at two cells a pixel). Its own program keys (`-saa`).
+- **`render.dither: true`** adds a last effect pass that dithers the encoded
+  display values just before the 8-bit write (`engine/DitherEffect.ts`, export
+  contract): interleaved gradient noise, triangular remap, ±1 level, tapered to
+  zero at 0 and 255 so pure black and white stay exact, one fixed pattern
+  (`docs/decisions.md`, "Output dither"). It routes every frame through the
+  effect chain, so an effect-free project that opts in takes the composer's
+  tone map (and `exactText` no longer holds). The supersample and motion blur lanes average dithered samples and
+  their rounding keeps it. Framed (overlay) scenes skip the composer and stay
+  undithered.
 
 Changing `MSAA_SAMPLES` (engine/format.ts) is a full baseline rebase.
 
@@ -856,6 +933,30 @@ own shutter window, never earlier frames, so it stays a pure function of t.
   copies); export frees it on any frame that does not blur and with the
   compositor pools between legs.
 
+## Stepped time
+
+`<SteppedTime fps>` (`SteppedTimeContext`, `engine/timeline.ts`) is a hand-made
+passage: its subtree's `useTimeline` steps while the camera, which the
+compositor applies from the raw clock, moves every frame.
+
+- **Null for legacy.** No context means `useTimeline` runs the original
+  expressions on the original values; a rate of 60 or more runs every frame.
+- **Integer steps.** `steppedTimeMs` counts the integer frame index from the
+  scene's first frame (`ceil(startMs * FPS / 1000)`, so a start off the grid
+  still opens a step) and holds `floor(frames * fps / FPS)` steps, each showing
+  exactly its first frame's instant: `(first + ceil(step * FPS / fps)) * 1000 /
+  FPS`, the same float the exporter steps the clock to, so a held frame is
+  bit-identical to the frame it holds and never a pose ahead. 12 fps holds 5
+  frames; rates that don't divide 60 alternate (8 fps: 8 then 7).
+- **30 fps lanes** render the 60 grid's even frames, so 12 fps alternates 3 and 2
+  output frames there (10 and 15 fps stay even): documented, not corrected.
+- **Motion blur steps first.** The shutter offset is added AFTER the step, so a
+  held pose smears around its own instant and never ghosts into the next step.
+- **Planners follow the step.** A stepped clip consumer's extraction demand maps
+  the barrier's times through `useSteppedLocalMs`, so a one-frame capture
+  extracts the chunk the held frame binds. `useSceneCamera` reads the full-rate
+  clock (`useFrameTimeline`), as the camera does.
+
 ## Layered screenshot
 
 A scene's sidecar may declare a `layeredScreenshot` block (a 3D stack of
@@ -1039,6 +1140,24 @@ camera exactly:
 - **Sidecar staging overrides** (`backdrop`, partial `lighting`, field-level
   replacement via `mergeLighting`) resolve at mount; gate sidecars that carry
   them are structure-pinned like every other gate asset.
+- **Volumetric beams are pure per-draw work.** A spot's `volumetric` block mounts
+  `toolkit/lighting/atmosphere/SpotBeam.tsx`, which reads the stage spot live
+  before each draw (pose, cone, colour times intensity, shadow matrix and VSM map,
+  its grate `map`) and writes its proxy box's `matrixWorld` there, as the fixed
+  background does. The 48-step march with its `gl_FragCoord` hash jitter, the smoke
+  and the dust are pure functions of scene time; the grate is a 2048² cookie
+  rasterised in JS from the sidecar and the scene's first camera key
+  (`grate.ts`). Its size, the seeded bar layout and the beam constants are
+  contract. No `volumetric`, nothing mounts and the spot's `map` stays null.
+- **The satin floor is the lit exception.** `backdrop: {type: "satin"}` mounts
+  `toolkit/stage/SatinFloor.tsx`, a `MeshStandardMaterial` that takes real shadows
+  itself (no catcher), with a planar reflection on its own draw (three's Reflector:
+  the mirrored eye and an oblique near plane at the floor, a full-size MSAA HalfFloat
+  target, then a half-size 12-tap Karis-weighted separable blur), a seeded 512²
+  mipmapped flake map and up to four floor-only pools. It fades out with premultiplied
+  alpha over whatever drew first (the fixed background), on a plane fitted to the fade,
+  so no edge shows. Fixed passes, no history. The plane margin, the blend, the flake
+  map size, the blur taps and the defaults in `backdrops.tsx` are contract.
 
 ### The fixed background
 
@@ -1235,10 +1354,10 @@ reaches the window only through `NativePort.readObject`, the same door a sidecar
   keeps its exact subtable (901 installed faces compared glyph for glyph, zero
   differences), so no baseline moves.
 - **3D text stays bundled.** `ExtrudedText` typefaces (converted outlines, one
-  per family at the default weight, `pnpm assets:text3d-font`) cover the bundled
-  set only; system-font refs fall back to Inter there. The converter is
-  byte-stable: regenerating Inter's typeface reproduced the committed file
-  exactly.
+  per family at the default weight, Inter Tight's at its 800 display weight,
+  `pnpm assets:text3d-font`) cover the bundled set only; system-font refs fall
+  back to Inter there. The converter is byte-stable: regenerating Inter's
+  typeface reproduced the committed file exactly.
 - **Text metrics parse the same files on their own.** `preloadAppFonts` ends by parsing
   each face it preloaded (plus the fallback face) with troika's parser into
   `theme/fontMetrics.ts`, after the atlas preloads; nothing reaches troika's atlas, so
@@ -1348,6 +1467,38 @@ of which can move pixels for text that uses neither (proven EQUAL on
 - **Barriers.** Emphasis rects and the type head come from the first typeset's carets,
   so both report text-derived pending (`textDerivedState.ts`) until the carets land: no
   capture draws the pre-measure frame.
+- **Shaped emphasis is opt-in.** A `pill` or `battery` shape (`textStyle.<key>Emphasis`)
+  pads its ranges with one space a side (`padEmphasisRanges`) and mounts `EmphasisPills`
+  behind the words from the same caret rects, so it waits on the same barrier. The trace
+  and flood are pure functions of scene ms, and the words' crossfade rides the existing
+  emphasis colour uniform: no stagger program changes, and plain emphasis keeps its
+  exact text and bytes.
+
+## Optical text blur
+
+`render.textBlur: "optical"` swaps a preset's per-unit SDF soften (`tracking`, `slam`,
+`develop`, `vapor`) for a true gaussian defocus. Absent (or `"edge"`) mounts nothing new,
+so every standing project keeps its programs, scene graph and bytes; flipping the default
+is a deliberate rebase.
+
+- **Plan, then capture.** `planOpticalBlur` (`toolkit/text/opticalBlur.ts`) is a pure
+  function of the frame's unit samples: blurred units leave the main pass (alpha 0) and
+  group into at most four σ levels (σ = 0.53 × soften, the gaussian matching the SDF
+  band's centre slope). Each level's capture rect is the moved units' envelope padded
+  by 3.5σ, so the kernel never meets a cell or target edge.
+- **Layout space, camera free.** `OpticalBlurPass` draws only the headline's text meshes
+  into a half-float target through an orthographic camera in the text's own frame, then
+  runs two separable normalised gaussian passes on texel centres (energy conserving,
+  premultiplied). A card per level composites the result back in straight alpha through
+  three's own tone-map and encode chunks, so it lands in whichever lane the text would.
+  Supersample jitter, mirror passes and motion-blur samples reuse one capture per
+  committed frame (keyed by a render serial and the capture density).
+- **Density is the only camera input.** Texels per layout unit come from the drawing
+  buffer height and the camera's projection at the level's centre, supersampled 1.5×
+  while σ is small, dropped so σ spans at most 6 texels while it is large, and quantised
+  to quarter octaves: a pure function of the frame's camera and size.
+- **Flat only.** Units with depth or a tip or turn (`dolly`, `stand-up`, `flip-cascade`)
+  and the `frosted` and arc looks keep the SDF soften; soften under 0.006 em snaps crisp.
 
 ## Generative 3D primitives
 
@@ -1382,6 +1533,26 @@ The generative toolkit primitives (`ExtrudedText`, `ParticleField`, `WireGrid`,
   ATTACHES to the object's group (never wraps it), mounts only for the
   inspector-selected object AND is cleared by `exportPreamble`
   (`useObjectEditStore`), so it can never reach an exported frame.
+
+### Dot fields and fluid fills
+
+- **One instanced draw, written in the commit.** `DotField` uploads every dot's
+  position, size, opacity and tint from `dotFieldFrame` (`toolkit/shapes/dotFieldMath.ts`,
+  pure) in a layout effect, the `ParticleField` rule. Its seeded orders (a mulberry32
+  Fisher-Yates shuffle) are export contract, pinned by a golden test.
+- **Merging is seam-free by construction.** While `merge` is above 0 every dot draws its
+  exact cell, with corners computed from whole and half cell edges, so neighbours share
+  bit-identical edges: no gap, no double blend. Only the grid's outer edges take the AA
+  margin. The tile's distance is clamped inside, so every gap closes at once.
+- **The fluid fill is the fixed background's shader, sampled per fragment.**
+  `fluidFillFunction` rewrites a shader background's fragment into `kkFluid(st)` and the
+  shape passes its screen position (clip xy over w, divided per fragment so perspective
+  stays exact). The pattern lays out against the export format (`u_kkFrame`), never the
+  canvas, and its time is the absolute project clock read per draw, the background's own
+  rule. The display-domain colour decodes to linear and leaves through three's
+  `linearToOutputTexel`, so a filled shape lands like a flat `RoundedRect` in every
+  target. A shape without `fill` never mounts it: `RoundedRect` and `Pill` keep their
+  exact program and bytes.
 
 **Framing is invisible to the gate.** `useFormat().frame`/`safe` are measured at
 the content plane `z=0`; content offset toward the camera projects larger and can
@@ -1712,7 +1883,8 @@ cache (`clipCacheCensus`, answered by the stage worker, which holds them). Each 
 last 10 s, first, peak and last footprints, `editorGrowthMb` (the editor's median over
 the last third minus the first third: growth that stays, not a transition's MSAA pair
 coming and going) and `holds`. A film that slows below 80% of its start or keeps more than
-512 MB fails the run. `--lever clip-cache=N` changes one thing for an experiment.
+512 MB fails the run. `--lever clip-cache=N` or `--lever scene-release=off` changes one thing
+for an experiment.
 `fixtures/long-device-spike` (60 s of handsets, the foldable, a tablet, a laptop and a
 comparison over fourteen screen recordings) is the leak acceptance film. The probe reads;
 it never changes a byte.
@@ -1759,6 +1931,29 @@ editor reloaded. Measured on device-heavy spikes in one boot, 30 fps, 16:9 / 9:1
 - **What stays resident at 4K**: the effect composer's MSAA input (~475 MB) and three's
   transmission target (~500 MB, allocated at the first glass draw, kept for the renderer's
   life). An fx transition adds its side pair, now ~540 MB instead of ~950.
+
+**The stage-scene growth (2026-11-18).** `template:unveil` (16 satin-floor stages, glass
+devices, volumetric spots) at 4K 16:9, 30 fps, dev builds, editor WebContent:
+
+| Run | Editor peak | Growth kept | Ended |
+| --- | --- | --- | --- |
+| Before | 17.9 GB (16.9 GB at 0:52) | ~0.6 to 1.3 GB a scene | page replaced in scene 17 |
+| Floor, volumetric and shadow release, pooled mirror cameras | 6.6 GB | 1228 MB | finished |
+| Plus screen images | 6.3 GB | 443 MB | finished, `holds` |
+
+- **The cause: nothing let a passed scene go.** Every scene mounts for the whole export, and
+  its mirror targets, pre-pass, shadow maps and screen images stayed resident after the
+  film moved on. Three's transmission pass also keeps a target per camera, and each floor
+  had its own mirror camera, so each glass stage left ~490 MB three never frees.
+- **The fix:** floors share mirror cameras by nesting depth (one camera per pass at a time,
+  so nested mirrors stay exact), and an export releases a scene's registered owners and
+  shadow maps at the first frame past its end. A 12 s film exported with the release off
+  and on hashes the same, and the full film hashes the same with and without the screen
+  release.
+- **Still resident:** the live scene's own floor (~600 MB), the one shared mirror
+  transmission target (~490 MB) and the renderer-level pools above. The preview does not
+  release (a scrub back would re-allocate mid-playback), but the pooled mirror cameras
+  apply there too.
 
 ### Gate tiers: how much to run
 
@@ -1920,6 +2115,53 @@ Verify ×2 here (the 2026-10-23 note):
 | `ws:rooms-spike` (room cuts, a flood with a tokened light, a wipe while both sides flood; machine-local, never gated) | `fee706ac…` | `219c3507…` | — | — | — | — | — | — | — |
 | `ws:mask-fx-spike` (an image-mask seam between two bloom scenes on the effects lane; machine-local, never gated) | `6555ff7f…` | — | — | — | — | — | — | — | — |
 | `ws:motion-toolkit-spike` (the toolkit primitives: shapes, device anchors, text metrics and presets, stamps, dashes, mosaic, taps; machine-local, gated when motion or shape primitives change) | `06b79ae2…` | `fa64bced…` | — | — | — | — | — | — | — |
+| `ws:fx-spike` (the effects chain: bloom, vignette, LUT, grain; machine-local, gated when effects change; first recorded 2026-11-07 from a Verify ×2 on the grain-hold branch, which leaves an unheld grain's seed as it was) | `6abcbe67…` | — | — | — | — | — | — | — | — |
+
+> **2026-11-11 (lens depth of field, additive):** dof gained a `lens` mode
+> rendered by its own `LensDofEffect` (`engine/LensDofEffect.ts`, shaders in
+> `engine/lensDofShaders.ts`, maths in `engine/lensDof.ts`). The stock depth
+> effect, its patched materials and every existing constant are untouched; the
+> effect is built only when a project's camera union includes lens, so a
+> project without it compiles the same chain as before. New export-contract
+> constants: `LENS_MM_PER_UNIT` (146.6 / 2.6), `LENS_COC_MAX` 0.05 of image
+> height, `LENS_RESOLUTION_SCALE` 0.5 and `LENS_TAPS` 128. Every pass is a pure
+> function of the frame: a fixed Vogel pattern, a screen-fixed per-pixel
+> rotation (interleaved gradient noise of the fragment coordinate), half-float
+> targets sampled with `texelFetch`, and the composite returns the input pixel
+> unchanged wherever the full-res CoC is under half a pixel. Proof: Unveil's
+> Glimpses in lens mode, stillsverify ×2 byte-identical (effects lane, supersample
+> 4 and SMAA); `showcase-tour` with lens on an orbit camera through a crossfade
+> and on the DepthStage flight, Verify ×2 EQUAL (dof-only lane and its per-side
+> target path); an Unveil crossfade out of a lens scene renders both sides
+> through the HDR side composer.
+
+> **2026-11-14 (lifted `ScreenRegion` depth, additive):** a lifted card or lens
+> mounts a depth-only copy of its shape on `LENS_DEPTH_LAYER` (31, export
+> contract, `engine/lensDepth.ts`), in its own group drawn last in the
+> transparent list. Only the draw that feeds an active lens pose's depth
+> enables that layer (the HDR composer's render pass, the dof side composer and
+> the dof-only lane's depth pre-pass), so frames with no lens pose, cards at
+> `lift` 0 and projects without a `ScreenRegion` draw exactly as before.
+
+> **2026-11-14 (lens depth of field sampling, lens projects rebase):** the
+> gather's taps and centre read a mip of the RGBA16F prefilter as wide as each
+> tap's share of the disc (texelFetch still reads the CoC, and a footprint
+> straddling a depth edge keeps the exact texel), discs under
+> `LENS_NEAR_COC` 4 full-res px blur at full resolution with `LENS_NEAR_TAPS`
+> 16 under the gather's reach rule (handing over from `LENS_NEAR_FADE` 2.5 px),
+> and supersampled frames offset the gather's rotation and the haze march's
+> step by `supersampleSeed`. Mip generation is a GPU box filter of the frame's
+> own target: pure, same machine. Every lens frame moves (only Unveil today; no
+> baseline row records it) and every supersampled frame with a haze beam (only
+> Unveil); nothing else compiles a changed program or reads a non-zero seed.
+> Proof: Unveil 16:9 Verify ×2 EQUAL `2c1fdbf3…`; `showcase-tour` and
+> `ws:launch-2026` EQUAL against their baselines.
+
+> **2026-11-19 (Unveil at merge, no baseline row):** `template:unveil` 16:9 at
+> 4K, Verify ×2 EQUAL `bfbfa68d…`, the same bytes as before the scene release
+> and the pre-merge review fixes, so neither moves its pixels. Later look rounds
+> moved the film off `2c1fdbf3…` above. It stays out of the table: a run takes
+> about half an hour and needs the screen unlocked (see "What breaks it").
 
 > **2026-11-14 (troika 0.53.1: hash-neutral):** troika-three-text and
 > troika-three-utils move to `0.53.1`. The only code change is `BatchedText`'s

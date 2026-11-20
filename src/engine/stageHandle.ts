@@ -119,6 +119,8 @@ export interface StageHandle {
   }): void;
   /** The memory probe's `clip-cache=N` lever; nothing else changes it. */
   setClipCacheCapacity(n: number): void;
+  /** A memory probe lever the stage realm applies (engine/memoryProbe.ts). */
+  memoryLever(lever: string): void;
   /** Loss count on the stage canvas since the worker started. */
   contextLosses(): number;
   subscribeContextLost(listener: () => void): () => void;

@@ -13,6 +13,7 @@ import { MOTION_BLUR_AMOUNT_MAX, SAMPLE_PRESETS, SHUTTER_PRESETS } from "../engi
 import { listPresets } from "../engine/presets";
 import type { ProjectManifest } from "../engine/project";
 import { EXPOSURE_MAX, EXPOSURE_MIN, type ToneMappingId } from "../engine/renderSettings";
+import { frameCoverDistance } from "../engine/rigFraming";
 import {
   DEVICE_LAYOUT_PRESETS,
   type DeviceLayoutPreset,
@@ -362,7 +363,7 @@ export const PROJECT_MANIFEST_KEYS: Record<
   },
   render: {
     summary:
-      "Display transform { toneMapping, exposure }, exactText (true keeps SDF text off tone mapping) and motionBlur { enabled, shutterDeg, samples, camera, objects }; absent is aces at 1, tone-mapped text, no blur.",
+      "Display transform { toneMapping, exposure }, exactText (true keeps SDF text off tone mapping), textBlur (optical turns preset text soften into a true gaussian defocus), antialias (smaa|fxaa), supersample (4|8|16), dither (true: no banding in dark gradients), specularAA (true: device metal stops sparkling) and motionBlur { enabled, shutterDeg, samples, camera, objects }; absent is aces at 1, tone-mapped text, edge-softened text, no blur, no dither.",
     type: "object",
   },
   lighting: { summary: "Project lighting layer between theme and scene.", type: "object" },
@@ -490,6 +491,10 @@ const BACKDROP_TYPES: Record<ThemeBackdrop["type"], { summary: string; fields: s
   },
   gradient: { summary: "Gradient plane behind the content.", fields: ["gradient", "spec"] },
   image: { summary: "Image plane behind the content.", fields: ["src", "fit"] },
+  satin: {
+    summary: "Lit satin floor fading into the void: blurred reflection, glitter, pools.",
+    fields: ["color", "roughness", "specular", "centre", "fade", "reflection", "glitter", "pools"],
+  },
 };
 
 const LIGHT_TYPES: Record<
@@ -507,9 +512,10 @@ const LIGHT_TYPES: Record<
     optional: ["distance", "decay"],
   },
   spot: {
-    summary: "Cone light; angleDeg is the FULL cone (1..179), penumbra 0..1.",
+    summary:
+      "Cone light; angleDeg is the FULL cone (1..179), penumbra 0..1; volumetric shows its beam in haze.",
     required: ["id", "intensity", "placement", "angleDeg", "penumbra"],
-    optional: ["distance", "decay", "castShadow", "target"],
+    optional: ["distance", "decay", "castShadow", "target", "volumetric"],
   },
   area: {
     summary: "Rect soft light; lights Standard/Physical materials only, no shadows.",
@@ -563,7 +569,22 @@ const EFFECTS: Record<keyof EffectsConfig, { summary: string; fields: Record<str
     summary: "3D LUT colour grade; every LUT in a project must share one LUT_3D_SIZE.",
     fields: { url: "project-relative .cube path", intensity: "0..1 blend" },
   },
-  grain: { summary: "Seeded film grain.", fields: { intensity: "0 turns it off" } },
+  grain: {
+    summary: "Seeded film grain.",
+    fields: {
+      intensity: "0 turns it off",
+      hold: "frames each pattern holds, the paper boil (5 is 12 fps; default 1)",
+    },
+  },
+  lens: {
+    summary: "Lens response for hot highlights: energy-conserving bloom, warm halation, glare.",
+    fields: {
+      intensity: "0 turns it off",
+      bloom: "0..0.3 mix of the wide glow (default 0.05)",
+      halation: "warm glow round hot edges (default 0)",
+      glare: "streaks on the hottest speculars (default 0)",
+    },
+  },
 };
 
 const DOF_MODES: Record<DofMode, { label: string; summary: string; fields: string[] }> = {
@@ -596,6 +617,11 @@ const DOF_MODES: Record<DofMode, { label: string; summary: string; fields: strin
     label: "Split",
     summary: "Two focus distances across a divider.",
     fields: ["blur", "range", "focus", "focusB", "offset", "angleDeg", "squeeze"],
+  },
+  lens: {
+    label: "Lens",
+    summary: "A real lens: blur from the f-stop and true depth.",
+    fields: ["fStop", "focus", "focalMm", "sensorMm", "blur", "squeeze"],
   },
 };
 
@@ -662,6 +688,7 @@ const DEVICE_LAYOUTS: Record<DeviceLayoutPreset, { label: string; summary: strin
     label: "Depth",
     summary: "Two devices split front and back (exactly 2, else toe-in).",
   },
+  v: { label: "V", summary: "Device 1 forward, pairs stepping back and out, turned in." },
 };
 
 const BULLET_MARKERS: Record<SceneManagedTextMarker, string> = {
@@ -732,6 +759,18 @@ export const TOOLKIT_SUMMARIES: Record<
   useDeviceScreen: {
     summary: "Inside Device: { rect, coverRect, local(u, v) } for the screen it renders, or null.",
   },
+  ScreenRegion: {
+    summary:
+      "Child of Device: lifts a rect of its own screen towards the camera with a soft shadow, or variant lens magnifies a point.",
+  },
+  useDeviceScreenPoint: {
+    summary:
+      "useDeviceScreenPoint(device, u, v): this frame's { position, rotation, scale } of a screen point on a moving device.",
+  },
+  screenFillPose: {
+    summary:
+      "screenFillPose(model, pose, { fovDeg }): the cameraRig pose that fills the frame with a device's screen.",
+  },
   DeviceMockup: { summary: "Pre-catalogue phone with a static screen image.", legacy: true },
   ExtrudedText: { summary: "Lit 3D extruded text (ASCII, bundled face)." },
   FALLBACK_DEVICE_ID: { summary: "android: what unknown or unavailable models render as." },
@@ -749,6 +788,15 @@ export const TOOLKIT_SUMMARIES: Record<
     internal: true,
   },
   ParticleField: { summary: "Seeded instanced particles drifting on the clock." },
+  DotField: {
+    summary:
+      "Grid or waffle of dots in one draw: reveal, wave, window, count, funnel, gather, merge, fill.",
+  },
+  DOT_ORDERS: { summary: "The orders a DotField count or reveal walks: reading, rows-up, ..." },
+  accentFluidColours: {
+    summary:
+      "accentFluidColours(hex): the default fill's deep, mid and highlight shades of a colour.",
+  },
   PromptBar: {
     summary:
       "Chat prompt bar: text types in from `from` to `to` (45 ms a key by default), caret, send button.",
@@ -756,9 +804,16 @@ export const TOOLKIT_SUMMARIES: Record<
   Ribbon: { summary: "Seeded tube that grows along a curve." },
   SceneStage: { summary: "Theme lighting, backdrop and real shadows for the scene." },
   StagedObject: { summary: "One sidecar objects entry, auto-fitted." },
+  SteppedTime: {
+    summary:
+      "SteppedTime fps: its subtree's time steps at a whole fps (12 is the hand-made look) while the camera moves every frame.",
+  },
   TEXT_PRESET_NAMES: { summary: "Every text motion preset name." },
   TitleBlock: { summary: "Title + optional subtitle, theme-scaled, safe-area aligned." },
-  VideoClip: { summary: "Deterministic video plane (pre-extracted 60 fps frames)." },
+  VideoClip: {
+    summary:
+      "Deterministic video plane (pre-extracted 60 fps frames); radius and opacity make it a card.",
+  },
   VideoWindow: { summary: "Shim over a window-hosted media entry.", legacy: true },
   WORKSPACE_OBJECT_PREFIX: { summary: "ws: prefix of workspace object ids.", internal: true },
   WireGrid: { summary: "Travelling-wave wire grid on the clock." },
@@ -827,6 +882,13 @@ export const TOOLKIT_SUMMARIES: Record<
       '{ width, height, aspect, shape, frame, safe }: frame and safe in world units at z=0, shape "wide", "square" or "tall".',
   },
   useGroupAnimation: { summary: "Lets a custom child join an AnimatedGroup's alpha and shine." },
+  useHeldLocalMs: {
+    summary: "useHeldLocalMs(localMs): the time pinned at the scene's Present hold; raw in video.",
+  },
+  usePresentTiming: {
+    summary:
+      "usePresentTiming(toMs, outAtMs?): Present and automatic stills hold the scene once a set piece settles.",
+  },
   useRigTrack: { summary: "The scene's normalised camera rig track, or null." },
   useSceneChart: { summary: "The resolved sidecar chart block, or null." },
   useSceneDevices: { summary: "Sidecar devices as Device props, layout resolved." },
@@ -838,9 +900,12 @@ export const TOOLKIT_SUMMARIES: Record<
   useTheme: { summary: "The resolved theme tokens for this scene." },
   useTimeline: { summary: "{ localMs, globalMs, progress }; progress is PROJECT-wide." },
   EASE_NAMES: { summary: "Every ease name (see kb catalog eases)." },
-  Pill: { summary: "RoundedRect with fully round ends: width, height, color, opacity, stroke." },
+  Pill: {
+    summary: "RoundedRect with fully round ends: width, height, color, opacity, stroke, fill.",
+  },
   RoundedRect: {
-    summary: "Flat, colour-exact rounded rect: width, height, radius, color, opacity, stroke.",
+    summary:
+      "Flat, colour-exact rounded rect: width, height, radius, color, opacity, stroke; fill for a fluid gradient.",
   },
   clamp01: { summary: "clamp01(x): x clamped to 0..1." },
   ease: {
@@ -867,11 +932,11 @@ export const TOOLKIT_SUMMARIES: Record<
   },
   measureText: {
     summary:
-      "measureText(text, { font, fontSize, letterSpacing?, lineHeight? }): { width, height, ascent, descent, lines } in world units, or null.",
+      "measureText(text, { font, fontSize, letterSpacing?, lineHeight?, anchorX?, anchorY?, textAlign? }): { width, height, ascent, descent, lines, glyphs } in world units, or null.",
   },
   useTextMetrics: {
     summary:
-      "useTextMetrics(textKey, text, opts?): the block an AnimatedHeadline with those props typesets, sidecar overrides included, plus fitFontSize(maxWidth); null until its face has loaded.",
+      "useTextMetrics(textKey, text, opts?): the block an AnimatedHeadline with those props typesets, sidecar overrides included, with each glyph's box and fitFontSize(maxWidth); null until its face has loaded.",
   },
   useSceneCamera: { summary: "The scene camera's pose this frame: { position, lookAt, fov }." },
   frameAtDepth: {
@@ -1350,6 +1415,8 @@ function screenRectEntry(rect: DeviceScreenRect): Json {
     z: round(rect.z, 4),
     cornerRadius: round(rect.cornerRadius, 4),
     ...(rect.frame ? { frame: { ...rect.frame } } : {}),
+    // Square on at fov 45 in 16:9, placement scale 1: how far off the glass a camera fills the frame with it.
+    fillDistance: round(frameCoverDistance(rect.width, rect.height, CAMERA.fov, 16 / 9) ?? 0, 4),
   };
 }
 
@@ -1496,6 +1563,9 @@ function templates(): Entry[] {
       tier: t.tier,
       uses: [...t.uses],
       highlights: [...t.highlights],
+      bring: [...t.bring],
+      song: t.song,
+      looks: [...t.looks],
       sceneCount: t.sceneCount,
       durationMs: t.durationMs,
       aspects: [...t.aspects],
@@ -1510,11 +1580,11 @@ function templates(): Entry[] {
   });
 }
 
-/** workspace.rs SAMPLE_MEDIA_EXTENSIONS: what `ensure_sample_assets` restores, so the unused sweep keeps these names. */
+/** workspace.rs SAMPLE_MEDIA_EXTENSIONS: the pool `ensure_sample_assets` seeds from, whose names the unused sweep keeps. */
 const SAMPLE_POOL_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "mp4", "mov", "m4a"];
 const samplePoolFiles = Object.keys(import.meta.glob("/projects/_samples/*", { query: "?url" }));
 
-/** The shared sample pool (`projects/_samples/`), so kb's `assets unused` keeps the restored samples offline. */
+/** The shared sample pool (`projects/_samples/`), so kb's `assets unused` keeps the bundled samples offline. */
 function samplePool(): Entry[] {
   return samplePoolFiles
     .map((path) => path.slice(path.lastIndexOf("/") + 1))

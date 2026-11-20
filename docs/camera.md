@@ -127,6 +127,7 @@ baked look point, which is what every fallback lands on:
 | Aim distance | Logarithmic | A 6 to 1 push reads evenly rather than crawling at the end |
 | Roll, fov | Lerp | Nothing subtler is wanted, and both are optional |
 | Depth of field: focus (and split's `focusB`) | Logarithmic, in lockstep with aim distance | A manual rack covers ground the way an autofocus flight does |
+| Depth of field: lens `fStop`, `focalMm`, `sensorMm` | Logarithmic | Stops are ratios: f/2 to f/8 passes f/4 at the midpoint |
 | Depth of field: blur, range, tilt and style fields | Lerp | Strength, band, glow, centre, angle and squeeze ramps read evenly |
 
 Smoothing shapes POSITION only; the aim still slerps, because splining that too
@@ -177,9 +178,34 @@ scene's; blur can animate, the family cannot swap mid-flight.
   distance) held sharp at once across a screen divider (`offset` -1..1,
   `angleDeg`; the seam softness is fixed). Focus A still autofocuses; both
   distances rack logarithmically. The split-diopter shot.
+- Lens mode: a real lens instead of a blur amount. `fStop` (0.7..64) sets the
+  aperture; the focal length comes from the camera's fov on a `sensorMm`
+  sensor (24, full frame, along the fov axis), or name `focalMm` and the fov
+  implies the sensor. The circle of confusion is the thin-lens one from true
+  depth (planar, along the view axis), with world units read at the phone fit
+  (`LENS_MM_PER_UNIT`: a 146.6 mm handset is 2.6 units), so a 10 cm macro is as
+  shallow as it is on set. `blur` starts at 1 and only scales the aperture
+  (ease it in or out); `range` is ignored. The CoC caps at 5% of image
+  height. It gathers at half resolution on a Vogel disc (up to 128 taps),
+  depth-ordered so a blurred background never smears over a sharp subject
+  while a blurred foreground does. Each tap reads the mip as wide as its
+  share of the disc, so sparks (dust, a rim highlight) blur into smooth discs
+  rather than a swirl with a dot at the centre. It composites at full
+  resolution: anything under half a pixel of CoC keeps its rendered pixels
+  exactly, and discs under 4 pixels blur at full resolution under the same
+  depth rule, so a highlight just off focus stays a soft line, not half-res
+  blocks. Under supersampling each sample turns the disc pattern, so the
+  samples average it away.
+  Display-referred input (the dof-only lane) is decoded and
+  highlight-expanded first, so bokeh stays bright there too. `focus`, its
+  auto rule and `squeeze` work as in depth mode; f-stops and focal lengths
+  mix logarithmically.
 - Everything blurs by its true depth, device screens and SDF text included
   (the exact-colour contract holds AT the focal plane, and whatever you focus
   on stays exact). Keep legibility-critical text on or near the focus plane.
+  A lifted `ScreenRegion` blurs at its own depth in lens mode: a depth-only
+  copy of its shape sits on `LENS_DEPTH_LAYER` (`src/engine/lensDepth.ts`),
+  which only the draw feeding an active lens pose's depth turns on.
 - In a project with NO declared effects, dof never regrades the frame: every
   frame renders on the original byte-identical paths, and a pose with active
   blur is then blurred IN PLACE (the finished pixels are copied, the dof
@@ -191,9 +217,10 @@ scene's; blur can animate, the family cannot swap mid-flight.
   into a crossfade instead of releasing at the cut.
 
 The inspector's Depth-of-field group (both camera modes) shows the key's
-EFFECTIVE values with the fov-style inherit affordances, a seven-way family
-chip row, presets (Subtle, Cinematic, Macro; depth mode) and the Auto/Manual
-focus switch. Gate fixture: `ws:dof-spike`; probe pass: `no-dof` (it covers
+EFFECTIVE values with the fov-style inherit affordances, an eight-way family
+chip row, presets (Subtle, Cinematic, Macro in depth mode; f-stop presets in
+lens mode, plus a sensor row) and the Auto/Manual focus switch. Gate
+fixture: `ws:dof-spike`; probe pass: `no-dof` (it covers
 every mode, since all of them ride the same union).
 
 ## Motion blur

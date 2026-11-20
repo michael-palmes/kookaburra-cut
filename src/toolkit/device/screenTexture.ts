@@ -1,6 +1,7 @@
 import { use, useLayoutEffect, useMemo } from "react";
 import { Source, SRGBColorSpace, type Texture } from "three";
 import { isImageBitmap, orientedBitmap } from "../../engine/bitmapOrientation";
+import { useSceneRelease } from "../../engine/sceneRelease";
 
 /** A device screen's private copy of a loaded image: sRGB and `flipY = false` for the glTF UV convention. NEVER mutate the loaded texture itself, drei's `useTexture` cache is keyed by URL and app-wide, so setting `flipY` on it renders the same file upside down in every plain-plane consumer (SceneImage, ImageCard, LayeredScreenshot, backdrops). The clone shares the decoded image, so there is no second fetch or decode, and it resets the UV transform explicitly (the `FixedImageMesh` precedent) so a world-space image backdrop's cover crop, which still writes repeat/offset on the shared texture, can never reach a screen through mount order. The screen's own crop is baked into the mesh UVs. An ImageBitmap carries its orientation in its pixels (WebGL ignores `flipY` for one), so the stage passes the copy oriented for `flipY = false` as `image`; a natively decoded PNG (rows in a `StageTexture`) clones as it is, WebGL flips rows on upload. */
 export function screenImageTexture(source: Texture, image: unknown = source.image): Texture {
@@ -22,5 +23,7 @@ export function useScreenImageTexture(source: Texture): Texture {
   const image = isImageBitmap(loaded) ? use(orientedBitmap(loaded, false)) : loaded;
   const texture = useMemo(() => screenImageTexture(source, image), [source, image]);
   useLayoutEffect(() => () => texture.dispose(), [texture]);
+  // The decoded image stays, so a released copy re-uploads on its next draw.
+  useSceneRelease(() => texture.dispose());
   return texture;
 }

@@ -53,6 +53,7 @@ import {
 import { readProjectManifestSnapshot, updateSceneTransition } from "../../engine/projectEdit";
 import { defaultOrbitPose } from "../../engine/sceneCamera";
 import { type CameraDoc, nearestKey, type RigDoc, setKeyPose } from "../../engine/sceneCameraEdit";
+import { COMPARE_GLASS_STRENGTH_MAX } from "../../engine/sceneCompare";
 import type { EditRepointSlot } from "../../engine/sceneDoc";
 import { applyBackgroundToAllScenes } from "../../engine/sceneDocPatchQueue";
 import {
@@ -300,6 +301,7 @@ const LAYOUT_PRESET_LABELS: Record<DeviceLayoutPreset, { label: string; title: s
   cascade: { label: "Cascade", title: "Fanned cards stepping across and back" },
   hero: { label: "Hero", title: "Device 1 forward, the rest flanking behind" },
   "depth-pair": { label: "Depth", title: "Two devices split front and back" },
+  v: { label: "V", title: "Device 1 forward, pairs stepping back and out" },
 };
 
 const LIGHTING_ROUTES: Record<string, LightingInspectorScreen> = {
@@ -2101,7 +2103,7 @@ function CameraSectionBody({
           void commit({
             ...camera,
             keys: camera.keys.map((key) => {
-              const dof = map(key.pose.dof);
+              const dof = map(key.pose.dof, key.id);
               const nextPose = { ...key.pose };
               if (dof) nextPose.dof = dof;
               else delete nextPose.dof;
@@ -3084,6 +3086,9 @@ export function SceneTab({
   const stagedBackdropBefore = useSceneHostStageBackdrop(sceneIndex, undefined);
   const stagedBackdropAfter = useSceneHostStageBackdrop(sceneIndex, "b");
   const bgStagedBackdrop = bgTarget === "compareB" ? stagedBackdropAfter : stagedBackdropBefore;
+  // A satin floor leaves the fill showing above it, so a new fill keeps it.
+  const stageHidesFill =
+    bgStagedBackdrop !== null && bgStagedBackdrop !== "none" && bgStagedBackdrop !== "satin";
   const [themeChoices, setThemeChoices] = useState<ThemeChoice[]>(builtinThemeChoices);
   const [themeDraft, setThemeDraft] = useState<string>("");
 
@@ -4279,7 +4284,7 @@ export function SceneTab({
             ? { type: "video", src: rel, parallax }
             : { type: "video", src: rel };
         // A staged backdrop would hide the video: clear it in the same undoable entry.
-        if (bgStagedBackdrop !== null && bgStagedBackdrop !== "none") {
+        if (stageHidesFill) {
           next.backdrop = { type: "none" };
         }
       },
@@ -4300,7 +4305,7 @@ export function SceneTab({
           ? { type: "image", src: rel, parallax }
           : { type: "image", src: rel };
       // A staged backdrop would hide the image: clear it in the same undoable entry.
-      if (bgStagedBackdrop !== null && bgStagedBackdrop !== "none") {
+      if (stageHidesFill) {
         next.backdrop = { type: "none" };
       }
     });
@@ -5606,7 +5611,7 @@ export function SceneTab({
         next.background = value;
         // Theme resets both layers; a fresh colour writes through to the stage (one visual, one edit).
         if (value === undefined) next.backdrop = undefined;
-        else if (value.type === "color" && stagingOn) next.backdrop = floorFor(value.color);
+        else if (value.type === "color" && stageHidesFill) next.backdrop = floorFor(value.color);
       });
     };
     const shaderSpec = bgActive?.type === "shader" ? bgActive : null;
@@ -6323,7 +6328,7 @@ export function SceneTab({
                                 speed: 1,
                               };
                           // A staged backdrop would hide the animation: clear it in the same undoable entry.
-                          if (stagingOn) next.backdrop = { type: "none" };
+                          if (stageHidesFill) next.backdrop = { type: "none" };
                         });
                       }}
                       onHoverChange={(h) => setBgHover((cur) => (h ? id : cur === id ? null : cur))}
@@ -6475,7 +6480,7 @@ export function SceneTab({
                       if (next.background?.type === "color") {
                         next.background = { ...next.background, color: hex };
                       }
-                      if (stagingOn) next.backdrop = floorFor(hex);
+                      if (stageHidesFill) next.backdrop = floorFor(hex);
                     });
                   }}
                 />
@@ -6498,7 +6503,7 @@ export function SceneTab({
                         : undefined;
                     next.background = parallax !== undefined ? { ...value, parallax } : value;
                     // A staged backdrop would hide the gradient: clear it in the same undoable entry.
-                    if (stagingOn) next.backdrop = { type: "none" };
+                    if (stageHidesFill) next.backdrop = { type: "none" };
                   });
                 }}
               />
@@ -7864,6 +7869,9 @@ export function SceneTab({
     const keyHint = hasKeys ? "Edits the divider key nearest the playhead" : undefined;
     const grip = cmp.chrome?.grip;
     const gripObject = typeof grip === "object" ? grip : undefined;
+    const glass = cmp.chrome?.glass;
+    const glassFields = (c: NonNullable<SceneDoc["compare"]>) =>
+      typeof c.chrome?.glass === "object" ? c.chrome.glass : {};
     const lineColour = resolveCompareColour(cmp.chrome?.line?.colour, sceneTheme);
     // Each token wears its resolved colour, so the choice is the swatch rather than the word.
     const tintOptions: SegmentedOption<CompareTint>[] = [
@@ -8154,6 +8162,41 @@ export function SceneTab({
                     })
                   }
                 />
+              )}
+              {maskEntry?.hasLine && (
+                <ToggleRow
+                  icon={<CompareToggleIcon id="glass" size={17} />}
+                  label="Glass edge"
+                  description="A refracting glass bar along the edge, with a rim of light."
+                  checked={!!glass}
+                  onChange={(on) =>
+                    patchCompare((c) => {
+                      c.chrome = { ...c.chrome, glass: on ? true : undefined };
+                    })
+                  }
+                />
+              )}
+              {maskEntry?.hasLine && glass && (
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Strength</span>
+                  <DebouncedRange
+                    value={(typeof glass === "object" ? glass.strength : undefined) ?? 1}
+                    min={0}
+                    max={COMPARE_GLASS_STRENGTH_MAX}
+                    step={0.05}
+                    label="Glass strength"
+                    onInput={(v) =>
+                      cmpLive((c) => {
+                        c.chrome = { ...c.chrome, glass: { ...glassFields(c), strength: v } };
+                      })
+                    }
+                    onCommit={(v) =>
+                      cmpCommit((c) => {
+                        c.chrome = { ...c.chrome, glass: { ...glassFields(c), strength: v } };
+                      })
+                    }
+                  />
+                </div>
               )}
             </DrillGroup>
           )}

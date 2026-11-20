@@ -31,11 +31,14 @@ export interface DeviceScreen extends DeviceScreenContextValue {
 export function useDeviceScreen(): DeviceScreen | null {
   const context = useContext(DeviceScreenContext);
   if (!context) return null;
-  const { renderModel, lidDeg, foldDeg } = context;
+  const { model, renderModel, lidDeg, foldDeg } = context;
   const cover = deviceScreenRect(renderModel, "cover");
   const rect = deviceScreenRect(renderModel);
   return {
-    ...context,
+    model,
+    renderModel,
+    lidDeg,
+    foldDeg,
     rect,
     ...(cover !== rect ? { coverRect: cover } : {}),
     local: (u, v, lift = SCREEN_LIFT, display) =>

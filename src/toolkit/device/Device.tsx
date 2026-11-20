@@ -33,6 +33,7 @@ import { type ClipTextureBinding, useClipTexture } from "../../engine/clipTextur
 import { deviceAcknowledgementMatches, useDeviceEditStore } from "../../engine/deviceEditStore";
 import { useSceneConsumesDevices } from "../../engine/deviceRegistry";
 import { ease } from "../../engine/ease";
+import { useEffectsStore } from "../../engine/effectsStore";
 import { isExporting } from "../../engine/exportState";
 import {
   type DeviceFoldTransitionSpec,
@@ -81,6 +82,13 @@ import {
 import { DeviceGizmo } from "./DeviceGizmo";
 import { DeviceScreenContext } from "./DeviceScreenAnchor";
 import { DeviceShadow } from "./DeviceShadow";
+import { DeviceDisplaysContext } from "./deviceDisplays";
+import {
+  addScreenCoats,
+  applyDeviceFinish,
+  type DeviceFinish,
+  resolveDeviceFinish,
+} from "./finish";
 import { clampFoldDeg, foldCentreOffset, foldVisibleWidth } from "./foldPose";
 import {
   applyFoldScreenShader,
@@ -91,10 +99,12 @@ import {
 } from "./foldScreenShader";
 import { type DevicePose, deviceGizmoMovedY } from "./gizmoCommit";
 import { resolveDeviceLayout } from "./layout";
+import { useLayoutFormat } from "./layoutFormat";
 import { HIDDEN_NODES } from "./models";
 import { useScreenImageTexture } from "./screenTexture";
 import { type DeviceMediaRotation, screenTurns } from "./screenTurns";
 import { type DeviceShadowMode, devicePoseFloorShift, type ShadowPose } from "./shadowProjector";
+import { gsaaChunk } from "./specularAA";
 import { deviceFittedHeight, resolveDeviceWorldAnchor } from "./worldAnchor";
 
 /** Media shown on the device screen. Videos ride the deterministic clip-frame pipeline. */
@@ -181,6 +191,8 @@ export interface DeviceProps {
   foldTransition?: DeviceFoldTransitionSpec;
   /** Motion blur override; absent inherits the scene's Objects switch. */
   motionBlur?: MotionBlurOverride;
+  /** Opt-in hero finish for the body (a preset id or a spec); absent keeps the glb's materials. */
+  finish?: DeviceFinish;
   /** Content riding the device's pose in its fitted frame; `DeviceScreenAnchor` pins it to the screen. */
   children?: ReactNode;
 }
@@ -294,26 +306,19 @@ const TURNTABLE_SWAY_RAD = Math.PI / 4;
 const TARGET_WORLD_HEIGHT = 2.6;
 /** Ground plane sits just under the auto-fit device's bottom edge. */
 const GROUND_EPSILON = 0.02;
-/** Geometric specular AA (Kaplanyan/Tokuyoshi-Kaplanyan): widens roughness by the perturbed-normal's screen-space variance to kill normal-map specular shimmer (three's own geometryRoughness derives from the non-perturbed normal and misses it); the σ²/κ constants are export contract, applied only to Device's private material clones, never the shared drei glTF cache that DeviceMockup/HeroObject also read. */
-const GSAA_FRAGMENT = /* glsl */ `#include <lights_physical_fragment>
-{
-	vec3 gsaaDx = dFdx( normal );
-	vec3 gsaaDy = dFdy( normal );
-	float gsaaVariance = 0.25 * ( dot( gsaaDx, gsaaDx ) + dot( gsaaDy, gsaaDy ) );
-	float gsaaKernel = min( gsaaVariance, 0.18 );
-	material.roughness = min( sqrt( material.roughness * material.roughness + gsaaKernel ), 1.0 );
-}`;
 
-function applyDeviceGsaa(material: Material): void {
+function applyDeviceGsaa(material: Material, specularAA: boolean): void {
   if (!(material as MeshStandardMaterial).isMeshStandardMaterial) return;
+  const gsaa = gsaaChunk(specularAA);
   material.onBeforeCompile = (shader) => {
     shader.fragmentShader = shader.fragmentShader.replace(
       "#include <lights_physical_fragment>",
-      GSAA_FRAGMENT,
+      gsaa.fragment,
     );
   };
   // One stable cache key: all GSAA'd device materials share program variants normally.
-  material.customProgramCacheKey = () => "kookaburra-device-gsaa-v1";
+  const key = `kookaburra-device-gsaa-v1${gsaa.key}`;
+  material.customProgramCacheKey = () => key;
 }
 
 function materialName(material: Material | Material[]): string | undefined {
@@ -322,8 +327,11 @@ function materialName(material: Material | Material[]): string | undefined {
 
 /** Bakes a cover-crop map into the screen mesh's UVs; stashes the pristine UV set on first bake so a media change re-bakes from the original (re-baking the same map is a no-op via `uvRectKey`), cloning geometry first since `Object3D.clone` shares geometry with drei's cache. */
 function bakeScreenUvs(mesh: Mesh, map: ScreenUvMap): void {
-  // A foldable's display shader turns media UVs back into panel coordinates, so it needs the same map.
-  if (!Array.isArray(mesh.material)) setFoldScreenCrop(mesh.material, map);
+  // A foldable's display shader turns media UVs back into panel coordinates, so it needs the same map, and a ScreenRegion crops through it.
+  if (!Array.isArray(mesh.material)) {
+    setFoldScreenCrop(mesh.material, map);
+    mesh.material.userData.screenUvMap = map;
+  }
   const { rect, turn } = map;
   const key = `${rect.u0}/${rect.v0}/${rect.u1}/${rect.v1}${turn ? `/${turn.a}/${turn.b}/${turn.c}/${turn.d}/${turn.e}/${turn.f}` : ""}`;
   if (mesh.userData.uvRectKey === key) return;
@@ -516,6 +524,7 @@ export function Device(props: DeviceProps) {
     bothScreensOn = false,
     foldTransition,
     motionBlur,
+    finish,
     children,
   } = props;
   // The layout stamp wins over the scalar fields (see DevicePlacement.resolvedLayout).
@@ -624,6 +633,10 @@ export function Device(props: DeviceProps) {
   }, [model, renderModel]);
 
   const { scene, animations } = useGLTF(activeSpec.glbUrl);
+  const finishKey = finish === undefined ? "" : JSON.stringify(finish);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the serialised finish is the identity
+  const finishSpec = useMemo(() => resolveDeviceFinish(finish), [finishKey]);
+  const specularAA = useEffectsStore((s) => s.renderSettings.specularAA === true);
   // Memoised because custom tints mint a fresh spec per call, and colourSpec keys the clone below.
   const colourSpec = useMemo(() => deviceColour(activeSpec, colour), [activeSpec, colour]);
 
@@ -646,6 +659,10 @@ export function Device(props: DeviceProps) {
     return m;
   }, [foldCoverAspect]);
   useLayoutEffect(() => () => coverMaterial.dispose(), [coverMaterial]);
+  const displays = useMemo(
+    () => ({ main: screenMaterial, cover: coverMaterial }),
+    [screenMaterial, coverMaterial],
+  );
   // Display brightness, 0 off to 1 lit; a foldable's fold angle drives them, every other device holds 1.
   const screenLevel = useRef(1);
   const coverLevel = useRef(1);
@@ -692,12 +709,24 @@ export function Device(props: DeviceProps) {
           const std = preparedMaterial as MeshStandardMaterial;
           if (override?.roughness !== undefined) std.roughness = override.roughness;
           if (override?.metalness !== undefined) std.metalness = override.metalness;
-          applyDeviceGsaa(preparedMaterial);
+          const finished = finishSpec
+            ? applyDeviceFinish(
+                preparedMaterial,
+                name,
+                activeSpec.id,
+                finishSpec,
+                clone,
+                specularAA,
+              )
+            : null;
+          if (finished) preparedMaterial = finished;
+          else applyDeviceGsaa(preparedMaterial, specularAA);
           prepared.set(mesh.material, preparedMaterial);
         }
         mesh.material = preparedMaterial;
       });
       for (const obj of hide) obj.removeFromParent();
+      if (finishSpec) addScreenCoats(screens, finishSpec, specularAA);
 
       clone.updateMatrixWorld(true);
       const box = new Box3().setFromObject(clone);
@@ -731,12 +760,25 @@ export function Device(props: DeviceProps) {
           cover: coverMaterial,
         }),
       };
-    }, [scene, animations, activeSpec, colourSpec, screenMaterial, coverMaterial]);
+    }, [
+      scene,
+      animations,
+      activeSpec,
+      colourSpec,
+      screenMaterial,
+      coverMaterial,
+      finishSpec,
+      specularAA,
+    ]);
   const fittedHeight = deviceFittedHeight(activeSpec.id);
 
   // The opt-in keyframe track: a delta on the resolved placement, sampled before the motion presets so both layer.
   const sceneDoc = useContext(SceneDocContext);
-  const track = useMemo(() => resolveDeviceTrack(sceneDoc ?? undefined), [sceneDoc]);
+  const layoutFormat = useLayoutFormat();
+  const track = useMemo(
+    () => resolveDeviceTrack(sceneDoc ?? undefined, layoutFormat),
+    [sceneDoc, layoutFormat],
+  );
   const authoredLidDeg = lidDeg ?? activeSpec.lid?.defaultDeg;
   const authoredFoldDeg = activeSpec.fold ? (foldDeg ?? activeSpec.fold.defaultDeg) : undefined;
   const keyed = deviceTrackPoseAt(track, id ?? "", localMs, authoredLidDeg, authoredFoldDeg);
@@ -975,8 +1017,10 @@ export function Device(props: DeviceProps) {
               <DeviceScreenContext.Provider
                 value={{ model, renderModel, lidDeg: renderedLidDeg, foldDeg: renderedFoldDeg }}
               >
-                {children}
-                {screenTaps && id !== undefined && <DeviceScreenTaps deviceId={id} />}
+                <DeviceDisplaysContext.Provider value={displays}>
+                  {children}
+                  {screenTaps && id !== undefined && <DeviceScreenTaps deviceId={id} />}
+                </DeviceDisplaysContext.Provider>
               </DeviceScreenContext.Provider>
             </group>
           )}
