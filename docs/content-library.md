@@ -114,14 +114,41 @@ rules (four aspects, the old bands). A version 2 template must:
 - carry a song exactly when it carries audio, with the grid (and its `source`),
   sections and cues intact through `sanitiseAudioMusic`, and the song's BPM the grid's
 - name only visible bundled themes as looks, with no scene sidecar pinning `themeId`
-  (the test cannot see legibility: render a text scene in each look first, since a light
-  theme's text colour disappears on a dark staged film)
 - list something to bring, and a loop window inside the film
+- keep the checkable editability rules below
 
 A song ships as FLAC in the template's own `assets/`, copied on create. Shared
 media stays in `projects/_samples/`: `create_project` seeds only the samples a
 project names (by the in-use rule, plus `app-icon.png`), and a load restores a
-named sample that has gone missing.
+named sample that has gone missing. Seeding never overwrites, so a template that
+ships its own `assets/app-icon.png` keeps it over the generic one.
+
+### Editable by design
+
+Once someone creates from a template, their icon, screens, words and look replace
+the samples. A version 2 template keeps these rules so every swap lands; the test
+checks the ones marked *tested*.
+
+- **Standard slots.** The app icon is `assets/app-icon.png`, the file Set app icon
+  writes; a template showing its own product's icon ships it under that name.
+  Screens and recordings are named in sidecars, where Replace reaches them. Scene
+  code names no asset but the app icon and no sample by name (*tested*), and finds
+  a device by id with a fallback, `devices.find((d) => d.id === "hero") ?? devices[0]`
+  (*tested*).
+- **The stage stays.** With a device removed, the floor, lights and words remain:
+  a scene module that reads devices never returns `null` (*tested*).
+- **Nothing fitted to the samples.** No crop rectangles in a recording's pixels
+  (`mediaPixelToScreenUv`, *tested*) and no clip times in scene code; what depends
+  on the media lives in the sidecar or follows the beat grid.
+- **Readable in every look.** Text over a stage the template fixes (a dark floor, a
+  set gradient) pins its colour in the sidecar (`titleColor`), so a light look's
+  text never lands on a dark stage.
+- **Every look rendered.** Render the text scenes and the hero shot in each look
+  through the export path before listing it; the test cannot see legibility.
+
+Unveil's Proof 1 and Detail 1 still map the lifted card from the sample
+recording's pixels, the test's only listed exceptions, until a scene can read a
+screen region from its sidecar.
 
 In the picker, a card plays `src/assets/template-previews/<id>-loop.mp4`, muted,
 while hovered or selected; without a loop, or under Reduce motion, it keeps its
