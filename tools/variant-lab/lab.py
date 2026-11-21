@@ -144,6 +144,7 @@ def build(base_name: str, variants_file: Path) -> Path:
         fail("variants() returned nothing")
     (lab / "scenes").mkdir(parents=True)
     (lab / "assets").mkdir()
+    (lab / MARKER).write_text(json.dumps({"base": base_name, "pages": []}) + "\n")
     notes: List[str] = []
     refs: set = set()
     entries, pages = [], []
