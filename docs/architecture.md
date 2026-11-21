@@ -126,6 +126,16 @@ frame bodies and the scene trees. The split, and why it is drawn where it is:
   the port's `decode_png` and upload as straight rows (`engine/stageTexture.ts`),
   the bytes the window's `<img>` upload had. Other formats decode to bitmaps
   with no colour conversion, as three uploads them.
+- **Frames follow the window's display tick.** WebKit serves a worker's timers,
+  and the animation frames built on them, only when its message queue is
+  empty, so a stage busy with clock ticks and clip frames starved its own
+  draws. The worker's `requestAnimationFrame` (`engine/framePump.ts`) asks the
+  window, whose animation frame answers with a `vsync` message that takes its
+  turn in the queue, at most one draw per display interval; the worker's
+  native frame stays as the source when the window has none (hidden,
+  occluded, the render window). `setImmediate` is a MessageChannel task for
+  the same reason, which is what React's scheduler takes in a window. The
+  export barriers keep their timer yields: they count spins.
 - **Dev HMR reaches the worker by a reload.** Vite serves the worker's modules
   through the same client pipeline as the window's, so with HMR on the React
   plugin's Fast Refresh runtime is imported by every component module in both

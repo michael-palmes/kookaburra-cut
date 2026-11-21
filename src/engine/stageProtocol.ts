@@ -171,6 +171,7 @@ export type WindowRequest =
   | { type: "stillsEnd"; id: number }
   | { type: "snapshot"; id: number; tMs: number | null; width: number; format: "png" | "jpeg" }
   | { type: "perfRun"; id: number }
+  | { type: "drawStats"; id: number; on: boolean }
   | { type: "perfColdWaits"; id: number }
   | {
       type: "hitTest";
@@ -218,6 +219,7 @@ export type WindowNotice =
       hardwareVideo?: boolean;
     }
   | { type: "clipCacheCapacity"; n: number }
+  | { type: "vsync" }
   | { type: "memoryLever"; lever: string }
   | { type: "portProgress"; id: number; value: unknown }
   | { type: "reply"; id: number; ok: true; value: unknown }
@@ -254,6 +256,8 @@ export type WorkerNotice =
   | { type: "log"; level: "warn" | "error" | "info"; text: string }
   | { type: "fatal"; text: string }
   | { type: "commit"; stamps: CommitStamps }
+  | { type: "drawn"; clockMs: number }
+  | { type: "frameWanted" }
   | { type: "frame"; targets: Gizmo2DTargetFrame[]; camera: CameraFrame }
   | { type: "pickers"; pickers: GizmoPickerSummary[] }
   | { type: "hosts"; hosts: SceneHostSummary[] }

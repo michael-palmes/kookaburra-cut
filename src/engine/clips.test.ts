@@ -611,6 +611,81 @@ describe("ClipFrames chunks", () => {
     expect(ensureCalls).toEqual([]);
   });
 
+  async function wholeFrames() {
+    const clips = await freshClips();
+    const frames = new clips.ClipFrames({
+      cacheDir: "/cache/whole",
+      frameCount: 300,
+      width: 8,
+      height: 8,
+      fps: 60,
+    });
+    return { clips, frames, read: vi.spyOn(fakePort, "clipReadFrame") };
+  }
+
+  it("decodes one preview frame at a time and skips the frames a skim moved past", async () => {
+    const { clips, frames, read } = await wholeFrames();
+    const owner = {};
+    frames.request(owner, 1);
+    const first = frames.get(1);
+    frames.request(owner, 2);
+    const passed = frames.get(2);
+    frames.request(owner, 3);
+    const newest = frames.get(3);
+    await expect(passed).rejects.toBeInstanceOf(clips.ClipLoadSuperseded);
+    await expect(first).resolves.toBeTruthy();
+    await expect(newest).resolves.toBeTruthy();
+    expect(read.mock.calls.map((call) => call[1])).toEqual([1, 3]);
+    read.mockRestore();
+  });
+
+  it("keeps every consumer's newest frame in the queue", async () => {
+    const { frames, read } = await wholeFrames();
+    frames.request({}, 1);
+    const first = frames.get(1);
+    frames.request({}, 2);
+    const second = frames.get(2);
+    frames.request({}, 3);
+    const third = frames.get(3);
+    await Promise.all([first, second, third]);
+    expect(read.mock.calls.map((call) => call[1]).sort()).toEqual([1, 2, 3]);
+    read.mockRestore();
+  });
+
+  it("never holds a frame back during an export, and decodes the next one ahead", async () => {
+    const { clips, frames, read } = await wholeFrames();
+    const { setExporting } = await import("./exportState");
+    setExporting(true);
+    try {
+      const owner = {};
+      frames.request(owner, 1);
+      const first = frames.get(1);
+      frames.request(owner, 2);
+      const second = frames.get(2);
+      expect(read.mock.calls.map((call) => call[1])).toEqual([1, 2, 3]);
+      await Promise.all([first, second]);
+      frames.markBound(owner, 2);
+      frames.request(owner, 3);
+      await frames.get(3);
+      frames.markBound(owner, 3);
+      expect(read.mock.calls.map((call) => call[1])).toEqual([1, 2, 3, 4]);
+      await flush();
+      expect(frames.census().textures).toBe(2);
+      frames.request(owner, 4);
+      const last = frames.get(4);
+      setExporting(false);
+      await last;
+      frames.markBound(owner, 4);
+      await flush();
+      expect(frames.census().textures).toBe(1);
+      clips.releaseIdleClipFrames();
+      expect(frames.census().textures).toBe(1);
+    } finally {
+      setExporting(false);
+      read.mockRestore();
+    }
+  });
+
   it("stops asking for a chunk that failed twice", async () => {
     const { clips, frames } = await readyEntry();
     failChunks = true;

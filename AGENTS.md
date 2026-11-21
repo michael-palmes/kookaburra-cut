@@ -266,7 +266,17 @@ intuition before the probe settled it).
   WKWebView suspends rAF), and it warns when another dev app is listening on
   1420, since a busy machine skews the fps. Each window warms up until
   frames come steadily before sampling, since a first draw can outlast the
-  3 s stall guard. New suspect: add a pass, don't theorise.
+  3 s stall guard. New suspect: add a pass, don't theorise. Those passes run
+  inside the stage worker, so the run opens with `playback` and `scrub` rows
+  measured from the window (`engine/playbackProbe.ts`): its clock ticks, what
+  the stage drew, how long a tick took to commit and to draw, and what kept
+  the worker busy (`tasks`). `--lever headless` paces those rows itself and
+  skips the stage-only passes, for a locked or hidden screen.
+- **Export timing:** every export, verify and memory row carries `timing`, the
+  run's milliseconds per phase (`engine/exportTiming.ts`: prepare, commit,
+  clips, text, draw, read, handoff, push, finish), and the app log names the
+  time spent in the encoder pipe. Compare releases with the packaged builds
+  and a quiet Mac: under load the numbers move by 30%.
 - **Method:** one lever per change, re-run the probe, keep only what the data
   keeps. Clip prefetching was reverted this way: decode work is main-thread, so
   reading ahead made heavy scenes worse. Any clip or render-path change then
@@ -315,3 +325,31 @@ intuition before the probe settled it).
   owners once the film passes it (`src/engine/sceneRelease.ts`,
   `useSceneRelease`): peak 6.3 GB, bytes unchanged. A new per-scene GPU owner
   registers there.
+- **Sixth measured impactor (2026-11-22): the stage worker's own frames.**
+  WebKit serves a worker's timers, and the animation frames built on them,
+  only when its message queue is empty, so a busy stage (clock ticks, clip
+  frames landing) stopped drawing: 19.6 fps over a device scene and no frame
+  at all while skimming one. The stage's frames now follow the window's
+  display tick, a message that takes its turn (`src/engine/framePump.ts`):
+  44 fps there, and the other scenes went from 54 to 59. React's scheduler rides a MessageChannel
+  there for the same reason (4 to 5% off a device film's export). Never move
+  the export barriers' yields the same way: they count spins, and a channel
+  yield spends them before slower work lands.
+- **Seventh measured impactor (2026-11-22): skims piling up clip decodes.**
+  Every tick asked for a full frame, each cost more than a tick and every
+  result was dropped for a newer one: 106 decodes queued in 2 s, waits of
+  2.1 s, updates 0.8 s late, nothing drawn until the playhead rested. The
+  preview now decodes one frame a clip at a time, takes the newest wanted
+  next and shows a frame that lands late (`engine/clips.ts`,
+  `engine/clipTexture.ts`), and a moving playhead binds the preview tier
+  until it rests (`previewScrubActive`): 0 to 5 draws in 2 s became 45 to
+  50 fps. Exports are untouched, and they decode the next clip frame while
+  the current one is read back and encoded (8% off the same film, bytes
+  unchanged).
+- **Export regression of 0.22.0 (measured 2026-11-22):** a 19 s device film
+  at 4K60 exports in 76 s on 0.19.0 to 0.21.1 and 101 s on 0.22.0 to 0.23.0,
+  the stage worker's releases; 85 s after the two fixes above. What is left
+  per frame: 23 ms pushing 33 MB to the encoder (16 of it IPC, 4 the pipe,
+  3 the flash tap), 21 ms of readback, 13 ms of hand-off and 13 ms of commit
+  with the next clip frame's decode inside it, since `createImageBitmap`
+  decodes on the worker's own thread.

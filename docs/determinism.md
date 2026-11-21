@@ -344,7 +344,17 @@ the field lands.
     work, and prefetching was measured worse once). A load its consumer moved
     past while the chunk extracted is dropped before decode. The preview JPEG
     tier (`ensure_clip_previews`) is made per chunk, after playback first binds
-    the chunk's PNGs.
+    the chunk's PNGs. A clip decodes one preview frame at a time: requests made
+    meanwhile wait, the newest still wanted starts next and the rest are
+    dropped unread, and a frame that lands after a newer one was asked for
+    still binds unless a newer one already has. A playhead that keeps moving
+    while paused (two changes within 120 ms) binds the preview tier until it
+    has rested 180 ms, then the exact frame; a lone step is always exact.
+  - **An export decodes one frame ahead.** It only steps forward, so each
+    request also starts the next frame's decode (the last step repeated, never
+    a chunk that is not on disk), which then overlaps the readback and the
+    encode. The prefetched frame is pinned and replaces the frame before the
+    bound one, so a clip still holds two; the pixels are the same PNG's.
   - **The disk guard:** `ensure_clip_chunks` refuses before ffmpeg starts when
     the raw RGB ceiling of the chunks it would extract plus a 2 GB floor
     exceeds the volume's free space (`check_extraction_space`), naming the
