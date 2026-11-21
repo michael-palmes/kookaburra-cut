@@ -349,6 +349,10 @@ the field lands.
     the raw RGB ceiling of the chunks it would extract plus a 2 GB floor
     exceeds the volume's free space (`check_extraction_space`), naming the
     space needed; present chunks cost nothing and the argv never changes.
+  - **Abandoned staging is swept.** A killed or crashed extraction leaves its
+    `.stage-<chunk>-<pid>` tree behind, which nothing reads and the cap counts;
+    each eviction check first removes the ones whose process is gone or that
+    nobody has touched for a day (`sweep_dead_staging`).
   - **The cap:** Settings holds `clipCacheCapGb` (default 20). After an
     extraction pushes the cache past it, whole chunks go least recently used
     first (a chunk's marker mtime, touched on read at most once a minute) down to

@@ -27,6 +27,8 @@ const LOW_WATER: f64 = 0.9;
 const TOUCH_INTERVAL: Duration = Duration::from_secs(60);
 /// A chunk used this recently is never evicted: another app instance may be reading it (its pins live in that process), and readers touch a chunk at most every `TOUCH_INTERVAL`.
 const RECENT_USE: Duration = Duration::from_secs(15 * 60);
+/// A staging tree untouched this long is abandoned whatever its pid says, since a pid can be reused.
+const STAGING_ABANDONED: Duration = Duration::from_secs(24 * 60 * 60);
 /// How often deferred maintenance (a clear or an eviction another run blocked) re-checks.
 const MAINTENANCE_POLL: Duration = Duration::from_secs(5);
 /// Deferred maintenance gives up after this long (a stale queue ticket must not keep a task alive forever).
@@ -1163,6 +1165,54 @@ pub(crate) fn dir_bytes(dir: &Path) -> u64 {
     bytes
 }
 
+/// The pid a staging tree's name carries (`.stage-<tag>-<pid>`).
+fn staging_pid(name: &str) -> Option<i32> {
+    let pid: i32 = name
+        .strip_prefix(".stage-")?
+        .rsplit('-')
+        .next()?
+        .parse()
+        .ok()?;
+    (pid > 0).then_some(pid)
+}
+
+/// Removes staging trees whose extraction died with its process (a crash or a kill leaves them, nothing reads them and they count against the cap); returns the bytes freed.
+pub(crate) fn sweep_dead_staging(root: &Path) -> u64 {
+    let own = i32::try_from(std::process::id()).unwrap_or(0);
+    let stale = SystemTime::now().checked_sub(STAGING_ABANDONED);
+    let mut freed = 0u64;
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return freed;
+    };
+    for entry in entries.flatten() {
+        let dir = entry.path();
+        for parent in [dir.join(PREVIEW_DIR), dir] {
+            let Ok(read) = std::fs::read_dir(&parent) else {
+                continue;
+            };
+            for child in read.flatten() {
+                let Some(pid) = child.file_name().to_str().and_then(staging_pid) else {
+                    continue;
+                };
+                let path = child.path();
+                let abandoned = std::fs::metadata(&path)
+                    .and_then(|md| md.modified())
+                    .ok()
+                    .zip(stale)
+                    .is_some_and(|(touched, stale)| touched < stale);
+                if pid == own || (process_alive(pid) && !abandoned) {
+                    continue;
+                }
+                let bytes = dir_bytes(&path);
+                if std::fs::remove_dir_all(&path).is_ok() {
+                    freed += bytes;
+                }
+            }
+        }
+    }
+    freed
+}
+
 /// Every marked chunk outside `skip`, with its last use and size. Staging trees, other builds' partial entries and unmarked frames are never candidates.
 pub(crate) fn scan_candidates(root: &Path, skip: &HashSet<String>) -> Vec<Candidate> {
     let mut out = Vec::new();
@@ -1275,6 +1325,10 @@ fn evict_if_over(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<ClipCacheState>();
     let root = clips_root(app)?;
     let cap = cap_bytes(app);
+    let swept = sweep_dead_staging(&root);
+    if swept > 0 {
+        log::info!("[clips] removed {swept} bytes of abandoned staging");
+    }
     let total = dir_bytes(&root);
     state.lock().size_estimate = Some(total);
     if total <= cap {
@@ -1635,6 +1689,37 @@ mod tests {
         assert_eq!(present_chunks(&dir, 250), vec![0, 1, 2]);
         assert!((0..3).all(|c| chunk_marker(&dir, c).is_file()));
         assert!(is_whole(&dir));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn abandoned_staging_is_swept_and_live_staging_is_kept() {
+        let root = temp_dir("sweep");
+        let entry = root.join("abc-60fps-hw");
+        let mut child = std::process::Command::new("true").spawn().unwrap();
+        let dead = child.id();
+        child.wait().unwrap();
+        let live = std::os::unix::process::parent_id();
+        let stage = |parent: &Path, tag: &str, pid: u32| {
+            let dir = parent.join(format!(".stage-{tag}-{pid}"));
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join(frame_name(0, "png")), [0u8; 10]).unwrap();
+            dir
+        };
+        let crashed = stage(&entry, "120", dead);
+        let crashed_preview = stage(&entry.join(PREVIEW_DIR), "0", dead);
+        let running = stage(&entry, "240", live);
+        let own = stage(&entry, "count", std::process::id());
+        let reused = stage(&entry, "360", live);
+        std::fs::File::open(&reused)
+            .unwrap()
+            .set_modified(SystemTime::now() - STAGING_ABANDONED - Duration::from_secs(60))
+            .unwrap();
+        std::fs::write(entry.join(frame_name(0, "png")), [0u8; 10]).unwrap();
+        assert_eq!(sweep_dead_staging(&root), 30);
+        assert!(!crashed.exists() && !crashed_preview.exists() && !reused.exists());
+        assert!(running.exists() && own.exists());
+        assert!(entry.join(frame_name(0, "png")).exists());
         let _ = std::fs::remove_dir_all(&root);
     }
 
