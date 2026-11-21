@@ -101,7 +101,7 @@ def plan_variants(sets: List[Tuple[str, List[Any], List[str]]], named: List[Tupl
 def keep_commands(stem: str, ops: List[Tuple[str, str, Any, str]]) -> List[str]:
     cmds = []
     for op, path, _arg, word in ops:
-        cmds.append(f"./kb doc {stem} merge {shlex.quote(word)}" if op == "merge" else f"./kb doc {stem} set {path} {shlex.quote(word)}")
+        cmds.append(f"./kb doc {stem} merge {shlex.quote(word)}" if op == "merge" else f"./kb doc {stem} set {shlex.quote(path)} {shlex.quote(word)}")
     return cmds
 
 
@@ -207,7 +207,9 @@ def cmd_try(ctx: Any) -> int:
     folder = Path(resp["captureDir"]) if isinstance(resp.get("captureDir"), str) else contact.new_folder(project, "try")
     cells = [{"label": t["label"], "image": t["path"], "surface": "on-dark"} for t in out_tiles]
     sheets, _ = contact.write_sheets(cells, folder, tile_box(resp.get("size")), name="try", label_scale=LABEL_SCALE)
-    loads = (resp.get("timing") or {}).get("sceneDocLoads") if isinstance(resp.get("timing"), dict) else None
+    timing = resp.get("timing") if isinstance(resp.get("timing"), dict) else {}
+    loads = timing.get("sceneDocLoads")
+    render_s = timing["renderMs"] / 1000 if isinstance(timing.get("renderMs"), (int, float)) else None
     result = {
         "scene": stem, "at": seconds, "tMs": resp.get("tMs"), "format": resp.get("format"), "size": resp.get("size"),
         "sheet": str(sheets[0]) if sheets else None, "sheets": [str(s) for s in sheets], "tiles": out_tiles,
@@ -227,7 +229,7 @@ def cmd_try(ctx: Any) -> int:
             emit(f"    the app dropped: {w}")
     for s in sheets:
         emit(f"sheet: {s}")
-    per = f", {elapsed / max(1, loads or 1):.1f} s a variant" if loads else ""
+    per = f", {render_s / len(tiles):.1f} s a tile" if render_s is not None else ""
     emit_err(f"kb: rendered in memory, nothing in scenes/ changed ({elapsed:.1f} s{per}); Read the sheet")
     served = bridge.served_line(resp)
     if served:
