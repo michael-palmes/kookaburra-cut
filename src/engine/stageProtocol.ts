@@ -279,6 +279,7 @@ export type PortMethod =
   | "clipEnsureChunks"
   | "clipEnsurePreviews"
   | "clipReadFrame"
+  | "clipReadRgba"
   | "clipSetPins"
   | "clipConformPending"
   | "conformPoster"

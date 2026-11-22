@@ -928,6 +928,25 @@ pub(crate) fn read_clip_frame(
     Ok(tauri::ipc::Response::new(bytes))
 }
 
+/// Reads one extracted PNG frame and decodes it off the webview's threads, where a bitmap decode would hold the stage up: width and height as little-endian u32, then straight RGBA8 rows, last row first (the upload's orientation). An empty reply means the frame is not 8-bit opaque RGB and the webview must decode its file itself.
+#[tauri::command]
+pub(crate) async fn read_clip_frame_rgba(
+    app: AppHandle,
+    state: State<'_, ClipCacheState>,
+    path: String,
+) -> Result<tauri::ipc::Response, String> {
+    let root = clips_root(&app)?;
+    let file = confine_entry(&root, &path)?;
+    touch_chunk(&state, &file);
+    let reply = tauri::async_runtime::spawn_blocking(move || {
+        let bytes = std::fs::read(&file).map_err(|e| e.to_string())?;
+        crate::png_decode::decode_clip_frame_reply(&bytes)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    Ok(tauri::ipc::Response::new(reply.unwrap_or_default()))
+}
+
 /// The frame index a cache file name carries (`frame-00123.png` → 123).
 fn frame_index(file: &Path) -> Option<u32> {
     file.file_stem()?

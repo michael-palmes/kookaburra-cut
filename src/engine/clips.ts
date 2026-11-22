@@ -21,6 +21,7 @@ import {
   nativePort,
   parseClipSourceKey,
 } from "./stageRealm";
+import { parseDecodedPng, StageTexture } from "./stageTexture";
 import { tracedWait } from "./taskTrace";
 
 /** VideoClip frame pipeline: source videos are extracted by the ffmpeg sidecar to a deterministic CFR PNG sequence (cached under `$APPDATA`, keyed by source hash, filled in 120-frame chunks on demand), then sampled per frame off the manual clock with a small LRU so a long 4K clip never holds thousands of textures in memory. See docs/determinism.md. */
@@ -752,6 +753,7 @@ interface ChunkSource {
 /** Streams a clip's frames from disk as three.js textures with an LRU cache (via the fs plugin + `createImageBitmap`, decoding deterministically); a frame's chunk is extracted first when it is not on disk yet. Consumers pin their requested frame synchronously and their bound frame until replaced, since evicting and closing a bitmap that's still in flight or bound throws WebGL INVALID_VALUE and renders white. */
 export class ClipFrames {
   private readonly cache = new Map<string, Texture>();
+  private decodesNatively = true;
   private order: string[] = [];
   private readonly loading = new Map<string, Promise<Texture>>();
   /** Consumer → its protected frames (see the pinning note above); keys are tier-qualified. */
@@ -1030,8 +1032,11 @@ export class ClipFrames {
     );
   }
 
-  private read(i: number, tier: ClipTier): Promise<ArrayBuffer> {
-    return nativePort().clipReadFrame(this.info.cacheDir, i, tier);
+  /** `decoded` asks for the frame's rows, decoded off the stage's thread; otherwise its file's bytes. */
+  private read(i: number, tier: ClipTier, decoded: boolean): Promise<ArrayBuffer> {
+    return decoded
+      ? nativePort().clipReadRgba(this.info.cacheDir, i)
+      : nativePort().clipReadFrame(this.info.cacheDir, i, tier);
   }
 
   private async load(i: number, tier: ClipTier): Promise<Texture> {
@@ -1041,30 +1046,38 @@ export class ClipFrames {
       // Playback moved on while the chunk extracted: skip the decode nobody will bind.
       if (!this.isPinned(key)) throw new ClipLoadSuperseded(`frame ${i} is no longer requested`);
     }
+    let decoded = tier === "full" && this.decodesNatively;
     let buffer: ArrayBuffer;
     try {
-      buffer = await tracedWait(`clip:read:${tier}`, this.read(i, tier));
+      buffer = await tracedWait(`clip:read:${tier}`, this.read(i, tier, decoded));
     } catch (e) {
       if (tier !== "full" || !this.source) throw e;
       // Another app instance can evict a chunk this one still marks ready; extract it again, once.
       this.ready.delete(chunkOf(i));
       await this.ensureFrame(i);
       try {
-        buffer = await this.read(i, tier);
+        buffer = await this.read(i, tier, decoded);
       } catch (again) {
         throw new ClipChunkError(
-          `Frame ${i} of "${this.source.label}" is missing after extracting its chunk: ${String(again)}`,
+          `Frame ${i} of "${this.source.label}" could not be read after extracting its chunk: ${String(again)}`,
         );
       }
     }
-    // `imageOrientation: "flipY"` + `flipY = false` is the reliable upright combo for ImageBitmap textures in three (the texture's own flipY flag is ignored for bitmaps).
-    const bitmap = await tracedWait(
-      `clip:decode:${tier}`,
-      createImageBitmap(new Blob([buffer]), {
-        imageOrientation: "flipY",
-      }),
-    );
-    const tex = new Texture(bitmap);
+    if (decoded && buffer.byteLength === 0) {
+      // Not 8-bit opaque RGB (a 10-bit or alpha source): only those decode natively to the webview's own bytes, so this clip keeps the bitmap decode.
+      this.decodesNatively = false;
+      decoded = false;
+      buffer = await this.read(i, tier, false);
+    }
+    // Both arrive bottom row first for `flipY = false`: the decoded rows as sent, the bitmap by `imageOrientation: "flipY"` (the texture's own flipY flag is ignored for bitmaps).
+    const tex = decoded
+      ? new StageTexture(parseDecodedPng(buffer))
+      : new Texture(
+          await tracedWait(
+            `clip:decode:${tier}`,
+            createImageBitmap(new Blob([buffer]), { imageOrientation: "flipY" }),
+          ),
+        );
     // Stamps which clip frame this texture holds so the exporter's Verify diagnostics can record what was actually bound at render time (see exporter.sampleBoundClipFrame).
     tex.userData.clipFrame = i;
     tex.colorSpace = SRGBColorSpace;

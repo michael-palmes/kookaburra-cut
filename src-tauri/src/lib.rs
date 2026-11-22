@@ -1462,6 +1462,7 @@ macro_rules! kookaburra_handler {
             clip_cache::clip_info,
             clip_cache::ensure_clip_chunks,
             clip_cache::read_clip_frame,
+            clip_cache::read_clip_frame_rgba,
             clip_cache::ensure_clip_previews,
             clip_cache::set_clip_cache_pins,
             clip_cache::clip_cache_session_stats,

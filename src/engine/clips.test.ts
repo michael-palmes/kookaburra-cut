@@ -54,6 +54,11 @@ const fakePort: NativePort = {
   async clipReadFrame() {
     return new ArrayBuffer(8);
   },
+  async clipReadRgba() {
+    const reply = new ArrayBuffer(8 + 8 * 8 * 4);
+    new Uint32Array(reply, 0, 2).set([8, 8]);
+    return reply;
+  },
   async clipSetPins(dirs) {
     pinCalls.push([...dirs]);
   },
@@ -620,8 +625,40 @@ describe("ClipFrames chunks", () => {
       height: 8,
       fps: 60,
     });
-    return { clips, frames, read: vi.spyOn(fakePort, "clipReadFrame") };
+    return { clips, frames, read: vi.spyOn(fakePort, "clipReadRgba") };
   }
+
+  it("takes a full frame decoded and a preview frame as its file", async () => {
+    const { frames, read } = await wholeFrames();
+    const file = vi.spyOn(fakePort, "clipReadFrame");
+    frames.request({}, 4);
+    const full = await frames.get(4);
+    expect((full.image as { data: Uint8Array }).data).toHaveLength(8 * 8 * 4);
+    frames.request({}, 5, "preview");
+    await frames.get(5, "preview");
+    expect(read.mock.calls.map((call) => call[1])).toEqual([4]);
+    expect(file.mock.calls.map((call) => [call[1], call[2]])).toEqual([[5, "preview"]]);
+    read.mockRestore();
+    file.mockRestore();
+  });
+
+  it("keeps the bitmap decode for a clip whose frames are not plain RGB", async () => {
+    const { frames } = await wholeFrames();
+    const rows = vi.spyOn(fakePort, "clipReadRgba").mockResolvedValue(new ArrayBuffer(0));
+    const file = vi.spyOn(fakePort, "clipReadFrame");
+    frames.request({}, 4);
+    const first = await frames.get(4);
+    expect((first.image as { data?: unknown }).data).toBeUndefined();
+    frames.request({}, 5);
+    await frames.get(5);
+    expect(rows.mock.calls.map((call) => call[1])).toEqual([4]);
+    expect(file.mock.calls.map((call) => [call[1], call[2]])).toEqual([
+      [4, "full"],
+      [5, "full"],
+    ]);
+    rows.mockRestore();
+    file.mockRestore();
+  });
 
   it("decodes one preview frame at a time and skips the frames a skim moved past", async () => {
     const { clips, frames, read } = await wholeFrames();
