@@ -37,7 +37,7 @@ export default defineScene({
     const hero = devices.find((d) => d.id === "hero") ?? devices[0];
     const landAt = grid?.at(11, 1) ?? 0;
     const pillAt = grid?.at(11, 3) ?? 938;
-    const outAt = 1875 - OUT_MS;
+    const outAt = (grid?.at(12, 1) ?? 1875) - OUT_MS;
     const fill = ramp(localMs, pillAt, pillAt + motion.durations.base, "outCubic");
     const leave = 1 - ramp(localMs, outAt, outAt + OUT_MS, "inCubic");
     const width = (box?.width ?? 0) + 2 * PILL_PAD;

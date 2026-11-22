@@ -22,6 +22,7 @@ const DEPTH = -4.2;
 const CLOCK_RADIUS = 0.72;
 const CLOCK_AT: [number, number, number] = [LEFT_X + CLOCK_RADIUS, 0.02, DEPTH];
 const START_HOUR = 1;
+const CLOCK_HOURS_MAX = 11;
 const ROW_Y = -1.18;
 const CAPTION_Y = -1.6;
 const FIGURE_SIZE = 0.42;
@@ -49,7 +50,8 @@ export default defineScene({
       [0.05, 0.2, 0.95, 0.35],
     );
     const hero = devices.find((d) => d.id === "hero") ?? devices[0];
-    const hours = Math.max(Number(figure) || 0, 0);
+    const count = Math.max(Number.parseFloat(figure) || 0, 0);
+    const hours = Math.min(count, CLOCK_HOURS_MAX);
     const sweepFrom = grid?.at(12, 2) ?? 469;
     const sweepTo = grid?.at(13, 3) ?? 2812;
     const liftAt = sweepTo - 420;
@@ -58,11 +60,10 @@ export default defineScene({
     const sweep = ramp(localMs, sweepFrom, sweepTo, "inOutSine");
     const span = 30 * hours;
     const hourDeg = 30 * START_HOUR + span * sweep;
-    const steps = Math.max(Math.round(hours), 1);
-    const shown = String(Math.round((Math.floor(sweep * steps + 1e-6) / steps) * hours));
-    const figureBox = useTextMetrics("figure", String(Math.round(hours)), {
-      fontSize: FIGURE_SIZE,
-    });
+    const steps = Math.min(Math.max(Math.round(count), 1), 12);
+    const shown =
+      sweep >= 1 ? figure : String(Math.round((Math.floor(sweep * steps) / steps) * count));
+    const figureBox = useTextMetrics("figure", figure, { fontSize: FIGURE_SIZE });
     const minuteDeg = 360 * hours * sweep;
     return (
       <SceneStage floorY={FLOOR_Y}>

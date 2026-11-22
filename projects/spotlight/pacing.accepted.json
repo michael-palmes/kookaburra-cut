@@ -6,32 +6,32 @@
       "kind": "still",
       "scene": "04-flow-b",
       "why": "The timer ticks on the phone at 7.3 and 8.1 carry the beat; camera pushes on them read as too much",
-      "by": "session-6bfcea7a",
-      "atMs": 1795341295230
+      "by": "template",
+      "atMs": 1795384114232
     },
     {
       "id": "e9cace23",
       "kind": "still",
       "scene": "05-close-up",
       "why": "The timer ticks inside the magnifier at 9.3",
-      "by": "session-6bfcea7a",
-      "atMs": 1795341295324
+      "by": "template",
+      "atMs": 1795384114299
     },
     {
       "id": "50845c3a",
       "kind": "still",
       "scene": "07-proof",
       "why": "The camera is already easing away to the lockup through bar 14; the move starts slowly so the check does not see it",
-      "by": "session-6bfcea7a",
-      "atMs": 1795345580588
+      "by": "template",
+      "atMs": 1795384114368
     },
     {
       "id": "cc6b6530",
       "kind": "final-hit",
       "scene": "08-lockup",
       "why": "The switch flips on and the call to action appears on the final hit; the change is small on screen, so the check misses it",
-      "by": "session-6bfcea7a",
-      "atMs": 1795351751657
+      "by": "template",
+      "atMs": 1795384114437
     }
   ]
 }

@@ -33,6 +33,7 @@ const TRACK_WIDTH = 1.08;
 const TRACK_HEIGHT = 0.6;
 const KNOB = 0.48;
 const SETTLED_MS = 1234;
+const CALM_MIN_MS = 400;
 
 export default defineScene({
   id: "spotlight-08-lockup",
@@ -56,7 +57,8 @@ export default defineScene({
     const nameWidth = box?.width ?? 0;
     const total = ICON_WIDTH + GAP + nameWidth + GAP + TRACK_WIDTH;
     const left = CENTRE_X - total / 2;
-    const calm = ramp(localMs, SETTLED_MS, flipAt, "inOutSine");
+    const calmFrom = Math.max(Math.min(SETTLED_MS, flipAt - CALM_MIN_MS), 0);
+    const calm = ramp(localMs, calmFrom, Math.max(flipAt, calmFrom + CALM_MIN_MS), "inOutSine");
     const on = ramp(localMs, flipAt - 90, flipAt + 150, "outCubic");
     const said = ramp(localMs, flipAt - 60, flipAt + 180, "outCubic");
     const travel = (TRACK_WIDTH - TRACK_HEIGHT) / 2;
