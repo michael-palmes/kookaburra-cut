@@ -7,7 +7,7 @@
   "personas": ["pm", "marketer"],
   "level": "standard",
   "tier": "safe",
-  "uses": ["audio"],
+  "uses": ["audio", "background", "camera-rig", "device"],
   "highlights": [
     "The problem in a line, then the feature by name",
     "In close on the one control that matters",

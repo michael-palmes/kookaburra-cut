@@ -80,5 +80,10 @@
       "durationMs": 3750,
       "cutAt": "bar:17"
     }
-  ]
+  ],
+  "shared": {
+    "control": {
+      "rect": [0.04, 0.327, 0.96, 0.451]
+    }
+  }
 }

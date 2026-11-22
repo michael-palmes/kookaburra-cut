@@ -8,7 +8,7 @@ it fills the app icon slot, so it ships in its template as `assets/app-icon.png`
 
 ## Product family
 
-Unveil shows one fictional product, Fairywren (a calm planner). Its screens are
+Unveil and Spotlight show one fictional product, Fairywren (a calm planner). Its screens are
 rendered from HTML and CSS by `tools/sample-product/` (`pnpm assets:sample-product`),
 which steps a deterministic clock frame by frame in headless Chrome. Fictional brand,
 people and data only; the name was checked against IP Australia, USPTO and the App
@@ -35,6 +35,7 @@ Thornbill and Songlark; only the files a bundled template names are kept here.
 | `fairywren-quickadd-dark-phone.mp4` | A plan typed in plain words is parsed and added |
 | `fairywren-reschedule-dark-phone.mp4` | A meeting runs over and two plans move to fit |
 | `fairywren-share-dark-phone.mp4` | A list shared with three people, who tick items off |
+| `fairywren-focusflow-phone.mp4` | Spotlight's flow in light mode: one large Focus toggle, no baked tap |
 
 ### Timings and regions
 
@@ -49,6 +50,8 @@ Regions are screen UV `[u0, v0, u1, v1]` (`ScreenRegion rect`), times are second
   up from 3.9 s.
 - Reschedule card: `[0.04, 0.27, 0.96, 0.531]`, still from 1.3 to 3.3 s (Keep at 3.35 s).
 - Share sheet: `[0.02, 0.613, 0.98, 0.991]`, still from 1.6 to 2.3 s (Share at 2.3 s).
+- Focus flow: the toggle centre is `(0.818, 0.389)` and flips at 1.5 s; the Focus card is
+  `[0.04, 0.327, 0.96, 0.451]` until it grows at 1.85 s.
 
 ## Kooka set
 

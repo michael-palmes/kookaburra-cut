@@ -1,14 +1,117 @@
 {
   "version": 1,
   "name": "Name",
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "media": {
+        "src": "assets/fairywren-focusflow-phone.mp4",
+        "kind": "video",
+        "startMs": 1313,
+        "at": "bar:4.3-1500ms",
+        "outMs": 1840
+      },
+      "placement": {
+        "position": [1.25, -0.7, -4.2],
+        "rotationDeg": [0, -28, 0],
+        "scale": 1,
+        "ground": true
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "long"
+    }
+  ],
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "position": [0, -0.75, 6.1],
+          "aim": {
+            "mode": "point",
+            "at": [0, -0.75, -4.2]
+          },
+          "fov": 22,
+          "dof": {
+            "mode": "lens",
+            "fStop": 22,
+            "focus": 10.3
+          }
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 3749,
+        "pose": {
+          "position": [0, -0.75, 5.3],
+          "aim": {
+            "mode": "point",
+            "at": [0, -0.75, -4.2]
+          },
+          "fov": 22,
+          "dof": {
+            "fStop": 22,
+            "focus": 9.5
+          }
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "linear",
+        "smooth": false
+      }
+    ]
+  },
+  "background": {
+    "type": "scene3d",
+    "look": "sunroom",
+    "colors": ["#d6c8b8", "#fff6e8", "#cfc0ae"],
+    "speed": 1,
+    "params": {
+      "sunSide": 36,
+      "sunHeight": 26,
+      "drift": 2,
+      "patch": 0.3,
+      "slatPitch": 0.5,
+      "opening": 0.66,
+      "panes": 3,
+      "softness": 0.8,
+      "wallDistance": 7
+    },
+    "backing": {
+      "type": "color",
+      "color": "#efe6dc"
+    }
+  },
+  "lighting": {
+    "environment": {
+      "source": "kookaburra:cyclorama",
+      "intensity": 1.2,
+      "rotationDeg": 0
+    },
+    "sun": {
+      "azimuthDeg": 38.66,
+      "elevationDeg": 26,
+      "intensity": 2.2,
+      "kelvin": 4600,
+      "angularDeg": 1.5
+    },
+    "ambient": 0.45
+  },
   "text": {
-    "label": "02 · Name",
-    "bars": "Bars 3 to 4 · The chord swells again",
-    "note": "The feature's control lifts out of the screen",
-    "title": "Meet Focus.",
-    "c1": "3.1 · Cut: the phone stands in the light",
-    "c2": "3.3 · The Focus switch lifts off the glass",
-    "c3": "4.1 · “Meet Focus.” lands beside it",
-    "c4": "4.3 · The switch flips on"
+    "title": "Meet Focus."
+  },
+  "textStyle": {
+    "titleColor": "#2b2622",
+    "titleFont": "Inter Tight@600"
   }
 }

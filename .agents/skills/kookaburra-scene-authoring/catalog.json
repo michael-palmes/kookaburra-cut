@@ -27274,7 +27274,7 @@
       "personas": ["pm", "marketer"],
       "level": "standard",
       "tier": "safe",
-      "uses": ["audio"],
+      "uses": ["audio", "background", "camera-rig", "device"],
       "highlights": [
         "The problem in a line, then the feature by name",
         "In close on the one control that matters",
@@ -27309,7 +27309,15 @@
           "file": "scenes/02-name.tsx",
           "durationMs": 3750,
           "transition": null,
-          "blocks": ["text"]
+          "blocks": [
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "text",
+            "textStyle"
+          ]
         },
         {
           "file": "scenes/03-flow-a.tsx",
@@ -28485,6 +28493,9 @@
     },
     {
       "id": "fairywren-focus-dark-phone.jpg"
+    },
+    {
+      "id": "fairywren-focusflow-phone.mp4"
     },
     {
       "id": "fairywren-insights-dark-phone.jpg"
