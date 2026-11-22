@@ -29,6 +29,7 @@ Thornbill and Songlark; only the files a bundled template names are kept here.
 | `fairywren-today-dark-phone.jpg` | Today |
 | `fairywren-focus-dark-phone.jpg` | Focus mode |
 | `fairywren-insights-dark-phone.jpg`, `fairywren-month-dark-phone.jpg` | Two more screens for a line-up |
+| `fairywren-insights-phone.jpg` | Insights in light mode: Spotlight's proof screen. The "Focus this week" card is `[0.04, 0.172, 0.96, 0.343]` |
 | `fairywren-share-dark-phone.jpg` | A shared list |
 | `fairywren-plan-dark-phone.mp4` | Plans land, one is ticked off, a new plan is typed |
 | `fairywren-sorted-dark-phone.mp4` | "Plans your week for you": the week sorts itself under a "This week, sorted" card |
@@ -51,7 +52,8 @@ Regions are screen UV `[u0, v0, u1, v1]` (`ScreenRegion rect`), times are second
 - Reschedule card: `[0.04, 0.27, 0.96, 0.531]`, still from 1.3 to 3.3 s (Keep at 3.35 s).
 - Share sheet: `[0.02, 0.613, 0.98, 0.991]`, still from 1.6 to 2.3 s (Share at 2.3 s).
 - Focus flow: the toggle centre is `(0.818, 0.389)` and flips at 1.5 s; the Focus card is
-  `[0.04, 0.327, 0.96, 0.451]` until it grows at 1.85 s.
+  `[0.04, 0.327, 0.96, 0.451]` until it grows from 1.9 s, with the timer at `(0.2, 0.497)`. The timer
+  ticks at 3.9, 4.9 and 5.9 s.
 
 ## Kooka set
 

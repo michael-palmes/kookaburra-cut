@@ -27303,7 +27303,7 @@
           "file": "scenes/01-problem.tsx",
           "durationMs": 3749,
           "transition": null,
-          "blocks": ["text"]
+          "blocks": ["background", "cameraMode", "cameraRig", "lighting", "text", "textStyle"]
         },
         {
           "file": "scenes/02-name.tsx",
@@ -27323,37 +27323,46 @@
           "file": "scenes/03-flow-a.tsx",
           "durationMs": 3750,
           "transition": null,
-          "blocks": ["text"]
+          "blocks": ["background", "cameraMode", "cameraRig", "devices", "lighting", "taps"]
         },
         {
           "file": "scenes/04-flow-b.tsx",
           "durationMs": 3750,
           "transition": null,
-          "blocks": ["text"]
+          "blocks": ["background", "cameraKicks", "cameraMode", "cameraRig", "devices", "lighting"]
         },
         {
           "file": "scenes/05-close-up.tsx",
           "durationMs": 3750,
           "transition": null,
-          "blocks": ["text"]
+          "blocks": ["background", "cameraKicks", "cameraMode", "cameraRig", "devices", "lighting"]
         },
         {
           "file": "scenes/06-claim.tsx",
           "durationMs": 1875,
           "transition": null,
-          "blocks": ["text"]
+          "blocks": ["background", "cameraMode", "cameraRig", "lighting", "text", "textStyle"]
         },
         {
           "file": "scenes/07-proof.tsx",
           "durationMs": 5625,
           "transition": null,
-          "blocks": ["text"]
+          "blocks": [
+            "background",
+            "cameraKicks",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "text",
+            "textStyle"
+          ]
         },
         {
           "file": "scenes/08-lockup.tsx",
           "durationMs": 3750,
           "transition": null,
-          "blocks": ["text"]
+          "blocks": ["background", "cameraMode", "cameraRig", "lighting", "text", "textStyle"]
         }
       ]
     },
@@ -28499,6 +28508,9 @@
     },
     {
       "id": "fairywren-insights-dark-phone.jpg"
+    },
+    {
+      "id": "fairywren-insights-phone.jpg"
     },
     {
       "id": "fairywren-month-dark-phone.jpg"

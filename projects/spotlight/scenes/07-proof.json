@@ -1,18 +1,127 @@
 {
   "version": 1,
   "name": "Proof",
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "media": {
+        "src": "assets/fairywren-insights-phone.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [1.25, -0.7, -4.2],
+        "rotationDeg": [0, -28, 0],
+        "scale": 1,
+        "ground": true
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "long"
+    }
+  ],
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "position": [0, -0.75, 6.1],
+          "aim": {
+            "mode": "point",
+            "at": [0, -0.75, -4.2]
+          },
+          "fov": 22,
+          "dof": {
+            "mode": "lens",
+            "fStop": 22,
+            "focus": 10.3
+          }
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 5625,
+        "pose": {
+          "position": [0, -0.75, 5.3],
+          "aim": {
+            "mode": "point",
+            "at": [0, -0.75, -4.2]
+          },
+          "fov": 22,
+          "dof": {
+            "fStop": 22,
+            "focus": 9.5
+          }
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "linear",
+        "smooth": false
+      }
+    ]
+  },
+  "background": {
+    "backing": {
+      "color": "#efe6dc",
+      "type": "color"
+    },
+    "colors": ["#d6c8b8", "#fff6e8", "#cfc0ae"],
+    "look": "sunroom",
+    "params": {
+      "drift": 2,
+      "opening": 0.66,
+      "panes": 3,
+      "patch": 0.3,
+      "slatPitch": 0.5,
+      "softness": 0.8,
+      "sunHeight": 26,
+      "sunSide": 36,
+      "wallDistance": 7
+    },
+    "speed": 1,
+    "type": "scene3d"
+  },
+  "lighting": {
+    "ambient": 0.45,
+    "environment": {
+      "intensity": 1.2,
+      "rotationDeg": 0,
+      "source": "kookaburra:cyclorama"
+    },
+    "sun": {
+      "angularDeg": 1.5,
+      "azimuthDeg": 38.66,
+      "elevationDeg": 26,
+      "intensity": 2.2,
+      "kelvin": 4600
+    }
+  },
   "text": {
-    "label": "07 · Proof",
-    "bars": "Bars 12 to 14 · Full warmth, hits on 12.2 and 14.2",
-    "note": "The phone with the proof: a counter, then where it came from",
     "figure": "2",
     "unit": "h",
-    "second": "saved each week, on average",
-    "c1": "12.1 · Cut: the phone showing the week",
-    "c2": "12.2 · Hit: the counter ticks up on the beats",
-    "c3": "13.1 · “2 h” lands",
-    "c4": "13.3 · The week's bars rise on screen",
-    "c5": "14.1 · The caption lands",
-    "c6": "14.3 · Push in"
-  }
+    "caption": "more focus time than last week"
+  },
+  "textStyle": {
+    "figureColor": "#2b2622",
+    "figureFont": "Inter Tight@600",
+    "unitColor": "#2b2622",
+    "unitFont": "Inter Tight@600",
+    "captionColor": "#5f574f",
+    "captionFont": "Inter Tight@400"
+  },
+  "cameraKicks": [
+    {
+      "at": "bar:14.3",
+      "zoom": 1.04,
+      "releaseMs": 320
+    }
+  ]
 }

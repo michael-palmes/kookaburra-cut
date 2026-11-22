@@ -1,12 +1,85 @@
 {
   "version": 1,
   "name": "Claim",
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "position": [-0.6, -0.4, 6.3],
+          "aim": {
+            "mode": "point",
+            "at": [-0.6, -0.4, -4.2]
+          },
+          "fov": 22
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1875,
+        "pose": {
+          "position": [-0.6, -0.4, 5.95],
+          "aim": {
+            "mode": "point",
+            "at": [-0.6, -0.4, -4.2]
+          },
+          "fov": 22
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "linear",
+        "smooth": false
+      }
+    ]
+  },
+  "background": {
+    "backing": {
+      "color": "#efe6dc",
+      "type": "color"
+    },
+    "colors": ["#d6c8b8", "#fff6e8", "#cfc0ae"],
+    "look": "sunroom",
+    "params": {
+      "drift": 2,
+      "opening": 0.66,
+      "panes": 3,
+      "patch": 0.3,
+      "slatPitch": 0.5,
+      "softness": 0.8,
+      "sunHeight": 26,
+      "sunSide": 36,
+      "wallDistance": 7
+    },
+    "speed": 1,
+    "type": "scene3d"
+  },
+  "lighting": {
+    "ambient": 0.45,
+    "environment": {
+      "intensity": 1.2,
+      "rotationDeg": 0,
+      "source": "kookaburra:cyclorama"
+    },
+    "sun": {
+      "angularDeg": 1.5,
+      "azimuthDeg": 38.66,
+      "elevationDeg": 26,
+      "intensity": 2.2,
+      "kelvin": 4600
+    }
+  },
   "text": {
-    "label": "06 · Claim",
-    "bars": "Bar 11 · A fill hands over to 12",
-    "note": "The benefit, on the wall in window light",
-    "title": "Two hours back, every week.",
-    "c1": "11.1 · The claim lands on the cut",
-    "c2": "11.3 · An underline draws under “Two hours”"
+    "title": "*Two hours* back, every week."
+  },
+  "textStyle": {
+    "titleColor": "#2b2622",
+    "titleFont": "Inter Tight@600",
+    "titleEmphasis": "#b9472f@600 pill"
   }
 }
