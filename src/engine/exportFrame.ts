@@ -16,6 +16,7 @@ import {
 } from "./exportBridge";
 import type { ExportOptions } from "./exporter";
 import { isExporting } from "./exportState";
+import { addPhase, type ExportTiming } from "./exportTiming";
 import { computeFormat } from "./format";
 import { yieldMacrotask } from "./macrotask";
 import { resolveOverlays } from "./overlayPlan";
@@ -243,6 +244,7 @@ export interface FrameRig {
   plans: FramePlans;
   cameraTrack?: CameraKeyframe[];
   clockOwnedMs: number | null;
+  timing?: ExportTiming;
 }
 
 /** One frame of the deterministic loop into `rig.rgba`: seek, barriers, size guard, plans, `draws` renders (the last one kept), then the guarded readback. `beforeRead` runs between the last draw and the readback. */
@@ -257,17 +259,21 @@ export async function renderFrameInto(
   const { gl, scene, camera, width, height, sizeProbe, plans } = rig;
   const cam = camera as PerspectiveCamera;
   dropDevPerformanceEntries();
+  let at = performance.now();
   // flushSync commits the DOM tree; the canvas tree (r3f reconciler) commits on its own schedule, so wait for it before trusting any per-mesh readiness hook for this frame.
   flushSync(() => useClockStore.getState().setCurrentMs(tMs));
   rig.clockOwnedMs = tMs;
   await awaitCanvasClockCommit(tMs);
+  at = addPhase(rig.timing, "commit", at);
   await clearShutterSample(scene);
   // Ensure each VideoClip's current frame texture is uploaded first (this may yield)...
   await awaitVideoFramesReady(scene);
+  at = addPhase(rig.timing, "clips", at);
   // ...then syncs troika text last, immediately before the render, with no async gap after it where a stray render or worker message could leave a text mesh stale at capture.
   await awaitTextSync(scene);
   // Emoji rasters requested this frame (e.g. a counter format emitting an unseen cluster) settle before capture, so a texture can never pop in at a run-dependent frame.
   await awaitEmojiRastersIdle();
+  at = addPhase(rig.timing, "text", at);
   // Guards against mid-run interference (e.g. a window resize retriggering r3f's size handling, which would corrupt every remaining captured frame); re-asserts the export size only if drifted, since an unconditional setSize would clear the canvas every frame. Resize events land during the awaits above; from here to readPixels is synchronous, so a corrected size cannot drift again before capture.
   gl.getSize(sizeProbe);
   if (sizeProbe.x !== width || sizeProbe.y !== height || gl.getPixelRatio() !== 1) {
@@ -290,8 +296,11 @@ export async function renderFrameInto(
     tMs,
     draws,
   );
+  at = addPhase(rig.timing, "draw", at);
   beforeRead?.();
   readFrameOrThrow(rig.ctx, width, height, rig.rgba, label);
+  addPhase(rig.timing, "read", at);
+  if (rig.timing) rig.timing.frames += 1;
 }
 
 /** Resolves one frame's camera, state, lighting and compare plans and draws it into the canvas `draws` times, the last one kept (the export loop's frame 0 draws twice so it is never a run's first draw: a cold boot must capture what a warm one does). Each draw is one plain render, or, while the camera moves across an open shutter, the averaged samples of the motion blur lane. Shared by the export loop and single-frame captures. */

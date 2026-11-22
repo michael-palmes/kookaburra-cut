@@ -106,7 +106,7 @@ const drawn = (frame: number) =>
   );
 
 /** Mounts a fake live canvas whose readback delivers `drawn(n)` for the nth read, except reads `stalled` names. */
-function mountCanvas(stalled: number[] = []) {
+function mountCanvas(stalled: number[] = [], onRead: (read: number) => void = () => {}) {
   const canvas = new EventTarget() as HTMLCanvasElement;
   trackContextLosses(canvas);
   let reads = 0;
@@ -117,6 +117,7 @@ function mountCanvas(stalled: number[] = []) {
     readPixels: (...args: unknown[]) => {
       const read = reads++;
       if (!stalled.includes(read)) (args[6] as Uint8Array).set(drawn(read));
+      onRead(read);
     },
   };
   let size = { x: 1280, y: 720 };
@@ -238,6 +239,40 @@ describe("export readback guard", () => {
     mountCanvas();
     const shot = await captureFrameRgba(opts, 0);
     expect(Array.from(shot.rgba)).toEqual(Array.from(drawn(0)));
+  });
+});
+
+describe("export push overlap", () => {
+  it("renders the next frame while the encoder takes the last, into another buffer, in frame order", async () => {
+    let releaseFirst = () => {};
+    const firstPush = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    mountCanvas([], (read) => {
+      if (read === 1) releaseFirst();
+    });
+    let heldThroughNextRead: number[] = [];
+    vi.mocked(invoke).mockImplementation(async (cmd: string, bytes?: unknown) => {
+      if (cmd === "push_frame" && pushed.push(Array.from(bytes as Uint8Array)) === 1) {
+        await firstPush;
+        heldThroughNextRead = Array.from(bytes as Uint8Array);
+      }
+      return cmd === "finish_export" ? "/out.mp4" : undefined;
+    });
+    await expect(exportProject(opts)).resolves.toBe("/out.mp4");
+    expect(pushed).toEqual([0, 1, 2].map((f) => Array.from(drawn(f))));
+    expect(heldThroughNextRead).toEqual(Array.from(drawn(0)));
+  });
+
+  it("stops the run when a push fails, and never finishes the file", async () => {
+    mountCanvas();
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "push_frame" && pushed.push([]) === 2) throw new Error("the encoder closed");
+      return undefined;
+    });
+    await expect(exportProject(opts)).rejects.toThrow("the encoder closed");
+    expect(called("cancel_export")).toBe(true);
+    expect(called("finish_export")).toBe(false);
   });
 });
 

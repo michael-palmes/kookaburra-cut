@@ -655,6 +655,7 @@ fn allowed_project_read_and_render() -> BTreeSet<String> {
         "clip_info",
         "ensure_clip_chunks",
         "read_clip_frame",
+        "read_clip_frame_rgba",
         "ensure_clip_previews",
         "set_clip_cache_pins",
         "clip_cache_session_stats",

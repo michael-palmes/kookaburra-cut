@@ -63,6 +63,8 @@ export interface NativePort {
   ): Promise<void>;
   clipEnsurePreviews(cacheDir: string, chunk: number): Promise<void>;
   clipReadFrame(cacheDir: string, index: number, tier: ClipTier): Promise<ArrayBuffer>;
+  /** An extracted PNG frame decoded natively: an 8-byte size header, then straight RGBA8 rows, last row first (`engine/stageTexture.ts`). */
+  clipReadRgba(cacheDir: string, index: number): Promise<ArrayBuffer>;
   clipSetPins(dirs: string[]): Promise<void>;
   clipConformPending(key: string): Promise<ConformJobPayload | null>;
   /** Subscribes to conform progress and the media-changed broadcast; resolves once listening (or once it is known the events are unavailable). */

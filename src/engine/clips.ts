@@ -21,6 +21,8 @@ import {
   nativePort,
   parseClipSourceKey,
 } from "./stageRealm";
+import { parseDecodedPng, StageTexture } from "./stageTexture";
+import { tracedWait } from "./taskTrace";
 
 /** VideoClip frame pipeline: source videos are extracted by the ffmpeg sidecar to a deterministic CFR PNG sequence (cached under `$APPDATA`, keyed by source hash, filled in 120-frame chunks on demand), then sampled per frame off the manual clock with a small LRU so a long 4K clip never holds thousands of textures in memory. See docs/determinism.md. */
 
@@ -91,6 +93,7 @@ function fileRevisions(sources: string[]): Promise<(string | null)[]> {
 const LRU_CAPACITY = 12;
 /** An export steps every clip forward and never back, so it keeps two frames a clip; twelve a clip across a long film was the leak that reloaded the editor mid-export (docs/determinism.md, "Memory probe"). */
 const EXPORT_LRU_CAPACITY = 2;
+const AHEAD = {};
 let lruCapacity = LRU_CAPACITY;
 
 /** The memory probe's `clip-cache=N` lever; nothing else changes it. */
@@ -203,8 +206,15 @@ export class ClipChunkError extends Error {}
 /** A conform the clip waited on failed, so its file never appeared. */
 export class ClipConformError extends Error {}
 
-/** A frame load dropped because its consumer asked for another frame while the chunk extracted. */
+/** A frame load dropped because its consumer asked for another frame while the chunk extracted or the load waited its turn. */
 export class ClipLoadSuperseded extends Error {}
+
+interface QueuedLoad {
+  i: number;
+  tier: ClipTier;
+  resolve: (tex: Texture) => void;
+  reject: (err: Error) => void;
+}
 
 function clipName(source: string): string {
   const { rel } = parseClipSourceKey(source);
@@ -743,6 +753,7 @@ interface ChunkSource {
 /** Streams a clip's frames from disk as three.js textures with an LRU cache (via the fs plugin + `createImageBitmap`, decoding deterministically); a frame's chunk is extracted first when it is not on disk yet. Consumers pin their requested frame synchronously and their bound frame until replaced, since evicting and closing a bitmap that's still in flight or bound throws WebGL INVALID_VALUE and renders white. */
 export class ClipFrames {
   private readonly cache = new Map<string, Texture>();
+  private decodesNatively = true;
   private order: string[] = [];
   private readonly loading = new Map<string, Promise<Texture>>();
   /** Consumer → its protected frames (see the pinning note above); keys are tier-qualified. */
@@ -886,6 +897,7 @@ export class ClipFrames {
     pins.bound = this.key(i, tier);
     if (pins.loading === pins.bound) pins.loading = undefined;
     this.pinned.set(owner, pins);
+    this.evict();
   }
 
   /** Resident decoded frames and their RGBA bytes (the memory probe's census). */
@@ -913,6 +925,12 @@ export class ClipFrames {
   /** Resolve the texture for frame `i` in `tier`, extracting its chunk and decoding + caching it if not already resident. */
   get(i: number, tier: ClipTier = "full"): Promise<Texture> {
     this.readAhead(i);
+    const texture = this.resolve(i, tier);
+    if (tier === "full" && isExporting()) this.decodeAhead(i);
+    return texture;
+  }
+
+  private resolve(i: number, tier: ClipTier): Promise<Texture> {
     const key = this.key(i, tier);
     const hit = this.cache.get(key);
     if (hit) {
@@ -927,21 +945,98 @@ export class ClipFrames {
       this.cache.delete(key);
       hit.dispose();
     }
-    let pending = this.loading.get(key);
-    if (!pending) {
-      const load = this.load(i, tier);
-      pending = load;
-      this.loading.set(key, load);
-      // A failed load is retried by the next request rather than cached.
-      load.catch(() => {
-        if (this.loading.get(key) === load) this.loading.delete(key);
-      });
-    }
-    return pending;
+    return this.loading.get(key) ?? this.gated(i, tier);
   }
 
-  private read(i: number, tier: ClipTier): Promise<ArrayBuffer> {
-    return nativePort().clipReadFrame(this.info.cacheDir, i, tier);
+  private start(i: number, tier: ClipTier): Promise<Texture> {
+    const key = this.key(i, tier);
+    const load = this.load(i, tier);
+    this.loading.set(key, load);
+    // A failed load is retried by the next request rather than cached.
+    load.catch(() => {
+      if (this.loading.get(key) === load) this.loading.delete(key);
+    });
+    return load;
+  }
+
+  private inFlight = 0;
+  private readonly queued = new Map<string, QueuedLoad>();
+
+  /** The preview decodes one frame of a clip at a time: a skim asks for a frame every tick, and each costs more than a tick, so the rest wait and only the newest still wanted starts next. Exports, and frames whose chunk must extract first, are never held. */
+  private gated(i: number, tier: ClipTier): Promise<Texture> {
+    if (isExporting() || (tier === "full" && !this.hasFrame(i))) {
+      return this.start(i, tier);
+    }
+    if (this.inFlight === 0) return this.startGated(i, tier);
+    const key = this.key(i, tier);
+    const wait = new Promise<Texture>((resolve, reject) => {
+      this.queued.set(key, { i, tier, resolve, reject });
+    });
+    wait.catch(() => {});
+    this.loading.set(key, wait);
+    return wait;
+  }
+
+  private startGated(i: number, tier: ClipTier): Promise<Texture> {
+    this.inFlight++;
+    const load = this.start(i, tier);
+    const next = () => {
+      this.inFlight--;
+      this.pump();
+    };
+    load.then(next, next);
+    return load;
+  }
+
+  private pump(): void {
+    const waiting = [...this.queued.entries()].reverse();
+    this.queued.clear();
+    let started = false;
+    for (const [key, load] of waiting) {
+      if (!this.isPinned(key)) {
+        this.loading.delete(key);
+        load.reject(new ClipLoadSuperseded(`frame ${load.i} was skipped for a newer one`));
+      } else if (started) {
+        this.queued.set(key, load);
+      } else {
+        started = true;
+        this.loading.delete(key);
+        this.startGated(load.i, load.tier).then(load.resolve, load.reject);
+      }
+    }
+  }
+
+  private lastExportFrame = -1;
+
+  /** An export steps forward, so the frame after this one decodes while this one is drawn, read back and encoded: the same PNG decodes to the same pixels, only sooner. Never extracts, and the pin keeps the count at two a clip. */
+  private decodeAhead(i: number): void {
+    const last = this.lastExportFrame;
+    if (i === last) return;
+    this.lastExportFrame = i;
+    const step = i - last;
+    const next = i + step;
+    if (last < 0 || step < 0 || step > 8) return;
+    if (next >= this.info.frameCount || !this.hasFrame(next)) return;
+    const key = this.key(next, "full");
+    if (this.cache.has(key) || this.loading.has(key)) return;
+    this.pinned.set(AHEAD, { loading: key });
+    const load = this.load(next, "full");
+    this.loading.set(key, load);
+    load.then(
+      () => {
+        if (!isExporting()) this.retire();
+      },
+      () => {
+        if (this.loading.get(key) === load) this.loading.delete(key);
+      },
+    );
+  }
+
+  /** `decoded` asks for the frame's rows, decoded off the stage's thread; otherwise its file's bytes. */
+  private read(i: number, tier: ClipTier, decoded: boolean): Promise<ArrayBuffer> {
+    return decoded
+      ? nativePort().clipReadRgba(this.info.cacheDir, i)
+      : nativePort().clipReadFrame(this.info.cacheDir, i, tier);
   }
 
   private async load(i: number, tier: ClipTier): Promise<Texture> {
@@ -951,27 +1046,38 @@ export class ClipFrames {
       // Playback moved on while the chunk extracted: skip the decode nobody will bind.
       if (!this.isPinned(key)) throw new ClipLoadSuperseded(`frame ${i} is no longer requested`);
     }
+    let decoded = tier === "full" && this.decodesNatively;
     let buffer: ArrayBuffer;
     try {
-      buffer = await this.read(i, tier);
+      buffer = await tracedWait(`clip:read:${tier}`, this.read(i, tier, decoded));
     } catch (e) {
       if (tier !== "full" || !this.source) throw e;
       // Another app instance can evict a chunk this one still marks ready; extract it again, once.
       this.ready.delete(chunkOf(i));
       await this.ensureFrame(i);
       try {
-        buffer = await this.read(i, tier);
+        buffer = await this.read(i, tier, decoded);
       } catch (again) {
         throw new ClipChunkError(
-          `Frame ${i} of "${this.source.label}" is missing after extracting its chunk: ${String(again)}`,
+          `Frame ${i} of "${this.source.label}" could not be read after extracting its chunk: ${String(again)}`,
         );
       }
     }
-    // `imageOrientation: "flipY"` + `flipY = false` is the reliable upright combo for ImageBitmap textures in three (the texture's own flipY flag is ignored for bitmaps).
-    const bitmap = await createImageBitmap(new Blob([buffer]), {
-      imageOrientation: "flipY",
-    });
-    const tex = new Texture(bitmap);
+    if (decoded && buffer.byteLength === 0) {
+      // Not 8-bit opaque RGB (a 10-bit or alpha source): only those decode natively to the webview's own bytes, so this clip keeps the bitmap decode.
+      this.decodesNatively = false;
+      decoded = false;
+      buffer = await this.read(i, tier, false);
+    }
+    // Both arrive bottom row first for `flipY = false`: the decoded rows as sent, the bitmap by `imageOrientation: "flipY"` (the texture's own flipY flag is ignored for bitmaps).
+    const tex = decoded
+      ? new StageTexture(parseDecodedPng(buffer))
+      : new Texture(
+          await tracedWait(
+            `clip:decode:${tier}`,
+            createImageBitmap(new Blob([buffer]), { imageOrientation: "flipY" }),
+          ),
+        );
     // Stamps which clip frame this texture holds so the exporter's Verify diagnostics can record what was actually bound at render time (see exporter.sampleBoundClipFrame).
     tex.userData.clipFrame = i;
     tex.colorSpace = SRGBColorSpace;
@@ -1011,6 +1117,8 @@ export class ClipFrames {
 
   /** Post-eviction cleanup: closes unpinned frames now; pinned ones stay alive for still-mounted consumers (closing a bound bitmap renders white) and fall to GC once they re-bind against the replacement entry. */
   retire(): void {
+    this.pinned.delete(AHEAD);
+    this.lastExportFrame = -1;
     this.order = this.order.filter((key) => {
       if (this.isPinned(key)) return true;
       disposeTexture(this.cache.get(key));
@@ -1020,6 +1128,8 @@ export class ClipFrames {
   }
 
   dispose(): void {
+    for (const load of this.queued.values()) load.reject(new ClipLoadSuperseded("the clip closed"));
+    this.queued.clear();
     for (const tex of this.cache.values()) disposeTexture(tex);
     this.cache.clear();
     this.order = [];

@@ -79,6 +79,11 @@ export const windowNativePort: NativePort = {
       path: `${requireIssued(cacheDir)}/${frameFile(index, tier)}`,
     });
   },
+  clipReadRgba(cacheDir, index) {
+    return invoke<ArrayBuffer>("read_clip_frame_rgba", {
+      path: `${requireIssued(cacheDir)}/${frameFile(index, "full")}`,
+    });
+  },
   async clipSetPins(dirs) {
     await invoke("set_clip_cache_pins", { dirs: dirs.map(requireIssued) });
   },

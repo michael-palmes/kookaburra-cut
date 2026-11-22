@@ -94,7 +94,8 @@ for (let frame = 0; frame < total; frame++) {
                                               // frame 0 draws twice: never the run's first draw)
   readFrameOrThrow(ctx, width, height, rgba); // zero, readPixels, then fail on a blank frame or
                                               // any context loss: a GPU stall never reaches ffmpeg
-  await invoke("push_frame", rgba);           // → Rust → ffmpeg stdin (vflip there)
+  await invoke("push_frame", rgba);           // → Rust → ffmpeg stdin (vflip there); in the
+                                              // window, overlapping the next frame's render
 }
 ```
 
@@ -106,10 +107,11 @@ and its barriers, the clock flush, the awaits, the composite and the readback)
 runs inside the stage worker (`exportRun.ts`, `beginExportRun` /
 `renderExportFrame`), where the scenes live; `exporter.ts` in the window owns
 the frame count, `start_export`, `push_frame` and `finish_export`, and asks the
-worker for one frame at a time over the stage protocol. The RGBA buffer is
-transferred to the window with each frame and handed back with the next
-request, so no frame is copied; a buffer that did not come back (a run
-abandoned mid-frame) is reallocated at its exact size. Nothing about the
+worker for one frame at a time over the stage protocol. Two RGBA buffers
+alternate by transfer: the window pushes one frame while the worker renders
+the next into the other, pushes stay in frame order with one in flight, and no
+frame is copied; a buffer that did not come back (a run abandoned mid-frame)
+is reallocated at its exact size. Nothing about the
 contract moved: `ws:launch-2026` and `showcase-tour` export byte-identical to
 their main-thread baselines (the 2026-10-28 proof below), and the window
 realm's own troika atlas no longer touches a pixel.
@@ -344,11 +346,25 @@ the field lands.
     work, and prefetching was measured worse once). A load its consumer moved
     past while the chunk extracted is dropped before decode. The preview JPEG
     tier (`ensure_clip_previews`) is made per chunk, after playback first binds
-    the chunk's PNGs.
+    the chunk's PNGs. A clip decodes one preview frame at a time: requests made
+    meanwhile wait, the newest still wanted starts next and the rest are
+    dropped unread, and a frame that lands after a newer one was asked for
+    still binds unless a newer one already has. A playhead that keeps moving
+    while paused (two changes within 120 ms) binds the preview tier until it
+    has rested 180 ms, then the exact frame; a lone step is always exact.
+  - **An export decodes one frame ahead.** It only steps forward, so each
+    request also starts the next frame's decode (the last step repeated, never
+    a chunk that is not on disk), which then overlaps the readback and the
+    encode. The prefetched frame is pinned and replaces the frame before the
+    bound one, so a clip still holds two; the pixels are the same PNG's.
   - **The disk guard:** `ensure_clip_chunks` refuses before ffmpeg starts when
     the raw RGB ceiling of the chunks it would extract plus a 2 GB floor
     exceeds the volume's free space (`check_extraction_space`), naming the
     space needed; present chunks cost nothing and the argv never changes.
+  - **Abandoned staging is swept.** A killed or crashed extraction leaves its
+    `.stage-<chunk>-<pid>` tree behind, which nothing reads and the cap counts;
+    each eviction check first removes the ones whose process is gone or that
+    nobody has touched for a day (`sweep_dead_staging`).
   - **The cap:** Settings holds `clipCacheCapGb` (default 20). After an
     extraction pushes the cache past it, whole chunks go least recently used
     first (a chunk's marker mtime, touched on read at most once a minute) down to
@@ -391,9 +407,16 @@ the field lands.
   screen therefore lands the next frame exactly (unit-tested over scene starts
   on and off the frame grid); a cut from a screen can skip one, the screen's
   own floor.
-- **Stream with a small LRU.** Frames load via a Rust `read_clip_frame` command
-  (raw bytes → `createImageBitmap` → `THREE.Texture`); only ~12 decoded textures
-  are resident at once, so a long 4K clip never holds thousands in memory.
+- **Stream with a small LRU.** A full frame loads decoded:
+  `read_clip_frame_rgba` reads its PNG and decodes it on a native thread, and
+  the stage uploads the straight rows (`engine/stageTexture.ts`), so the decode
+  never holds the stage's thread. Only 8-bit opaque RGB frames go this way,
+  where the bytes are the ones the webview's bitmap decode gave: a device film
+  exported byte for byte both ways, Display P3 tags included. The webview
+  rounds 16-bit samples and alpha its own way, so a clip whose frames are
+  anything else (a 10-bit or alpha source) answers empty once and keeps
+  `read_clip_frame` → `createImageBitmap`, as a preview JPEG does. Only ~12 decoded textures are
+  resident at once, so a long 4K clip never holds thousands in memory.
 - **Gate the capture.** Each clip publishes `userData.videoFrameReady`; the
   export loop awaits `awaitVideoFramesReady(scene)` (beside `awaitTextSync`) so
   the correct frame's texture is uploaded before `readPixels`. A clip still
@@ -716,7 +739,12 @@ many times brighter than white keeps a hard edge whatever the sample count.
   shifts by it, so the samples average that noise too; it is 0 on every
   single-sample frame, which therefore stays bit-identical. Pure in t. It fixes
   geometry thinner than MSAA's sample spacing, such as an edge-on band dotting
-  along a rim, at about 2.2× the export cost at 4. Frames on a shutter lane keep
+  along a rim, at about 2.2× the export cost at 4. At eight samples and up the
+  draws share what the jitter cannot change (`supersampleCount`,
+  `supersampleFrame`; export contract): the haze march takes `4 × 48 / count`
+  steps a draw, each draw at its own offset, so a frame still marches four
+  times over, and a satin floor mirrors once a frame, under its own blur. Four
+  samples and single frames keep every byte. Frames on a shutter lane keep
   their own samples, and transition frames jitter only the main camera. The
   paused preview settles to the same supersampled frame once the playhead
   rests (`CompositorDriver`'s settle timer, the paused motion blur's), so what
@@ -1144,7 +1172,8 @@ camera exactly:
   `toolkit/lighting/atmosphere/SpotBeam.tsx`, which reads the stage spot live
   before each draw (pose, cone, colour times intensity, shadow matrix and VSM map,
   its grate `map`) and writes its proxy box's `matrixWorld` there, as the fixed
-  background does. The 48-step march with its `gl_FragCoord` hash jitter, the smoke
+  background does. The 48-step march (24 a draw at eight supersample draws, 12 at
+  sixteen) with its `gl_FragCoord` hash jitter, the smoke
   and the dust are pure functions of scene time; the grate is a 2048² cookie
   rasterised in JS from the sidecar and the scene's first camera key
   (`grate.ts`). Its size, the seeded bar layout and the beam constants are
@@ -1883,8 +1912,8 @@ cache (`clipCacheCensus`, answered by the stage worker, which holds them). Each 
 last 10 s, first, peak and last footprints, `editorGrowthMb` (the editor's median over
 the last third minus the first third: growth that stays, not a transition's MSAA pair
 coming and going) and `holds`. A film that slows below 80% of its start or keeps more than
-512 MB fails the run. `--lever clip-cache=N` or `--lever scene-release=off` changes one thing
-for an experiment.
+512 MB fails the run. `--lever clip-cache=N`, `--lever scene-release=off` or
+`--lever supersample-share=off` changes one thing for an experiment.
 `fixtures/long-device-spike` (60 s of handsets, the foldable, a tablet, a laptop and a
 comparison over fourteen screen recordings) is the leak acceptance film. The probe reads;
 it never changes a byte.
@@ -2156,6 +2185,18 @@ Verify ×2 here (the 2026-10-23 note):
 > Unveil); nothing else compiles a changed program or reads a non-zero seed.
 > Proof: Unveil 16:9 Verify ×2 EQUAL `2c1fdbf3…`; `showcase-tour` and
 > `ws:launch-2026` EQUAL against their baselines.
+
+> **2026-11-22 (supersampled draws share the haze march and the floor mirror,
+> Unveil rebases):** at eight samples and up each draw marches a volumetric
+> beam in `4 × 48 / count` steps at its own offset, and a satin floor mirrors
+> once a frame. Measured on Unveil's glass scene at 4K, sixteen samples: 527 to
+> 308 ms a frame; a four-scene cut exports in 65 s against 115 s. Against the
+> old picture through the same H.264 encode: PSNR 65 dB mean and 51 dB on the
+> worst frame of the cut, 54.6 dB mean on the glass scene, where the old path
+> at eight samples scores 54.3 against itself at sixteen. Frames with neither, four-sample projects and every single-sample
+> frame keep their bytes: `pnpm ready` EQUAL. Thinning the lens gather was
+> tried twice and left out: taps a mip wider softened the bokeh rims (45 dB),
+> and every fourth tap of one spiral left a ripple inside the discs (49 dB).
 
 > **2026-11-19 (Unveil at merge, no baseline row):** `template:unveil` 16:9 at
 > 4K, Verify ×2 EQUAL `bfbfa68d…`, the same bytes as before the scene release

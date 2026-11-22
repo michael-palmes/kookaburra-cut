@@ -6,6 +6,38 @@ pub(crate) const MAX_OUTPUT_BYTES: usize = 1024 * 1024 * 1024;
 
 /// Straight RGBA8 rows, top row first, plus the image size.
 pub(crate) fn decode_png_rgba(bytes: &[u8]) -> Result<(Vec<u8>, u32, u32), String> {
+    decode_png_rows(bytes, 0, false)
+}
+
+/// The reply both decode commands send: width and height as little-endian u32, then the RGBA8 rows, top row first or (`bottom_up`) last row first.
+pub(crate) fn decode_png_reply(bytes: &[u8], bottom_up: bool) -> Result<Vec<u8>, String> {
+    let (mut out, width, height) = decode_png_rows(bytes, 8, bottom_up)?;
+    out[..4].copy_from_slice(&width.to_le_bytes());
+    out[4..8].copy_from_slice(&height.to_le_bytes());
+    Ok(out)
+}
+
+/// A clip frame's reply, last row first, or `None` unless the PNG is 8-bit opaque RGB: only those decode here to the webview's own bytes (it rounds 16-bit samples and alpha its own way), so the caller keeps the webview's decode for the rest.
+pub(crate) fn decode_clip_frame_reply(bytes: &[u8]) -> Result<Option<Vec<u8>>, String> {
+    let reader = png::Decoder::new(std::io::Cursor::new(bytes))
+        .read_info()
+        .map_err(|e| format!("not a valid PNG: {e}"))?;
+    let info = reader.info();
+    let plain = info.bit_depth == png::BitDepth::Eight
+        && info.color_type == png::ColorType::Rgb
+        && info.trns.is_none();
+    if !plain {
+        return Ok(None);
+    }
+    decode_png_reply(bytes, true).map(Some)
+}
+
+/// Straight RGBA8 rows after `header` zeroed bytes, plus the image size.
+fn decode_png_rows(
+    bytes: &[u8],
+    header: usize,
+    bottom_up: bool,
+) -> Result<(Vec<u8>, u32, u32), String> {
     let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
     decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
     let mut reader = decoder
@@ -37,22 +69,57 @@ pub(crate) fn decode_png_rgba(bytes: &[u8]) -> Result<(Vec<u8>, u32, u32), Strin
         .and_then(|value| value.checked_mul(4))
         .and_then(|value| usize::try_from(value).ok())
         .ok_or_else(|| "PNG dimensions are too large".to_string())?;
-    let mut rgba = Vec::with_capacity(pixels);
-    match info.color_type {
-        png::ColorType::Rgba => rgba.extend_from_slice(source),
-        png::ColorType::Rgb => source
-            .chunks_exact(3)
-            .for_each(|pixel| rgba.extend_from_slice(&[pixel[0], pixel[1], pixel[2], 255])),
-        png::ColorType::GrayscaleAlpha => source
-            .chunks_exact(2)
-            .for_each(|pixel| rgba.extend_from_slice(&[pixel[0], pixel[0], pixel[0], pixel[1]])),
-        png::ColorType::Grayscale => source
-            .iter()
-            .for_each(|value| rgba.extend_from_slice(&[*value, *value, *value, 255])),
+    let channels = match info.color_type {
+        png::ColorType::Rgba => 4,
+        png::ColorType::Rgb => 3,
+        png::ColorType::GrayscaleAlpha => 2,
+        png::ColorType::Grayscale => 1,
         png::ColorType::Indexed => return Err("PNG palette was not expanded".into()),
-    }
-    if rgba.len() != pixels {
+    };
+    let row = info.width as usize * channels;
+    if row == 0 || source.len() != row * info.height as usize {
         return Err("PNG pixel data is incomplete".into());
+    }
+    // Plain indexed loops: a debug build runs them ten times faster than iterator chains, and dev builds decode every clip frame here.
+    let mut rgba = vec![255u8; header + pixels];
+    rgba[..header].fill(0);
+    let out_row = info.width as usize * 4;
+    let last = info.height as usize - 1;
+    for (y, line) in source.chunks_exact(row).enumerate() {
+        let at = header + if bottom_up { last - y } else { y } * out_row;
+        let out = &mut rgba[at..at + out_row];
+        let (mut i, mut o) = (0, 0);
+        match channels {
+            4 => out.copy_from_slice(line),
+            3 => {
+                while i < row {
+                    out[o] = line[i];
+                    out[o + 1] = line[i + 1];
+                    out[o + 2] = line[i + 2];
+                    i += 3;
+                    o += 4;
+                }
+            }
+            2 => {
+                while i < row {
+                    out[o] = line[i];
+                    out[o + 1] = line[i];
+                    out[o + 2] = line[i];
+                    out[o + 3] = line[i + 1];
+                    i += 2;
+                    o += 4;
+                }
+            }
+            _ => {
+                while i < row {
+                    out[o] = line[i];
+                    out[o + 1] = line[i];
+                    out[o + 2] = line[i];
+                    i += 1;
+                    o += 4;
+                }
+            }
+        }
     }
     Ok((rgba, info.width, info.height))
 }
@@ -66,17 +133,12 @@ pub fn decode_png(request: tauri::ipc::Request) -> Result<tauri::ipc::Response, 
     if bytes.len() > MAX_INPUT_BYTES {
         return Err("PNG is too large to decode".into());
     }
-    let (rgba, width, height) = decode_png_rgba(bytes)?;
-    let mut out = Vec::with_capacity(8 + rgba.len());
-    out.extend_from_slice(&width.to_le_bytes());
-    out.extend_from_slice(&height.to_le_bytes());
-    out.extend_from_slice(&rgba);
-    Ok(tauri::ipc::Response::new(out))
+    Ok(tauri::ipc::Response::new(decode_png_reply(bytes, false)?))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::decode_png_rgba;
+    use super::{decode_clip_frame_reply, decode_png_reply, decode_png_rgba};
 
     fn encode(width: u32, height: u32, color: png::ColorType, depth: png::BitDepth, data: &[u8], setup: impl FnOnce(&mut png::Encoder<&mut Vec<u8>>)) -> Vec<u8> {
         let mut out = Vec::new();
@@ -128,6 +190,29 @@ mod tests {
             e.set_source_srgb(png::SrgbRenderingIntent::Perceptual);
         });
         assert_eq!(decode_png_rgba(&png).unwrap().0, [40, 80, 120, 160]);
+    }
+
+    #[test]
+    fn a_reply_carries_the_size_then_the_rows_in_the_order_asked() {
+        let rgb = encode(1, 2, png::ColorType::Rgb, png::BitDepth::Eight, &[1, 2, 3, 4, 5, 6], |_| {});
+        let head = [1, 0, 0, 0, 2, 0, 0, 0];
+        assert_eq!(decode_png_reply(&rgb, false).unwrap(), [&head[..], &[1, 2, 3, 255, 4, 5, 6, 255]].concat());
+        assert_eq!(decode_png_reply(&rgb, true).unwrap(), [&head[..], &[4, 5, 6, 255, 1, 2, 3, 255]].concat());
+    }
+
+    #[test]
+    fn only_an_eight_bit_opaque_rgb_frame_decodes_as_a_clip_frame() {
+        let rgb = encode(1, 2, png::ColorType::Rgb, png::BitDepth::Eight, &[1, 2, 3, 4, 5, 6], |_| {});
+        assert_eq!(decode_clip_frame_reply(&rgb).unwrap(), Some(decode_png_reply(&rgb, true).unwrap()));
+        let alpha = encode(1, 1, png::ColorType::Rgba, png::BitDepth::Eight, &[1, 2, 3, 4], |_| {});
+        assert_eq!(decode_clip_frame_reply(&alpha).unwrap(), None);
+        let deep = encode(1, 1, png::ColorType::Rgb, png::BitDepth::Sixteen, &[1, 2, 3, 4, 5, 6], |_| {});
+        assert_eq!(decode_clip_frame_reply(&deep).unwrap(), None);
+        let keyed = encode(1, 1, png::ColorType::Rgb, png::BitDepth::Eight, &[1, 2, 3], |e| {
+            e.set_trns(vec![0, 1, 0, 2, 0, 3]);
+        });
+        assert_eq!(decode_clip_frame_reply(&keyed).unwrap(), None);
+        assert!(decode_clip_frame_reply(b"not a png").is_err());
     }
 
     #[test]
