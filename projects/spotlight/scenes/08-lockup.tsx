@@ -20,7 +20,6 @@ const CHANGES: [number, number][] = [
   [15, 1],
   [15, 3],
   [16, 1],
-  [16, 2],
 ];
 const LINE_AT: [number, number] = [15, 3];
 const LINE_STAGGER_BEATS = 0.5;
@@ -42,8 +41,7 @@ export default defineScene({
     const c1 = useSceneText("c1", "", "embedded");
     const c2 = useSceneText("c2", "", "embedded");
     const c3 = useSceneText("c3", "", "embedded");
-    const c4 = useSceneText("c4", "", "embedded");
-    const rows = [c1, c2, c3, c4];
+    const rows = [c1, c2, c3];
 
     const left = -frame.width / 2 + safe.left;
     const right = frame.width / 2 - safe.right;
@@ -143,8 +141,8 @@ export default defineScene({
         <AnimatedHeadline
           text={second}
           textKey="second"
-          hitAt={at(SECOND_AT[0], SECOND_AT[1])}
-          to={motion.durations.base}
+          preset="static"
+          opacity={time.localMs >= at(SECOND_AT[0], SECOND_AT[1]) ? 1 : 0}
           fontSize={0.36}
           fit="width"
           maxWidth={width * 0.92}
