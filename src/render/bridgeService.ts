@@ -37,8 +37,11 @@ import {
   BRIDGE_KINDS,
   type BridgeRequest,
   buildCheckReport,
+  type CaptureFrame,
+  type CaptureGroup,
   type CheckAsset,
   captureFormat,
+  captureGroups,
   collectAssetRefs,
   frameLabel,
   frameScene,
@@ -56,6 +59,7 @@ import {
   resolvePresetRef,
   responseVersion,
   samplePixels,
+  sceneDocOverlays,
   shiftFlashReport,
   stripFrames,
   trustDeniedSlug,
@@ -163,6 +167,8 @@ export function startBridgeService(
 ): () => void {
   let busy = false;
   let current: LoadedState | null = null;
+  // The real project, set aside while a capture renders sceneDoc overlays; the next request re-applies it without a recompile.
+  let parked: LoadedState | null = null;
   // Set by the first stall: this window's canvas can't be trusted again, and Rust is about to destroy it.
   let poisoned: string | null = null;
   let mediaDirty = false;
@@ -188,13 +194,15 @@ export function startBridgeService(
           )
         : null);
     const assetStamp = editable && !sourceRevision ? await projectAssetsStamp(targetId) : null;
+    const held = current ?? parked;
+    parked = null;
     const sameSources =
-      current?.project.id === targetId &&
-      current.fingerprint === fingerprint &&
+      held?.project.id === targetId &&
+      held.fingerprint === fingerprint &&
       (fingerprint !== null || !editable);
-    if (current && sameSources && current.assetStamp === assetStamp) {
-      if (current.formatName !== format.name) {
-        const project = { ...current.project };
+    if (held && sameSources && held.assetStamp === assetStamp) {
+      if (held !== current || held.formatName !== format.name) {
+        const project = { ...held.project };
         current = null;
         apply(project, format);
         await awaitProjectCommitted(project);
@@ -227,6 +235,7 @@ export function startBridgeService(
   /** A load or render failed: the next request reloads cold. */
   const forget = () => {
     current = null;
+    parked = null;
     loadedProjectId = null;
   };
 
@@ -279,7 +288,21 @@ export function startBridgeService(
       });
       return;
     }
-    const frames = requestFrames(request);
+    let frames: CaptureFrame[];
+    try {
+      frames = requestFrames(request);
+    } catch (e) {
+      await respond(request, { ok: false, error: e instanceof Error ? e.message : String(e) });
+      return;
+    }
+    const overlays = sceneDocOverlays(frames);
+    if (overlays && !isWorkspaceProjectId(targetId)) {
+      await respond(request, {
+        ok: false,
+        error: `a sceneDoc capture needs a workspace project (ws:<folder>), not "${targetId}"`,
+      });
+      return;
+    }
     const isOpen = targetId === context?.projectId;
     if (!isOpen && frames.some((frame) => frame.scene === null)) {
       await respond(request, {
@@ -291,14 +314,14 @@ export function startBridgeService(
     const servedAt = Date.now();
     const native = requestFormat(request.aspect, context?.aspect);
     const format = requestCaptureFormat(request, native);
-    const units = unitsFor(frames.length, format);
+    const units = unitsFor(frames.length, format) + overlays;
     if (units > MAX_REQUEST_UNITS) {
       await respond(request, {
         ok: false,
         tooLarge: true,
         units,
         maxUnits: MAX_REQUEST_UNITS,
-        error: `this capture costs ${units} units (${frames.length} frame(s) at ${format.width}x${format.height}); one request takes at most ${MAX_REQUEST_UNITS}`,
+        error: `this capture costs ${units} units (${frames.length} frame(s) at ${format.width}x${format.height}${overlays ? `, ${overlays} sceneDoc load(s)` : ""}); one request takes at most ${MAX_REQUEST_UNITS}`,
         hint: "drop --scale/--width, use the default sheet size",
       });
       return;
@@ -307,6 +330,13 @@ export function startBridgeService(
     if (!(await allowedProject(request, targetId, context, "capture"))) return;
     // The store keeps the native format (layout, safe areas); only the capture buffer is scaled.
     const project = await ensureLoaded(targetId, native);
+    let groups: CaptureGroup[];
+    try {
+      groups = captureGroups(project, frames);
+    } catch (e) {
+      await respond(request, { ok: false, error: e instanceof Error ? e.message : String(e) });
+      return;
+    }
     const sheet = request.sheet
       ? new ContactSheet(frames.length, format.width, format.height)
       : null;
@@ -317,16 +347,10 @@ export function startBridgeService(
       path: string;
       index: number;
       probes?: ProbeSample[];
-    }[] = [];
+      sceneDoc?: true;
+      sceneDocWarnings?: string[];
+    }[] = new Array(frames.length);
     const renderStart = Date.now();
-    const times = frames.map((frame) =>
-      resolveScreenshotTimeMs(
-        project,
-        frame.scene ?? undefined,
-        frame.at ?? undefined,
-        isOpen ? context?.currentMs : undefined,
-      ),
-    );
     const live = async (n: number) => {
       const state = await invoke<Liveness | null>("bridge_request_live", {
         id: request.id,
@@ -334,56 +358,87 @@ export function startBridgeService(
       }).catch(() => null);
       if (state && !state.live) throw new RenderStopped(state.reason);
     };
-    const keep = async (
-      n: number,
-      tMs: number,
-      rgba: Uint8Array,
-      width: number,
-      height: number,
-      texts?: SceneTextBox[],
-    ) => {
-      const frame = frames[n];
-      // Probes read the readback already in memory, before the PNG save.
-      const sampled = probes.length ? samplePixels(rgba, width, height, probes) : undefined;
-      await invoke(BRIDGE_COMMANDS.begin, {
-        width,
-        height,
-        name: n === 0 ? request.id : `${request.id}-${n}`,
-      });
-      const path = await invoke<string>(BRIDGE_COMMANDS.save, rgba);
-      const where = frameScene(project, frame.scene, tMs);
-      sheet?.draw(n, rgba, width, height, frameLabel(project, tMs, where));
-      shots.push({
-        scene: where.scene,
-        at: where.at,
-        tMs: Math.round(tMs),
-        path,
-        index: where.index,
-        ...(sampled ? { probes: sampled } : {}),
-        ...(texts ? { texts } : {}),
-      });
-    };
-    try {
-      if (request.texts) {
-        // One frame at a time, so clips extract only each instant, as captureFrameRgba does; each frame also reports the text it shows.
-        for (const [n, tMs] of times.entries()) {
-          await live(n);
+    const renderGroup = async (target: LoadedProject, group: CaptureGroup, variant: number) => {
+      const docFile = group.file?.replace(/\.tsx$/, ".json");
+      const docWarnings = docFile
+        ? (target.loadWarnings ?? []).filter((w) => w.startsWith(`${docFile}: `))
+        : [];
+      const keep = async (
+        n: number,
+        tMs: number,
+        rgba: Uint8Array,
+        width: number,
+        height: number,
+        texts?: SceneTextBox[],
+      ) => {
+        // Probes read the readback already in memory, before the PNG save.
+        const sampled = probes.length ? samplePixels(rgba, width, height, probes) : undefined;
+        await invoke(BRIDGE_COMMANDS.begin, {
+          width,
+          height,
+          name: n === 0 ? request.id : `${request.id}-${n}`,
+        });
+        const path = await invoke<string>(BRIDGE_COMMANDS.save, rgba);
+        const where = frameScene(target, frames[n].scene, tMs);
+        const label = frameLabel(target, tMs, where);
+        sheet?.draw(n, rgba, width, height, variant ? `${label}  · variant ${variant}` : label);
+        shots[n] = {
+          scene: where.scene,
+          at: where.at,
+          tMs: Math.round(tMs),
+          path,
+          index: where.index,
+          ...(sampled ? { probes: sampled } : {}),
+          ...(texts ? { texts } : {}),
+          ...(group.doc ? { sceneDoc: true as const } : {}),
+          ...(docWarnings.length ? { sceneDocWarnings: docWarnings } : {}),
+        };
+      };
+      for (const n of group.frames) {
+        const frame = frames[n];
+        const tMs = resolveScreenshotTimeMs(
+          target,
+          frame.scene ?? undefined,
+          frame.at ?? undefined,
+          isOpen ? context?.currentMs : undefined,
+        );
+        await live(n);
+        if (request.texts) {
+          // One frame at a time, so clips extract only each instant, as captureFrameRgba does; each frame also reports the text it shows.
           await renderRange(
-            exportOptions(project, format),
+            exportOptions(target, format),
             [tMs],
             (f) => keep(n, f.tMs, f.rgba, f.width, f.height, f.texts),
             { texts: true },
           );
-        }
-      } else {
-        for (const [n, tMs] of times.entries()) {
-          await live(n);
+        } else {
           const { rgba, width, height } = await captureFrameRgba(
-            exportOptions(project, format),
+            exportOptions(target, format),
             tMs,
           );
           await keep(n, tMs, rgba, width, height);
         }
+      }
+    };
+    try {
+      let variant = 0;
+      for (const group of groups) {
+        if (!group.file || !group.doc) {
+          await renderGroup(project, group, 0);
+          continue;
+        }
+        // Never cache an overlay as the project: park the real one so a failure reloads cold and the next request re-applies it.
+        if (current) parked = current;
+        current = null;
+        loadedProjectId = null;
+        const target = await loadProject(targetId, {
+          trustMode: "stored-only",
+          sceneDocOverlay: { file: group.file, doc: group.doc },
+        });
+        apply(target, native);
+        await awaitProjectCommitted(target);
+        variant += 1;
+        await renderGroup(target, group, variant);
       }
     } catch (e) {
       if (!(e instanceof RenderStopped)) throw e;
@@ -415,6 +470,7 @@ export function startBridgeService(
         queuedMs: request.requestedAtMs > 0 ? Math.max(0, servedAt - request.requestedAtMs) : null,
         renderMs,
         perFrameMs: Math.round(renderMs / shots.length),
+        ...(overlays ? { sceneDocLoads: overlays } : {}),
       },
       // Provenance for hash disputes: this surface is visually exact but not hash-exact against the cold-boot screenshot (docs/determinism.md).
       surface: "render-window",

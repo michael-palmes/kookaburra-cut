@@ -773,6 +773,110 @@ describe("bridge v2 requests", () => {
     );
   });
 
+  it("renders sceneDoc variants in memory, one load each, then re-applies the saved project", async () => {
+    const one = { version: 3, backdrop: { roughness: 0.12 } };
+    const two = { version: 3, backdrop: { roughness: 0.5 } };
+    const variants: unknown[] = [];
+    vi.mocked(loadProject).mockImplementation(async (_id, options) => {
+      if (!options?.sceneDocOverlay) return demo;
+      const loaded = { ...demo, loadWarnings: ["02-stats: dropped a bad key"] };
+      variants.push(loaded);
+      return loaded;
+    });
+    const apply = vi.fn();
+    const served = await serveAll(
+      [
+        {
+          kind: "capture",
+          frames: [
+            { scene: "02-stats", at: 1, sceneDoc: one },
+            { scene: "02-stats", at: 1 },
+            { scene: "1", at: 1, sceneDoc: two },
+            { scene: "02-stats", at: 2, sceneDoc: one },
+          ],
+          sheet: true,
+        },
+        { kind: "capture", scene: "0" },
+      ],
+      apply,
+    );
+    expect(served.map((r) => r.ok)).toEqual([true, true]);
+    const frames = served[0].frames as Record<string, unknown>[];
+    expect(frames.map((f) => [f.path, f.sceneDoc ?? false])).toEqual([
+      ["/bridge/responses/0001-1-0.png", true],
+      ["/bridge/responses/0001-1-0-1.png", false],
+      ["/bridge/responses/0001-1-0-2.png", true],
+      ["/bridge/responses/0001-1-0-3.png", true],
+    ]);
+    expect(frames[0].sceneDocWarnings).toEqual(["02-stats: dropped a bad key"]);
+    expect(served[0].timing).toMatchObject({ sceneDocLoads: 2 });
+    expect(vi.mocked(loadProject).mock.calls.slice(1)).toEqual([
+      ["ws:demo", { trustMode: "stored-only", sceneDocOverlay: { file: "02-stats", doc: one } }],
+      ["ws:demo", { trustMode: "stored-only", sceneDocOverlay: { file: "02-stats", doc: two } }],
+    ]);
+    expect(sheets[0].labels.map((l) => l.split("· ")[1] ?? "saved")).toEqual([
+      "saved",
+      "variant 1",
+      "variant 1",
+      "variant 2",
+    ]);
+    // The overlay never becomes the cached project: the next request re-applies the saved load, with no recompile.
+    expect(loadProject).toHaveBeenCalledTimes(3);
+    expect(bumpWorkspaceReloadToken).toHaveBeenCalledTimes(1);
+    expect(apply.mock.calls.map((c) => c[0])).toEqual([demo, ...variants, demo]);
+    expect(apply.mock.calls[3][0]).not.toBe(demo);
+    const writes = vi
+      .mocked(invoke)
+      .mock.calls.map((c) => c[0])
+      .filter((c) => /write|save_scene|trust_project/.test(c) && !c.startsWith("bridge_write"));
+    expect(writes).toEqual([]);
+  });
+
+  it("refuses a sceneDoc it cannot apply exactly, before rendering anything", async () => {
+    const doc = { version: 3 };
+    const served = await serveAll([
+      { kind: "capture", project: "template:demo", frames: [{ scene: "0", sceneDoc: doc }] },
+      { kind: "capture", frames: [{ scene: "09-nope", sceneDoc: doc }] },
+      { kind: "capture", frames: [{ scene: "0", sceneDoc: [doc] }] },
+      {
+        kind: "capture",
+        frames: [
+          { scene: "0", sceneDoc: doc },
+          { scene: "1", sceneDoc: doc },
+        ],
+      },
+      {
+        kind: "capture",
+        frames: Array.from({ length: 9 }, (_, n) => ({ scene: "0", sceneDoc: { n } })),
+      },
+    ]);
+    expect(served.map((r) => r.ok)).toEqual([false, false, false, false, false]);
+    expect(served.map((r) => String(r.error))).toEqual([
+      expect.stringContaining("needs a workspace project"),
+      expect.stringContaining("isn't in this project"),
+      expect.stringContaining("must be a JSON object"),
+      expect.stringContaining("one sceneDoc is for one scene"),
+      expect.stringContaining("at most 8 distinct sceneDocs"),
+    ]);
+    expect(captureFrameRgba).not.toHaveBeenCalled();
+    // A refused request keeps the cached load.
+    expect(loadProject).toHaveBeenCalledTimes(1);
+    expect(bumpWorkspaceReloadToken).toHaveBeenCalledTimes(1);
+  });
+
+  it("reloads cold after an overlay that failed to load", async () => {
+    vi.mocked(loadProject).mockImplementation(async (_id, options) => {
+      if (options?.sceneDocOverlay) throw new Error("the sceneDoc isn't a scene document");
+      return demo;
+    });
+    const served = await serveAll([
+      { kind: "capture", frames: [{ scene: "0" }, { scene: "0", sceneDoc: { version: 3 } }] },
+      { kind: "capture", scene: "0" },
+    ]);
+    expect(served.map((r) => r.ok)).toEqual([false, true]);
+    expect(bumpWorkspaceReloadToken).toHaveBeenCalledTimes(2);
+  });
+
   it("captures from the load a check of the same project made", async () => {
     const served = await serveAll([{ kind: "check" }, { kind: "capture", scene: "1" }]);
     expect(served.map((r) => r.ok)).toEqual([true, true]);

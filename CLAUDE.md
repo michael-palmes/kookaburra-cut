@@ -83,6 +83,10 @@ pnpm kookaburra:run --action preset-previews            # --project <slug,...> s
 # then confirm with one or two autorun screenshots (tools/look-lab/README.md).
 pnpm look-lab --look <id> --gpu                          # --compare 4,8 for motion, --grid for all 9 presets
 
+# Variant lab: variants of a bundled template's scenes as one stills run and one labelled sheet,
+# written to the git-ignored dev fixture fixtures/lab-<base>/ (tools/variant-lab/README.md).
+python3 -I tools/variant-lab/lab.py unveil floor.py
+
 # Fuzz harness (src-tauri/fuzz, README there): libFuzzer over the untrusted-input parsers via the
 # app's `fuzzing` feature. Stable runs every target over its seeds (CI's rust job); nightly fuzzes.
 # The RUSTFLAGS let rten's unused cdylib link under sancov (the README says why).
