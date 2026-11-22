@@ -24,8 +24,15 @@ import {
 } from "./clips";
 import { isExporting } from "./exportState";
 import { noteClipBound, perfClipsFrozen } from "./perfProbe";
-import { previewClipStride, previewPlaybackActive, subscribePreviewPlayback } from "./previewMedia";
+import {
+  previewClipStride,
+  previewPlaybackActive,
+  previewScrubActive,
+  subscribePreviewPlayback,
+  subscribePreviewScrub,
+} from "./previewMedia";
 import { useSceneContext } from "./sceneContext";
+import { traced } from "./taskTrace";
 import { useSteppedLocalMs, useTimeline } from "./timeline";
 
 /** Shared clip-texture binding, the frame-sampling core extracted from `VideoClip` so any consumer can drive a material from the deterministic pre-extracted frame pipeline and publish `userData.videoFrameReady` for the export loop's `awaitVideoFramesReady` barrier. See docs/determinism.md. The bound frame is pinned in the shared ClipFrames LRU (unpinned on unmount) since an evicted frame's closed ImageBitmap throws WebGL INVALID_VALUE if uploaded; consumers must not mutate the bound texture, it's shared. */
@@ -95,6 +102,9 @@ export function useClipTexture(binding: ClipTextureBinding): ClipTextureState {
   const entry = useClipEntry(src);
   const { info, frames, error, promise } = entry;
   const firstBindRef = useRef<FirstBind | null>(null);
+  const requestSeqRef = useRef(0);
+  const boundSeqRef = useRef(0);
+  const liveRef = useRef<{ frames: unknown; material: unknown } | null>(null);
   const [hasBound, setHasBound] = useState(false);
   const boundOnceRef = useRef(false);
 
@@ -117,7 +127,8 @@ export function useClipTexture(binding: ClipTextureBinding): ClipTextureState {
   const frameIndex = heldFrameRef.current;
   // Playback binds the small preview JPEGs once its chunk has them; pausing rebinds the exact full PNG immediately (the subscription re-renders this consumer), and exports never leave the full tier.
   const playing = useSyncExternalStore(subscribePreviewPlayback, previewPlaybackActive);
-  const previewing = playing && !isExporting() && frames !== undefined;
+  const scrubbing = useSyncExternalStore(subscribePreviewScrub, previewScrubActive);
+  const previewing = (playing || scrubbing) && !isExporting() && frames !== undefined;
   const tier: ClipTier = previewing && frames.hasPreviews(frameIndex) ? "preview" : "full";
   // Read by the bind effect without re-running it: only the frame, tier and source decide a bind.
   const bindContext = useRef({ key: entry.key, previewing });
@@ -156,6 +167,14 @@ export function useClipTexture(binding: ClipTextureBinding): ClipTextureState {
       return;
     }
     let cancelled = false;
+    const seq = ++requestSeqRef.current;
+    liveRef.current = { frames, material };
+    // A preview frame that lands after a newer one was asked for still shows, unless a newer one already has: a skim asks faster than frames decode, so waiting for the newest alone would draw nothing until the playhead rests.
+    const late = () =>
+      !isExporting() &&
+      seq > boundSeqRef.current &&
+      liveRef.current?.frames === frames &&
+      liveRef.current.material === material;
     const firstBind = firstBindRef.current;
     firstBind?.start();
     // Pins the requested index synchronously before the async load: a post-resolve pin would leave a microtask gap where another consumer's load could evict+close this frame, a silently-stale capture (the divergent-verify bug).
@@ -169,7 +188,8 @@ export function useClipTexture(binding: ClipTextureBinding): ClipTextureState {
           console.error(`useClipTexture: frame ${frameIndex} detached before bind — reloading`);
           bindable = await frames.get(frameIndex, tier);
         }
-        if (cancelled) return;
+        if (cancelled && (!late() || isDetached(bindable))) return;
+        boundSeqRef.current = seq;
         if (isDetached(bindable)) {
           if (isExporting()) throw new Error("its bitmap stayed detached after three reloads");
           console.error(`useClipTexture: frame ${frameIndex} STILL detached — stale capture`);
@@ -181,7 +201,7 @@ export function useClipTexture(binding: ClipTextureBinding): ClipTextureState {
           material.needsUpdate = true;
         }
         // Uploads to the GPU now while the bitmap is provably alive: textures otherwise upload lazily on first draw, which for a not-yet-visible scene can be thousands of ms later, and a bitmap closed in between uploads as an incomplete texture that samples black (the divergent-verify bug). With the GPU copy made eagerly, the bitmap's later fate cannot affect pixels.
-        gl.initTexture(bindable);
+        traced("clip:upload", () => gl.initTexture(bindable));
         onBound?.();
         invalidate();
         if (!boundOnceRef.current) {
@@ -239,7 +259,12 @@ export function useClipTexture(binding: ClipTextureBinding): ClipTextureState {
   // Release this consumer's pin when it unmounts (or the source's ClipFrames changes).
   useEffect(() => {
     if (!frames) return;
-    return () => frames.unpin(material);
+    return () => {
+      if (liveRef.current?.frames === frames && liveRef.current.material === material) {
+        liveRef.current = null;
+      }
+      frames.unpin(material);
+    };
   }, [frames, material]);
 
   return { info, error, frameIndex, ready: hasBound || boundOnceRef.current };

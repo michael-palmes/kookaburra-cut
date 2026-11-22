@@ -25,6 +25,9 @@ const fakePort: NativePort = {
   async clipReadFrame() {
     return new ArrayBuffer(8);
   },
+  async clipReadRgba() {
+    return new ArrayBuffer(8);
+  },
   async clipSetPins() {},
   async clipConformPending() {
     return conforming ? job : null;

@@ -29,6 +29,8 @@ export function createWorkerNativePort(
       call("clipEnsurePreviews", [cacheDir, chunk]) as Promise<void>,
     clipReadFrame: (cacheDir, index, tier) =>
       call("clipReadFrame", [cacheDir, index, tier]) as Promise<ArrayBuffer>,
+    clipReadRgba: (cacheDir, index) =>
+      call("clipReadRgba", [cacheDir, index]) as Promise<ArrayBuffer>,
     clipSetPins: (dirs) => call("clipSetPins", [dirs]) as Promise<void>,
     clipConformPending: (key) => call("clipConformPending", [key]) as Promise<never>,
     async watchConforms(handlers) {

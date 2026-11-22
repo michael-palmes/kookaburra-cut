@@ -193,6 +193,8 @@ struct ActiveExport {
     height: u32,
     /// The read-only flash tap; None once it failed, which makes the report "unavailable", never the export.
     flashes: Option<flashes::FlashDetector>,
+    pipe_time: std::time::Duration,
+    tap_time: std::time::Duration,
 }
 
 /// The flash tap's verdict on the last finished export, for the button's warning and the bridge answer.
@@ -662,6 +664,8 @@ fn start_export(
             f64::from(options.fps),
             flashes::Standards::BOTH,
         )),
+        pipe_time: std::time::Duration::ZERO,
+        tap_time: std::time::Duration::ZERO,
     });
     bridge_export::native_job(Some(("render", 0, options.total_frames)));
     export_health::begin(export_health::RunTrace::new(
@@ -837,9 +841,13 @@ fn push_frame(state: State<'_, ExportState>, request: tauri::ipc::Request) -> Re
             active.height
         ));
     }
+    let at = std::time::Instant::now();
     active.child.write(bytes).map_err(|e| e.to_string())?;
+    active.pipe_time += at.elapsed();
     // Read-only, after the bytes reached ffmpeg: the tap never changes or delays what is encoded.
+    let at = std::time::Instant::now();
     tap_flash_frame(&mut active.flashes, bytes);
+    active.tap_time += at.elapsed();
     active.written += 1;
     export_health::frame(active.written);
     let _ = active.progress.send(Progress {
@@ -866,6 +874,12 @@ async fn finish_export(
         .take()
         .ok_or("no active export in progress")?;
     let detector = active.flashes.take();
+    log::info!(
+        "[export] {} frames: {} ms in the encoder pipe, {} ms in the flash tap",
+        active.written,
+        active.pipe_time.as_millis(),
+        active.tap_time.as_millis()
+    );
     bridge_export::native_job(Some(("finalising", active.written, active.total)));
     let encoded = finish_encode(&app, &state, active).await;
     let run = state
@@ -1448,6 +1462,7 @@ macro_rules! kookaburra_handler {
             clip_cache::clip_info,
             clip_cache::ensure_clip_chunks,
             clip_cache::read_clip_frame,
+            clip_cache::read_clip_frame_rgba,
             clip_cache::ensure_clip_previews,
             clip_cache::set_clip_cache_pins,
             clip_cache::clip_cache_session_stats,

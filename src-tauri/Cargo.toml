@@ -182,6 +182,17 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.rustfft]
 opt-level = 3
+# Dev builds decode every clip frame natively (`read_clip_frame_rgba`); unoptimised, the inflate alone outlasts a frame.
+[profile.dev.package.png]
+opt-level = 3
+[profile.dev.package.fdeflate]
+opt-level = 3
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+[profile.dev.package.crc32fast]
+opt-level = 3
+[profile.dev.package.simd-adler32]
+opt-level = 3
 
 # macOS 27 dyld rejects optimised proc-macro dylibs (mis-aligned LINKEDIT string pool); opt-level 0 here covers only build scripts and proc macros, the shipped binary is unaffected.
 [profile.release.build-override]

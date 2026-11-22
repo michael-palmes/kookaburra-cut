@@ -2,6 +2,8 @@ import { LOOK_GLSL_HASH, LOOK_GLSL_NOISE } from "../../stage/scene3d/kit/glsl";
 
 /** Fixed march length: export contract once shipped (every lane, preview included). */
 export const BEAM_STEPS = 48;
+/** The fewest steps one supersample draw takes. */
+const BEAM_MIN_STEPS = 12;
 /** The sharp second phase lobe that makes the haze round the source glow hot. */
 const HOTSPOT_G = "0.9";
 
@@ -49,6 +51,7 @@ uniform vec3 uCamForward;
 uniform float uCamNear;
 uniform float uCamFar;
 uniform float uSampleSeed;
+uniform float uSampleCount;
 #ifdef BEAM_BOX
 uniform vec3 uBoxMin;
 uniform vec3 uBoxMax;
@@ -173,7 +176,13 @@ void main() {
     t1 = min(t1, -b + s);
   }
   if (t1 <= t0) discard;
+  int steps = ${BEAM_STEPS};
   float dt = (t1 - t0) / ${BEAM_STEPS}.0;
+  // Eight or more supersample draws share the march: each takes fewer steps at its own offset, and together they still take four times one full march.
+  if (uSampleCount > 4.5) {
+    steps = max(${BEAM_STEPS * 4} / int(uSampleCount), ${BEAM_MIN_STEPS});
+    dt = (t1 - t0) / float(steps);
+  }
   // Offset per supersample draw, so the samples average the march noise away.
   float jitter = fract(hash21(ivec2(gl_FragCoord.xy)) + 0.61803398875 * uSampleSeed);
   float sum = 0.0;
@@ -182,6 +191,7 @@ void main() {
   float tau = uMeanDensity * max(t0 - tEnter, 0.0);
 #endif
   for (int i = 0; i < ${BEAM_STEPS}; i++) {
+    if (i >= steps) break;
     float t = t0 + (float(i) + jitter) * dt;
     vec3 p = ro + rd * t;
     vec3 l = p - uApex;

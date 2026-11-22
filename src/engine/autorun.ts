@@ -20,15 +20,18 @@ import {
   type ExportProgress,
   exportProject,
   type FrameDelta,
+  lastExportTiming,
   verifyDeterminism,
 } from "./exporter";
 import { setExporting } from "./exportState";
+import type { ExportTiming } from "./exportTiming";
 import { type AspectName, FORMATS, type FormatSpec, FPS, STANDING_ASPECTS } from "./format";
 import { libraryPreviewFormat, resolveLibraryPreviewPoint } from "./libraryPreviewPoint";
 import { applyMemoryLever, MemoryRecorder, type MemorySummary } from "./memoryProbe";
 import { captureOptionPreviews, optionPreviewSetsOf } from "./optionPreviews";
 import { runPackRoundTrip } from "./packRoundTrip";
 import { clipColdMetric, runPerfProbe } from "./perfProbe";
+import { runPlaybackProbe } from "./playbackProbe";
 import { listPresets, presetPreviewFrame } from "./presets";
 import { type LoadedProject, loadProject, previewLabProjectIds, sceneFileStem } from "./project";
 import { renderRange } from "./rangeRender";
@@ -151,6 +154,16 @@ interface AutoRunResult {
   drawCalls?: number;
   triangles?: number;
   texturesInMemory?: number;
+  /** perf's playback and scrub rows, measured from the window (engine/playbackProbe.ts): its clock ticks and how long a tick took to be drawn. */
+  ticks?: number;
+  tickAvgMs?: number;
+  tickP95Ms?: number;
+  tickMaxMs?: number;
+  lagAvgMs?: number | null;
+  lagP95Ms?: number | null;
+  commitAvgMs?: number | null;
+  commitP95Ms?: number | null;
+  tasks?: Record<string, [number, number, number]>;
   /** stills rows: the output kind, page count, file size and SHA-256, the page-stage baseline hash and each page's global ms. */
   kind?: StillsFormat;
   pages?: number;
@@ -161,6 +174,8 @@ interface AutoRunResult {
   /** export and verify rows: the output rate, the poster frame, and the flash tap's report on the written file (or why there is none). */
   fps?: number;
   posterFrame?: boolean;
+  /** export, verify (pass B) and memory rows: where the run's wall time went, in ms per phase (engine/exportTiming). */
+  timing?: ExportTiming;
   flashes?: unknown;
   flashesUnavailable?: string;
   warnings?: StillsWarning[];
@@ -956,7 +971,12 @@ export async function runAutoRun(
       useEditorStore.getState().setFormat(format);
       await nextCommit();
       await awaitSceneHostsCommitted(project.slots.length);
-      const rows = await runPerfProbe(project);
+      // `--lever headless` paces the window passes itself and skips the stage-only ones, for a locked or hidden screen.
+      const headless = config.lever === "headless";
+      for (const row of await runPlaybackProbe(project, headless)) {
+        results.push({ aspect: format.name, ...row });
+      }
+      const rows = headless ? [] : await runPerfProbe(project);
       for (const row of rows) results.push({ aspect: format.name, ...row });
       // Meaningful on a --cold run with the clip cache moved aside: how long first frames took to extract and what that wrote.
       results.push({ aspect: format.name, ...(await clipColdMetric()) });
@@ -1339,6 +1359,7 @@ export async function runAutoRun(
             fingerprint: r.fingerprint,
             fps: outFps,
             posterFrame: encode?.posterFrame === true,
+            timing: lastExportTiming() ?? undefined,
             ...(await writtenFacts(null)),
             ...(r.divergentCount !== undefined
               ? {
@@ -1366,7 +1387,14 @@ export async function runAutoRun(
           console.warn(
             `[autorun] memory ${current.id} ${format.name}: fps ${memory.fps.join(" → ")}, editor ${memory.editorMb.first} → ${memory.editorMb.last} MB (peak ${memory.editorMb.peak}), gpu ${memory.gpuMb.first} → ${memory.gpuMb.last} MB, clips peak ${memory.clipMbPeak} MB`,
           );
-          results.push({ aspect: format.name, project: current.id, path, fps: outFps, memory });
+          results.push({
+            aspect: format.name,
+            project: current.id,
+            path,
+            fps: outFps,
+            memory,
+            timing: lastExportTiming() ?? undefined,
+          });
           if (!memory.holds) {
             ok = false;
             error ??= `${current.id} ${format.name}: ${memory.failures.join("; ")}`;
@@ -1386,6 +1414,7 @@ export async function runAutoRun(
             path,
             fps: outFps,
             posterFrame: encode?.posterFrame === true,
+            timing: lastExportTiming() ?? undefined,
             ...(await writtenFacts(path)),
           });
         }

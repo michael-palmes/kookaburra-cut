@@ -1,3 +1,5 @@
+import { isExporting, subscribeExporting } from "./exportState";
+
 /** Preview-only clip-decode knobs, owned by App (chrome state never read from a store by the engine); `useClipTexture` additionally ignores both while `isExporting()`. */
 
 let stride = 1;
@@ -23,6 +25,46 @@ export function setPreviewPlaybackActive(active: boolean): void {
 
 export function previewPlaybackActive(): boolean {
   return playbackActive;
+}
+
+/** True while the paused playhead is being dragged or stepped quickly: clip consumers bind the preview tier until it rests, then the exact full frame. A lone step never counts, so frame-by-frame stays exact. */
+const SCRUB_GAP_MS = 120;
+const SCRUB_REST_MS = 180;
+let scrubActive = false;
+let lastClockMoveAt = Number.NEGATIVE_INFINITY;
+let scrubRest: ReturnType<typeof setTimeout> | undefined;
+const scrubListeners = new Set<() => void>();
+
+function setScrubActive(active: boolean): void {
+  if (scrubActive === active) return;
+  scrubActive = active;
+  for (const listener of scrubListeners) listener();
+}
+
+/** Called on every preview clock change with the realm's own time. */
+export function notePreviewClockMove(now: number): void {
+  if (playbackActive) return;
+  if (now - lastClockMoveAt < SCRUB_GAP_MS) setScrubActive(true);
+  lastClockMoveAt = now;
+  if (!scrubActive) return;
+  clearTimeout(scrubRest);
+  scrubRest = setTimeout(() => setScrubActive(false), SCRUB_REST_MS);
+}
+
+// A capture can start at the very instant a skim rested on, with no clock change to re-render a consumer: the scrub ends with it, so the exact frame binds before the capture's barrier.
+subscribeExporting(() => {
+  if (!isExporting()) return;
+  clearTimeout(scrubRest);
+  setScrubActive(false);
+});
+
+export function previewScrubActive(): boolean {
+  return scrubActive;
+}
+
+export function subscribePreviewScrub(listener: () => void): () => void {
+  scrubListeners.add(listener);
+  return () => scrubListeners.delete(listener);
 }
 
 /** Present's clock never stops for a scrub, so its clips always read ahead; set once by the present worker at boot. */

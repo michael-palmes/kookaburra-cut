@@ -1,6 +1,7 @@
 import { clipCacheCensus } from "./clips";
 import { canvasHandle } from "./exportBridge";
 import { setSceneReleaseEnabled } from "./sceneRelease";
+import { setSupersampleSharing } from "./supersample";
 
 /** What the memory probe counts in the realm that holds the textures: three's GPU residency and the clip frame cache. */
 export interface MemoryCensus {
@@ -26,4 +27,5 @@ export function memoryCensus(): MemoryCensus {
 /** The levers that change something in the stage realm (engine/memoryProbe.ts). */
 export function applyStageMemoryLever(lever: string): void {
   if (lever === "scene-release=off") setSceneReleaseEnabled(false);
+  if (lever === "supersample-share=off") setSupersampleSharing(false);
 }

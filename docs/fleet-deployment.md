@@ -1,8 +1,7 @@
 # Deploying Kookaburra Cut with an MDM
 
 Written against version 0.23.0; wherever an earlier version differs, the text
-says so. The pinned install examples name 0.22.4 and its hash until 0.23.0's
-`SHA256SUMS` is published. Copy-paste recipes for Jamf Pro,
+says so. Copy-paste recipes for Jamf Pro,
 Kandji (now Iru), Mosyle and Microsoft Intune: install the app, force a posture
 with a configuration profile, check a Mac, serve updates from your own server,
 and remove it. Which keys to force and why is in [fleet.md](./fleet.md); what
@@ -22,8 +21,8 @@ recipes has run on a live tenant yet ([Not yet](#not-yet)).
   `.github/workflows/release.yml` say there is no Intel build).
 - **The release.** Verify it first ([fleet.md, "Verify a
   release"](./fleet.md#verify-a-release)), then take the DMG's SHA-256 from its
-  `SHA256SUMS`. For 0.22.4 that is
-  `a71315babdc38eac53dfcb75163416709721b8edb515db1385ac214c86e35278`.
+  `SHA256SUMS`. For 0.23.0 that is
+  `dea62660bf982d8bd9dcd6d5a370076c333a2b5f48b0c3f664e4d33f907f41da`.
 - **The version.** Managed keys start at 0.22.2: an earlier build honours none
   ([Choose a posture](#2-choose-a-posture) says which key arrives when).
 - **One updater per Mac.** Either your MDM delivers each version, or the in-app
@@ -45,8 +44,8 @@ tries again later.
 
 | Parameter | Default | Set it to |
 | --- | --- | --- |
-| 4 | `0.22.4` | The version to install |
-| 5 | 0.22.4's DMG SHA-256 | That version's DMG line in `SHA256SUMS` |
+| 4 | `0.23.0` | The version to install |
+| 5 | 0.23.0's DMG SHA-256 | That version's DMG line in `SHA256SUMS` |
 | 6 | The GitHub release's download folder | Your own copy of the DMG's folder, for Macs that cannot reach GitHub (HTTPS only) |
 
 Jamf Pro passes parameters 4 to 6 (1 to 3 are its own). Elsewhere, edit the
@@ -59,8 +58,8 @@ while the app is open.
 # Installs Kookaburra Cut from its release DMG once the pinned SHA-256 and Developer ID team check out (docs/fleet-deployment.md).
 set -euo pipefail
 
-VERSION="${4:-0.22.4}"
-DMG_SHA256="${5:-a71315babdc38eac53dfcb75163416709721b8edb515db1385ac214c86e35278}"
+VERSION="${4:-0.23.0}"
+DMG_SHA256="${5:-dea62660bf982d8bd9dcd6d5a370076c333a2b5f48b0c3f664e4d33f907f41da}"
 BASE_URL="${6:-https://github.com/michael-palmes/kookaburra-cut/releases/download/v$VERSION}"
 
 TEAM_ID="Q4B8N8ZKA2"
@@ -180,7 +179,7 @@ the Library items kept their names.
   ```bash
   #!/bin/bash
   v="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "/Applications/Kookaburra Cut.app/Contents/Info.plist" 2>/dev/null)"
-  [ "$v" = "0.22.4" ]
+  [ "$v" = "0.23.0" ]
   ```
 
   Or run `install-kookaburra-cut.sh` as a Custom Script instead, which also

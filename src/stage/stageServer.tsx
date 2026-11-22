@@ -37,16 +37,19 @@ import {
   endExportRun,
   renderExportFrame,
 } from "../engine/exportRun";
-import { setExporting } from "../engine/exportState";
+import { isExporting, setExporting } from "../engine/exportState";
 import { CAMERA, SHADOW_MAP_TYPE } from "../engine/format";
+import { fireFrame } from "../engine/framePump";
 import { gizmoHandleAt, gizmoPickerHandles, subscribeGizmoPickers } from "../engine/gizmoRegistry";
 import { cameraFrameOf, projectGizmoTargets } from "../engine/gizmoTargetFrames";
 import { glContextCensus, onGlContextLoss, tagGlCanvas } from "../engine/glContexts";
 import { ensureRectAreaLightUniforms } from "../engine/lightingState";
 import { applyStageMemoryLever, memoryCensus } from "../engine/memoryCensus";
 import { perfColdWaits, runPerfProbe } from "../engine/perfProbe";
+import { noteDraw, recordingDraws, setDrawRecording } from "../engine/playbackProbe";
 import { setPresentSlideshowActive } from "../engine/presentMode";
 import {
+  notePreviewClockMove,
   setPresentClock,
   setPreviewClipStride,
   setPreviewMotionBlurPlayback,
@@ -86,6 +89,7 @@ import { setNativePort } from "../engine/stageRealm";
 import { useStageRegistry } from "../engine/stageRegistry";
 import { type DecodedPng, isPngBytes, parseDecodedPng, StageTexture } from "../engine/stageTexture";
 import { beginStillsRun, type StillsRun } from "../engine/stillsRun";
+import { traced } from "../engine/taskTrace";
 import { useTextKeyRegistry } from "../engine/textKeyRegistry";
 import { PresentStageTree } from "../present/PresentStageTree";
 import { useEditorStore } from "../store/editorStore";
@@ -229,7 +233,9 @@ function PreviewClock() {
   useEffect(
     () =>
       useClockStore.subscribe((state, prev) => {
-        if (state.currentMs !== prev.currentMs) invalidate();
+        if (state.currentMs === prev.currentMs) return;
+        if (!isExporting()) notePreviewClockMove(performance.now());
+        invalidate();
       }),
     [invalidate],
   );
@@ -251,7 +257,12 @@ function reportFrame(camera: Camera): void {
 function FrameReporter() {
   const camera = useThree((s) => s.camera);
   // Priority 2: after the compositor driver's takeover render (priority 1), so the targets describe the frame on screen.
-  useFrame(() => reportFrame(camera), 2);
+  useFrame(() => {
+    reportFrame(camera);
+    if (!recordingDraws()) return;
+    noteDraw();
+    post({ type: "drawn", clockMs: useClockStore.getState().currentMs });
+  }, 2);
   return null;
 }
 
@@ -516,8 +527,7 @@ async function handle(req: WindowRequest): Promise<{ value: unknown; transfer?: 
     case "exportEnd": {
       const run = activeExport;
       activeExport = null;
-      if (run) endExportRun(run);
-      return { value: null };
+      return { value: run ? endExportRun(run) : null };
     }
     case "holdExport":
       setExporting(req.on);
@@ -570,6 +580,8 @@ async function handle(req: WindowRequest): Promise<{ value: unknown; transfer?: 
       if (!project) throw new Error("perf: no project is loaded in the stage");
       return { value: await runPerfProbe(project) };
     }
+    case "drawStats":
+      return { value: setDrawRecording(req.on) };
     case "perfColdWaits":
       return { value: perfColdWaits() };
     case "hitTest": {
@@ -676,7 +688,13 @@ async function boot(init: Extract<WindowNotice, { type: "init" }>): Promise<void
   events.connect?.(init.canvas as unknown as HTMLElement);
 }
 
-takeWorkerInbox((ev: MessageEvent<ToWorker>) => {
+takeWorkerInbox((ev: MessageEvent<ToWorker>) =>
+  traced(ev.data.type === "store" ? `msg:store:${ev.data.name}` : `msg:${ev.data.type}`, () =>
+    onInbox(ev),
+  ),
+);
+
+function onInbox(ev: MessageEvent<ToWorker>): void {
   const msg = ev.data;
   if (msg.type === "portProgress") {
     pendingPort.get(msg.id)?.onProgress?.(msg.value);
@@ -716,6 +734,9 @@ takeWorkerInbox((ev: MessageEvent<ToWorker>) => {
     return;
   }
   switch (msg.type) {
+    case "vsync":
+      fireFrame();
+      return;
     case "store":
       mirror.apply(msg.name, msg.patch);
       return;
@@ -749,4 +770,4 @@ takeWorkerInbox((ev: MessageEvent<ToWorker>) => {
       if (msg.hardwareVideo !== undefined) setHardwareVideo(msg.hardwareVideo);
       return;
   }
-});
+}

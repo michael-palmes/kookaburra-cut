@@ -54,6 +54,7 @@ reference/          topic files loaded on demand
   project.md  sidecar.md  scenes.md  text.md  devices.md  camera.md
   backgrounds.md  lighting.md  media.md  charts.md  beats.md
   export.md         exports, film checks, the flash gate
+  staging.md        staged 3D films: look first, product shots, the shot checklist, render settings
   gotchas.md        symptom | cause | fix, linked from SKILL.md and scenes.md
 scripts/
   kb.py             the one entry point
