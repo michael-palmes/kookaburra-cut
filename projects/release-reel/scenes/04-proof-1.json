@@ -2,27 +2,194 @@
   "version": 1,
   "name": "Proof 1",
   "text": {
-    "label": "04 · Proof 1 · tangerine room",
-    "bars": "Bars 6 to 7 · Intro: something new each bar",
-    "kicker": "",
-    "title": "Plan your whole week in one tap.",
-    "c1": "6.1  The phone stands in the room, recording one playing",
-    "c2": "6.3  The line lands beside it",
-    "c3": "7.1  The tap: the week sorts itself",
-    "c4": "7.3  Push in on the part of the screen that changed"
+    "chapter": "01 / 03",
+    "kicker": "Faster.",
+    "title": "Plan your whole week in one tap."
   },
-  "textStyle": {
-    "labelColor": "#0b1030",
-    "barsColor": "#0b1030",
-    "kickerColor": "#0b1030",
-    "titleColor": "#0b1030",
-    "c1Color": "#0b1030",
-    "c2Color": "#0b1030",
-    "c3Color": "#0b1030",
-    "c4Color": "#0b1030"
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "media": {
+        "src": "assets/fairywren-sorted-phone.mp4",
+        "kind": "video",
+        "startMs": 625
+      },
+      "placement": {
+        "position": [2.25, 0.079, 0],
+        "rotationDeg": [0, -24, 0],
+        "scale": 1.39,
+        "ground": true
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "none",
+      "finish": {
+        "frame": {
+          "roughness": 0.3,
+          "metalness": 1,
+          "anisotropy": 0.4,
+          "grain": 1,
+          "grainScale": 20000,
+          "brushedMap": 0,
+          "chamferRoughness": 0.08,
+          "envIntensity": 1.6,
+          "iblTaps": 7
+        },
+        "polished": {
+          "roughness": 0.06,
+          "envIntensity": 1.8
+        },
+        "glass": {
+          "roughness": 0.05,
+          "ior": 1.5,
+          "specularIntensity": 1,
+          "envIntensity": 1.5
+        },
+        "back": {
+          "roughness": 0.45,
+          "metalness": 0,
+          "tint": 0.55,
+          "clearcoat": 0.6,
+          "clearcoatRoughness": 0.12,
+          "envIntensity": 1.3
+        }
+      }
+    }
+  ],
+  "taps": [
+    {
+      "at": 700,
+      "device": "hero",
+      "screenUv": [0.883, 0.93],
+      "colour": "text"
+    }
+  ],
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "position": [0.05, -0.8, 14.2],
+          "aim": {
+            "mode": "point",
+            "at": [0.1, -0.1, 0]
+          },
+          "fov": 18,
+          "dof": {
+            "mode": "lens",
+            "fStop": 16,
+            "focus": "auto"
+          }
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 2813,
+        "at": "bar:7.3",
+        "pose": {
+          "position": [0.3, -0.76, 13.3],
+          "aim": {
+            "mode": "point",
+            "at": [0.2, -0.08, 0]
+          },
+          "fov": 18,
+          "dof": {
+            "fStop": 16,
+            "focus": "auto"
+          }
+        }
+      },
+      {
+        "id": "k3",
+        "tMs": 3750,
+        "pose": {
+          "position": [1.5, 0.15, 8.8],
+          "aim": {
+            "mode": "point",
+            "at": [2.0, 0.7, 0]
+          },
+          "fov": 18,
+          "dof": {
+            "fStop": 16,
+            "focus": "auto"
+          }
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "linear",
+        "smooth": false
+      },
+      {
+        "from": "k2",
+        "to": "k3",
+        "ease": "inOutSine",
+        "smooth": false
+      }
+    ]
+  },
+  "lighting": {
+    "ambient": 0.6,
+    "fills": [],
+    "sun": {
+      "azimuthDeg": -38,
+      "elevationDeg": 48,
+      "intensity": 2.0,
+      "color": "#fff4e6",
+      "castShadow": true
+    },
+    "environment": {
+      "source": "kookaburra:cyclorama",
+      "intensity": 1.6,
+      "rotationDeg": 0
+    },
+    "lights": [],
+    "shadow": {
+      "technique": "map",
+      "softness": 0.6,
+      "opacity": 0.55,
+      "mapSize": 2048,
+      "bias": -0.0005
+    }
   },
   "background": {
-    "type": "color",
-    "color": "#ff7a2f"
+    "type": "gradient",
+    "spec": {
+      "type": "linear",
+      "angleDeg": 135,
+      "stops": [["#ff9858", 0], ["#ff7a2f", 0.45], ["#f0651b", 1]],
+      "space": "oklch"
+    }
+  },
+  "backdrop": {
+    "type": "satin",
+    "color": "#ff8a44",
+    "roughness": 0.35,
+    "specular": 0.3,
+    "centre": [1.5, 0],
+    "fade": [7, 18],
+    "reflection": {
+      "strength": 0.8,
+      "blur": 28,
+      "heightBlur": 1.6,
+      "contact": 0.75
+    },
+    "glitter": {
+      "scale": 90,
+      "density": 0,
+      "roughness": 0.15,
+      "tilt": 0.5,
+      "weight": 0,
+      "grain": 0.5,
+      "seed": 5
+    }
   }
 }

@@ -8,7 +8,7 @@ it fills the app icon slot, so it ships in its template as `assets/app-icon.png`
 
 ## Product family
 
-Unveil shows one fictional product, Fairywren (a calm planner). Its screens are
+Unveil and Release Reel show one fictional product, Fairywren (a calm planner). Its screens are
 rendered from HTML and CSS by `tools/sample-product/` (`pnpm assets:sample-product`),
 which steps a deterministic clock frame by frame in headless Chrome. Fictional brand,
 people and data only; the name was checked against IP Australia, USPTO and the App
@@ -32,6 +32,7 @@ Thornbill and Songlark; only the files a bundled template names are kept here.
 | `fairywren-share-dark-phone.jpg` | A shared list |
 | `fairywren-plan-dark-phone.mp4` | Plans land, one is ticked off, a new plan is typed |
 | `fairywren-sorted-dark-phone.mp4` | "Plans your week for you": the week sorts itself under a "This week, sorted" card |
+| `fairywren-sorted-phone.mp4` | The same sort in light mode, for a bright set (Release Reel) |
 | `fairywren-quickadd-dark-phone.mp4` | A plan typed in plain words is parsed and added |
 | `fairywren-reschedule-dark-phone.mp4` | A meeting runs over and two plans move to fit |
 | `fairywren-share-dark-phone.mp4` | A list shared with three people, who tick items off |

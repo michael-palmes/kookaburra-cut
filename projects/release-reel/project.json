@@ -4,6 +4,14 @@
   "version": 2,
   "themeId": "kookaburra-colour-studio",
   "formats": ["16:9"],
+  "render": {
+    "toneMapping": "neutral",
+    "antialias": "smaa",
+    "supersample": 4,
+    "dither": true,
+    "specularAA": true,
+    "textBlur": "optical"
+  },
   "audio": {
     "file": "assets/song.flac",
     "grid": {
