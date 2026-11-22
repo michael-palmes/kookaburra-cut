@@ -27266,6 +27266,90 @@
       ]
     },
     {
+      "id": "spotlight",
+      "label": "Spotlight",
+      "summary": "One feature, start to finish, in a calm daylight studio. Works for phone or web.",
+      "category": "feature",
+      "tags": ["feature", "explainer", "how it works", "demo", "music", "calm"],
+      "personas": ["pm", "marketer"],
+      "level": "standard",
+      "tier": "safe",
+      "uses": ["audio"],
+      "highlights": [
+        "The problem in a line, then the feature by name",
+        "In close on the one control that matters",
+        "Works for an app on a phone or a web app in a browser window"
+      ],
+      "bring": [
+        "A problem line",
+        "Feature name",
+        "One screen recording of the flow",
+        "A screenshot that proves the benefit",
+        "A benefit line, with a figure or quote to prove it",
+        "A call to action",
+        "App icon"
+      ],
+      "song": {
+        "title": "Daylight",
+        "bpm": 128
+      },
+      "looks": ["kookaburra-mid-century", "kookaburra-daylight", "kookaburra-ivory"],
+      "sceneCount": 8,
+      "durationMs": 29999,
+      "aspects": ["16:9"],
+      "themeId": "kookaburra-mid-century",
+      "scenes": [
+        {
+          "file": "scenes/01-problem.tsx",
+          "durationMs": 3749,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/02-name.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/03-flow-a.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/04-flow-b.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/05-close-up.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/06-claim.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/07-proof.tsx",
+          "durationMs": 5625,
+          "transition": null,
+          "blocks": ["text"]
+        },
+        {
+          "file": "scenes/08-lockup.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["text"]
+        }
+      ]
+    },
+    {
       "id": "whats-new-social-cut",
       "label": "What's New (social cut)",
       "summary": "Name the version, show three shipped things, end on the update CTA.",

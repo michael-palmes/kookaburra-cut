@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Lockup",
+  "text": {
+    "label": "08 · Lockup",
+    "bars": "Bars 15 to 16 · Final hit on 16, then it rings out",
+    "note": "App icon, feature name and the call to action",
+    "title": "Focus",
+    "second": "Available now.",
+    "c1": "15.1 · Cut: the app icon lands",
+    "c2": "15.3 · The feature name lands beside it",
+    "c3": "16.1 · Final hit: “Available now.”",
+    "c4": "16.2 · Holds while the song rings out"
+  }
+}
