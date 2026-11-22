@@ -40,7 +40,7 @@ write one into the sidecar and tune from there:
 
 | Field | Meaning |
 | --- | --- |
-| `environment` | Reflections: `{ source, intensity, rotationDeg }`. Sources: `kookaburra:ferndale-studio`, `monochrome-studio`, `story-studio`, `warehouse`, `night-city`, `sunset`, `cyclorama`, `dawn`, `interior` (all `kookaburra:`), `kookaburra:softbox`, `none` (no reflections, unlike absent which inherits), or `assets/<file>.hdr` / `.exr` (a missing file fails the load). Never a visible background |
+| `environment` | Reflections: `{ source, intensity, rotationDeg }`. Sources: `kookaburra:ferndale-studio`, `monochrome-studio`, `story-studio`, `warehouse`, `night-city`, `sunset`, `cyclorama`, `dawn`, `interior` (all `kookaburra:`), `kookaburra:softbox`, `none` (no reflections, unlike absent which inherits), or `assets/<file>.hdr` / `.exr` (a missing file fails the load), or `kookaburra:strips` (below). Never a visible background |
 | `sun` | Key light: `azimuthDeg`, `elevationDeg`, `intensity`, colour, `angularDeg` (apparent size 0..90, real sun 0.53; larger is softer shadows), `castShadow` (true), `enabled` (true) |
 | `ambient`, `ambientColor` | Flat fill amount and tint |
 | `lights` | Free lights (below), max 16 lights in a scene including the sun and fixture lights |
@@ -52,6 +52,40 @@ write one into the sidecar and tune from there:
 Colour on the sun, lights and fixtures: `kelvin` (1000..20000) wins, then `colorToken`
 (a theme colour name, so a theme swap restyles the rig), then `color` (hex), else white.
 Prefer kelvin: 2700 to 3200 warm, 5600 daylight, 6500+ cool.
+
+## Environment strips
+
+`"source": "kookaburra:strips"` with a `strips` list builds the reflections from strip
+lights instead of an HDRI: soft panels on a black sphere that never show in frame but
+draw a clean streak along metal edges and across glass, the product-studio look. Reach for
+it on staged device and object shots, where an HDRI's room reads as clutter in the glass
+(a rim from behind, a key line down a band, a cool kicker on the far side). A scene has
+one environment, so strips replace the HDRI; matte surfaces barely show them.
+
+```json
+"environment": { "source": "kookaburra:strips", "intensity": 1, "rotationDeg": 0, "stripsAmbient": 0.002,
+  "strips": [
+    { "azimuthDeg": -60, "elevationDeg": 30, "lengthDeg": 80, "widthDeg": 6, "color": "#ffc888", "intensity": 20, "falloff": 0.5, "feather": 0.5 },
+    { "azimuthDeg": 179, "elevationDeg": 6, "rollDeg": 15, "lengthDeg": 45, "widthDeg": 6, "color": "#9ccfff", "intensity": 60, "feather": 0.6 }
+  ] }
+```
+
+| Field | Range (default) | Meaning |
+| --- | --- | --- |
+| `azimuthDeg`, `elevationDeg` | any, -90..90 (required) | Direction on a distant sphere round the world origin, as the lights: azimuth 0 toward the default camera, 180 behind; `rotationDeg` turns them all |
+| `intensity` | 0..5000 (required) | Linear radiance: 10 to 60 reads as a hot line on polished metal; a thin rim from behind takes more (Unveil's runs to 200) |
+| `color` | `#rrggbb` (required) | The strip's colour |
+| `lengthDeg`, `widthDeg` | 0.5..170 (60), 0.2..170 (4) | Angular size along and across the strip; narrow is a crisp line, wide a softbox |
+| `rollDeg` | any (0) | 0 stands the strip upright, 90 lays it level |
+| `falloff`, `feather` | 0..1 (0), 0..1 (0) | Fade toward both ends; softness across the width (0 a hard edge) |
+
+`stripsAmbient` (0 and up, default 0) lifts the whole sphere: 0.002 to 0.01 keeps black
+glass from reading as a hole. The environment's `intensity`, `rotationDeg` and the
+`environmentIntensity` and `environmentRotationDeg` keys work as with any source. Up to 16
+strips; a strip missing a required field is dropped, and with none left there are no
+reflections. Cost: one bake when the scene loads (each edit re-bakes), then nothing a
+frame past the reflection every lit material already pays. Place strips by where the
+highlight must land: capture, move one strip, capture again.
 
 ## Free lights
 

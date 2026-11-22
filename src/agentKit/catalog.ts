@@ -33,6 +33,7 @@ import {
   SHUTTER_SAMPLE_COUNTS,
   SHUTTER_SAMPLES_DEFAULT,
 } from "../engine/shutter";
+import { MAX_ENV_STRIPS, STRIPS_SOURCE } from "../engine/stripSpec";
 import { listTemplates } from "../engine/templates";
 import { FEEL_LABELS, TRANSITION_CATALOG } from "../engine/transitionCatalog";
 import { BUNDLED_EXPORT_PRESETS } from "../export/presetRegistry";
@@ -580,7 +581,7 @@ const EFFECTS: Record<keyof EffectsConfig, { summary: string; fields: Record<str
     summary: "Lens response for hot highlights: energy-conserving bloom, warm halation, glare.",
     fields: {
       intensity: "0 turns it off",
-      bloom: "0..0.3 mix of the wide glow (default 0.05)",
+      bloom: "0..0.5 mix of the wide glow (default 0.05)",
       halation: "warm glow round hot edges (default 0)",
       glare: "streaks on the hottest speculars (default 0)",
     },
@@ -1380,6 +1381,10 @@ function lighting(): Record<string, unknown> {
     environments: [
       ...BUNDLED_ENVIRONMENT_IDS.map((id) => ({ id, summary: "Bundled HDRI." })),
       { id: SOFTBOX_SOURCE, summary: "Procedural softbox reflections." },
+      {
+        id: STRIPS_SOURCE,
+        summary: `Strip lights from the environment's own strips list (up to ${MAX_ENV_STRIPS}), for streaks on metal and glass.`,
+      },
       { id: NONE_SOURCE, summary: "No reflections (distinct from absent, which inherits)." },
       { id: "assets/<file>.hdr", summary: "A project HDR or EXR; a missing file fails the load." },
     ],
