@@ -34,8 +34,10 @@ Thornbill and Songlark; only the files a bundled template names are kept here.
 | `fairywren-sorted-dark-phone.mp4` | "Plans your week for you": the week sorts itself under a "This week, sorted" card |
 | `fairywren-sorted-phone.mp4` | The same sort in light mode, for a bright set (Release Reel) |
 | `fairywren-quickadd-dark-phone.mp4` | A plan typed in plain words is parsed and added |
+| `fairywren-quickadd-phone.mp4` | The same quick add in light mode (Release Reel) |
 | `fairywren-reschedule-dark-phone.mp4` | A meeting runs over and two plans move to fit |
 | `fairywren-share-dark-phone.mp4` | A list shared with three people, who tick items off |
+| `fairywren-share-phone.mp4` | The same share in light mode (Release Reel) |
 
 ### Timings and regions
 
@@ -49,7 +51,9 @@ Regions are screen UV `[u0, v0, u1, v1]` (`ScreenRegion rect`), times are second
   blinking caret (Add at 3.45 s). The schedule below slides down to make room from 2.25 s and back
   up from 3.9 s.
 - Reschedule card: `[0.04, 0.27, 0.96, 0.531]`, still from 1.3 to 3.3 s (Keep at 3.35 s).
-- Share sheet: `[0.02, 0.613, 0.98, 0.991]`, still from 1.6 to 2.3 s (Share at 2.3 s).
+- Share sheet: `[0.02, 0.613, 0.98, 0.991]`, still from 1.6 to 2.3 s (Share at 2.3 s). The share
+  button is at `(0.862, 0.216)`, pressed at 0.95 s. The list's card is `[0.04, 0.172, 0.96, 0.322]`; its
+  three faces arrive at 2.75 s and the first tick lands at 3.75 s.
 
 ## Kooka set
 
