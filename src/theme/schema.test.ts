@@ -17,6 +17,7 @@ import {
   mergeLighting,
   parseBackdropSpec,
   parseBackgroundSpec,
+  parseGradient,
   parseLightingOverride,
   parseSceneEffectsOverride,
   parseThemeDoc,
@@ -432,6 +433,21 @@ describe("builtin theme documents (structure pins)", () => {
     const house = ["#3ad1c4", "#5c8bf5", "#a78bfa", "#f2b34d", "#f2718c", "#6fd8a8"];
     expect(parseThemeDoc(kookaburraDefaultDoc, "pin")?.chartColors).toEqual(house);
     expect(parseThemeDoc(kookaburraFxDoc, "pin")?.chartColors).toEqual(house);
+  });
+});
+
+describe("parseGradient centre", () => {
+  const stops = [
+    ["#ffffff", 0],
+    ["#000000", 1],
+  ];
+
+  it("keeps a radial centre, clamped, and ignores it on a linear gradient", () => {
+    expect(parseGradient({ type: "radial", stops, centre: [0.2, 1.4] })?.centre).toEqual([0.2, 1]);
+    expect(parseGradient({ type: "radial", stops })?.centre).toBeUndefined();
+    expect(
+      parseGradient({ type: "linear", angleDeg: 90, stops, centre: [0.2, 0.7] })?.centre,
+    ).toBeUndefined();
   });
 });
 

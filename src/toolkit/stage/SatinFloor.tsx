@@ -6,6 +6,7 @@ import {
   CustomBlending,
   DataTexture,
   DepthTexture,
+  type DirectionalLight,
   FloatType,
   HalfFloatType,
   LinearFilter,
@@ -23,6 +24,7 @@ import {
   RepeatWrapping,
   RGBAFormat,
   Scene,
+  ShaderChunk,
   ShaderMaterial,
   Vector2,
   Vector3,
@@ -32,7 +34,8 @@ import {
 } from "three";
 import { createSeededRandom } from "../../engine/rng";
 import { useSceneRelease } from "../../engine/sceneRelease";
-import { createFrameShare } from "../../engine/supersample";
+import { createFrameShare, supersampleSeed } from "../../engine/supersample";
+import { SHADOW_FAR, SHADOW_FRUSTUM_EXTENT, SHADOW_NEAR } from "./shadowRig";
 
 /** A satin stage floor (the `satin` backdrop): a planar reflection blurred with the height of what it reflects, an albedo and sheen that fade with distance, blended over whatever is behind so it dissolves into the background, sparse glitter flakes, and floor-only pools standing in for caustics. Deterministic: fixed passes, no history. */
 
@@ -81,11 +84,40 @@ export interface SatinFloorProps {
     contact?: number;
     /** Reflection resolution against the frame. */
     scale?: number;
+    /** How much longer the blur runs down the frame than across it: a rough floor seen at a low angle smears its reflections towards the viewer. */
+    stretch?: number;
+    /** The surface's grain breaks the reflection up by this many pixels of a 1080p frame. */
+    scatter?: number;
+    /** Height above the floor at which a reflection has faded out. */
+    reach?: number;
   };
+  /** How the floor takes a directional light's shadow: an edge that widens and a tone that lightens with distance from what casts it, and a darkening where something meets the floor. */
+  shadow?: FloorShadow;
   glitter?: Partial<FloorGlitter>;
   pools?: FloorPool[];
 }
 
+export interface FloorShadow {
+  /** Edge width gained per unit of distance between caster and floor: the light's apparent size. */
+  spread?: number;
+  /** Share of the shadow lost by `reach`. */
+  lighten?: number;
+  reach?: number;
+  /** Darkening where something meets the floor; it reads the mirror, so it needs the reflection on. */
+  contact?: number;
+}
+
+const SHADOW_DEFAULTS: Required<FloorShadow> = { spread: 0.12, lighten: 0.5, reach: 5, contact: 0 };
+/** Soft shadow taps and reaches: export contract once shipped. */
+const SHADOW_SEARCH_TAPS = 16;
+const SHADOW_FILTER_TAPS = 40;
+const SHADOW_SEARCH_GAP = 6;
+const SHADOW_MIN_TEXELS = 1.5;
+/** Shadow depth a caster must clear the floor by to count: above the half-float map's own steps. */
+const SHADOW_SEARCH_EPS = "0.002";
+const CONTACT_REACH = 0.3;
+/** The scatter reads the grain this many times finer than the sheen does. */
+const SCATTER_FINE = 4;
 const MAX_POOLS = 4;
 /** How far the plane reaches past the fade: its edge never shows. */
 const PLANE_MARGIN = 1;
@@ -161,6 +193,66 @@ varying vec3 vKbWorld;
 varying vec4 vKbRefl;
 `;
 
+const SOFT_FRAGMENT_PARS = /* glsl */ `
+uniform vec4 kbShadowA;
+uniform vec4 kbShadowB;
+uniform vec3 kbReflX;
+uniform vec2 kbShadowSlope;
+uniform float kbSeed;
+`;
+
+// The key's shadow with a blocker search, so its edge widens with the gap between caster and floor. Three's VSM map holds the floor too, so every tap is tested against the floor's own depth there.
+const SOFT_SHADOW = /* glsl */ `
+#if defined( USE_SHADOWMAP ) && defined( SHADOWMAP_TYPE_VSM )
+vec2 kbDisc( int i, int n, float phi ) {
+	float r = sqrt( ( float( i ) + 0.5 ) / float( n ) );
+	float a = float( i ) * 2.399963229728653 + phi;
+	return vec2( cos( a ), sin( a ) ) * r;
+}
+float kbFloorShadow( int index, sampler2D map, vec2 mapSize, float intensity, float bias, float radius, vec4 coord ) {
+	if ( index > 0 ) return getShadow( map, mapSize, intensity, bias, radius, coord );
+	vec3 c = coord.xyz / coord.w;
+	c.z += bias;
+	if ( c.x < 0.0 || c.x > 1.0 || c.y < 0.0 || c.y > 1.0 || c.z > 1.0 ) return 1.0;
+	vec2 slope = kbShadowSlope;
+	float noise = fract( 52.9829189 * fract( dot( gl_FragCoord.xy, vec2( 0.06711056, 0.00583715 ) ) ) );
+	float phi = 6.283185307 * fract( noise + kbSeed * 0.61803398875 );
+	float least = kbShadowB.y / mapSize.x;
+	float most = max( least, kbShadowB.x );
+	float blocker = 0.0;
+	float found = 0.0;
+	for ( int i = 0; i < ${SHADOW_SEARCH_TAPS}; i ++ ) {
+		vec2 o = kbDisc( i, ${SHADOW_SEARCH_TAPS}, phi ) * most;
+		float mean = texture2D( map, c.xy + o ).r;
+		float gapI = c.z + dot( slope, o ) - mean;
+		float hit = step( ${SHADOW_SEARCH_EPS}, gapI );
+		blocker += gapI * hit;
+		found += hit;
+	}
+	if ( found < 0.5 ) return getShadow( map, mapSize, intensity, bias, radius, coord );
+	float gap = blocker / found * kbShadowB.z;
+	float reach = clamp( kbShadowA.x * gap * kbShadowB.w, least, most );
+	float lit = 0.0;
+	for ( int i = 0; i < ${SHADOW_FILTER_TAPS}; i ++ ) {
+		vec2 o = kbDisc( i, ${SHADOW_FILTER_TAPS}, phi ) * reach;
+		vec2 m = texture2D( map, c.xy + o ).rg;
+		float z = c.z + dot( slope, o );
+		float d = z - m.x;
+		float variance = max( m.y * m.y, 0.0000001 );
+		float p = clamp( ( variance / ( variance + d * d ) - 0.3 ) / 0.65, 0.0, 1.0 );
+		lit += max( step( z, m.x ), p );
+	}
+	lit /= ${SHADOW_FILTER_TAPS}.0;
+	float keep = 1.0 - kbShadowA.y * smoothstep( 0.0, kbShadowA.z, gap );
+	return mix( 1.0, lit, intensity * keep );
+}
+#else
+float kbFloorShadow( int index, sampler2D map, vec2 mapSize, float intensity, float bias, float radius, vec4 coord ) {
+	return getShadow( map, mapSize, intensity, bias, radius, coord );
+}
+#endif
+`;
+
 const COLOR = /* glsl */ `
 float kbFadeK = 1.0 - smoothstep( kbFade.x, kbFade.y, length( vKbWorld.xz - kbCentre ) );
 diffuseColor *= kbFadeK;
@@ -216,6 +308,34 @@ if ( kbReflOn > 0.5 ) {
 }
 `;
 
+const SOFT_REFLECTION = /* glsl */ `
+if ( kbReflOn > 0.5 ) {
+	vec2 kbUv = vKbRefl.xy / vKbRefl.w;
+	vec2 kbFine = vKbWorld.xz * ( kbGlitter.x * ${SCATTER_FINE}.0 / ${FLAKE_SIZE}.0 );
+	vec2 kbGrainS = vec2( texture2D( kbFlakeMap, kbFine ).a, texture2D( kbFlakeMap, kbFine.yx + 0.37 ).a );
+	vec2 kbUvS = kbUv + ( kbGrainS - 0.5 ) * kbReflX.xy;
+	vec3 kbSharp = texture2D( kbReflSharp, kbUvS ).rgb;
+	vec3 kbBlurred = texture2D( kbReflBlur, kbUvS ).rgb;
+	float kbDepth = texture2D( kbReflDepth, kbUv ).r;
+	vec3 kbRay = vKbWorld - kbVirtualEye;
+	float kbToFloor = length( kbRay );
+	kbRay /= kbToFloor;
+	float kbZ = kbDepth * 2.0 - 1.0;
+	float kbViewZ = 2.0 * kbNearFar.x * kbNearFar.y / ( kbNearFar.y + kbNearFar.x - kbZ * ( kbNearFar.y - kbNearFar.x ) );
+	float kbToHit = kbViewZ / max( dot( kbRay, kbVirtualForward ), 1e-4 );
+	float kbHeight = max( kbToHit - kbToFloor, 0.0 ) * abs( kbRay.y );
+	float kbHit = kbDepth >= 1.0 ? 0.0 : 1.0;
+	float kbK = kbHit < 0.5 ? 1.0 : max( kbContact, smoothstep( 0.0, kbHeightBlur, kbHeight ) );
+	vec3 kbRefl = mix( kbSharp, kbBlurred, kbK );
+	if ( kbReflX.z > 0.0 ) kbRefl *= 1.0 - smoothstep( 0.0, kbReflX.z, kbHeight );
+	float kbNear = 1.0 - smoothstep( 0.0, ${CONTACT_REACH}, kbHeight );
+	float kbAo = 1.0 - kbShadowA.w * kbHit * kbNear * kbNear;
+	reflectedLight.directDiffuse *= kbAo;
+	reflectedLight.indirectDiffuse *= kbAo;
+	reflectedLight.indirectSpecular += kbRefl * EnvironmentBRDF( nonPerturbedNormal, geometryViewDir, material.specularColorBlended, material.specularF90, max( kbSatinRough, 0.0525 ) ) * kbReflStrength;
+}
+`;
+
 const BLUR_VERTEX = /* glsl */ `
 varying vec2 vUv;
 void main() {
@@ -258,6 +378,23 @@ function mustReplace(source: string, anchor: string, replacement: string): strin
 const mirrorEyes: PerspectiveCamera[] = [];
 let mirrorDepth = 0;
 
+/** How the first shadow-casting directional light's depth changes across its map along a level floor, so a tap beside a point is tested against the floor there. */
+function floorShadowSlope(scene: Scene, out: Vector2): void {
+  let key: DirectionalLight | null = null;
+  scene.traverseVisible((o) => {
+    const light = o as DirectionalLight;
+    if (!key && light.isDirectionalLight && light.castShadow) key = light;
+  });
+  const m = (key as DirectionalLight | null)?.shadow.matrix.elements;
+  if (!m) {
+    out.set(0, 0);
+    return;
+  }
+  const det = m[0] * m[9] - m[8] * m[1];
+  if (Math.abs(det) < 1e-12) out.set(0, 0);
+  else out.set((m[2] * m[9] - m[10] * m[1]) / det, (m[10] * m[0] - m[2] * m[8]) / det);
+}
+
 function target(withDepth: boolean) {
   const t = new WebGLRenderTarget(1, 1, {
     type: HalfFloatType,
@@ -279,12 +416,17 @@ export function SatinFloor({
   centre = [0, 0],
   fade = [4, 14],
   reflection,
+  shadow,
   glitter,
   pools = [],
 }: SatinFloorProps) {
   const reflect = reflection
     ? { strength: 1, blur: 24, heightBlur: 1.5, contact: 0, scale: 1, ...reflection }
     : null;
+  // The added terms compile only when asked for, so a floor without them keeps its program.
+  const soft =
+    shadow !== undefined || reflection?.scatter !== undefined || reflection?.reach !== undefined;
+  const cast = shadow ? { ...SHADOW_DEFAULTS, ...shadow } : null;
   const meshRef = useRef<Mesh>(null);
   const flakes = { ...GLITTER_DEFAULTS, ...glitter };
   const gl = useThree((s) => s.gl);
@@ -354,6 +496,11 @@ export function SatinFloor({
       kbPoolA: { value: Array.from({ length: MAX_POOLS }, () => new Vector4()) },
       kbPoolB: { value: Array.from({ length: MAX_POOLS }, () => new Vector4()) },
       kbPoolCount: { value: 0 },
+      kbShadowA: { value: new Vector4() },
+      kbShadowB: { value: new Vector4() },
+      kbReflX: { value: new Vector3() },
+      kbShadowSlope: { value: new Vector2() },
+      kbSeed: supersampleSeed,
     }),
     [passes],
   );
@@ -378,8 +525,24 @@ export function SatinFloor({
       let fs = mustReplace(
         shader.fragmentShader,
         "#include <common>",
-        `#include <common>${FRAGMENT_PARS}`,
+        `#include <common>${FRAGMENT_PARS}${soft ? SOFT_FRAGMENT_PARS : ""}`,
       );
+      if (soft) {
+        fs = mustReplace(
+          fs,
+          "#include <shadowmap_pars_fragment>",
+          `#include <shadowmap_pars_fragment>${SOFT_SHADOW}`,
+        );
+        fs = mustReplace(
+          fs,
+          "#include <lights_fragment_begin>",
+          mustReplace(
+            ShaderChunk.lights_fragment_begin,
+            "getShadow( directionalShadowMap[ i ]",
+            "kbFloorShadow( UNROLLED_LOOP_INDEX, directionalShadowMap[ i ]",
+          ),
+        );
+      }
       fs = mustReplace(fs, "#include <color_fragment>", `#include <color_fragment>${COLOR}`);
       fs = mustReplace(
         fs,
@@ -406,13 +569,14 @@ export function SatinFloor({
       fs = mustReplace(
         fs,
         "#include <lights_fragment_end>",
-        `#include <lights_fragment_end>${REFLECTION}`,
+        `#include <lights_fragment_end>${soft ? SOFT_REFLECTION : REFLECTION}`,
       );
       shader.fragmentShader = fs;
     };
-    m.customProgramCacheKey = () => "kookaburra-satin-floor-v6";
+    m.customProgramCacheKey = () =>
+      soft ? "kookaburra-satin-floor-v6-soft" : "kookaburra-satin-floor-v6";
     return m;
-  }, [uniforms]);
+  }, [uniforms, soft]);
   useLayoutEffect(() => () => material.dispose(), [material]);
 
   useLayoutEffect(() => {
@@ -428,6 +592,21 @@ export function SatinFloor({
     uniforms.kbGlitter.value.set(flakes.scale, flakes.weight, flakes.roughness, flakes.tilt);
     uniforms.kbGrain.value = Math.min(1, Math.max(0, flakes.grain));
     uniforms.kbFlakeMap.value = flakeTexture;
+    const perUnit = 1 / (2 * SHADOW_FRUSTUM_EXTENT);
+    const spread = cast ? Math.max(0, cast.spread) : 0;
+    uniforms.kbShadowA.value.set(
+      spread,
+      cast ? Math.min(1, Math.max(0, cast.lighten)) : 0,
+      cast ? Math.max(1e-3, cast.reach) : 1,
+      cast ? Math.min(1, Math.max(0, cast.contact)) : 0,
+    );
+    uniforms.kbShadowB.value.set(
+      spread * SHADOW_SEARCH_GAP * perUnit,
+      SHADOW_MIN_TEXELS,
+      SHADOW_FAR - SHADOW_NEAR,
+      perUnit,
+    );
+    uniforms.kbReflX.value.z = Math.max(0, reflect?.reach ?? 0);
     const count = Math.min(MAX_POOLS, pools.length);
     uniforms.kbPoolCount.value = count;
     for (let i = 0; i < count; i++) {
@@ -458,6 +637,7 @@ export function SatinFloor({
     const mirror = (v: Vector3, floor: number) => v.setY(2 * floor - v.y);
     const clearColor = new Color();
     return (renderer: WebGLRenderer, scene: Scene, camera: Camera) => {
+      if (mirrorDepth === 0) floorShadowSlope(scene, uniforms.kbShadowSlope.value);
       const strength = uniforms.kbReflOn.value;
       if (busy || strength < 0.5 || scene.overrideMaterial) return;
       // A supersampled frame mirrors once: its draws differ by a fraction of a pixel, under the mirror's blur. A mirror made for another floor's reflection is never kept.
@@ -538,14 +718,17 @@ export function SatinFloor({
       renderer.setRenderTarget(passes.across);
       renderer.render(passes.quad, passes.quadCamera);
       passes.blur.uniforms.tSrc.value = passes.across.texture;
-      passes.blur.uniforms.uStep.value.set(0, px / h);
+      passes.blur.uniforms.uStep.value.set(0, (px * Math.max(1, reflect?.stretch ?? 1)) / h);
+      const scatter = Math.max(0, reflect?.scatter ?? 0) / 1080;
+      uniforms.kbReflX.value.x = (scatter * h) / w;
+      uniforms.kbReflX.value.y = scatter * Math.max(1, reflect?.stretch ?? 1);
       renderer.setRenderTarget(passes.blurred);
       renderer.render(passes.quad, passes.quadCamera);
       renderer.setRenderTarget(outer);
       renderer.shadowMap.autoUpdate = shadows;
       busy = false;
     };
-  }, [passes, uniforms, y, reflect?.scale, reflect?.blur]);
+  }, [passes, uniforms, y, reflect?.scale, reflect?.blur, reflect?.stretch, reflect?.scatter]);
 
   const reach = fade[1] + PLANE_MARGIN;
   const geometry = useMemo(

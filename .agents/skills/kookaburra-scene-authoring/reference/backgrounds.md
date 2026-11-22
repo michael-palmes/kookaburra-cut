@@ -27,7 +27,9 @@ records it in `project.json` `appliedBackground` so new scenes inherit it.
 - `parallax` 0..0.5 drifts the fill at that fraction of the content's screen motion
   (0.03 to 0.1 is tasteful). A pure orbit about the origin shows none; pan to see it.
 - Inline gradient spec: `{ "type": "linear" | "radial", "angleDeg": 180, "space": "oklch", "stops": [["#DCE9F5", 0], ["#F1DED4", 1]] }`.
-  `angleDeg` 180 puts the first stop on top; radial runs centre to corners; `oklch`
+  `angleDeg` 180 puts the first stop on top; radial runs centre to corners, or from
+  `"centre": [x, y]` (0 to 1 from the bottom left) to the farthest corner, which is how
+  a wall gets a light pool off to one side and falls away into the far corner; `oklch`
   interpolates perceptually (use it for new work). 24 curated specs:
   `./kb catalog backgrounds.gradients --json` (Teal Drift, Midnight Ink, Gilded Dusk...).
 - Theme gradient names (often `brand`, `backdrop`) are listed per theme in
@@ -112,14 +114,22 @@ Lit looks need light to read; unlit looks keep exact colours.
 
 `satin` reflects the scene, blurring each reflection with its height above the floor
 (`reflection`: `strength` 0.7, `blur` 30, `heightBlur` 0.6, `contact` 0.55, or `false`
-to save the second render it costs), glitters (`glitter`: `scale` 30, `density` 0.2,
+to save the second render it costs; add `stretch` 2 to 4 to smear it down the frame
+the way a rough floor does at a low angle, `scatter` 4 to 8 to break it up with the
+grain, and `reach` to fade it out by that height), glitters (`glitter`: `scale` 30, `density` 0.2,
 `grain` 0.6, `seed`) and dissolves into the layers behind it (`background`, else
 `colors.background`) between the `fade` radii (3, 11) around `centre`, so it shows no
 edge from any camera height. `pools` (up to four) are soft patches only the floor
 receives, such as light thrown off a polished rail: `{ "at": [x, z], "radius": [rx, rz],
 "angleDeg", "color", "intensity" }`. Unlike the other backdrops it is lit, so it needs
 stage `lighting` (with none it reads black). It takes real shadows itself, with no
-catcher, and volumetric beams read best over it (reference/lighting.md).
+catcher, and volumetric beams read best over it (reference/lighting.md). A `shadow`
+block softens the key light's shadow the way a real light does: `{ "spread": 0.08,
+"lighten": 0.35, "reach": 5, "contact": 0.55 }` widens its edge with distance from
+what casts it (`spread`, the light's apparent size), lets it lose `lighten` of its
+depth by `reach` units along its length, and darkens the floor where something meets
+it (`contact`, which needs the reflection on). Keep the lighting `shadow.softness`
+low (0.25) under it. It applies to the first shadow-casting directional light.
 
 Real cast shadows need a staged backdrop AND a lighting `shadow` with
 `technique: "map"` (reference/lighting.md). The floor sits at y = -1.5 by default

@@ -399,6 +399,8 @@ export interface ThemeEnvironment {
 export interface GradientSpec {
   type: "linear" | "radial";
   angleDeg: number;
+  /** Radial only: where it starts, [x, y] from the bottom left, 0..1; it then runs to the farthest corner. Absent is the middle. */
+  centre?: [number, number];
   /** Ordered [sRGB hex, position 0..1] pairs. */
   stops: [string, number][];
   space?: "oklch";
@@ -425,7 +427,22 @@ export interface SatinBackdropSpec {
   /** The floor dissolves into the layers behind it between these radii. */
   fade?: [number, number];
   /** `false` turns the reflection off. `blur` is in pixels of a 1080p frame; `heightBlur` is the height over which a reflection goes from sharp to fully blurred; `contact` is the blur kept even at the contact. */
-  reflection?: false | { strength?: number; blur?: number; heightBlur?: number; contact?: number };
+  reflection?:
+    | false
+    | {
+        strength?: number;
+        blur?: number;
+        heightBlur?: number;
+        contact?: number;
+        /** How much longer the blur runs down the frame than across it. */
+        stretch?: number;
+        /** The grain breaks the reflection up by this many pixels of a 1080p frame. */
+        scatter?: number;
+        /** Height at which a reflection has faded out. */
+        reach?: number;
+      };
+  /** A directional light's shadow on the floor: `spread` widens its edge with distance from the caster, `lighten` is the share lost by `reach`, `contact` darkens where something meets the floor (it needs the reflection). */
+  shadow?: { spread?: number; lighten?: number; reach?: number; contact?: number };
   /** Glossy flakes: `scale` flakes per unit, `density` the share that is flake, `grain` how much the sheen varies grain to grain. */
   glitter?: {
     scale?: number;

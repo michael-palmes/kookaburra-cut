@@ -1186,7 +1186,15 @@ camera exactly:
   mipmapped flake map and up to four floor-only pools. It fades out with premultiplied
   alpha over whatever drew first (the fixed background), on a plane fitted to the fade,
   so no edge shows. Fixed passes, no history. The plane margin, the blend, the flake
-  map size, the blur taps and the defaults in `backdrops.tsx` are contract.
+  map size, the blur taps and the defaults in `backdrops.tsx` are contract. A floor
+  with a `shadow` block, or `reflection.scatter` or `reach`, compiles a second program
+  (cache key `-soft`), so a floor without them keeps its bytes: the first
+  shadow-casting directional light's VSM map is read through a 16-tap blocker search
+  and a 40-tap filter on a Vogel disc, turned per pixel by interleaved gradient noise
+  offset by the supersample seed, each tap tested against the floor's own depth there
+  (three's VSM map holds receivers too; the slope comes from the light's shadow
+  matrix). The tap counts, the search gap, the contact reach and the scatter's grain
+  multiple in `SatinFloor.tsx` are contract.
 
 ### The fixed background
 
