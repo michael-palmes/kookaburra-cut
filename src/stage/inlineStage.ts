@@ -68,7 +68,7 @@ export function createInlineStage(element?: HTMLCanvasElement): StageHandle {
     async exportEnd() {
       const run = activeExport;
       activeExport = null;
-      if (run) endExportRun(run);
+      return run ? endExportRun(run) : null;
     },
     async holdExport(on) {
       setExporting(on);
@@ -104,6 +104,11 @@ export function createInlineStage(element?: HTMLCanvasElement): StageHandle {
     async perfRun() {
       throw new Error("the inline stage has no perf probe");
     },
+    tickFrame() {},
+    async drawStats() {
+      return null;
+    },
+    subscribeDrawn: () => () => {},
     async perfColdWaits() {
       return perfColdWaits();
     },

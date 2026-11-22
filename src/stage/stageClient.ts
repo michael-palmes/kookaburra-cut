@@ -7,10 +7,12 @@ import { useClockStore } from "../engine/clock";
 import { useDepthStageRegistry } from "../engine/depthStageRegistry";
 import type { ExportOptions } from "../engine/exporter";
 import { setExporting } from "../engine/exportState";
+import type { ExportTiming } from "../engine/exportTiming";
 import type { GizmoDomain } from "../engine/gizmoRegistry";
 import type { GlCensus } from "../engine/glContexts";
 import type { MemoryCensus } from "../engine/memoryCensus";
 import type { PerfRow } from "../engine/perfProbe";
+import type { DrawStats } from "../engine/playbackProbe";
 import {
   isWorkspaceBackedProjectId,
   type LoadedProject,
@@ -118,6 +120,9 @@ export class StageClient implements StageHandle {
     primaryHosts: 0,
   };
   private readonly stampListeners = new Set<() => void>();
+  private readonly drawnListeners = new Set<(clockMs: number) => void>();
+  private frameTick = 0;
+  private frameWanted = false;
   private currentFrame: { targets: Gizmo2DTargetFrame[]; camera: CameraFrame | null } = {
     targets: [],
     camera: null,
@@ -357,6 +362,17 @@ export class StageClient implements StageHandle {
         this.currentStamps = msg.stamps;
         for (const l of this.stampListeners) l();
         return;
+      case "drawn":
+        for (const l of this.drawnListeners) l(msg.clockMs);
+        return;
+      case "frameWanted":
+        this.frameWanted = true;
+        if (this.frameTick) return;
+        this.frameTick = requestAnimationFrame(() => {
+          this.frameTick = 0;
+          this.tickFrame();
+        });
+        return;
       case "frame":
         this.currentFrame = { targets: msg.targets, camera: msg.camera };
         this.cameraShadow.matrixWorld.fromArray(msg.camera.matrixWorld);
@@ -535,8 +551,8 @@ export class StageClient implements StageHandle {
       buffer ? [buffer] : [],
     );
   }
-  exportEnd(): Promise<void> {
-    return this.request({ type: "exportEnd" });
+  exportEnd(): Promise<ExportTiming | null> {
+    return this.request<ExportTiming | null>({ type: "exportEnd" });
   }
   holdExport(on: boolean): Promise<void> {
     return this.request({ type: "holdExport", on });
@@ -587,6 +603,18 @@ export class StageClient implements StageHandle {
   }
   perfRun(): Promise<PerfRow[]> {
     return this.request({ type: "perfRun" });
+  }
+  tickFrame(): void {
+    if (!this.frameWanted) return;
+    this.frameWanted = false;
+    this.send({ type: "vsync" });
+  }
+  drawStats(on: boolean): Promise<DrawStats | null> {
+    return this.request({ type: "drawStats", on });
+  }
+  subscribeDrawn(listener: (clockMs: number) => void): () => void {
+    this.drawnListeners.add(listener);
+    return () => this.drawnListeners.delete(listener);
   }
   perfColdWaits() {
     return this.request<{ referenced: number; bound: number; waits: number[] }>({
@@ -654,6 +682,7 @@ export class StageClient implements StageHandle {
     this.mirror.stop();
     setSceneModuleProvider(null);
     setStage(null);
+    if (this.frameTick) cancelAnimationFrame(this.frameTick);
     this.worker.terminate();
     const closed = new Error("the stage worker was closed");
     this.failure ??= closed;

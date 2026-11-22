@@ -5,6 +5,7 @@ import type { FrameSpec } from "../toolkit/frame/types";
 import type { CameraKeyframe } from "./cameraTrack";
 import { exportFrameTimeMs, posterFrameSample } from "./exportFrames";
 import { setExporting, withExporting } from "./exportState";
+import { addPhase, type ExportTiming, mergeExportTiming, newExportTiming } from "./exportTiming";
 import type { FormatSpec } from "./format";
 import type { MotionBlurSettings } from "./motionBlur";
 import type { ProjectMusic } from "./musicTime";
@@ -238,6 +239,24 @@ function untilAborted<T>(promise: Promise<T>, signal: AbortSignal | undefined): 
   });
 }
 
+/** Sends one frame to the encoder and resolves with its buffer, free for a later frame. Awaited a frame later, so a failure in between must not surface as unhandled. */
+function pushFrame(rgba: Uint8Array, timing: ExportTiming): Promise<ArrayBuffer> {
+  const at = performance.now();
+  const pushed = invoke("push_frame", rgba).then(() => {
+    addPhase(timing, "push", at);
+    return rgba.buffer as ArrayBuffer;
+  });
+  pushed.catch(() => {});
+  return pushed;
+}
+
+let lastTiming: ExportTiming | null = null;
+
+/** The most recent export run's timing breakdown (engine/exportTiming), for the autorun result. */
+export function lastExportTiming(): ExportTiming | null {
+  return lastTiming;
+}
+
 async function exportProjectHeld(
   opts: ExportOptions,
   onProgress?: (p: ExportProgress) => void,
@@ -251,6 +270,8 @@ async function exportProjectHeld(
   signal?.throwIfAborted();
   let started = false;
   let begun = false;
+  const timing = newExportTiming();
+  let pushing: Promise<ArrayBuffer> | null = null;
   // A cancel that lands while Rust finalises or runs a two-pass pass has no frame boundary to stop at, so it kills the native encode directly.
   const stopNativeEncode = () => void invoke("cancel_export").catch(() => {});
   try {
@@ -300,22 +321,37 @@ async function exportProjectHeld(
     started = true;
     signal?.addEventListener("abort", stopNativeEncode, { once: true });
 
-    // The frame buffer ping-pongs: the worker renders into it, the window pushes it, then hands it back for the next frame.
-    let buffer: ArrayBuffer | null = null;
+    // Two frame buffers ping-pong: while the window pushes one frame, the worker renders the next into the other. Pushes stay in frame order, one in flight.
+    let spare: ArrayBuffer | null = null;
     for (let frame = 0; frame < total; frame++) {
       signal?.throwIfAborted();
       const tMs = exportFrameTimeMs(frame, opts.fps, poster?.tMs);
       const last = frame === total - 1;
-      const result = await s.exportFrame(frame, tMs, !!poster, buffer, last && !!onFingerprint);
+      let at = performance.now();
+      const result = await s.exportFrame(frame, tMs, !!poster, spare, last && !!onFingerprint);
+      at = addPhase(timing, "stage", at);
       if (result.fingerprint && onFingerprint) onFingerprint(result.fingerprint);
       onBoundClipFrame?.(frame, result.boundClipFrame);
       onFrame?.(frame, result.rgba);
-      await invoke("push_frame", result.rgba);
-      buffer = result.rgba.buffer as ArrayBuffer;
+      at = addPhase(timing, "inspect", at);
+      spare = pushing ? await pushing : null;
+      addPhase(timing, "wait", at);
+      pushing = pushFrame(result.rgba, timing);
+      timing.frames += 1;
+    }
+    if (pushing) {
+      const at = performance.now();
+      await pushing;
+      pushing = null;
+      addPhase(timing, "wait", at);
     }
     signal?.throwIfAborted();
-    return await invoke<string>("finish_export");
+    const finishAt = performance.now();
+    const path = await invoke<string>("finish_export");
+    addPhase(timing, "finish", finishAt);
+    return path;
   } catch (err) {
+    await pushing?.catch(() => {});
     if (started) {
       // A real failure (not a cancel) leaves <export>.health.json and names where the run stopped.
       const reason = signal?.aborted ? undefined : String(err instanceof Error ? err.message : err);
@@ -331,7 +367,8 @@ async function exportProjectHeld(
     throw err;
   } finally {
     signal?.removeEventListener("abort", stopNativeEncode);
-    if (begun) await s.exportEnd().catch(() => {});
+    const staged = begun ? await s.exportEnd().catch(() => null) : null;
+    lastTiming = mergeExportTiming(timing, staged);
   }
 }
 

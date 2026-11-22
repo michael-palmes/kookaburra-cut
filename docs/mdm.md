@@ -255,8 +255,12 @@ never hold what is in a file (`SECURITY.md`, "On the Mac"). With
 
 ## Verifying
 
-1. On the Mac, `defaults read com.mpalmes.kookaburracut DisableClaude` prints
-   `1`: `defaults` composes managed values into what it shows.
+1. On the Mac,
+   `defaults read "/Library/Managed Preferences/com.mpalmes.kookaburracut" DisableClaude`
+   prints `1` (a user-level profile writes under
+   `/Library/Managed Preferences/<user>/` instead). Don't check with plain
+   `defaults read com.mpalmes.kookaburracut`: it can leave forced values out
+   (it does on macOS 27), so the key looks missing while the profile works.
 2. Launch the app. Settings ▸ Claude shows locked rows, the titlebar has no
    Edit with Claude, the Project menu has no Edit with Claude item, and a new
    project opens without the launcher.
