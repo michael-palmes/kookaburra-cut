@@ -55,7 +55,7 @@
             "at": [-2.7755575615628914e-17, -0.1, -8.881784197001252e-16],
             "mode": "point"
           },
-          "position": [0.18, 0.17, 5.2]
+          "position": [-0.8603, 0.17, 5.2]
         },
         "tMs": 950
       },
@@ -76,11 +76,13 @@
       {
         "ease": "inOutQuad",
         "from": "k1",
+        "smooth": false,
         "to": "k2"
       },
       {
         "ease": "inOutQuad",
         "from": "k2",
+        "smooth": false,
         "to": "k3"
       }
     ]
