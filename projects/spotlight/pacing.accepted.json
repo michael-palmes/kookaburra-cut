@@ -24,6 +24,14 @@
       "why": "The camera is already easing away to the lockup through bar 14; the move starts slowly so the check does not see it",
       "by": "session-6bfcea7a",
       "atMs": 1795345580588
+    },
+    {
+      "id": "cc6b6530",
+      "kind": "final-hit",
+      "scene": "08-lockup",
+      "why": "The switch flips on and the call to action appears on the final hit; the change is small on screen, so the check misses it",
+      "by": "session-6bfcea7a",
+      "atMs": 1795351751657
     }
   ]
 }
