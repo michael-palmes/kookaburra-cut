@@ -27274,7 +27274,7 @@
       "personas": ["pm", "marketer"],
       "level": "standard",
       "tier": "safe",
-      "uses": ["audio", "background", "camera-rig", "device"],
+      "uses": ["audio", "background", "camera-rig", "device", "text-motion"],
       "highlights": [
         "The problem in a line, then the feature by name",
         "In close on the one control that matters",
@@ -27310,6 +27310,7 @@
             "devices",
             "lighting",
             "text",
+            "textAnimation",
             "textStyle"
           ]
         },
@@ -27324,6 +27325,7 @@
             "devices",
             "lighting",
             "text",
+            "textAnimation",
             "textStyle"
           ]
         },
@@ -27357,6 +27359,7 @@
             "lighting",
             "taps",
             "text",
+            "textAnimation",
             "textStyle"
           ]
         },
@@ -27371,6 +27374,7 @@
             "devices",
             "lighting",
             "text",
+            "textAnimation",
             "textStyle"
           ]
         },
