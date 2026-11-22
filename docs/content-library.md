@@ -279,8 +279,9 @@ Capture current frame shows a spinner and stays disabled until its preview has
 refreshed or failed. Its status identifies waits for playback or export to finish.
 
 Templates store slot images in `previews/1.png` through `previews/4.png`; presets
-store `poster.png`. A template's selected slot is its gallery cover, with the
-legacy `poster.png` or `poster.jpg` retained until slot images exist. Listings
+store `poster.png`. A template's selected slot (`preview.poster`, a still slot
+from 0 to 3) is its gallery cover, with the legacy `poster.png` or `poster.jpg`
+retained until slot images exist. Listings
 expose all four images and refresh their URLs after capture. Native preview access
 permits only the item's validated image files, including checkout captures, before
 returning paths or announcing a completed capture. Duplication copies existing
