@@ -1,24 +1,185 @@
 {
   "version": 1,
   "name": "Detail 3",
-  "text": {
-    "label": "11 · Detail 3 · mint room",
-    "bars": "Bar 16 · Peak: a change every two beats",
-    "kicker": "",
-    "title": "",
-    "c1": "16.1  Close on their ticks landing",
-    "c2": "16.3  Whip towards lilac"
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "media": {
+        "src": "assets/fairywren-share-phone.mp4",
+        "kind": "video",
+        "inMs": 4175
+      },
+      "placement": {
+        "position": [2.25, 0.079, 0],
+        "rotationDeg": [0, -24, 0],
+        "scale": 1.39,
+        "ground": true
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "none",
+      "finish": {
+        "frame": {
+          "roughness": 0.3,
+          "metalness": 1,
+          "anisotropy": 0.4,
+          "grain": 1,
+          "grainScale": 20000,
+          "brushedMap": 0,
+          "chamferRoughness": 0.08,
+          "envIntensity": 1.6,
+          "iblTaps": 7
+        },
+        "polished": {
+          "roughness": 0.06,
+          "envIntensity": 1.8
+        },
+        "glass": {
+          "roughness": 0.05,
+          "ior": 1.5,
+          "specularIntensity": 1,
+          "envIntensity": 1.5
+        },
+        "back": {
+          "roughness": 0.45,
+          "metalness": 0,
+          "tint": 0.55,
+          "clearcoat": 0.6,
+          "clearcoatRoughness": 0.12,
+          "envIntensity": 1.3
+        }
+      }
+    }
+  ],
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "position": [1.5, 0.27, 8.8],
+          "aim": {
+            "mode": "point",
+            "at": [2.0, 0.82, 0]
+          },
+          "fov": 18,
+          "dof": {
+            "mode": "lens",
+            "fStop": 16,
+            "focus": "auto"
+          }
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1406,
+        "at": "bar:16.4",
+        "pose": {
+          "position": [0.9, 0.1, 6.4],
+          "aim": {
+            "mode": "point",
+            "at": [2.2, 0.05, 0]
+          },
+          "fov": 18,
+          "dof": {
+            "mode": "lens",
+            "fStop": 16,
+            "focus": "auto"
+          }
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic",
+        "smooth": false
+      }
+    ]
   },
-  "textStyle": {
-    "labelColor": "#0b1030",
-    "barsColor": "#0b1030",
-    "kickerColor": "#0b1030",
-    "titleColor": "#0b1030",
-    "c1Color": "#0b1030",
-    "c2Color": "#0b1030"
+  "motionBlur": {
+    "enabled": true,
+    "shutterDeg": 180,
+    "camera": true,
+    "objects": false
+  },
+  "lighting": {
+    "ambient": 0.8,
+    "fills": [],
+    "sun": {
+      "azimuthDeg": -38,
+      "elevationDeg": 44,
+      "intensity": 2.2,
+      "color": "#fff4e6",
+      "castShadow": true
+    },
+    "environment": {
+      "source": "kookaburra:cyclorama",
+      "intensity": 1.6,
+      "rotationDeg": 0
+    },
+    "lights": [],
+    "shadow": {
+      "technique": "map",
+      "softness": 0.25,
+      "opacity": 0.55,
+      "mapSize": 2048,
+      "bias": -0.0005
+    }
   },
   "background": {
-    "type": "color",
-    "color": "#3ed6a6"
+    "type": "gradient",
+    "spec": {
+      "type": "radial",
+      "angleDeg": 0,
+      "centre": [0.2, 0.74],
+      "stops": [["#90eac7", 0], ["#59d8ad", 0.34], ["#2ec899", 0.68], ["#01aa7f", 1]],
+      "space": "oklch"
+    }
+  },
+  "backdrop": {
+    "type": "satin",
+    "color": "#3ed6a6",
+    "roughness": 0.35,
+    "specular": 0.3,
+    "centre": [1.5, 0],
+    "fade": [7, 18],
+    "reflection": {
+      "strength": 0.7,
+      "blur": 30,
+      "heightBlur": 1.0,
+      "contact": 0.5,
+      "stretch": 3,
+      "scatter": 6,
+      "reach": 2.8
+    },
+    "glitter": {
+      "scale": 90,
+      "density": 0,
+      "roughness": 0.15,
+      "tilt": 0.5,
+      "weight": 0,
+      "grain": 0.6,
+      "seed": 5
+    },
+    "shadow": {
+      "spread": 0.08,
+      "lighten": 0.35,
+      "reach": 5,
+      "contact": 0.55
+    },
+    "pools": [
+      {
+        "at": [-0.5, -0.5],
+        "radius": [10, 7],
+        "color": "#1bd09e",
+        "intensity": 0.12
+      }
+    ]
   }
 }

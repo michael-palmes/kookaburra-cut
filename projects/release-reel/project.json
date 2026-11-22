@@ -101,11 +101,15 @@
     {
       "file": "scenes/05-detail-1.tsx",
       "durationMs": 1875,
-      "cutAt": "bar:9"
+      "cutAt": "bar:9",
+      "transition": {
+        "type": "whip",
+        "durationMs": 400
+      }
     },
     {
       "file": "scenes/06-word-2.tsx",
-      "durationMs": 1875,
+      "durationMs": 2275,
       "cutAt": "bar:10"
     },
     {
@@ -116,11 +120,15 @@
     {
       "file": "scenes/08-detail-2.tsx",
       "durationMs": 1875,
-      "cutAt": "bar:13"
+      "cutAt": "bar:13",
+      "transition": {
+        "type": "whip",
+        "durationMs": 400
+      }
     },
     {
       "file": "scenes/09-word-3.tsx",
-      "durationMs": 1875,
+      "durationMs": 2275,
       "cutAt": "bar:14"
     },
     {
@@ -131,11 +139,15 @@
     {
       "file": "scenes/11-detail-3.tsx",
       "durationMs": 1875,
-      "cutAt": "bar:17"
+      "cutAt": "bar:17",
+      "transition": {
+        "type": "whip",
+        "durationMs": 400
+      }
     },
     {
       "file": "scenes/12-and-more.tsx",
-      "durationMs": 7500,
+      "durationMs": 7900,
       "cutAt": "bar:21"
     },
     {
