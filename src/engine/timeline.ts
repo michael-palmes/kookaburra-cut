@@ -59,9 +59,16 @@ export function createGlobalTimeline() {
   return createTimeline({ autoplay: false });
 }
 
-/** Reactive scene time for the active scrub position. `localMs` is relative to the enclosing scene's start (supplied by `<SceneHost>` via `SceneContext`); with no scene context it falls back to project time so a lone scene anchored at t=0 keeps `localMs === globalMs` (the v0 contract). `progress` stays project-global per the `SceneTime` type; authors derive scene-local progress from `localMs / scene.durationMs`. Inside a motion blur sample the time moves by the scene's shutter offset times `scale` (default: the `MotionBlurContext`); 0 never moves and never re-renders for a sample. Inside `SteppedTime` the frame instant steps BEFORE that offset, so a held pose blurs around itself and never ghosts into the next step. */
+/** Reactive scene time for the active scrub position. `localMs` is relative to the enclosing scene's start (supplied by `<SceneHost>` via `SceneContext`); with no scene context it falls back to project time so a lone scene anchored at t=0 keeps `localMs === globalMs` (the v0 contract). `progress` stays project-global per the `SceneTime` type; authors derive scene-local progress from `localMs / useSceneDuration()`. Inside a motion blur sample the time moves by the scene's shutter offset times `scale` (default: the `MotionBlurContext`); 0 never moves and never re-renders for a sample. Inside `SteppedTime` the frame instant steps BEFORE that offset, so a held pose blurs around itself and never ghosts into the next step. */
 export function useTimeline(scale?: number): SceneTime {
   return useSceneTime(scale, useContext(SteppedTimeContext));
+}
+
+/** The scene's length as the project plays it (a `project.json` retime or a pinned cut, never the TSX default), steady while Present holds a slide; outside a scene, the project's. Never re-renders per frame, so time an exit from the end: `const endMs = useSceneDuration()`, then `outAt={endMs - 165}`. */
+export function useSceneDuration(): number {
+  const scene = useSceneContext();
+  const projectMs = useClockStore((s) => s.durationMs);
+  return scene ? (scene.lengthMs ?? scene.durationMs) : projectMs;
 }
 
 /** `useTimeline` at the full frame rate even inside a stepped subtree, for what has to track the camera. */

@@ -399,7 +399,10 @@ function validateManifest(raw: unknown): TemplateManifestResult {
     issues.push({ path: "preview", message: "must be an object" });
   } else {
     if (!isIndex(raw.preview.poster)) {
-      issues.push({ path: "preview.poster", message: "must be a scene index" });
+      issues.push({
+        path: "preview.poster",
+        message: `must be a still slot, 0 to ${TEMPLATE_PREVIEW_COUNT - 1}`,
+      });
     }
     preview = {
       poster: isIndex(raw.preview.poster) ? raw.preview.poster : 0,

@@ -56,6 +56,7 @@ import {
   resyncFollowMediaDuration,
   writeSceneDoc,
 } from "./sceneDoc";
+import { sceneDocBase } from "./sceneDocBase";
 import { applyBackgroundToAllScenes } from "./sceneDocPatchQueue";
 import { parseSceneDoc, type SceneDoc, type SceneDocMediaSpec } from "./sceneDocSchema";
 import { sceneMediaFamily, sceneMediaUsesWindowPath } from "./sceneMedia";
@@ -75,6 +76,24 @@ describe("editable library scene documents", () => {
       expect(staleImport).not.toHaveBeenCalled();
     },
   );
+});
+
+describe("a capture's in-memory sceneDoc", () => {
+  it("parses like the file, never reads or remembers the disk copy, and refuses one it can't read", async () => {
+    sidecars.set("scenes/one.json", JSON.stringify({ version: 1, name: "Saved" }));
+    const invoke = vi.mocked((await import("@tauri-apps/api/core")).invoke);
+    const reads = () => invoke.mock.calls.filter(([cmd]) => cmd === "read_scene_doc_entry").length;
+    const before = reads();
+    const overlay = { doc: { version: 1, name: "Variant", text: { title: "Hi" } } };
+    const doc = await loadSceneDoc("ws:demo", "scenes/one.tsx", {}, undefined, [], overlay);
+    expect(doc).toMatchObject({ name: "Variant", text: { title: "Hi" } });
+    expect(reads()).toBe(before);
+    expect(sceneDocBase(doc)).toBeUndefined();
+    expect(doc?.text).not.toBe(overlay.doc.text);
+    await expect(
+      loadSceneDoc("ws:demo", "scenes/one.tsx", {}, undefined, [], { doc: { version: 99 } }),
+    ).rejects.toThrow(/sceneDoc for scenes\/one.json isn't a scene document/);
+  });
 });
 
 const videoDevice = (id: string, src: string) => ({

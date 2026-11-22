@@ -89,7 +89,7 @@ line, on a line that holds still while the pill draws.
 | --- | --- | --- |
 | `text` | | `\n` breaks lines |
 | `from`, `to` | 0, 600 | In window, scene-local ms |
-| `outAt`, `outDurationMs` | | Out start; plays over the in's length unless `outDurationMs` sets its own. Exits need `outAt` |
+| `outAt`, `outDurationMs` | | Out start; plays over the in's length unless `outDurationMs` sets its own. Exits need `outAt`; `outAt={endMs - outDurationMs}` with `const endMs = useSceneDuration()` ends one on the cut wherever a retime moves it |
 | `hitAt` | | Scene ms the first unit LANDS, on a beat or a cut: the in keeps its length and starts the motion's lead earlier (below). Wins over `from`; the out never moves |
 | `opacity` | 1 | 0..1, multiplied into every fade |
 | `preset`, `outPreset` | theme `textAnimation` | Prefer the sidecar spec (below) |

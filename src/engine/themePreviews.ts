@@ -41,10 +41,17 @@ export function sceneMiddles(project: LoadedProject): number[] {
   return project.slots.map((slot) => Math.round(slot.startMs + slot.durationMs / 2));
 }
 
+/** A swap's commit is the stage's re-render (or a fresh worker still loading), which idle spins alone can outrun. */
+const COMMIT_FLOOR_MS = 30_000;
+
 /** Waits until the canvas tree has committed this project (the CompositorDriver stamp); a project swap (`applyLoadedProject`) renders on React's concurrent lane while a capture's clock write is sync-lane, so without this barrier the clock stamp can land on the old tree and the capture reads the previous theme's content (the stale scene-1 preview bug, 2026-07-07: every batch theme's first capture was one theme behind). */
-export async function awaitProjectCommitted(project: LoadedProject): Promise<void> {
+export async function awaitProjectCommitted(
+  project: LoadedProject,
+  atLeastMs = COMMIT_FLOOR_MS,
+): Promise<void> {
+  const started = Date.now();
   for (let spins = 0; canvasCommittedProject() !== project; spins++) {
-    if (spins > 5000) {
+    if (spins > 5000 && Date.now() - started >= atLeastMs) {
       throw new Error("Canvas tree never committed the swapped project.");
     }
     await yieldMacrotask();

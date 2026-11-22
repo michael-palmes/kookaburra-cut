@@ -97,15 +97,17 @@ def _blit(canvas: labels.Canvas, x0: int, y0: int, box: Tuple[int, int], width: 
             at += 4
 
 
-def _fit_label(text: str, width: int) -> str:
-    room = max(4, (width - 4) // labels.ADVANCE)
+def _fit_label(text: str, width: int, scale: int = 1) -> str:
+    room = max(4, (width - 4) // (labels.ADVANCE * scale))
     return text if len(text) <= room else "..." + text[-(room - 3):]
 
 
-def write_sheets(cells: List[Dict[str, Any]], folder: Path, box: Tuple[int, int], name: str = "sheet") -> Tuple[List[Path], int]:
+def write_sheets(cells: List[Dict[str, Any]], folder: Path, box: Tuple[int, int], name: str = "sheet",
+                 label_scale: int = 1) -> Tuple[List[Path], int]:
     """cells: { label, image?: Path, rgba?: (w, h, bytes), surface? }. Returns the sheets written and how many cells fitted."""
+    label_h = LABEL_H * label_scale
     cols = max(1, (SHEET_EDGE - GAP) // (box[0] + GAP))
-    rows = max(1, (SHEET_EDGE - GAP) // (box[1] + LABEL_H + GAP))
+    rows = max(1, (SHEET_EDGE - GAP) // (box[1] + label_h + GAP))
     per_sheet = cols * rows
     sheets: List[Path] = []
     fitted = min(len(cells), per_sheet * MAX_SHEETS)
@@ -114,11 +116,11 @@ def write_sheets(cells: List[Dict[str, Any]], folder: Path, box: Tuple[int, int]
             batch = cells[start:start + per_sheet]
             used_rows = (len(batch) + cols - 1) // cols
             used_cols = min(cols, len(batch))
-            canvas = labels.Canvas(GAP + used_cols * (box[0] + GAP), GAP + used_rows * (box[1] + LABEL_H + GAP))
+            canvas = labels.Canvas(GAP + used_cols * (box[0] + GAP), GAP + used_rows * (box[1] + label_h + GAP))
             canvas.fill(0, 0, canvas.width, canvas.height, SHEET_BG)
             for i, cell in enumerate(batch):
                 x = GAP + (i % cols) * (box[0] + GAP)
-                y = GAP + (i // cols) * (box[1] + LABEL_H + GAP)
+                y = GAP + (i // cols) * (box[1] + label_h + GAP)
                 bg = _background(cell.get("surface"))
                 canvas.fill(x, y, box[0], box[1], bg)
                 decoded = cell.get("rgba")
@@ -131,7 +133,7 @@ def write_sheets(cells: List[Dict[str, Any]], folder: Path, box: Tuple[int, int]
                     _blit(canvas, x, y, box, decoded[0], decoded[1], decoded[2], bg)
                 else:
                     canvas.fill(x, y, box[0], box[1], MID)
-                canvas.label(x, y + box[1] + 1, _fit_label(str(cell["label"]), box[0]), 1)
+                canvas.label(x, y + box[1] + label_scale, _fit_label(str(cell["label"]), box[0], label_scale), label_scale)
             path = folder / (f"{name}-{page + 1}.png" if fitted > per_sheet else f"{name}.png")
             path.write_bytes(canvas.png())
             sheets.append(path)

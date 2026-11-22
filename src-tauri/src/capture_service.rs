@@ -15,6 +15,7 @@ use crate::bridge::{self, BridgeRequest, RESPONSE_CAP_BYTES, RESPONSE_TTL_MS};
 /// What kb may rely on from this build (`health.captureFeatures`).
 pub const CAPTURE_FEATURES: &[&str] = &[
     "scale", "width", "probe", "client", "deadline", "recycle", "debug", "range", "texts",
+    "sceneDoc",
 ];
 const HEALTH_VERSION: u32 = 1;
 /// One unit is a 1280x720 frame's pixels; a 4K frame is 9.
@@ -147,6 +148,15 @@ pub(crate) fn units_for(frames: u32, width: u32, height: u32) -> u32 {
     frames.saturating_mul(px.div_ceil(UNIT_PIXELS).max(1) as u32)
 }
 
+/// Distinct `sceneDoc` overlays in a capture: each one reloads the project, so each costs a unit (mirror of `sceneDocOverlays`).
+pub(crate) fn scene_doc_overlays(frames: &[bridge::BridgeFrame]) -> u32 {
+    let mut seen = std::collections::HashSet::new();
+    for doc in frames.iter().filter_map(|f| f.scene_doc.as_ref()) {
+        seen.insert(doc.to_string());
+    }
+    seen.len() as u32
+}
+
 /// A ranged render's size: a literal width, else the 360 px short edge (mirror of `rangeFormat`).
 pub(crate) fn range_size(native: (u32, u32), width: Option<f64>) -> (u32, u32) {
     if width.is_some_and(|w| w.is_finite() && w > 0.0) {
@@ -212,7 +222,8 @@ pub(crate) fn peek(request: &BridgeRequest, editor_aspect: Option<&str>) -> Requ
         let probe = request.probe.as_ref().is_some_and(|p| !p.is_null());
         let multi = (request.sheet == Some(true) || frames > 1) && (sized || !probe);
         let (w, h) = capture_size(native, request.width, request.scale, multi);
-        units_for(frames, w, h)
+        let overlays = request.frames.as_deref().map_or(0, scene_doc_overlays);
+        units_for(frames, w, h).saturating_add(overlays)
     } else {
         1
     };
@@ -1824,6 +1835,16 @@ mod tests {
             json!({ "frames": [{ "scene": "0" }, { "scene": "1" }], "scale": 1 }),
         );
         assert_eq!(peek(&native, None).units, 18);
+        let tries = request(
+            "e",
+            json!({ "frames": [
+                { "scene": "4" },
+                { "scene": "4", "sceneDoc": { "a": 1 } },
+                { "scene": "4", "sceneDoc": { "a": 2 } },
+                { "scene": "4", "at": 2, "sceneDoc": { "a": 2 } },
+            ], "sheet": true }),
+        );
+        assert_eq!(peek(&tries, Some("16:9")).units, 4 + 2);
         let probe = request("c", json!({ "frames": [{}, {}], "probe": [[1, 2]] }));
         assert_eq!(peek(&probe, None).units, 18);
         let single = request("d", json!({ "aspect": "9:16" }));

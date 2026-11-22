@@ -689,20 +689,26 @@ def cmd_doc(ctx: Ctx) -> int:
         arg = None
 
     def edit(doc: Any) -> Tuple[Any, str]:
-        if doc is not None and not isinstance(doc, dict):
-            raise KbError(f"{label} must be a JSON object")
-        if a.op == "unset" and doc is None:
-            raise KbError(f"{label} does not exist")
-        new, summary = docmod.edit(doc if doc is not None else {"version": version}, a.op, getattr(a, "path", "") or "", arg)
-        from .beats import model as beatsmodel
-
-        stray = beatsmodel.stray_positions(doc, new)
-        if stray:
-            raise beatsmodel.stray_error(stray)
-        patch = arg if a.op == "merge" else None
-        return settle_music(project, stem, doc, checkmod.stamp_stagger_exact(doc, new), summary, patch)
+        return sidecar_edit(project, stem, doc, a.op, getattr(a, "path", "") or "", arg, version)
 
     return guarded_write(ctx, label, label, edit, sidecar_validator(ctx, label))
+
+
+def sidecar_edit(project: Project, stem: str, doc: Any, op: str, path: str, arg: Any, version: int) -> Tuple[Any, str]:
+    """One `kb doc` set, unset or merge on a fresh sidecar, music settled: (new doc, summary). `kb try` builds variants with it."""
+    label = f"scenes/{stem}.json"
+    if doc is not None and not isinstance(doc, dict):
+        raise KbError(f"{label} must be a JSON object")
+    if op == "unset" and doc is None:
+        raise KbError(f"{label} does not exist")
+    new, summary = docmod.edit(doc if doc is not None else {"version": version}, op, path, arg)
+    from .beats import model as beatsmodel
+
+    stray = beatsmodel.stray_positions(doc, new)
+    if stray:
+        raise beatsmodel.stray_error(stray)
+    patch = arg if op == "merge" else None
+    return settle_music(project, stem, doc, checkmod.stamp_stagger_exact(doc, new), summary, patch)
 
 
 def settle_music(project: Project, stem: str, before: Any, after: Any, summary: str, patch: Optional[Dict[str, Any]] = None) -> Tuple[Any, str]:
@@ -1147,6 +1153,9 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     s.set_defaults(fn=cmd_check)
 
     capturemod.register(sub, common, Formatter)
+    from . import try_cli
+
+    try_cli.register(sub, common, Formatter)
 
     scene = add("scene", "add, duplicate, move, remove or retime scenes (keeps project.json, files and ids consistent)")
     ss = scene.add_subparsers(dest="op", metavar="OP")

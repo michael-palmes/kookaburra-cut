@@ -11,12 +11,15 @@ import {
   type BridgeRequest,
   buildCheckReport,
   captureFormat,
+  captureGroups,
   collectAssetRefs,
   frameLabel,
   frameScene,
   isNativeBridgeKind,
   MAX_CAPTURE_FRAMES,
   MAX_PROBES,
+  MAX_SCENE_DOC_BYTES,
+  MAX_SCENE_DOC_OVERLAYS,
   NATIVE_BRIDGE_KINDS,
   parseProbes,
   rangeFormat,
@@ -28,6 +31,7 @@ import {
   resolvePresetRef,
   responseVersion,
   samplePixels,
+  sceneDocOverlays,
   shiftFlashReport,
   stripFrames,
   trustDeniedSlug,
@@ -231,6 +235,67 @@ describe("request shaping", () => {
     ]);
     const many = Array.from({ length: MAX_CAPTURE_FRAMES + 1 }, () => ({ scene: "0" }));
     expect(() => requestFrames(request({ frames: many }))).toThrow(/at most 48 frames/);
+  });
+
+  it("takes a sceneDoc only as an object on a frame that names its scene, within the caps", () => {
+    const doc = { version: 3, backdrop: { roughness: 0.2 } };
+    const frames = requestFrames(
+      request({
+        frames: [
+          { scene: "1", at: 2 },
+          { scene: "1", at: 2, sceneDoc: doc },
+        ],
+      }),
+    );
+    expect(frames[0]).toEqual({ scene: "1", at: 2 });
+    expect(frames[1]).toEqual({ scene: "1", at: 2, overlay: { doc, key: JSON.stringify(doc) } });
+    const refuse = (frame: Record<string, unknown>) => () =>
+      requestFrames(request({ frames: [frame] as BridgeRequest["frames"] }));
+    expect(refuse({ scene: "1", sceneDoc: [1] })).toThrow(/must be a JSON object/);
+    expect(refuse({ scene: "1", sceneDoc: "x" })).toThrow(/must be a JSON object/);
+    expect(refuse({ sceneDoc: doc })).toThrow(/must name its scene/);
+    const big = { pad: "x".repeat(MAX_SCENE_DOC_BYTES) };
+    expect(refuse({ scene: "1", sceneDoc: big })).toThrow(/at most 262144/);
+    const nine = Array.from({ length: MAX_SCENE_DOC_OVERLAYS + 1 }, (_, n) => ({
+      scene: "1",
+      sceneDoc: { n },
+    }));
+    expect(() => requestFrames(request({ frames: nine }))).toThrow(/at most 8 distinct sceneDocs/);
+    const repeats = Array.from({ length: 12 }, (_, n) => ({ scene: "1", sceneDoc: { n: n % 8 } }));
+    expect(sceneDocOverlays(requestFrames(request({ frames: repeats })))).toBe(8);
+  });
+
+  it("groups frames by what they render, the project as saved first", () => {
+    const a = { version: 3, a: 1 };
+    const b = { version: 3, b: 1 };
+    const frames = requestFrames(
+      request({
+        frames: [
+          { scene: "02-stats", at: 1, sceneDoc: a },
+          { scene: "02-stats", at: 1 },
+          { scene: "1", at: 1, sceneDoc: b },
+          { scene: "02-stats", at: 3, sceneDoc: a },
+        ],
+      }),
+    );
+    expect(captureGroups({ sceneFiles }, frames)).toEqual([
+      { file: null, frames: [1] },
+      { file: "scenes/02-stats.tsx", doc: a, frames: [0, 3] },
+      { file: "scenes/02-stats.tsx", doc: b, frames: [2] },
+    ]);
+    const unknown = requestFrames(request({ frames: [{ scene: "09-x", sceneDoc: a }] }));
+    expect(() => captureGroups({ sceneFiles }, unknown)).toThrow(/"09-x", which isn't in/);
+    const outOfRange = requestFrames(request({ frames: [{ scene: "7", sceneDoc: a }] }));
+    expect(() => captureGroups({ sceneFiles }, outOfRange)).toThrow(/isn't in this project/);
+    const twoScenes = requestFrames(
+      request({
+        frames: [
+          { scene: "0", sceneDoc: a },
+          { scene: "1", sceneDoc: a },
+        ],
+      }),
+    );
+    expect(() => captureGroups({ sceneFiles }, twoScenes)).toThrow(/one sceneDoc is for one scene/);
   });
 
   it("names the scene a frame landed in and the time into it", () => {
