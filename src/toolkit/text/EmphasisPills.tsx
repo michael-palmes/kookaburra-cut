@@ -2,7 +2,7 @@ import { useLayoutEffect, useMemo } from "react";
 import { Color, ShaderMaterial, Vector2, Vector4 } from "three";
 import { type EmphasisPill, type EmphasisShape, emphasisPills } from "./emphasis";
 import { ACCENT_LAYER_Z_EM } from "./HighlightQuads";
-import { type StaggerUnits, type TextUnitSample, unitIndexForKey } from "./presets";
+import { type StaggerUnits, staggerKeyAt, type TextUnitSample, unitIndexForKey } from "./presets";
 
 /** Where each pill rides this frame: an offset in layout units, a scale about its centre and an opacity (a staggered headline hands its token unit's sample; a block or static one, zero and its alpha). */
 export interface EmphasisPillMotion {
@@ -23,7 +23,11 @@ export function pillMotionsFromUnits(
   const motions: EmphasisPillMotion[] = [];
   if (samples.length === 0) return motions;
   for (let i = 0; i + 3 < rects.length; i += 4) {
-    const key = axis === "-y" ? -(rects[i + 1] + rects[i + 3]) / 2 : (rects[i] + rects[i + 2]) / 2;
+    const key = staggerKeyAt(
+      { ...units, axis },
+      (rects[i] + rects[i + 2]) / 2,
+      (rects[i + 1] + rects[i + 3]) / 2,
+    );
     const sample = samples[Math.min(unitIndexForKey(units, key), samples.length - 1)];
     motions.push({
       dx: sample.dxEm * fontSize,

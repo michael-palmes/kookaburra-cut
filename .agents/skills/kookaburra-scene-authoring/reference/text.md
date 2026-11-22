@@ -237,7 +237,12 @@ across a `\n` or a wrap; `single` comes apart (`rise-mask`, `word-cycle`,
 `underline-draw`, `build`). `fade-up` is two-line as a block and `wordStaggerLines:
 "single"` with `stagger="word"`: a rise by word catches a wrapped line's words at
 different heights. `kb check` warns when a single-line motion meets copy with a `\n`, or
-a `maxWidth` that can wrap it (`fit="width"` removes the wrap).
+a `maxWidth` that can wrap it (`fit="width"` removes the wrap). A word or char stagger
+runs in reading order across a wrap: line one's words, then line two's.
+
+For a sentence, `slam` and the other big-scale motions pile up: every word is in the
+air at once. Use `dolly` with a word stagger near a sixteenth note and an in window of
+about four of them (`to`), so each word settles as the next arrives.
 
 ### Landing on a moment
 

@@ -50,6 +50,7 @@ import {
   STATIC_TEXT_PRESET,
   sampleTextUnit,
   shineBand,
+  staggerKeyAt,
   TEXT_PRESET_LINES,
   TEXT_PRESET_NAMES,
   type TextAnimTiming,
@@ -776,6 +777,57 @@ describe("resolveTextAnimationWithDoc (v11 · M6 — the force override)", () =>
     expect(hasOwnAnimationProps({ staggerMs: 40 })).toBe(true);
     expect(hasOwnAnimationProps({ delayMs: 200 })).toBe(true);
     expect(hasOwnAnimationProps({ delivery: "by-paragraph" })).toBe(true);
+  });
+});
+
+describe("computeStaggerUnits on wrapped lines", () => {
+  // "ab cd" over "ef gh": the second line sits under the first, at the same X.
+  const wrapped = carets([
+    [0, 1, 0, 1],
+    [1, 2, 0, 1],
+    [2, 3, 0, 1],
+    [3, 4, 0, 1],
+    [4, 5, 0, 1],
+    [0, 1, -1.2, -0.2],
+    [1, 2, -1.2, -0.2],
+    [2, 3, -1.2, -0.2],
+    [3, 4, -1.2, -0.2],
+    [4, 5, -1.2, -0.2],
+  ]);
+  const text = "ab cd ef gh";
+
+  it("keeps the X-only keys unless asked", () => {
+    const units = computeStaggerUnits(text, "word", wrapped);
+    expect(units.lines).toBeUndefined();
+    expect(unitIndexForKey(units, staggerKeyAt(units, 0.5, -0.7))).toBe(0);
+  });
+
+  it("gives each line its own units in reading order", () => {
+    const units = computeStaggerUnits(text, "word", wrapped, true);
+    expect(units.count).toBe(4);
+    expect(units.lines).toBeDefined();
+    const at = (x: number, y: number) => unitIndexForKey(units, staggerKeyAt(units, x, y));
+    expect([at(1, 0.5), at(4, 0.5), at(1, -0.7), at(4, -0.7)]).toEqual([0, 1, 2, 3]);
+    expect(at(1, 0.1)).toBe(0);
+    expect(at(1, -1.1)).toBe(2);
+    for (let i = 0; i + 2 < units.count; i++) {
+      expect(units.edgeKey[i + 1]).toBeGreaterThan(units.edgeKey[i]);
+    }
+  });
+
+  it("leaves one line on its legacy keys", () => {
+    const one = carets([
+      [0, 1],
+      [1, 2],
+      [2, 3],
+      [3, 4],
+      [4, 5],
+    ]);
+    const legacy = computeStaggerUnits("ab cd", "word", one);
+    const aware = computeStaggerUnits("ab cd", "word", one, true);
+    expect(aware.lines).toBeUndefined();
+    expect(Array.from(aware.edgeKey)).toEqual(Array.from(legacy.edgeKey));
+    expect(staggerKeyAt(aware, 2.5, 0.3)).toBe(2.5);
   });
 });
 

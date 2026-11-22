@@ -1332,6 +1332,8 @@ export interface StaggerUnits {
   centerY: Float32Array;
   /** The unit-walk axis the shader variant must be mounted with. */
   axis: StaggerAxis;
+  /** Wrapped char/word units: `[first line centre Y, 1 / line pitch, key span per line]`. The walk key becomes `x + span × line`, so each line keeps its own units; absent on one line and on legacy mounts. */
+  lines?: readonly [number, number, number];
 }
 
 interface UnitExtent {
@@ -1348,6 +1350,7 @@ export function computeStaggerUnits(
   text: string,
   granularity: StaggerGranularity,
   caretPositions: Float32Array,
+  lineAware = false,
 ): StaggerUnits {
   const axis: StaggerAxis =
     granularity === "paragraph" || granularity === "paragraph-group" ? "-y" : "x";
@@ -1417,6 +1420,7 @@ export function computeStaggerUnits(
     }
   }
 
+  const lines = lineAware && axis === "x" ? lineKeys(raw) : null;
   const merged = mergeUnits(raw, MAX_STAGGER_UNITS);
   const count = merged.length;
   const startX = new Float32Array(count);
@@ -1429,7 +1433,44 @@ export function computeStaggerUnits(
     edgeKey[i] = i < count - 1 ? (merged[i].keyEnd + merged[i + 1].keyStart) / 2 : EDGE_SENTINEL;
     centerY[i] = (merged[i].minY + merged[i].maxY) / 2;
   }
-  return { count, startX, endX, edgeKey, centerY, axis };
+  return lines
+    ? { count, startX, endX, edgeKey, centerY, axis, lines }
+    : { count, startX, endX, edgeKey, centerY, axis };
+}
+
+/** Rekeys char/word units that sit on more than one line to `x + span × line` (reading order stays ascending) and returns the shader's line terms; null on a single line, which keeps its plain X keys. */
+function lineKeys(raw: UnitExtent[]): readonly [number, number, number] | null {
+  if (raw.length < 2) return null;
+  const centres = raw.map((u) => (u.minY + u.maxY) / 2);
+  const top = Math.max(...centres);
+  const height = Math.max(...raw.map((u) => u.maxY - u.minY));
+  let pitch = Number.POSITIVE_INFINITY;
+  for (const c of centres) {
+    const gap = top - c;
+    if (gap > height * 0.25 && gap < pitch) pitch = gap;
+  }
+  if (!Number.isFinite(pitch)) return null;
+  let minX = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  for (const u of raw) {
+    minX = Math.min(minX, u.startX);
+    maxX = Math.max(maxX, u.endX);
+  }
+  const span = 2 * (maxX - minX) + height;
+  for (let i = 0; i < raw.length; i++) {
+    const line = Math.max(0, Math.floor((top - centres[i]) / pitch + 0.5));
+    raw[i].keyStart = raw[i].startX + span * line;
+    raw[i].keyEnd = raw[i].endX + span * line;
+  }
+  return [top, 1 / pitch, span];
+}
+
+export function staggerKeyAt(units: StaggerUnits | null, x: number, y: number): number {
+  if (!units) return x;
+  if (units.axis === "-y") return -y;
+  const l = units.lines;
+  if (!l) return x;
+  return x + l[2] * Math.max(0, Math.floor((l[0] - y) * l[1] + 0.5));
 }
 
 /** CPU twin of the stagger shader's unit walk (staggerMaterial VERTEX_TRANSFORM / OVER_WALK): the last unit whose decision edge has not been passed, keyed on layout X (char/word) or −Y (paragraph). Emoji quads use it so a quad joins exactly the unit the shader would give a glyph at the same position. */

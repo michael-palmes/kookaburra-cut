@@ -48,6 +48,15 @@ describe("stagger material programs", () => {
     expect(hashOf({ ...features, emphasis: false, typeMask: false })).toBe(hash);
   });
 
+  it("lines swaps only the walk key, on both chains", () => {
+    for (const features of [{ lines: true }, { lines: true, pack: true }]) {
+      const { vertex } = programOf(features);
+      expect(vertex).toContain("uniform vec3 uGanLine;");
+      expect(vertex).toContain("uGanLine.z * max(0.0, floor(");
+    }
+    expect(programOf({ lines: true, axis: "-y" }).vertex).not.toContain("uGanLine");
+  });
+
   it("emphasis rewrites troika's edge offset per glyph on both chains", () => {
     for (const features of [{ emphasis: true }, { emphasis: true, pack: true }]) {
       const { vertex, fragment } = programOf(features);

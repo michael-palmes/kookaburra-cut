@@ -33,7 +33,17 @@ varying float vGanX;
 `;
 
 // Derivation intros nest OUTER-FIRST (troika-three-utils injects each vertexTransform at the top of its own wrapping main), so this runs BEFORE troika's glyph placement: `position.xy` is the glyph-local quad interpolant (0..1), which placement then mix()es with aTroikaGlyphBounds; because troika derives its SDF sampling from the SAME interpolant, the offsets applied here mostly SELF-CANCEL into clip-reveal illusions rather than true motion (the shipped v8 stagger look, pixel-frozen on standing projects; variants needing REAL geometry ride the sandwich below). The walk axis is a mount-constant variant: char/word compare layout X (byte-identical to the v8 program) while the paragraph granularities compare k = −centerY (vertically disjoint contiguous line ranges by construction).
-const vertexTransformFor = (axisY: boolean) => /* glsl */ `
+const LINES_VERTEX_DEFS = /* glsl */ `
+uniform vec3 uGanLine;
+`;
+const walkKey = (axis: "x" | "-y" | "lines", c: string) =>
+  axis === "-y"
+    ? `-${c}.y`
+    : axis === "lines"
+      ? `${c}.x + uGanLine.z * max(0.0, floor((uGanLine.x - ${c}.y) * uGanLine.y + 0.5))`
+      : `${c}.x`;
+
+const vertexTransformFor = (axis: "x" | "-y" | "lines") => /* glsl */ `
 vec2 ganCenter = vec2(
   (aTroikaGlyphBounds.x + aTroikaGlyphBounds.z) * 0.5,
   (aTroikaGlyphBounds.y + aTroikaGlyphBounds.w) * 0.5
@@ -42,7 +52,7 @@ int ganUnit = 0;
 for (int i = 0; i < ${N}; i++) {
   if (float(i) >= uGanCount - 0.5) break;
   ganUnit = i;
-  if (${axisY ? "-ganCenter.y" : "ganCenter.x"} <= uGanEdgeX[i]) break;
+  if (${walkKey(axis, "ganCenter")} <= uGanEdgeX[i]) break;
 }
 vec4 ganA = uGanUnitA[ganUnit];
 vGanX = position.x;
@@ -50,8 +60,9 @@ position.xy = ganCenter + (position.xy - ganCenter) * ganA.w + vec2(ganA.y, ganA
 vGanAlpha = ganA.x;
 vGanSweep = uGanUnitB[ganUnit].xy;
 `;
-const VERTEX_TRANSFORM = vertexTransformFor(false);
-const VERTEX_TRANSFORM_AXIS_Y = vertexTransformFor(true);
+const VERTEX_TRANSFORM = vertexTransformFor("x");
+const VERTEX_TRANSFORM_AXIS_Y = vertexTransformFor("-y");
+const VERTEX_TRANSFORM_LINES = vertexTransformFor("lines");
 
 // The GEOMETRY SANDWICH, real glyph transforms: troika couples SDF sampling to the quad interpolant (`vTroikaGlyphUV = clippedXY`, both derived from the SAME post-transform `position.xy`), so any interpolant remap in an over-derivation self-cancels visually (the glyph image never moves, the quad just covers a shifted sampling window, and the only visible artefact is a hard clip at the cell edge), making rotations IMPOSSIBLE over the text material alone. Variants that move real geometry (twist, scatter) use a THREE-LAYER sandwich instead (base → OUR UNDER-layer → troika text → OUR OVER-layer): derivation intros nest outer-first, so at runtime the OVER-layer runs FIRST (it has attribute access and walks the unit selection into shared vertex-stage globals, leaving `position` untouched), then troika places the glyph, then the UNDER-layer applies the actual transforms on true glyph-placed LAYOUT coordinates, decoupled from sampling; the globals are DECLARED in the under-layer's defs (source-earliest) and WRITTEN by the over-layer (defined later in source, executed first, legal file-scope GLSL). The v8 over-chain stays byte-frozen for feature-off and shine-only variants, so standing stagger projects compile the exact same program.
 const SCATTER_VERTEX_DEFS = /* glsl */ `
@@ -65,7 +76,7 @@ vec2 ganCenterG;
 `;
 
 // The over-layer walk: same unit selection as the v8 transform, writing globals only.
-const overWalkFor = (axisY: boolean) => /* glsl */ `
+const overWalkFor = (axis: "x" | "-y" | "lines") => /* glsl */ `
 ganCenterG = vec2(
   (aTroikaGlyphBounds.x + aTroikaGlyphBounds.z) * 0.5,
   (aTroikaGlyphBounds.y + aTroikaGlyphBounds.w) * 0.5
@@ -74,12 +85,13 @@ int ganUnitI = 0;
 for (int i = 0; i < ${N}; i++) {
   if (float(i) >= uGanCount - 0.5) break;
   ganUnitI = i;
-  if (${axisY ? "-ganCenterG.y" : "ganCenterG.x"} <= uGanEdgeX[i]) break;
+  if (${walkKey(axis, "ganCenterG")} <= uGanEdgeX[i]) break;
 }
 ganUnitG = float(ganUnitI);
 `;
-const OVER_WALK = overWalkFor(false);
-const OVER_WALK_AXIS_Y = overWalkFor(true);
+const OVER_WALK = overWalkFor("x");
+const OVER_WALK_AXIS_Y = overWalkFor("-y");
+const OVER_WALK_LINES = overWalkFor("lines");
 
 // The under-layer unit transform: the v8 semantics on REAL layout positions, scale about the glyph centre, offsets in true em, vGanX in true layout X.
 const UNDER_TRANSFORM = /* glsl */ `
@@ -437,6 +449,7 @@ export interface StaggerTextMaterial {
     pack: boolean;
     gradient: boolean;
     arc: boolean;
+    lines?: true;
     echo?: 1 | -1;
     emphasis?: true;
     typeMask?: true;
@@ -449,6 +462,8 @@ export interface StaggerMaterialFeatures {
   shine?: boolean;
   /** Unit-walk axis: "-y" for the paragraph granularities. Default "x". */
   axis?: StaggerAxis;
+  /** Wrapped char/word text walks its units line by line (axis "x" only). */
+  lines?: boolean;
   /** Per-unit Y-rotation about the unit centre (twist-scale under stagger). */
   twist?: boolean;
   /** Per-unit roll + z-approach + em-space drift (scatter-scale). */
@@ -485,8 +500,9 @@ export function createStaggerTextMaterial(
   const arc = features.arc === true;
   const emphasis = features.emphasis === true;
   const typeMask = features.typeMask === true;
+  const lines = features.lines === true && !axisY;
   const geometry = twist || scatter || arc;
-  const walk = axisY ? VERTEX_TRANSFORM_AXIS_Y : VERTEX_TRANSFORM;
+  const walk = axisY ? VERTEX_TRANSFORM_AXIS_Y : lines ? VERTEX_TRANSFORM_LINES : VERTEX_TRANSFORM;
   const resolved = {
     shine,
     shineTint,
@@ -496,6 +512,7 @@ export function createStaggerTextMaterial(
     pack,
     gradient,
     arc,
+    ...(lines ? { lines: true as const } : {}),
     ...(echo !== undefined ? { echo } : {}),
     ...(emphasis ? { emphasis: true as const } : {}),
     ...(typeMask ? { typeMask: true as const } : {}),
@@ -508,6 +525,7 @@ export function createStaggerTextMaterial(
     uGanEdgeX: { value: new Float32Array(N).fill(EDGE_SENTINEL) },
     uGanUnitA: { value: buildUnitAArray() },
     uGanUnitB: { value: buildUnitBArray() },
+    ...(lines ? { uGanLine: { value: new Vector3(0, 0, 0) } } : {}),
     ...(shine
       ? {
           uGanShine: { value: new Vector4(0, 1, 0, 0) },
@@ -564,7 +582,10 @@ export function createStaggerTextMaterial(
     (echo !== undefined ? echoFragmentFor(echo) : "") +
     (shine ? shineFragment : "") +
     (pack ? PACK_FRAGMENT_STASH : "");
-  const extraVertexDefs = (emphasis ? EMPH_VERTEX_DEFS : "") + (typeMask ? TYPE_VERTEX_DEFS : "");
+  const extraVertexDefs =
+    (lines ? LINES_VERTEX_DEFS : "") +
+    (emphasis ? EMPH_VERTEX_DEFS : "") +
+    (typeMask ? TYPE_VERTEX_DEFS : "");
   const extraOverVertex = (emphasis ? EMPH_OVER_VERTEX : "") + (typeMask ? TYPE_OVER_VERTEX : "");
 
   if (!geometry) {
@@ -631,7 +652,7 @@ export function createStaggerTextMaterial(
   const material = createDerivedMaterial(textMaterial, {
     chained: true,
     vertexTransform:
-      (axisY ? OVER_WALK_AXIS_Y : OVER_WALK) +
+      (axisY ? OVER_WALK_AXIS_Y : lines ? OVER_WALK_LINES : OVER_WALK) +
       (pack ? PACK_OVER_WALK : "") +
       (shine ? SHINE_VERTEX_PRELUDE : "") +
       (gradient ? LOOK_REST_CAPTURE : "") +
@@ -856,6 +877,12 @@ export function writeStaggerUniforms(
   u.uGanCount.value = Math.min(count, samples.length);
   u.uGanEm.value = fontSize;
   const edges: Float32Array = u.uGanEdgeX.value;
+  const line = u.uGanLine?.value as Vector3 | undefined;
+  if (line) {
+    const l = units?.lines;
+    if (l) line.set(l[0], l[1], l[2]);
+    else line.set(0, 0, 0);
+  }
   const unitA: Float32Array = u.uGanUnitA.value;
   const unitB: Float32Array = u.uGanUnitB.value;
   const scatter = mat.features.scatter;
