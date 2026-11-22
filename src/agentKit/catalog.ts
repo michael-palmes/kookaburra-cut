@@ -775,6 +775,7 @@ export const TOOLKIT_SUMMARIES: Record<
   ExtrudedText: { summary: "Lit 3D extruded text (ASCII, bundled face)." },
   FALLBACK_DEVICE_ID: { summary: "android: what unknown or unavailable models render as." },
   HeroObject: { summary: "Bundled hero glTF with idle spin and float." },
+  IconTile: { summary: "An app icon as a thick, glossy, lit tile that stands on a stage." },
   ImageCard: { summary: "Flat, colour-exact image plane; PNG alpha shapes it." },
   LayeredScreenshot: { summary: "Renders the sidecar layeredScreenshot stack." },
   LightRig: { summary: "Shared three-light rig; mount once, pass lit={false} to lit primitives." },

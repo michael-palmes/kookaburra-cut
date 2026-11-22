@@ -1193,8 +1193,10 @@ camera exactly:
   and a 40-tap filter on a Vogel disc, turned per pixel by interleaved gradient noise
   offset by the supersample seed, each tap tested against the floor's own depth there
   (three's VSM map holds receivers too; the slope comes from the light's shadow
-  matrix). The tap counts, the search gap, the contact reach and the scatter's grain
-  multiple in `SatinFloor.tsx` are contract.
+  matrix). A `reach` fade is read from the mirror's depth at 8 taps on the same turned
+  disc, spread over 0.6 of the blur's footprint, so a blurred reflection keeps its soft
+  edge past the caster's outline. The tap counts, the search gap, the contact reach, the
+  reach spread and the scatter's grain multiple in `SatinFloor.tsx` are contract.
 
 ### The fixed background
 

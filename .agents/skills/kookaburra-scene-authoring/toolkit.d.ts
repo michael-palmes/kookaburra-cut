@@ -865,6 +865,20 @@ declare module "@kookaburra/toolkit" {
     overshoot?: number;
   }
 
+  export interface ExtrudedBevel {
+    size?: number;
+    thickness?: number;
+    segments?: number;
+    corner?: number;
+  }
+
+  export interface ExtrudedFinish {
+    roughness?: number;
+    metalness?: number;
+    clearcoat?: number;
+    clearcoatRoughness?: number;
+  }
+
   /** Extruded 3D text: real depth + bevels via FontLoader/TextGeometry, unlike the flat troika SDF of `AnimatedHeadline`; geometry is a pure function of props + the bundled typeface (parsed synchronously from JSON, see `fonts.ts`), and the reveal (rise + tilt settle) is a pure function of `useTimeline()`, never the wall clock. It animates transforms only, no transparency, so mid-reveal frames never show internal faces. With a `textKey` it joins the managed-text lifecycle, so it stands down under a generic takeover like every scene-owned text primitive. */
   export function ExtrudedText(props: ExtrudedTextProps): ReactElement | null;
 
@@ -880,8 +894,14 @@ declare module "@kookaburra/toolkit" {
     fontSize?: number;
     /** Extrusion depth in world units. Defaults to `fontSize * 0.25`. */
     depth?: number;
-    /** Bevelled edges (on by default; bevels are what sell the extrusion under light). */
-    bevel?: boolean;
+    /** Bevelled edges (on by default; bevels are what sell the extrusion under light). An object rounds them: `size` and `thickness` in em (0.015 and 0.02 by default), `segments` (3), and `corner`, an em radius that also rounds each glyph's own sharp corners. */
+    bevel?: boolean | ExtrudedBevel;
+    /** The surface. Absent keeps the satin default; any field switches to a clearcoated finish whose gloss shows under area lights and the environment. */
+    finish?: ExtrudedFinish;
+    /** Cast and take the stage's shadows. */
+    shadow?: boolean;
+    /** `"bottom"` stands the text on its position (its lowest point at y 0) instead of centring it. */
+    anchorY?: "middle" | "bottom";
     /** Theme colour token for the material. */
     tone?: "text" | "accent" | "muted";
     /** Bundle a self-contained light rig (DeviceMockup pattern). Turn off when the scene lights itself or stacks several lit primitives (rigs add up). */
@@ -1022,6 +1042,29 @@ declare module "@kookaburra/toolkit" {
     floatHz?: number;
     /** Bundle the lit set (rig + one-shot environment); defaults true, or false under a lighting `<SceneStage>` since the stage lights the scene; an explicit value wins. */
     lit?: boolean;
+  }
+
+  /** An app icon as a thick, lit tile that stands on a stage: unlike the flat `ImageCard` it has depth, rounded edges and a glossy surface, shows in a floor's reflection and can cast a shadow. */
+  export function IconTile(props: IconTileProps): ReactElement | null;
+
+  export interface IconTileProps {
+    /** Project-relative image path (e.g. `assets/app-icon.png`). */
+    src: string;
+    position?: V3;
+    /** Rotation in radians. */
+    rotation?: V3;
+    /** World-unit width and height of the tile's face. */
+    size?: number;
+    /** World-unit thickness. Defaults to `size * 0.28`. */
+    depth?: number;
+    /** Corner radius as a fraction of `size` (0.225, an app icon's corner). */
+    radius?: number;
+    /** Edge rounding as a fraction of `size` (0.035). */
+    bevel?: number;
+    /** The surface (clearcoated by default, so it takes gloss from area lights and the environment). */
+    finish?: ExtrudedFinish;
+    /** Cast and take the stage's shadows. */
+    shadow?: boolean;
   }
 
   /** A flat image plane for icons, logos and stills: renders UNLIT with `toneMapped: false` so the asset's pixels land exactly (the device-screen/backdrop precedent), respecting PNG alpha so rounded/irregular shapes come from the asset itself; the suspense texture load is settled by the export preamble before frame 0. */

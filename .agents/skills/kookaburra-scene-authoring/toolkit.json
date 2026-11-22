@@ -1727,6 +1727,14 @@
     "signature": "interface EaseOptions { overshoot?: number; }",
     "doc": "Per-call curve options; absent fields keep the table curves exactly."
   },
+  "ExtrudedBevel": {
+    "kind": "type",
+    "signature": "interface ExtrudedBevel { size?: number; thickness?: number; segments?: number; corner?: number; }"
+  },
+  "ExtrudedFinish": {
+    "kind": "type",
+    "signature": "interface ExtrudedFinish { roughness?: number; metalness?: number; clearcoat?: number; clearcoatRoughness?: number; }"
+  },
   "ExtrudedText": {
     "kind": "component",
     "summary": "Lit 3D extruded text (ASCII, bundled face).",
@@ -1784,10 +1792,31 @@
       },
       {
         "name": "bevel",
-        "type": "boolean",
+        "type": "boolean | ExtrudedBevel",
         "required": false,
         "default": "true",
-        "doc": "Bevelled edges (on by default; bevels are what sell the extrusion under light)."
+        "units": "em",
+        "doc": "Bevelled edges (on by default; bevels are what sell the extrusion under light). An object rounds them: `size` and `thickness` in em (0.015 and 0.02 by default), `segments` (3), and `corner`, an em radius that also rounds each glyph's own sharp corners."
+      },
+      {
+        "name": "finish",
+        "type": "ExtrudedFinish",
+        "required": false,
+        "doc": "The surface. Absent keeps the satin default; any field switches to a clearcoated finish whose gloss shows under area lights and the environment."
+      },
+      {
+        "name": "shadow",
+        "type": "boolean",
+        "required": false,
+        "default": "false",
+        "doc": "Cast and take the stage's shadows."
+      },
+      {
+        "name": "anchorY",
+        "type": "\"middle\" | \"bottom\"",
+        "required": false,
+        "default": "\"middle\"",
+        "doc": "`\"bottom\"` stands the text on its position (its lowest point at y 0) instead of centring it."
       },
       {
         "name": "tone",
@@ -1813,7 +1842,7 @@
   },
   "ExtrudedTextProps": {
     "kind": "type",
-    "signature": "interface ExtrudedTextProps { text: string; from?: number; to?: number; position?: V3; rotation?: V3; fontSize?: number; depth?: number; bevel?: boolean; tone?: \"text\" | \"accent\" | \"muted\"; lit?: boolean; textKey?: string; }"
+    "signature": "interface ExtrudedTextProps { text: string; from?: number; to?: number; position?: V3; rotation?: V3; fontSize?: number; depth?: number; bevel?: boolean | ExtrudedBevel; finish?: ExtrudedFinish; shadow?: boolean; anchorY?: \"middle\" | \"bottom\"; tone?: \"text\" | \"accent\" | \"muted\"; lit?: boolean; textKey?: string; }"
   },
   "FALLBACK_DEVICE_ID": {
     "kind": "constant",
@@ -2002,6 +2031,82 @@
   "HeroObjectProps": {
     "kind": "type",
     "signature": "interface HeroObjectProps { model: HeroModelName; position?: V3; rotation?: V3; scale?: number; spinDegPerSec?: number; floatAmplitude?: number; floatHz?: number; lit?: boolean; }"
+  },
+  "IconTile": {
+    "kind": "component",
+    "summary": "An app icon as a thick, glossy, lit tile that stands on a stage.",
+    "signature": "function IconTile(props: IconTileProps): ReactElement | null;",
+    "doc": "An app icon as a thick, lit tile that stands on a stage: unlike the flat `ImageCard` it has depth, rounded edges and a glossy surface, shows in a floor's reflection and can cast a shadow.",
+    "props": [
+      {
+        "name": "src",
+        "type": "string",
+        "required": true,
+        "doc": "Project-relative image path (e.g. `assets/app-icon.png`)."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]"
+      },
+      {
+        "name": "rotation",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]",
+        "units": "radians",
+        "doc": "Rotation in radians."
+      },
+      {
+        "name": "size",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "units": "world units",
+        "doc": "World-unit width and height of the tile's face."
+      },
+      {
+        "name": "depth",
+        "type": "number",
+        "required": false,
+        "default": "size * 0.28",
+        "units": "world units",
+        "doc": "World-unit thickness. Defaults to `size * 0.28`."
+      },
+      {
+        "name": "radius",
+        "type": "number",
+        "required": false,
+        "default": "0.225",
+        "doc": "Corner radius as a fraction of `size` (0.225, an app icon's corner)."
+      },
+      {
+        "name": "bevel",
+        "type": "number",
+        "required": false,
+        "default": "0.035",
+        "doc": "Edge rounding as a fraction of `size` (0.035)."
+      },
+      {
+        "name": "finish",
+        "type": "ExtrudedFinish",
+        "required": false,
+        "doc": "The surface (clearcoated by default, so it takes gloss from area lights and the environment)."
+      },
+      {
+        "name": "shadow",
+        "type": "boolean",
+        "required": false,
+        "default": "false",
+        "doc": "Cast and take the stage's shadows."
+      }
+    ],
+    "example": "<IconTile src=\"...\" />"
+  },
+  "IconTileProps": {
+    "kind": "type",
+    "signature": "interface IconTileProps { src: string; position?: V3; rotation?: V3; size?: number; depth?: number; radius?: number; bevel?: number; finish?: ExtrudedFinish; shadow?: boolean; }"
   },
   "ImageCard": {
     "kind": "component",

@@ -1,5 +1,7 @@
 import { useContext, useEffect, useId, useLayoutEffect, useMemo } from "react";
+import { ExtrudeGeometry } from "three";
 import { TextGeometry } from "three/examples/jsm/geometries/TextGeometry.js";
+import { toCreasedNormals } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { shouldRenderManagedTextRole } from "../../engine/managedText";
 import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import { useTextKeyRegistry } from "../../engine/textKeyRegistry";
@@ -15,6 +17,7 @@ import { LightRig } from "../lighting/LightRig";
 import { useSceneStaged } from "../stage/context";
 import type { V3 } from "../types";
 import { text3dFont } from "./fonts";
+import { roundShapes } from "./roundCorners";
 
 export interface ExtrudedTextProps {
   text: string;
@@ -28,14 +31,36 @@ export interface ExtrudedTextProps {
   fontSize?: number;
   /** Extrusion depth in world units. Defaults to `fontSize * 0.25`. */
   depth?: number;
-  /** Bevelled edges (on by default; bevels are what sell the extrusion under light). */
-  bevel?: boolean;
+  /** Bevelled edges (on by default; bevels are what sell the extrusion under light). An object rounds them: `size` and `thickness` in em (0.015 and 0.02 by default), `segments` (3), and `corner`, an em radius that also rounds each glyph's own sharp corners. */
+  bevel?: boolean | ExtrudedBevel;
+  /** The surface. Absent keeps the satin default; any field switches to a clearcoated finish whose gloss shows under area lights and the environment. */
+  finish?: ExtrudedFinish;
+  /** Cast and take the stage's shadows. */
+  shadow?: boolean;
+  /** `"bottom"` stands the text on its position (its lowest point at y 0) instead of centring it. */
+  anchorY?: "middle" | "bottom";
   /** Theme colour token for the material. */
   tone?: "text" | "accent" | "muted";
   /** Bundle a self-contained light rig (DeviceMockup pattern). Turn off when the scene lights itself or stacks several lit primitives (rigs add up). */
   lit?: boolean;
   /** The sidecar style key this text honours: registers the row in the Edit-text drill and applies the `textStyle.<textKey>*` overrides (Size/Color/OffsetX/OffsetY/RotationDeg). */
   textKey?: string;
+}
+
+const SMOOTH_ANGLE = Math.PI / 4;
+
+export interface ExtrudedBevel {
+  size?: number;
+  thickness?: number;
+  segments?: number;
+  corner?: number;
+}
+
+export interface ExtrudedFinish {
+  roughness?: number;
+  metalness?: number;
+  clearcoat?: number;
+  clearcoatRoughness?: number;
 }
 
 /** Extruded 3D text: real depth + bevels via FontLoader/TextGeometry, unlike the flat troika SDF of `AnimatedHeadline`; geometry is a pure function of props + the bundled typeface (parsed synchronously from JSON, see `fonts.ts`), and the reveal (rise + tilt settle) is a pure function of `useTimeline()`, never the wall clock. It animates transforms only, no transparency, so mid-reveal frames never show internal faces. With a `textKey` it joins the managed-text lifecycle, so it stands down under a generic takeover like every scene-owned text primitive. */
@@ -57,7 +82,17 @@ function ExtrudedTextRenderer(props: ExtrudedTextProps) {
     tone = "text",
     lit,
     textKey,
+    finish,
+    shadow = false,
+    anchorY = "middle",
   } = props;
+  const round = typeof bevel === "object" ? bevel : null;
+  const rounded = round !== null;
+  const bevelled = bevel !== false;
+  const bevelSize = round?.size ?? 0.015;
+  const bevelThickness = round?.thickness ?? 0.02;
+  const bevelSegments = round?.segments ?? 3;
+  const corner = round?.corner ?? 0;
 
   // Staged scenes light themselves; the bundled rig stands down by default.
   const staged = useSceneStaged();
@@ -118,19 +153,39 @@ function ExtrudedTextRenderer(props: ExtrudedTextProps) {
   ]);
 
   const geometry = useMemo(() => {
-    const geo = new TextGeometry(text, {
-      font,
-      size,
+    const options = {
       depth,
-      curveSegments: 12,
-      bevelEnabled: bevel,
-      bevelThickness: size * 0.02,
-      bevelSize: size * 0.015,
-      bevelSegments: 3,
-    });
+      curveSegments: bevelSegments > 3 ? 24 : 12,
+      bevelEnabled: bevelled,
+      bevelThickness: size * bevelThickness,
+      bevelSize: size * bevelSize,
+      bevelSegments,
+    };
+    const flat =
+      corner > 0
+        ? new ExtrudeGeometry(
+            roundShapes(font.generateShapes(text, size), size * corner, options.curveSegments),
+            options,
+          )
+        : new TextGeometry(text, { font, size, ...options });
+    const geo = rounded ? toCreasedNormals(flat, SMOOTH_ANGLE) : flat;
+    if (geo !== flat) flat.dispose();
     geo.center(); // anchor centre/middle like AnimatedHeadline (and centre the depth axis)
+    if (anchorY === "bottom" && geo.boundingBox) geo.translate(0, -geo.boundingBox.min.y, 0);
     return geo;
-  }, [text, font, size, depth, bevel]);
+  }, [
+    text,
+    font,
+    size,
+    depth,
+    bevelled,
+    rounded,
+    bevelSize,
+    bevelThickness,
+    bevelSegments,
+    corner,
+    anchorY,
+  ]);
   // Dispose the previous geometry when props change it (r3f only disposes on unmount).
   useEffect(() => () => geometry.dispose(), [geometry]);
 
@@ -143,8 +198,18 @@ function ExtrudedTextRenderer(props: ExtrudedTextProps) {
     <group position={pos} rotation={groupRotation}>
       {isLit && <LightRig />}
       <group position={[0, rise, 0]} rotation={[tilt, 0, 0]}>
-        <mesh geometry={geometry}>
-          <meshStandardMaterial color={fill} roughness={0.35} metalness={0.2} />
+        <mesh geometry={geometry} castShadow={shadow} receiveShadow={shadow}>
+          {finish ? (
+            <meshPhysicalMaterial
+              color={fill}
+              roughness={finish.roughness ?? 0.35}
+              metalness={finish.metalness ?? 0.2}
+              clearcoat={finish.clearcoat ?? 1}
+              clearcoatRoughness={finish.clearcoatRoughness ?? 0.1}
+            />
+          ) : (
+            <meshStandardMaterial color={fill} roughness={0.35} metalness={0.2} />
+          )}
         </mesh>
       </group>
     </group>

@@ -256,7 +256,7 @@ export default defineScene({
 | `AnimatedGroup` | Animate an icon + text lockup as one unit with the text presets |
 | `Device`, `DeviceMockup` (legacy) | Devices (reference/devices.md) |
 | `DeviceScreenAnchor`, `ScreenRegion`, `useDeviceScreenPoint` | Content pinned to a screen, a lifted card or lens of the screen itself, and a moving screen's point for match moves (reference/devices.md) |
-| `ImageCard`, `VideoClip`, `LayeredScreenshot`, `VideoWindow` (legacy) | Media (reference/media.md) |
+| `ImageCard`, `IconTile`, `VideoClip`, `LayeredScreenshot`, `VideoWindow` (legacy) | Media (reference/media.md) |
 | `Chart` | The sidecar chart (reference/charts.md) |
 | `StagedObject`, `HeroObject` | 3D objects |
 | `ParticleField`, `WireGrid`, `Ribbon` | Seeded generative shapes on the clock |
@@ -278,7 +278,7 @@ Generative shapes (all motion from the clock, randomness from `seed`):
 - `<Ribbon seed={1} points bounds radius={0.05} from={0} to={1500} tone lit glow />`
 - `glow` (a luminance such as 1.5) makes the shape an exact-colour emitter that a bloom
   threshold above 1 catches (reference/lighting.md, "Real glow").
-- `<ExtrudedText text from to position rotation fontSize depth bevel tone lit textKey />`
+- `<ExtrudedText text from to position rotation fontSize depth bevel finish shadow anchorY tone lit textKey />`
   (rotation in radians; bundled faces only)
 - `<HeroObject model="handset" position rotation scale spinDegPerSec floatAmplitude floatHz lit />`
 

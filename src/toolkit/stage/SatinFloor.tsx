@@ -118,6 +118,8 @@ const SHADOW_SEARCH_EPS = "0.002";
 const CONTACT_REACH = 0.3;
 /** The scatter reads the grain this many times finer than the sheen does. */
 const SCATTER_FINE = 4;
+const REACH_TAPS = 8;
+const REACH_SPREAD = 0.6;
 const MAX_POOLS = 4;
 /** How far the plane reaches past the fade: its edge never shows. */
 const PLANE_MARGIN = 1;
@@ -197,6 +199,7 @@ const SOFT_FRAGMENT_PARS = /* glsl */ `
 uniform vec4 kbShadowA;
 uniform vec4 kbShadowB;
 uniform vec3 kbReflX;
+uniform vec2 kbReflSpread;
 uniform vec2 kbShadowSlope;
 uniform float kbSeed;
 `;
@@ -327,7 +330,23 @@ if ( kbReflOn > 0.5 ) {
 	float kbHit = kbDepth >= 1.0 ? 0.0 : 1.0;
 	float kbK = kbHit < 0.5 ? 1.0 : max( kbContact, smoothstep( 0.0, kbHeightBlur, kbHeight ) );
 	vec3 kbRefl = mix( kbSharp, kbBlurred, kbK );
-	if ( kbReflX.z > 0.0 ) kbRefl *= 1.0 - smoothstep( 0.0, kbReflX.z, kbHeight );
+	if ( kbReflX.z > 0.0 ) {
+		// The fade is read over the blur's own footprint, so a blurred reflection keeps its soft edge past the caster's outline.
+		float kbNoise = fract( 52.9829189 * fract( dot( gl_FragCoord.xy, vec2( 0.06711056, 0.00583715 ) ) ) );
+		float kbPhi = 6.283185307 * fract( kbNoise + kbSeed * 0.61803398875 );
+		float kbFade = 0.0;
+		for ( int i = 0; i < ${REACH_TAPS}; i ++ ) {
+			float kbR = sqrt( ( float( i ) + 0.5 ) / ${REACH_TAPS}.0 );
+			float kbA = float( i ) * 2.399963229728653 + kbPhi;
+			float kbD = texture2D( kbReflDepth, kbUv + vec2( cos( kbA ), sin( kbA ) ) * kbR * kbReflSpread ).r;
+			if ( kbD < 1.0 ) {
+				float kbTapZ = 2.0 * kbNearFar.x * kbNearFar.y / ( kbNearFar.y + kbNearFar.x - ( kbD * 2.0 - 1.0 ) * ( kbNearFar.y - kbNearFar.x ) );
+				float kbTapHeight = max( kbTapZ / max( dot( kbRay, kbVirtualForward ), 1e-4 ) - kbToFloor, 0.0 ) * abs( kbRay.y );
+				kbFade += 1.0 - smoothstep( 0.0, kbReflX.z, kbTapHeight );
+			}
+		}
+		kbRefl *= kbFade / ${REACH_TAPS}.0;
+	}
 	float kbNear = 1.0 - smoothstep( 0.0, ${CONTACT_REACH}, kbHeight );
 	float kbAo = 1.0 - kbShadowA.w * kbHit * kbNear * kbNear;
 	reflectedLight.directDiffuse *= kbAo;
@@ -499,6 +518,7 @@ export function SatinFloor({
       kbShadowA: { value: new Vector4() },
       kbShadowB: { value: new Vector4() },
       kbReflX: { value: new Vector3() },
+      kbReflSpread: { value: new Vector2() },
       kbShadowSlope: { value: new Vector2() },
       kbSeed: supersampleSeed,
     }),
@@ -574,7 +594,7 @@ export function SatinFloor({
       shader.fragmentShader = fs;
     };
     m.customProgramCacheKey = () =>
-      soft ? "kookaburra-satin-floor-v6-soft" : "kookaburra-satin-floor-v6";
+      soft ? "kookaburra-satin-floor-v7-soft" : "kookaburra-satin-floor-v6";
     return m;
   }, [uniforms, soft]);
   useLayoutEffect(() => () => material.dispose(), [material]);
@@ -722,6 +742,10 @@ export function SatinFloor({
       const scatter = Math.max(0, reflect?.scatter ?? 0) / 1080;
       uniforms.kbReflX.value.x = (scatter * h) / w;
       uniforms.kbReflX.value.y = scatter * Math.max(1, reflect?.stretch ?? 1);
+      uniforms.kbReflSpread.value.set(
+        (REACH_SPREAD * px) / w,
+        (REACH_SPREAD * px * Math.max(1, reflect?.stretch ?? 1)) / h,
+      );
       renderer.setRenderTarget(passes.blurred);
       renderer.render(passes.quad, passes.quadCamera);
       renderer.setRenderTarget(outer);

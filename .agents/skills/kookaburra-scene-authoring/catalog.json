@@ -25722,6 +25722,11 @@
         "summary": "Bundled hero glTF with idle spin and float."
       },
       {
+        "id": "IconTile",
+        "kind": "component",
+        "summary": "An app icon as a thick, glossy, lit tile that stands on a stage."
+      },
+      {
         "id": "ImageCard",
         "kind": "component",
         "summary": "Flat, colour-exact image plane; PNG alpha shapes it."
@@ -26415,6 +26420,12 @@
         "id": "EaseOptions"
       },
       {
+        "id": "ExtrudedBevel"
+      },
+      {
+        "id": "ExtrudedFinish"
+      },
+      {
         "id": "ExtrudedTextProps"
       },
       {
@@ -26443,6 +26454,9 @@
       },
       {
         "id": "HeroObjectProps"
+      },
+      {
+        "id": "IconTileProps"
       },
       {
         "id": "ImageCardProps"
@@ -28204,20 +28218,47 @@
         {
           "file": "scenes/01-version.tsx",
           "durationMs": 3765,
-          "transition": null,
-          "blocks": ["background", "text", "textStyle"]
+          "transition": "whip",
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "lighting",
+            "motionBlur",
+            "text",
+            "textStyle"
+          ]
         },
         {
           "file": "scenes/02-whats-new.tsx",
-          "durationMs": 3750,
-          "transition": null,
-          "blocks": ["background", "text", "textStyle"]
+          "durationMs": 4150,
+          "transition": "luma",
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "lighting",
+            "motionBlur",
+            "text",
+            "textStyle"
+          ]
         },
         {
           "file": "scenes/03-word-1.tsx",
-          "durationMs": 1875,
+          "durationMs": 2435,
           "transition": null,
-          "blocks": ["background", "text", "textStyle"]
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "motionBlur",
+            "text"
+          ]
         },
         {
           "file": "scenes/04-proof-1.tsx",
@@ -28237,48 +28278,111 @@
         {
           "file": "scenes/05-detail-1.tsx",
           "durationMs": 1875,
-          "transition": null,
-          "blocks": ["background", "text", "textStyle"]
+          "transition": "whip",
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "motionBlur"
+          ]
         },
         {
           "file": "scenes/06-word-2.tsx",
-          "durationMs": 1875,
+          "durationMs": 2275,
           "transition": null,
-          "blocks": ["background", "text", "textStyle"]
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "motionBlur",
+            "text"
+          ]
         },
         {
           "file": "scenes/07-proof-2.tsx",
           "durationMs": 3750,
           "transition": null,
-          "blocks": ["background", "text", "textStyle"]
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "taps",
+            "text"
+          ]
         },
         {
           "file": "scenes/08-detail-2.tsx",
           "durationMs": 1875,
-          "transition": null,
-          "blocks": ["background", "text", "textStyle"]
+          "transition": "whip",
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "motionBlur",
+            "taps"
+          ]
         },
         {
           "file": "scenes/09-word-3.tsx",
-          "durationMs": 1875,
+          "durationMs": 2275,
           "transition": null,
-          "blocks": ["background", "text", "textStyle"]
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "motionBlur",
+            "text",
+            "textStyle"
+          ]
         },
         {
           "file": "scenes/10-proof-3.tsx",
           "durationMs": 3750,
           "transition": null,
-          "blocks": ["background", "text", "textStyle"]
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "taps",
+            "text",
+            "textStyle"
+          ]
         },
         {
           "file": "scenes/11-detail-3.tsx",
           "durationMs": 1875,
-          "transition": null,
-          "blocks": ["background", "text", "textStyle"]
+          "transition": "whip",
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "motionBlur"
+          ]
         },
         {
           "file": "scenes/12-and-more.tsx",
-          "durationMs": 7500,
+          "durationMs": 7900,
           "transition": null,
           "blocks": ["background", "text", "textStyle"]
         },
@@ -28544,6 +28648,9 @@
       "id": "fairywren-quickadd-dark-phone.mp4"
     },
     {
+      "id": "fairywren-quickadd-phone.mp4"
+    },
+    {
       "id": "fairywren-reschedule-dark-phone.mp4"
     },
     {
@@ -28551,6 +28658,9 @@
     },
     {
       "id": "fairywren-share-dark-phone.mp4"
+    },
+    {
+      "id": "fairywren-share-phone.mp4"
     },
     {
       "id": "fairywren-sorted-dark-phone.mp4"

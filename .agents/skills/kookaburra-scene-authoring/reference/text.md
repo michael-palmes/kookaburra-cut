@@ -129,6 +129,11 @@ line, on a line that holds still while the pill draws.
     scale each pops by (default 0.08 over 180 ms; 0 turns it off).
 - `ExtrudedText`: lit 3D text, bundled families only, one weight each (Inter Tight's is
   800), no emoji. For 3D-looking type in any font, use `depth` on `AnimatedHeadline`.
+  For soft, glossy letters that stand on a stage floor:
+  `bevel={{ size: 0.05, thickness: 0.06, segments: 10, corner: 0.07 }}` (em; `corner` rounds
+  each glyph's own sharp corners), `finish={{ roughness: 0.14, clearcoat: 1 }}`, `shadow`,
+  and `anchorY="bottom"` so its lowest point sits on `position`. Gloss needs something
+  to reflect: `area` lights beside and above it (reference/lighting.md).
 - `ManagedTextStack`: the generic managed renderer the host mounts; rarely mounted by hand.
 - `PromptBar text textKey from to position width height fontSize face send caret`: a
   chat prompt bar (theme tokens only). The text types in one keystroke at a time from

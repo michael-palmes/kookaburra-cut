@@ -139,6 +139,7 @@ export { HeroObject, type HeroObjectProps } from "./hero/HeroObject";
 // Shared light rig for lit primitives (mount once per scene, pass lit={false} to primitives)
 export { LightRig } from "./lighting/LightRig";
 // Flat image plane for icons/logos/stills: unlit, colour-exact, PNG alpha.
+export { IconTile, type IconTileProps } from "./media/IconTile";
 export { type HardShadowSpec, ImageCard, type ImageCardProps } from "./media/ImageCard";
 export { LayeredScreenshot, type LayeredScreenshotProps } from "./media/LayeredScreenshot";
 export { VideoClip, type VideoClipProps } from "./media/VideoClip";
@@ -285,7 +286,12 @@ export {
   useTextMetrics,
 } from "./text/useTextMetrics";
 // Extruded 3D text.
-export { ExtrudedText, type ExtrudedTextProps } from "./text3d/ExtrudedText";
+export {
+  type ExtrudedBevel,
+  type ExtrudedFinish,
+  ExtrudedText,
+  type ExtrudedTextProps,
+} from "./text3d/ExtrudedText";
 // Transition helpers
 export { fade } from "./transitions/fade";
 export { slide } from "./transitions/slide";
