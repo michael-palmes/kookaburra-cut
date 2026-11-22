@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "name": "Detail 2",
+  "text": {
+    "label": "08 · Detail 2 · cobalt room",
+    "bars": "Bar 12 · Peak: a change every two beats",
+    "kicker": "",
+    "title": "",
+    "c1": "12.1  Close on the new plan landing in the day",
+    "c2": "12.3  Fill: whip towards mint"
+  },
+  "textStyle": {
+    "labelColor": "#ffffff",
+    "barsColor": "#ffffff",
+    "kickerColor": "#ffffff",
+    "titleColor": "#ffffff",
+    "c1Color": "#ffffff",
+    "c2Color": "#ffffff"
+  },
+  "background": {
+    "type": "color",
+    "color": "#1f3fe0"
+  }
+}

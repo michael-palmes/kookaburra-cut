@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "name": "Proof 1",
+  "text": {
+    "label": "04 · Proof 1 · tangerine room",
+    "bars": "Bars 6 to 7 · Intro: something new each bar",
+    "kicker": "",
+    "title": "Plan your whole week in one tap.",
+    "c1": "6.1  The phone stands in the room, recording one playing",
+    "c2": "6.3  The line lands beside it",
+    "c3": "7.1  The tap: the week sorts itself",
+    "c4": "7.3  Push in on the part of the screen that changed"
+  },
+  "textStyle": {
+    "labelColor": "#0b1030",
+    "barsColor": "#0b1030",
+    "kickerColor": "#0b1030",
+    "titleColor": "#0b1030",
+    "c1Color": "#0b1030",
+    "c2Color": "#0b1030",
+    "c3Color": "#0b1030",
+    "c4Color": "#0b1030"
+  },
+  "background": {
+    "type": "color",
+    "color": "#ff7a2f"
+  }
+}

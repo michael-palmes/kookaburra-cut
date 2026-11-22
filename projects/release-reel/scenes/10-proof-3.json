@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "name": "Proof 3",
+  "text": {
+    "label": "10 · Proof 3 · mint room",
+    "bars": "Bars 14 to 15 · Peak: a change every two beats",
+    "kicker": "",
+    "title": "Share a list with one tap.",
+    "c1": "14.1  The phone stands in the room, recording three playing",
+    "c2": "14.3  The line lands beside it",
+    "c3": "15.1  The list is shared; three people join",
+    "c4": "15.3  Push in on the part of the screen that changed"
+  },
+  "textStyle": {
+    "labelColor": "#0b1030",
+    "barsColor": "#0b1030",
+    "kickerColor": "#0b1030",
+    "titleColor": "#0b1030",
+    "c1Color": "#0b1030",
+    "c2Color": "#0b1030",
+    "c3Color": "#0b1030",
+    "c4Color": "#0b1030"
+  },
+  "background": {
+    "type": "color",
+    "color": "#3ed6a6"
+  }
+}

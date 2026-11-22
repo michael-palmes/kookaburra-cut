@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "name": "Lockup",
+  "text": {
+    "label": "14 · Lockup · ink room",
+    "bars": "Bars 23 to 24 · Final hit, then a bar of ring-out",
+    "kicker": "Fairywren 2.4",
+    "title": "Update today.",
+    "c1": "23.1  Ink room; the app icon lands",
+    "c2": "23.3  Name and version set beside it",
+    "c3": "24.1  Final hit: the call to action"
+  },
+  "textStyle": {
+    "labelColor": "#ffffff",
+    "barsColor": "#ffffff",
+    "kickerColor": "#ffffff",
+    "titleColor": "#ffffff",
+    "c1Color": "#ffffff",
+    "c2Color": "#ffffff",
+    "c3Color": "#ffffff"
+  },
+  "background": {
+    "type": "color",
+    "color": "#0b1030"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "name": "And more",
+  "text": {
+    "label": "12 · And more · lilac room",
+    "bars": "Bars 17 to 20 · Burst: a chip a beat",
+    "kicker": "",
+    "title": "And more.",
+    "c1": "17.1  Lilac floods the room; the line slams",
+    "c2": "17.3  The phone lands centre",
+    "c3": "18.1  Chip: Widgets",
+    "c4": "18.2  Chip: Dark mode",
+    "c5": "18.3  Chip: Faster sync",
+    "c6": "18.4  Chip: New icons",
+    "c7": "19.1  Chip: Shortcuts",
+    "c8": "19.2  Chip: Offline",
+    "c9": "19.3  Pull back: all six around the phone",
+    "c10": "20.1  Kick; the chips settle",
+    "c11": "20.3  The chips sweep off; the room splits in three"
+  },
+  "textStyle": {
+    "labelColor": "#0b1030",
+    "barsColor": "#0b1030",
+    "kickerColor": "#0b1030",
+    "titleColor": "#0b1030",
+    "c1Color": "#0b1030",
+    "c2Color": "#0b1030",
+    "c3Color": "#0b1030",
+    "c4Color": "#0b1030",
+    "c5Color": "#0b1030",
+    "c6Color": "#0b1030",
+    "c7Color": "#0b1030",
+    "c8Color": "#0b1030",
+    "c9Color": "#0b1030",
+    "c10Color": "#0b1030",
+    "c11Color": "#0b1030"
+  },
+  "background": {
+    "type": "color",
+    "color": "#b69cff"
+  }
+}

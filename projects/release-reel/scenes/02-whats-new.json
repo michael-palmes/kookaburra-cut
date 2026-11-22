@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "name": "What's new",
+  "text": {
+    "label": "02 · What's new · paper room",
+    "bars": "Bars 3 to 4 · Intro: something new each bar",
+    "kicker": "",
+    "title": "What's new.",
+    "c1": "3.1  Paper room; the line stamps, a word a beat",
+    "c2": "4.1  Three colour bands wipe through behind it",
+    "c3": "4.3  Tangerine starts to take the room"
+  },
+  "textStyle": {
+    "labelColor": "#0b1030",
+    "barsColor": "#0b1030",
+    "kickerColor": "#0b1030",
+    "titleColor": "#0b1030",
+    "c1Color": "#0b1030",
+    "c2Color": "#0b1030",
+    "c3Color": "#0b1030"
+  },
+  "background": {
+    "type": "color",
+    "color": "#f7f5f0"
+  }
+}

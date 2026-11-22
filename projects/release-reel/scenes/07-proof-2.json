@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "name": "Proof 2",
+  "text": {
+    "label": "07 · Proof 2 · cobalt room",
+    "bars": "Bars 10 to 11 · Peak: a change every two beats",
+    "kicker": "",
+    "title": "Type a plan the way you'd say it.",
+    "c1": "10.1  The phone stands in the room, recording two playing",
+    "c2": "10.3  The line lands beside it",
+    "c3": "11.1  The typed words turn into a plan",
+    "c4": "11.3  Push in on the part of the screen that changed"
+  },
+  "textStyle": {
+    "labelColor": "#ffffff",
+    "barsColor": "#ffffff",
+    "kickerColor": "#ffffff",
+    "titleColor": "#ffffff",
+    "c1Color": "#ffffff",
+    "c2Color": "#ffffff",
+    "c3Color": "#ffffff",
+    "c4Color": "#ffffff"
+  },
+  "background": {
+    "type": "color",
+    "color": "#1f3fe0"
+  }
+}

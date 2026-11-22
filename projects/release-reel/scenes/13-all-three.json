@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "name": "All three",
+  "text": {
+    "label": "13 · All three · cobalt room",
+    "bars": "Bars 21 to 22 · Peak: a change every two beats",
+    "kicker": "",
+    "title": "",
+    "c1": "21.1  Tangerine panel; phone one lands",
+    "c2": "21.3  Cobalt panel; phone two lands",
+    "c3": "22.1  Mint panel; phone three lands",
+    "c4": "22.3  Pull back: three rooms, three phones"
+  },
+  "textStyle": {
+    "labelColor": "#ffffff",
+    "barsColor": "#ffffff",
+    "kickerColor": "#ffffff",
+    "titleColor": "#ffffff",
+    "c1Color": "#ffffff",
+    "c2Color": "#ffffff",
+    "c3Color": "#ffffff",
+    "c4Color": "#ffffff"
+  },
+  "background": {
+    "type": "color",
+    "color": "#1f3fe0"
+  }
+}

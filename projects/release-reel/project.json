@@ -1,0 +1,145 @@
+{
+  "id": "release-reel",
+  "name": "Release Reel",
+  "version": 2,
+  "themeId": "kookaburra-colour-studio",
+  "formats": ["16:9"],
+  "audio": {
+    "file": "assets/song.flac",
+    "grid": {
+      "bpm": 128,
+      "offsetMs": -0.7,
+      "beatsPerBar": 4,
+      "source": {
+        "sha256": "b110ff1d5d1c7b0f785ebcb680dd7bf343a830e864d9d57b1dd972a8342e9c60",
+        "analysisVersion": 3,
+        "tracker": "nn"
+      }
+    },
+    "sections": [
+      {
+        "id": "opening",
+        "label": "Opening",
+        "from": "bar:1",
+        "to": "bar:5"
+      },
+      {
+        "id": "feature-1",
+        "label": "Feature one",
+        "from": "bar:5",
+        "to": "bar:9"
+      },
+      {
+        "id": "feature-2",
+        "label": "Feature two",
+        "from": "bar:9",
+        "to": "bar:13"
+      },
+      {
+        "id": "feature-3",
+        "label": "Feature three",
+        "from": "bar:13",
+        "to": "bar:17"
+      },
+      {
+        "id": "and-more",
+        "label": "And more",
+        "from": "bar:17",
+        "to": "bar:21"
+      },
+      {
+        "id": "all-three",
+        "label": "All three",
+        "from": "bar:21",
+        "to": "bar:23"
+      },
+      {
+        "id": "lockup",
+        "label": "Lockup",
+        "from": "bar:23",
+        "to": "bar:25"
+      }
+    ],
+    "cues": {
+      "slam": "bar:1",
+      "fill-1": "bar:8",
+      "drop": "bar:9",
+      "fill-2": "bar:12",
+      "fill-3": "bar:16",
+      "final-hit": "bar:24"
+    }
+  },
+  "defaultTransition": null,
+  "scenes": [
+    {
+      "file": "scenes/01-version.tsx",
+      "durationMs": 3749,
+      "cutAt": "bar:3"
+    },
+    {
+      "file": "scenes/02-whats-new.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:5"
+    },
+    {
+      "file": "scenes/03-word-1.tsx",
+      "durationMs": 1875,
+      "cutAt": "bar:6"
+    },
+    {
+      "file": "scenes/04-proof-1.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:8"
+    },
+    {
+      "file": "scenes/05-detail-1.tsx",
+      "durationMs": 1875,
+      "cutAt": "bar:9"
+    },
+    {
+      "file": "scenes/06-word-2.tsx",
+      "durationMs": 1875,
+      "cutAt": "bar:10"
+    },
+    {
+      "file": "scenes/07-proof-2.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:12"
+    },
+    {
+      "file": "scenes/08-detail-2.tsx",
+      "durationMs": 1875,
+      "cutAt": "bar:13"
+    },
+    {
+      "file": "scenes/09-word-3.tsx",
+      "durationMs": 1875,
+      "cutAt": "bar:14"
+    },
+    {
+      "file": "scenes/10-proof-3.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:16"
+    },
+    {
+      "file": "scenes/11-detail-3.tsx",
+      "durationMs": 1875,
+      "cutAt": "bar:17"
+    },
+    {
+      "file": "scenes/12-and-more.tsx",
+      "durationMs": 7500,
+      "cutAt": "bar:21"
+    },
+    {
+      "file": "scenes/13-all-three.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:23"
+    },
+    {
+      "file": "scenes/14-lockup.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:25"
+    }
+  ]
+}

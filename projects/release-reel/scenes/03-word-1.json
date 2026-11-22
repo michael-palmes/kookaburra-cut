@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "name": "Word 1",
+  "text": {
+    "label": "03 · Word 1 · tangerine room",
+    "bars": "Bar 5 · Intro: something new each bar",
+    "kicker": "01 / 03",
+    "title": "Faster.",
+    "c1": "5.1  Tangerine floods the room; the word slams",
+    "c2": "5.3  The chapter mark ticks in; the word kicks"
+  },
+  "textStyle": {
+    "labelColor": "#0b1030",
+    "barsColor": "#0b1030",
+    "kickerColor": "#0b1030",
+    "titleColor": "#0b1030",
+    "c1Color": "#0b1030",
+    "c2Color": "#0b1030"
+  },
+  "background": {
+    "type": "color",
+    "color": "#ff7a2f"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "name": "Detail 1",
+  "text": {
+    "label": "05 · Detail 1 · tangerine room",
+    "bars": "Bar 8 · Intro: something new each bar",
+    "kicker": "",
+    "title": "",
+    "c1": "8.1  Close on the sorted week, off the glass",
+    "c2": "8.3  Fill: whip towards cobalt"
+  },
+  "textStyle": {
+    "labelColor": "#0b1030",
+    "barsColor": "#0b1030",
+    "kickerColor": "#0b1030",
+    "titleColor": "#0b1030",
+    "c1Color": "#0b1030",
+    "c2Color": "#0b1030"
+  },
+  "background": {
+    "type": "color",
+    "color": "#ff7a2f"
+  }
+}

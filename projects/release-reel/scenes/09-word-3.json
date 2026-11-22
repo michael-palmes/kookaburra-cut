@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "name": "Word 3",
+  "text": {
+    "label": "09 · Word 3 · mint room",
+    "bars": "Bar 13 · Peak: a change every two beats",
+    "kicker": "03 / 03",
+    "title": "Together.",
+    "c1": "13.1  Mint floods the room; the word slams",
+    "c2": "13.3  The chapter mark ticks in; the word kicks"
+  },
+  "textStyle": {
+    "labelColor": "#0b1030",
+    "barsColor": "#0b1030",
+    "kickerColor": "#0b1030",
+    "titleColor": "#0b1030",
+    "c1Color": "#0b1030",
+    "c2Color": "#0b1030"
+  },
+  "background": {
+    "type": "color",
+    "color": "#3ed6a6"
+  }
+}

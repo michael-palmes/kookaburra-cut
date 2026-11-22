@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "name": "Detail 3",
+  "text": {
+    "label": "11 · Detail 3 · mint room",
+    "bars": "Bar 16 · Peak: a change every two beats",
+    "kicker": "",
+    "title": "",
+    "c1": "16.1  Close on their ticks landing",
+    "c2": "16.3  Fill: whip towards lilac"
+  },
+  "textStyle": {
+    "labelColor": "#0b1030",
+    "barsColor": "#0b1030",
+    "kickerColor": "#0b1030",
+    "titleColor": "#0b1030",
+    "c1Color": "#0b1030",
+    "c2Color": "#0b1030"
+  },
+  "background": {
+    "type": "color",
+    "color": "#3ed6a6"
+  }
+}

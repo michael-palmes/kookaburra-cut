@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "name": "Version",
+  "text": {
+    "label": "01 · Version · ink room",
+    "bars": "Bars 1 to 2 · Intro: something new each bar",
+    "kicker": "",
+    "title": "2.4",
+    "c1": "1.1  The version slams into the ink room",
+    "c2": "1.3  Light rakes across the numerals",
+    "c3": "2.1  The app icon drops in beside them",
+    "c4": "2.3  Push in; the numerals tip to the lens"
+  },
+  "textStyle": {
+    "labelColor": "#ffffff",
+    "barsColor": "#ffffff",
+    "kickerColor": "#ffffff",
+    "titleColor": "#ffffff",
+    "c1Color": "#ffffff",
+    "c2Color": "#ffffff",
+    "c3Color": "#ffffff",
+    "c4Color": "#ffffff"
+  },
+  "background": {
+    "type": "color",
+    "color": "#0b1030"
+  }
+}
