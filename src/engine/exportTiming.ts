@@ -1,4 +1,4 @@
-/** Where an export's wall time went: milliseconds per phase, summed over the run. Read only, never an input to a frame. */
+/** Where an export's time went: milliseconds per phase, summed over the run. `push` overlaps the next frame's phases, so they add up to more than the wall time; `wait` is what the loop lost to a push. Read only, never an input to a frame. */
 export interface ExportTiming {
   frames: number;
   ms: Record<string, number>;

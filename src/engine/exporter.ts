@@ -239,6 +239,17 @@ function untilAborted<T>(promise: Promise<T>, signal: AbortSignal | undefined): 
   });
 }
 
+/** Sends one frame to the encoder and resolves with its buffer, free for a later frame. Awaited a frame later, so a failure in between must not surface as unhandled. */
+function pushFrame(rgba: Uint8Array, timing: ExportTiming): Promise<ArrayBuffer> {
+  const at = performance.now();
+  const pushed = invoke("push_frame", rgba).then(() => {
+    addPhase(timing, "push", at);
+    return rgba.buffer as ArrayBuffer;
+  });
+  pushed.catch(() => {});
+  return pushed;
+}
+
 let lastTiming: ExportTiming | null = null;
 
 /** The most recent export run's timing breakdown (engine/exportTiming), for the autorun result. */
@@ -260,6 +271,7 @@ async function exportProjectHeld(
   let started = false;
   let begun = false;
   const timing = newExportTiming();
+  let pushing: Promise<ArrayBuffer> | null = null;
   // A cancel that lands while Rust finalises or runs a two-pass pass has no frame boundary to stop at, so it kills the native encode directly.
   const stopNativeEncode = () => void invoke("cancel_export").catch(() => {});
   try {
@@ -309,23 +321,29 @@ async function exportProjectHeld(
     started = true;
     signal?.addEventListener("abort", stopNativeEncode, { once: true });
 
-    // The frame buffer ping-pongs: the worker renders into it, the window pushes it, then hands it back for the next frame.
-    let buffer: ArrayBuffer | null = null;
+    // Two frame buffers ping-pong: while the window pushes one frame, the worker renders the next into the other. Pushes stay in frame order, one in flight.
+    let spare: ArrayBuffer | null = null;
     for (let frame = 0; frame < total; frame++) {
       signal?.throwIfAborted();
       const tMs = exportFrameTimeMs(frame, opts.fps, poster?.tMs);
       const last = frame === total - 1;
       let at = performance.now();
-      const result = await s.exportFrame(frame, tMs, !!poster, buffer, last && !!onFingerprint);
+      const result = await s.exportFrame(frame, tMs, !!poster, spare, last && !!onFingerprint);
       at = addPhase(timing, "stage", at);
       if (result.fingerprint && onFingerprint) onFingerprint(result.fingerprint);
       onBoundClipFrame?.(frame, result.boundClipFrame);
       onFrame?.(frame, result.rgba);
       at = addPhase(timing, "inspect", at);
-      await invoke("push_frame", result.rgba);
-      addPhase(timing, "push", at);
+      spare = pushing ? await pushing : null;
+      addPhase(timing, "wait", at);
+      pushing = pushFrame(result.rgba, timing);
       timing.frames += 1;
-      buffer = result.rgba.buffer as ArrayBuffer;
+    }
+    if (pushing) {
+      const at = performance.now();
+      await pushing;
+      pushing = null;
+      addPhase(timing, "wait", at);
     }
     signal?.throwIfAborted();
     const finishAt = performance.now();
@@ -333,6 +351,7 @@ async function exportProjectHeld(
     addPhase(timing, "finish", finishAt);
     return path;
   } catch (err) {
+    await pushing?.catch(() => {});
     if (started) {
       // A real failure (not a cancel) leaves <export>.health.json and names where the run stopped.
       const reason = signal?.aborted ? undefined : String(err instanceof Error ? err.message : err);

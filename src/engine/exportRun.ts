@@ -398,10 +398,10 @@ export async function renderExportFrame(
   fingerprint: RenderStateFingerprint | null;
 }> {
   const { rig, opts, poster, total } = run;
-  // The previous frame's buffer left this realm (transferred to the window); adopt the one handed back, or a fresh one.
+  // The window may still be pushing the previous frame's buffer: adopt the one handed back, or a fresh one past frame 0, never the one just sent.
   const bytes = rig.width * rig.height * 4;
   if (buffer && buffer.byteLength === bytes) rig.rgba = new Uint8Array(buffer);
-  else if (rig.rgba.byteLength !== bytes) rig.rgba = new Uint8Array(bytes);
+  else if (frame > 0 || rig.rgba.byteLength !== bytes) rig.rgba = new Uint8Array(bytes);
   const resolved = frame === 0 && poster ? poster.resolved : resolveAt(opts.slots, tMs);
   // After the poster, frames only step forward, so a scene that has ended is never drawn again this run.
   if (!(frame === 0 && poster)) {
