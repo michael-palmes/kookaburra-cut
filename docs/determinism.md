@@ -1186,7 +1186,11 @@ camera exactly:
   mipmapped flake map and up to four floor-only pools. It fades out with premultiplied
   alpha over whatever drew first (the fixed background), on a plane fitted to the fade,
   so no edge shows. Fixed passes, no history. The plane margin, the blend, the flake
-  map size, the blur taps and the defaults in `backdrops.tsx` are contract.
+  map size, the blur taps and the defaults in `backdrops.tsx` are contract. One render
+  asks for the mirror twice, since three draws the opaque floor in its glass
+  (transmission) pass and again in its main pass; the second ask takes the first's
+  mirror (`toolkit/stage/renderOnce.ts`: no render has run since), the same bytes for
+  one mirror less a frame.
 
 ### The fixed background
 
