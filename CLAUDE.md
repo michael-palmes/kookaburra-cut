@@ -137,6 +137,12 @@ depend on a build script (240 of 573, about 3 minutes). `pnpm setup:target` does
 for a Rust-only session; it never touches an existing target. `du` counts
 clones in full, so judge real usage with `df`.
 
+**Catalogue tests in a fresh worktree:** `src/agentKit/catalog.test.ts` failing
+there is real, not a flake. An older checkout can pass on a stale
+`import.meta.glob` list (a look list did, until `pnpm install` refreshed it)
+while the committed `catalog.json` is missing entries, so run
+`pnpm agent:catalog` and commit the result.
+
 Rust: the native shell is in `src-tauri/` (`cargo check --manifest-path src-tauri/Cargo.toml` to typecheck without bundling).
 
 ## Layout
