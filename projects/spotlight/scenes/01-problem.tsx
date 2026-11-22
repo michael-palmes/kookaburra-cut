@@ -6,7 +6,9 @@ import {
   RoundedRect,
   ramp,
   SceneStage,
+  ScreenLayer,
   useBeatGrid,
+  useFormat,
   useSceneDevices,
   useSceneText,
   useTheme,
@@ -20,6 +22,7 @@ const CARD_WIDTH = 2.4;
 const CARD_HEIGHT = 0.5;
 const CARD_PITCH = 0.44;
 const CARD_LEAD_MS = 120;
+const FADE_IN_MS = 700;
 const SLOTS: [number, number][] = [
   [-0.06, 1.4],
   [0.08, -1.1],
@@ -35,6 +38,7 @@ export default defineScene({
     const devices = useSceneDevices();
     const grid = useBeatGrid();
     const { localMs } = useTimeline();
+    const { frame } = useFormat();
     const { colors, chartColors, motion } = useTheme();
     const tints = chartColors?.length ? chartColors : [colors.accent];
     const title = useSceneText("title", "");
@@ -53,6 +57,7 @@ export default defineScene({
     const hero = devices.find((d) => d.id === "hero") ?? devices[0];
     const stepMs = Math.round((grid?.beatMs ?? 469) / 2);
     const titleAt = grid?.at(1, 2) ?? 469;
+    const veil = 1 - ramp(localMs, 0, FADE_IN_MS, "inOutSine");
     return (
       <SceneStage floorY={FLOOR_Y}>
         {hero ? <Device {...hero} /> : null}
@@ -112,6 +117,16 @@ export default defineScene({
             );
           })}
         </group>
+        <ScreenLayer order="front">
+          <group visible={veil > 0}>
+            <RoundedRect
+              width={frame.width * 1.2}
+              height={frame.height * 1.2}
+              color={colors.background}
+              opacity={veil}
+            />
+          </group>
+        </ScreenLayer>
       </SceneStage>
     );
   },
