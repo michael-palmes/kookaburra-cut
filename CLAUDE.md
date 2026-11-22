@@ -274,9 +274,11 @@ intuition before the probe settled it).
   skips the stage-only passes, for a locked or hidden screen.
 - **Export timing:** every export, verify and memory row carries `timing`, the
   run's milliseconds per phase (`engine/exportTiming.ts`: prepare, commit,
-  clips, text, draw, read, handoff, push, finish), and the app log names the
-  time spent in the encoder pipe. Compare releases with the packaged builds
-  and a quiet Mac: under load the numbers move by 30%.
+  clips, text, draw, read, handoff, wait, push, finish), and the app log names
+  the time spent in the encoder pipe. A push overlaps the next frame's render,
+  so `wait` is what the loop lost to it. Compare releases with the packaged
+  builds, a quiet Mac and the screen unlocked: load moves the numbers by 30%,
+  and a locked screen slows an export by 40 to 80%.
 - **Method:** one lever per change, re-run the probe, keep only what the data
   keeps. Clip prefetching was reverted this way: decode work is main-thread, so
   reading ahead made heavy scenes worse. Any clip or render-path change then
@@ -346,10 +348,28 @@ intuition before the probe settled it).
   50 fps. Exports are untouched, and they decode the next clip frame while
   the current one is read back and encoded (8% off the same film, bytes
   unchanged).
-- **Export regression of 0.22.0 (measured 2026-11-22):** a 19 s device film
-  at 4K60 exports in 76 s on 0.19.0 to 0.21.1 and 101 s on 0.22.0 to 0.23.0,
-  the stage worker's releases; 85 s after the two fixes above. What is left
-  per frame: 23 ms pushing 33 MB to the encoder (16 of it IPC, 4 the pipe,
-  3 the flash tap), 21 ms of readback, 13 ms of hand-off and 13 ms of commit
-  with the next clip frame's decode inside it, since `createImageBitmap`
-  decodes on the worker's own thread.
+- **Export regression of 0.22.0 (measured 2026-11-22): a locked screen
+  only.** A 19 s device film at 4K60 exports in 54 to 55 s on every release
+  from 0.19.0 to 0.23.0 with the screen unlocked. Locked, it takes 76 s on
+  0.19.0 to 0.21.1 and 100 s on 0.22.0 to 0.23.0, the stage worker's
+  releases.
+- **Eighth measured impactor (2026-11-22): the window and the stage taking
+  turns.** The window waited on each frame's render, then the stage sat idle
+  through the 15 ms push of its 33 MB. They now overlap, two buffers
+  alternating and pushes kept in frame order (`engine/exporter.ts`): 50 s to
+  43 s on that film, bytes unchanged.
+- **Ninth measured impactor (2026-11-22): clip PNGs decoding on the stage's
+  thread.** `createImageBitmap` in a worker decodes there, 11 ms a 4K phone
+  frame. Full 8-bit RGB frames now arrive decoded from a native thread
+  (`read_clip_frame_rgba`) and upload as rows: 43 s to 36 s, bytes unchanged
+  (Display P3 tags included); 10-bit and alpha sources keep the bitmap. Decoding them in the window
+  instead gave 38 s, and moving the preview JPEGs there changed nothing.
+  What is left a frame is the readback, 18 ms.
+- **Tenth measured impactor (2026-11-22): supersampled draws repeating work
+  they could share.** A 16-sample frame of a hazy, mirrored stage spent 54%
+  in the volumetric march, 29% in the lens blur and 16% in the floor mirror.
+  Its draws now share the march (12 steps each at their own offsets, four
+  full marches a frame) and one mirror: 527 to 308 ms a frame, and 51 dB or
+  better against the old picture on every frame (`--lever
+  supersample-share=off` restores the old path). Thinning the lens gather the same way was
+  rejected: wider taps softened the bokeh and strided ones left a ripple.
