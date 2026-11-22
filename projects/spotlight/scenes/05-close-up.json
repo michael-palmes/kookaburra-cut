@@ -10,10 +10,11 @@
         "src": "assets/fairywren-focusflow-phone.mp4",
         "kind": "video",
         "startMs": 0,
-        "inMs": 4960
+        "inMs": 5020,
+        "speed": 0.938
       },
       "placement": {
-        "position": [1.25, -0.7, -4.2],
+        "position": [-0.7799999999999998, -0.7, -4.2],
         "rotationDeg": [0, -28, 0],
         "scale": 1,
         "ground": true
@@ -31,32 +32,51 @@
         "id": "k1",
         "tMs": 0,
         "pose": {
-          "position": [0.23, -0.62, -1.062],
+          "position": [-2.4078, -0.575, 0.5276],
           "aim": {
             "mode": "point",
-            "at": [1.25, -0.62, -4.2]
+            "at": [-0.7799999999999998, -0.575, -4.2]
           },
           "fov": 22,
           "dof": {
             "mode": "lens",
-            "fStop": 22,
-            "focus": 3.3
+            "fStop": 32,
+            "focus": 5.0,
+            "blur": 1
           }
         }
       },
       {
         "id": "k2",
-        "tMs": 3750,
+        "tMs": 2344,
         "pose": {
-          "position": [0.323, -0.62, -1.347],
+          "position": [-2.4217, -0.6, 0.3105],
           "aim": {
             "mode": "point",
-            "at": [1.25, -0.62, -4.2]
+            "at": [-0.7799999999999998, -0.6, -4.2]
+          },
+          "fov": 22,
+          "dof": {
+            "fStop": 32,
+            "focus": 4.8,
+            "blur": 1
+          }
+        }
+      },
+      {
+        "id": "k3",
+        "tMs": 3750,
+        "pose": {
+          "position": [-2.63, -0.75, 5.8],
+          "aim": {
+            "mode": "point",
+            "at": [-2.63, -0.75, -4.2]
           },
           "fov": 22,
           "dof": {
             "fStop": 22,
-            "focus": 3.0
+            "focus": 10.0,
+            "blur": 0
           }
         }
       }
@@ -66,6 +86,12 @@
         "from": "k1",
         "to": "k2",
         "ease": "linear",
+        "smooth": false
+      },
+      {
+        "from": "k2",
+        "to": "k3",
+        "ease": "inOutSine",
         "smooth": false
       }
     ]
@@ -81,7 +107,7 @@
       "drift": 2,
       "opening": 0.66,
       "panes": 3,
-      "patch": 0.3,
+      "patch": 0.07,
       "slatPitch": 0.5,
       "softness": 0.8,
       "sunHeight": 26,
@@ -105,12 +131,5 @@
       "intensity": 2.2,
       "kelvin": 4600
     }
-  },
-  "cameraKicks": [
-    {
-      "at": "bar:10.3",
-      "zoom": 1.04,
-      "releaseMs": 320
-    }
-  ]
+  }
 }

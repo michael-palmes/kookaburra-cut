@@ -1,28 +1,30 @@
 import {
   AnimatedHeadline,
+  Device,
   defineScene,
   liftColour,
   RoundedRect,
   ramp,
   SceneStage,
   useBeatGrid,
+  useSceneDevices,
   useSceneText,
   useTheme,
   useTimeline,
 } from "@kookaburra/toolkit";
 
 const FLOOR_Y = -2;
-const TITLE_AT: [number, number, number] = [-2.95, -0.42, -4.2];
-const STACK_AT: [number, number, number] = [2.3, -0.42, -4.2];
-const CARD_WIDTH = 1.8;
-const CARD_HEIGHT = 0.36;
-const CARD_PITCH = 0.31;
-const CARD_STAGGER_MS = 70;
+const TITLE_AT: [number, number, number] = [2, -0.5, -4.2];
+const STACK_AT: [number, number, number] = [7.2, -0.55, -4.2];
+const CARD_WIDTH = 2.4;
+const CARD_HEIGHT = 0.5;
+const CARD_PITCH = 0.44;
+const CARD_LEAD_MS = 120;
 const SLOTS: [number, number][] = [
-  [-0.05, 1.4],
-  [0.07, -1.1],
-  [-0.08, 0.8],
-  [0.06, -1.5],
+  [-0.06, 1.4],
+  [0.08, -1.1],
+  [-0.09, 0.8],
+  [0.07, -1.5],
   [-0.02, 1.1],
 ];
 
@@ -30,6 +32,7 @@ export default defineScene({
   id: "spotlight-01-problem",
   durationMs: 3749,
   Scene() {
+    const devices = useSceneDevices();
     const grid = useBeatGrid();
     const { localMs } = useTimeline();
     const { colors, chartColors, motion } = useTheme();
@@ -47,19 +50,20 @@ export default defineScene({
       { key: "plan4", text: plan4 },
       { key: "plan5", text: plan5 },
     ];
-    const beatMs = Math.round(grid?.beatMs ?? 469);
+    const hero = devices.find((d) => d.id === "hero") ?? devices[0];
+    const stepMs = Math.round((grid?.beatMs ?? 469) / 2);
     const titleAt = grid?.at(1, 2) ?? 469;
-    const stackAt = grid?.at(2, 3) ?? 2812;
     return (
       <SceneStage floorY={FLOOR_Y}>
+        {hero ? <Device {...hero} /> : null}
         <AnimatedHeadline
           text={title}
           textKey="title"
           stagger="word"
-          staggerMs={beatMs}
+          staggerMs={stepMs}
           hitAt={titleAt}
           to={motion.durations.base}
-          fontSize={0.44}
+          fontSize={0.4}
           anchorX="left"
           textAlign="left"
           position={TITLE_AT}
@@ -67,9 +71,9 @@ export default defineScene({
         <group position={STACK_AT}>
           {plans.map((plan, i) => {
             const [dx, tiltDeg] = SLOTS[i];
-            const start = stackAt + i * CARD_STAGGER_MS;
+            const start = CARD_LEAD_MS + i * stepMs;
             const p = ramp(localMs, start, start + motion.durations.base, "outCubic");
-            const y = ((plans.length - 1) / 2 - i) * CARD_PITCH + 0.22 * (1 - p);
+            const y = ((plans.length - 1) / 2 - i) * CARD_PITCH + 0.3 * (1 - p);
             const fill = liftColour(colors.background, tints[i % tints.length], 0.26);
             return (
               <group
@@ -80,15 +84,15 @@ export default defineScene({
                 <RoundedRect
                   width={CARD_WIDTH}
                   height={CARD_HEIGHT}
-                  radius={0.1}
+                  radius={0.14}
                   color={colors.text}
                   opacity={0.1 * p}
-                  position={[0.025, -0.035, -0.004]}
+                  position={[0.03, -0.045, -0.004]}
                 />
                 <RoundedRect
                   width={CARD_WIDTH}
                   height={CARD_HEIGHT}
-                  radius={0.1}
+                  radius={0.14}
                   color={fill}
                   opacity={p}
                 />
@@ -99,10 +103,10 @@ export default defineScene({
                   preset="static"
                   face="body"
                   opacity={p}
-                  fontSize={0.14}
+                  fontSize={0.19}
                   anchorX="left"
                   textAlign="left"
-                  position={[-CARD_WIDTH / 2 + 0.16, 0, 0.004]}
+                  position={[-CARD_WIDTH / 2 + 0.2, 0, 0.004]}
                 />
               </group>
             );

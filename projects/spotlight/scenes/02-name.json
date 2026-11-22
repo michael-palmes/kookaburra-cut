@@ -1,4 +1,100 @@
 {
+  "version": 1,
+  "name": "Name",
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "media": {
+        "src": "assets/fairywren-focusflow-phone.mp4",
+        "kind": "video",
+        "startMs": 60000,
+        "inMs": 560
+      },
+      "placement": {
+        "position": [-0.7799999999999998, -0.7, -4.2],
+        "rotationDeg": [0, -28, 0],
+        "scale": 1,
+        "ground": true
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "long"
+    }
+  ],
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "position": [-2.03, -0.75, 5.95],
+          "aim": {
+            "mode": "point",
+            "at": [-2.03, -0.75, -4.2]
+          },
+          "fov": 22,
+          "dof": {
+            "mode": "lens",
+            "fStop": 22,
+            "focus": 10.15,
+            "blur": 1
+          }
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 2812,
+        "pose": {
+          "position": [-2.03, -0.75, 5.6],
+          "aim": {
+            "mode": "point",
+            "at": [-2.03, -0.75, -4.2]
+          },
+          "fov": 22,
+          "dof": {
+            "fStop": 22,
+            "focus": 9.8,
+            "blur": 1
+          }
+        }
+      },
+      {
+        "id": "k3",
+        "tMs": 3750,
+        "pose": {
+          "position": [-2.4225, -0.7, 3.5274],
+          "aim": {
+            "mode": "point",
+            "at": [-0.7799999999999998, -0.7, -4.2]
+          },
+          "fov": 22,
+          "dof": {
+            "fStop": 22,
+            "focus": 7.9,
+            "blur": 1
+          }
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "linear",
+        "smooth": false
+      },
+      {
+        "from": "k2",
+        "to": "k3",
+        "ease": "inOutSine",
+        "smooth": false
+      }
+    ]
+  },
   "background": {
     "backing": {
       "color": "#efe6dc",
@@ -10,7 +106,7 @@
       "drift": 2,
       "opening": 0.66,
       "panes": 3,
-      "patch": 0.3,
+      "patch": 0.07,
       "slatPitch": 0.5,
       "softness": 0.8,
       "sunHeight": 26,
@@ -20,76 +116,6 @@
     "speed": 1,
     "type": "scene3d"
   },
-  "cameraMode": "rig",
-  "cameraRig": {
-    "keys": [
-      {
-        "id": "k1",
-        "pose": {
-          "aim": {
-            "at": [0, -0.75, -4.2],
-            "mode": "point"
-          },
-          "dof": {
-            "fStop": 22,
-            "focus": 10.3,
-            "mode": "lens"
-          },
-          "fov": 22,
-          "position": [0, -0.75, 6.1]
-        },
-        "tMs": 0
-      },
-      {
-        "id": "k2",
-        "pose": {
-          "aim": {
-            "at": [0, -0.75, -4.2],
-            "mode": "point"
-          },
-          "dof": {
-            "fStop": 22,
-            "focus": 9.5
-          },
-          "fov": 22,
-          "position": [0, -0.75, 5.3]
-        },
-        "tMs": 3749
-      }
-    ],
-    "segments": [
-      {
-        "ease": "linear",
-        "from": "k1",
-        "smooth": false,
-        "to": "k2"
-      }
-    ]
-  },
-  "devices": [
-    {
-      "colour": "natural-titanium",
-      "id": "hero",
-      "media": {
-        "at": "bar:4.3-1500ms",
-        "kind": "video",
-        "outMs": 1840,
-        "src": "assets/fairywren-focusflow-phone.mp4",
-        "startMs": 1313
-      },
-      "model": "iphone-15-pro",
-      "motion": {
-        "preset": "none"
-      },
-      "placement": {
-        "ground": true,
-        "position": [1.25, -0.7, -4.2],
-        "rotationDeg": [0, -28, 0],
-        "scale": 1
-      },
-      "shadow": "long"
-    }
-  ],
   "lighting": {
     "ambient": 0.45,
     "environment": {
@@ -105,13 +131,11 @@
       "kelvin": 4600
     }
   },
-  "name": "Name",
   "text": {
     "title": "Meet Focus."
   },
   "textStyle": {
     "titleColor": "#2b2622",
     "titleFont": "Inter Tight@600"
-  },
-  "version": 1
+  }
 }

@@ -38,6 +38,15 @@
       }
     ]
   },
+  "render": {
+    "motionBlur": {
+      "enabled": true,
+      "shutterDeg": 180,
+      "samples": 8,
+      "camera": true,
+      "objects": false
+    }
+  },
   "defaultTransition": null,
   "scenes": [
     {
@@ -89,6 +98,7 @@
     },
     "proof": {
       "rect": [0.04, 0.172, 0.96, 0.343]
-    }
+    },
+    "highlight": "#b9472f"
   }
 }

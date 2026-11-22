@@ -11,7 +11,7 @@
         "kind": "image"
       },
       "placement": {
-        "position": [1.25, -0.7, -4.2],
+        "position": [-0.7799999999999998, -0.7, -4.2],
         "rotationDeg": [0, -28, 0],
         "scale": 1,
         "ground": true
@@ -29,32 +29,51 @@
         "id": "k1",
         "tMs": 0,
         "pose": {
-          "position": [0, -0.75, 6.1],
+          "position": [-2.5838, -0.75, 5.6769],
           "aim": {
             "mode": "point",
-            "at": [0, -0.75, -4.2]
+            "at": [-2.5838, -0.75, -4.2]
           },
           "fov": 22,
           "dof": {
             "mode": "lens",
             "fStop": 22,
-            "focus": 10.3
+            "focus": 9.8769,
+            "blur": 0
           }
         }
       },
       {
         "id": "k2",
-        "tMs": 5625,
+        "tMs": 4219,
         "pose": {
-          "position": [0, -0.75, 5.3],
+          "position": [-2.48, -0.75, 5.4],
           "aim": {
             "mode": "point",
-            "at": [0, -0.75, -4.2]
+            "at": [-2.48, -0.75, -4.2]
           },
           "fov": 22,
           "dof": {
             "fStop": 22,
-            "focus": 9.5
+            "focus": 9.6,
+            "blur": 0
+          }
+        }
+      },
+      {
+        "id": "k3",
+        "tMs": 5625,
+        "pose": {
+          "position": [5.17, -0.75, 6.2],
+          "aim": {
+            "mode": "point",
+            "at": [5.17, -0.75, -4.2]
+          },
+          "fov": 22,
+          "dof": {
+            "fStop": 22,
+            "focus": 10.4,
+            "blur": 0
           }
         }
       }
@@ -64,6 +83,12 @@
         "from": "k1",
         "to": "k2",
         "ease": "linear",
+        "smooth": false
+      },
+      {
+        "from": "k2",
+        "to": "k3",
+        "ease": "inOutSine",
         "smooth": false
       }
     ]
@@ -76,17 +101,17 @@
     "colors": ["#d6c8b8", "#fff6e8", "#cfc0ae"],
     "look": "sunroom",
     "params": {
-      "drift": 2,
+      "drift": 6.27,
       "opening": 0.66,
       "panes": 3,
-      "patch": 0.3,
+      "patch": 0.07,
       "slatPitch": 0.5,
       "softness": 0.8,
       "sunHeight": 26,
       "sunSide": 36,
       "wallDistance": 7
     },
-    "speed": 1,
+    "speed": 2.6453,
     "type": "scene3d"
   },
   "lighting": {
@@ -116,12 +141,5 @@
     "unitFont": "Inter Tight@600",
     "captionColor": "#5f574f",
     "captionFont": "Inter Tight@400"
-  },
-  "cameraKicks": [
-    {
-      "at": "bar:14.3",
-      "zoom": 1.04,
-      "releaseMs": 320
-    }
-  ]
+  }
 }

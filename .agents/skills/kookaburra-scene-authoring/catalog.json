@@ -27303,7 +27303,15 @@
           "file": "scenes/01-problem.tsx",
           "durationMs": 3749,
           "transition": null,
-          "blocks": ["background", "cameraMode", "cameraRig", "lighting", "text", "textStyle"]
+          "blocks": [
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "text",
+            "textStyle"
+          ]
         },
         {
           "file": "scenes/02-name.tsx",
@@ -27329,19 +27337,28 @@
           "file": "scenes/04-flow-b.tsx",
           "durationMs": 3750,
           "transition": null,
-          "blocks": ["background", "cameraKicks", "cameraMode", "cameraRig", "devices", "lighting"]
+          "blocks": ["background", "cameraMode", "cameraRig", "devices", "lighting"]
         },
         {
           "file": "scenes/05-close-up.tsx",
           "durationMs": 3750,
           "transition": null,
-          "blocks": ["background", "cameraKicks", "cameraMode", "cameraRig", "devices", "lighting"]
+          "blocks": ["background", "cameraMode", "cameraRig", "devices", "lighting"]
         },
         {
           "file": "scenes/06-claim.tsx",
           "durationMs": 1875,
           "transition": null,
-          "blocks": ["background", "cameraMode", "cameraRig", "lighting", "text", "textStyle"]
+          "blocks": [
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "taps",
+            "text",
+            "textStyle"
+          ]
         },
         {
           "file": "scenes/07-proof.tsx",
@@ -27349,7 +27366,6 @@
           "transition": null,
           "blocks": [
             "background",
-            "cameraKicks",
             "cameraMode",
             "cameraRig",
             "devices",

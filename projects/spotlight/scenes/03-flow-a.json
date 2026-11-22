@@ -14,7 +14,7 @@
         "outMs": 3850
       },
       "placement": {
-        "position": [1.25, -0.7, -4.2],
+        "position": [-0.7799999999999998, -0.7, -4.2],
         "rotationDeg": [0, -28, 0],
         "scale": 1,
         "ground": true
@@ -32,32 +32,51 @@
         "id": "k1",
         "tMs": 0,
         "pose": {
-          "position": [1.25, -0.7, 4.0],
+          "position": [-2.4225, -0.7, 3.5274],
           "aim": {
             "mode": "point",
-            "at": [1.25, -0.7, -4.2]
+            "at": [-0.7799999999999998, -0.7, -4.2]
           },
           "fov": 22,
           "dof": {
             "mode": "lens",
             "fStop": 22,
-            "focus": 8.2
+            "focus": 7.9,
+            "blur": 1
           }
         }
       },
       {
         "id": "k2",
-        "tMs": 3750,
+        "tMs": 2812,
         "pose": {
-          "position": [1.25, -0.7, 3.5],
+          "position": [-2.5542, -0.7, 3.19],
           "aim": {
             "mode": "point",
-            "at": [1.25, -0.7, -4.2]
+            "at": [-0.7799999999999998, -0.7, -4.2]
           },
           "fov": 22,
           "dof": {
             "fStop": 22,
-            "focus": 7.7
+            "focus": 7.6,
+            "blur": 1
+          }
+        }
+      },
+      {
+        "id": "k3",
+        "tMs": 3750,
+        "pose": {
+          "position": [-2.3137, -0.575, 0.9776],
+          "aim": {
+            "mode": "point",
+            "at": [-0.7799999999999998, -0.575, -4.2]
+          },
+          "fov": 22,
+          "dof": {
+            "fStop": 32,
+            "focus": 5.4,
+            "blur": 1
           }
         }
       }
@@ -67,6 +86,12 @@
         "from": "k1",
         "to": "k2",
         "ease": "linear",
+        "smooth": false
+      },
+      {
+        "from": "k2",
+        "to": "k3",
+        "ease": "inOutSine",
         "smooth": false
       }
     ]
@@ -82,7 +107,7 @@
       "drift": 2,
       "opening": 0.66,
       "panes": 3,
-      "patch": 0.3,
+      "patch": 0.07,
       "slatPitch": 0.5,
       "softness": 0.8,
       "sunHeight": 26,

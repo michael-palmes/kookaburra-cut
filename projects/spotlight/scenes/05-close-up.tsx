@@ -34,10 +34,12 @@ export default defineScene({
             <ScreenRegion
               variant="lens"
               centre={centre}
-              radius={0.34}
-              zoom={1.6}
+              radius={0.4}
+              zoom={1.4}
+              lift={0.08}
               at={0}
               durationMs={380}
+              outAt={grid?.at(10, 2) ?? 2344}
             />
           </Device>
         ) : null}

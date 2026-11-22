@@ -11,10 +11,10 @@ import {
 } from "@kookaburra/toolkit";
 
 const FLOOR_Y = -2;
-const ICON_AT: [number, number, number] = [0, 0.18, -4.2];
+const ICON_AT: [number, number, number] = [5.17, 0.03, -4.2];
 const ICON_WIDTH = 1.05;
-const NAME_AT: [number, number, number] = [0, -0.92, -4.2];
-const CALL_AT: [number, number, number] = [0, -1.5, -4.2];
+const NAME_AT: [number, number, number] = [5.17, -1.07, -4.2];
+const CALL_AT: [number, number, number] = [5.17, -1.65, -4.2];
 const CALL_LEAD_MS = 500;
 
 export default defineScene({

@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "accepted": [
+    {
+      "id": "46fb90c7",
+      "kind": "still",
+      "scene": "04-flow-b",
+      "why": "The timer ticks on the phone at 7.3 and 8.1 carry the beat; camera pushes on them read as too much",
+      "by": "session-6bfcea7a",
+      "atMs": 1795341295230
+    },
+    {
+      "id": "e9cace23",
+      "kind": "still",
+      "scene": "05-close-up",
+      "why": "The timer ticks inside the magnifier at 9.3",
+      "by": "session-6bfcea7a",
+      "atMs": 1795341295324
+    }
+  ]
+}
