@@ -5,7 +5,7 @@ import { resolveTokenFill } from "../../engine/textStyleResolve";
 import { useTimeline } from "../../engine/timeline";
 import { useProjectAssetUrl } from "../../engine/useProjectAssetUrl";
 import { useTheme } from "../../theme";
-import { asRegionDepthMesh, REGION_DEPTH_ORDER } from "../device/screenRegionDepth";
+import { asRegionDepthMesh, holdsFocusNow, REGION_DEPTH_ORDER } from "../device/screenRegionDepth";
 import { foldBandToChild, GroupAnimationContext, groupImageEffects } from "../group/context";
 import { SHINE_AXIS, SHINE_INTENSITY } from "../text/presets";
 import type { V3 } from "../types";
@@ -47,7 +47,7 @@ export interface ImageCardProps {
   tint?: "text" | "muted" | "accent" | (string & {});
   /** A hard offset shadow behind the card; absent draws none. */
   shadow?: HardShadowSpec;
-  /** Holds its own focus under lens depth of field, where the image is opaque, so it stays sharp in front of a blurred backdrop; absent blurs with whatever is behind it. */
+  /** Holds its own focus under lens depth of field, where the image is opaque, so it stays sharp in front of a blurred backdrop; absent blurs with whatever is behind it. Stands down while a group wipe hides part of the image. */
   holdFocus?: boolean;
 }
 
@@ -314,12 +314,17 @@ function LoadedImageCard({
     }
   }
 
+  const sweep = group?.imageSweep;
+  const wiping = !!sweep && (sweep[0] > 0 || sweep[1] < 1);
+
   const card = (
     <>
       <mesh position={position} material={material}>
         <planeGeometry args={[contained.width, contained.height]} />
       </mesh>
-      {depthMaterial && material.opacity > 0 ? (
+      {depthMaterial &&
+      !wiping &&
+      holdsFocusNow(contained.width, contained.height, material.opacity) ? (
         <group renderOrder={REGION_DEPTH_ORDER}>
           <mesh ref={asRegionDepthMesh} position={position} material={depthMaterial}>
             <planeGeometry args={[contained.width, contained.height]} />

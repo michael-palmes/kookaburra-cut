@@ -4,6 +4,7 @@ import { useFormat } from "../../engine/format";
 import { useTheme } from "../../theme";
 import {
   asRegionDepthMesh,
+  holdsFocusNow,
   REGION_DEPTH_ORDER,
   regionDepthMaterial,
 } from "../device/screenRegionDepth";
@@ -296,7 +297,7 @@ function FocusDepth(props: {
   opacity: number;
 }) {
   const { material, width, height, opacity } = props;
-  if (!material || !(width > 0 && height > 0 && opacity > 0)) return null;
+  if (!material || !holdsFocusNow(width, height, opacity)) return null;
   return (
     <group renderOrder={REGION_DEPTH_ORDER}>
       <mesh ref={asRegionDepthMesh} material={material} scale={[width, height, 1]}>

@@ -1048,7 +1048,7 @@ declare module "@kookaburra/toolkit" {
     tint?: "text" | "muted" | "accent" | (string & {});
     /** A hard offset shadow behind the card; absent draws none. */
     shadow?: HardShadowSpec;
-    /** Holds its own focus under lens depth of field, where the image is opaque, so it stays sharp in front of a blurred backdrop; absent blurs with whatever is behind it. */
+    /** Holds its own focus under lens depth of field, where the image is opaque, so it stays sharp in front of a blurred backdrop; absent blurs with whatever is behind it. Stands down while a group wipe hides part of the image. */
     holdFocus?: boolean;
   }
 

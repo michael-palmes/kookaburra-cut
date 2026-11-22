@@ -2172,6 +2172,12 @@ Verify ×2 here (the 2026-10-23 note):
 > the dof-only lane's depth pre-pass), so frames with no lens pose, cards at
 > `lift` 0 and projects without a `ScreenRegion` draw exactly as before.
 
+> **2026-11-23 (`holdFocus` on flat shapes, additive):** `RoundedRect`, `Pill`
+> and `ImageCard` mount the same depth-only copy on `LENS_DEPTH_LAYER` when a
+> scene passes `holdFocus`, and only while the shape has a size and shows at
+> all. The prop is off by default, so every existing project draws exactly as
+> before.
+
 > **2026-11-14 (lens depth of field sampling, lens projects rebase):** the
 > gather's taps and centre read a mip of the RGBA16F prefilter as wide as each
 > tap's share of the disc (texelFetch still reads the CoC, and a footprint
