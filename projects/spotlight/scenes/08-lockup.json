@@ -1,6 +1,27 @@
 {
   "version": 1,
   "name": "Lockup",
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "media": {
+        "src": "assets/fairywren-insights-phone.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [-0.7799999999999998, -0.7, -4.2],
+        "rotationDeg": [0, -28, 0],
+        "scale": 1,
+        "ground": true
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "long"
+    }
+  ],
   "cameraMode": "rig",
   "cameraRig": {
     "keys": [
@@ -8,34 +29,68 @@
         "id": "k1",
         "tMs": 0,
         "pose": {
-          "position": [5.17, -0.75, 6.2],
+          "position": [1.47, -0.75, 6.2],
           "aim": {
             "mode": "point",
-            "at": [5.17, -0.75, -4.2]
+            "at": [1.47, -0.75, -4.2]
           },
           "fov": 22,
           "dof": {
             "mode": "lens",
-            "fStop": 22,
-            "focus": 10.4,
-            "blur": 0
+            "fStop": 14,
+            "focus": 13.2,
+            "blur": 1
           }
         }
       },
       {
         "id": "k2",
-        "tMs": 3750,
+        "tMs": 1234,
         "pose": {
-          "position": [5.17, -0.75, 5.75],
+          "position": [6.67, -0.75, 6.0],
           "aim": {
             "mode": "point",
-            "at": [5.17, -0.75, -4.2]
+            "at": [6.67, -0.75, -4.2]
           },
           "fov": 22,
           "dof": {
-            "fStop": 22,
-            "focus": 9.95,
-            "blur": 0
+            "fStop": 14,
+            "focus": 8.5,
+            "blur": 1
+          }
+        }
+      },
+      {
+        "id": "k3",
+        "tMs": 1875,
+        "pose": {
+          "position": [6.67, -0.75, 5.93],
+          "aim": {
+            "mode": "point",
+            "at": [6.67, -0.75, -4.2]
+          },
+          "fov": 22,
+          "dof": {
+            "fStop": 2.8,
+            "focus": 8.43,
+            "blur": 1
+          }
+        }
+      },
+      {
+        "id": "k4",
+        "tMs": 3750,
+        "pose": {
+          "position": [6.67, -0.75, 5.6],
+          "aim": {
+            "mode": "point",
+            "at": [6.67, -0.75, -4.2]
+          },
+          "fov": 22,
+          "dof": {
+            "fStop": 2.8,
+            "focus": 8.1,
+            "blur": 1
           }
         }
       }
@@ -44,8 +99,22 @@
       {
         "from": "k1",
         "to": "k2",
+        "smooth": false,
+        "ease": "outQuad",
+        "easeDof": "inCubic"
+      },
+      {
+        "from": "k2",
+        "to": "k3",
+        "smooth": false,
         "ease": "linear",
-        "smooth": false
+        "easeDof": "outCubic"
+      },
+      {
+        "from": "k3",
+        "to": "k4",
+        "smooth": false,
+        "ease": "linear"
       }
     ]
   },

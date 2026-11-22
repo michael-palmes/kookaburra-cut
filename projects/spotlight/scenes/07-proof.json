@@ -64,16 +64,16 @@
         "id": "k3",
         "tMs": 5625,
         "pose": {
-          "position": [5.17, -0.75, 6.2],
+          "position": [1.47, -0.75, 6.2],
           "aim": {
             "mode": "point",
-            "at": [5.17, -0.75, -4.2]
+            "at": [1.47, -0.75, -4.2]
           },
           "fov": 22,
           "dof": {
-            "fStop": 22,
-            "focus": 10.4,
-            "blur": 0
+            "fStop": 14,
+            "focus": 13.2,
+            "blur": 1
           }
         }
       }
@@ -82,14 +82,14 @@
       {
         "from": "k1",
         "to": "k2",
-        "ease": "linear",
-        "smooth": false
+        "smooth": false,
+        "ease": "linear"
       },
       {
         "from": "k2",
         "to": "k3",
-        "ease": "inOutSine",
-        "smooth": false
+        "smooth": false,
+        "ease": "inCubic"
       }
     ]
   },

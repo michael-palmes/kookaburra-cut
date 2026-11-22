@@ -27378,7 +27378,15 @@
           "file": "scenes/08-lockup.tsx",
           "durationMs": 3750,
           "transition": null,
-          "blocks": ["background", "cameraMode", "cameraRig", "lighting", "text", "textStyle"]
+          "blocks": [
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "text",
+            "textStyle"
+          ]
         }
       ]
     },

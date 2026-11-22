@@ -16,6 +16,14 @@
       "why": "The timer ticks inside the magnifier at 9.3",
       "by": "session-6bfcea7a",
       "atMs": 1795341295324
+    },
+    {
+      "id": "50845c3a",
+      "kind": "still",
+      "scene": "07-proof",
+      "why": "The camera is already easing away to the lockup through bar 14; the move starts slowly so the check does not see it",
+      "by": "session-6bfcea7a",
+      "atMs": 1795345580588
     }
   ]
 }
