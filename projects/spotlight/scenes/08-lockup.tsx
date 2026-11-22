@@ -12,6 +12,7 @@ import {
   useBeatGrid,
   useProjectShared,
   useSceneDevices,
+  useSceneDoc,
   useSceneText,
   useTextMetrics,
   useTheme,
@@ -41,6 +42,8 @@ export default defineScene({
     const grid = useBeatGrid();
     const { localMs } = useTimeline();
     const { colors } = useTheme();
+    const room = useSceneDoc()?.background;
+    const wall = (room?.type === "scene3d" ? room.colors?.[1] : undefined) ?? colors.background;
     const card = useProjectShared<[number, number, number, number]>(
       "proof.rect",
       [0.05, 0.2, 0.95, 0.35],
@@ -69,7 +72,7 @@ export default defineScene({
           <RoundedRect
             width={40}
             height={24}
-            color={colors.background}
+            color={wall}
             opacity={VEIL_OPACITY * calm}
             position={[CENTRE_X, 0, VEIL_DEPTH]}
           />
@@ -120,6 +123,8 @@ export default defineScene({
           <AnimatedHeadline
             text={call}
             textKey="title"
+            face="body"
+            defaultColor="muted"
             preset="static"
             opacity={said}
             fontSize={0.25}

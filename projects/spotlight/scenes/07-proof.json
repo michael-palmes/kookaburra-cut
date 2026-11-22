@@ -134,14 +134,6 @@
     "unit": "h",
     "caption": "more focus time than last week"
   },
-  "textStyle": {
-    "figureColor": "#2b2622",
-    "figureFont": "Inter Tight@600",
-    "unitColor": "#2b2622",
-    "unitFont": "Inter Tight@600",
-    "captionColor": "#5f574f",
-    "captionFont": "Inter Tight@400"
-  },
   "textAnimation": {
     "in": "fade",
     "out": "fade"

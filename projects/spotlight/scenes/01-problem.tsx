@@ -10,6 +10,7 @@ import {
   useBeatGrid,
   useFormat,
   useSceneDevices,
+  useSceneDoc,
   useSceneText,
   useTheme,
   useTimeline,
@@ -41,6 +42,8 @@ export default defineScene({
     const { frame } = useFormat();
     const { colors, chartColors, motion } = useTheme();
     const tints = chartColors?.length ? chartColors : [colors.accent];
+    const room = useSceneDoc()?.background;
+    const wall = (room?.type === "scene3d" ? room.colors?.[1] : undefined) ?? colors.background;
     const title = useSceneText("title", "");
     const plan1 = useSceneText("plan1", "", "embedded");
     const plan2 = useSceneText("plan2", "", "embedded");
@@ -122,7 +125,7 @@ export default defineScene({
             <RoundedRect
               width={frame.width * 1.2}
               height={frame.height * 1.2}
-              color={colors.background}
+              color={wall}
               opacity={veil}
             />
           </group>

@@ -28,11 +28,28 @@
   },
   "looks": ["kookaburra-daylight-studio", "kookaburra-daylight", "kookaburra-ivory"],
   "preview": {
-    "poster": 1,
-    "frames": [1, 2, 4, 7],
+    "poster": 0,
+    "frames": [
+      {
+        "scene": 1,
+        "atMs": 2300
+      },
+      {
+        "scene": 4,
+        "atMs": 1000
+      },
+      {
+        "scene": 6,
+        "atMs": 3800
+      },
+      {
+        "scene": 7,
+        "atMs": 3400
+      }
+    ],
     "loop": {
-      "scene": 1,
-      "atMs": 0,
+      "scene": 0,
+      "atMs": 1400,
       "durationMs": 6000
     }
   },

@@ -27310,8 +27310,7 @@
             "devices",
             "lighting",
             "text",
-            "textAnimation",
-            "textStyle"
+            "textAnimation"
           ]
         },
         {
@@ -27325,8 +27324,7 @@
             "devices",
             "lighting",
             "text",
-            "textAnimation",
-            "textStyle"
+            "textAnimation"
           ]
         },
         {
@@ -27359,8 +27357,7 @@
             "lighting",
             "taps",
             "text",
-            "textAnimation",
-            "textStyle"
+            "textAnimation"
           ]
         },
         {
@@ -27374,23 +27371,14 @@
             "devices",
             "lighting",
             "text",
-            "textAnimation",
-            "textStyle"
+            "textAnimation"
           ]
         },
         {
           "file": "scenes/08-lockup.tsx",
           "durationMs": 3750,
           "transition": null,
-          "blocks": [
-            "background",
-            "cameraMode",
-            "cameraRig",
-            "devices",
-            "lighting",
-            "text",
-            "textStyle"
-          ]
+          "blocks": ["background", "cameraMode", "cameraRig", "devices", "lighting", "text"]
         }
       ]
     },

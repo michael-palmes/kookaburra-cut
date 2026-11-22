@@ -120,12 +120,6 @@
     "lead": "Two hours",
     "title": "back, every week."
   },
-  "textStyle": {
-    "leadColor": "#2b2622",
-    "leadFont": "Inter Tight@600",
-    "titleColor": "#2b2622",
-    "titleFont": "Inter Tight@600"
-  },
   "textAnimation": {
     "in": "fade",
     "out": "fade"

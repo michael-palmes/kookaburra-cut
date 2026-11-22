@@ -1,5 +1,4 @@
 import {
-  AnimatedCounter,
   AnimatedHeadline,
   Device,
   defineScene,
@@ -12,6 +11,7 @@ import {
   useProjectShared,
   useSceneDevices,
   useSceneText,
+  useTextMetrics,
   useTheme,
   useTimeline,
 } from "@kookaburra/toolkit";
@@ -25,7 +25,7 @@ const START_HOUR = 1;
 const ROW_Y = -1.18;
 const CAPTION_Y = -1.6;
 const FIGURE_SIZE = 0.42;
-const UNIT_GAP = 0.33;
+const UNIT_GAP = 0.1;
 const CAPTION_LEAD_MS = 700;
 const ARC_STEPS = 24;
 const HOURS = Array.from({ length: 12 }, (_, i) => i);
@@ -58,6 +58,11 @@ export default defineScene({
     const sweep = ramp(localMs, sweepFrom, sweepTo, "inOutSine");
     const span = 30 * hours;
     const hourDeg = 30 * START_HOUR + span * sweep;
+    const steps = Math.max(Math.round(hours), 1);
+    const shown = String(Math.round((Math.floor(sweep * steps + 1e-6) / steps) * hours));
+    const figureBox = useTextMetrics("figure", String(Math.round(hours)), {
+      fontSize: FIGURE_SIZE,
+    });
     const minuteDeg = 360 * hours * sweep;
     return (
       <SceneStage floorY={FLOOR_Y}>
@@ -145,16 +150,14 @@ export default defineScene({
           />
         </group>
         <group visible={localMs >= sweepFrom}>
-          <AnimatedCounter
-            from={0}
-            to={hours}
-            startMs={sweepFrom}
-            durationMs={sweepTo - sweepFrom}
-            ease="inOutSine"
-            steps={Math.max(Math.round(hours), 1)}
+          <AnimatedHeadline
+            text={shown}
             textKey="figure"
+            managedTextRole="embedded"
+            preset="static"
             fontSize={FIGURE_SIZE}
             anchorX="left"
+            textAlign="left"
             position={[LEFT_X, ROW_Y, DEPTH]}
           />
           <AnimatedHeadline
@@ -165,13 +168,15 @@ export default defineScene({
             fontSize={FIGURE_SIZE}
             anchorX="left"
             textAlign="left"
-            position={[LEFT_X + UNIT_GAP, ROW_Y, DEPTH]}
+            position={[LEFT_X + (figureBox?.width ?? 0.23) + UNIT_GAP, ROW_Y, DEPTH]}
           />
         </group>
         <group visible={localMs >= captionAt - CAPTION_LEAD_MS}>
           <AnimatedHeadline
             text={caption}
             textKey="caption"
+            face="body"
+            defaultColor="muted"
             hitAt={captionAt}
             to={motion.durations.base}
             fontSize={0.22}

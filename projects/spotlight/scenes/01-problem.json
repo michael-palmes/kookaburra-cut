@@ -139,20 +139,6 @@
     "plan4": "13:00  Write the brief",
     "plan5": "15:30  Ship release"
   },
-  "textStyle": {
-    "titleColor": "#2b2622",
-    "titleFont": "Inter Tight@600",
-    "plan1Font": "Inter Tight@400",
-    "plan2Font": "Inter Tight@400",
-    "plan3Font": "Inter Tight@400",
-    "plan4Font": "Inter Tight@400",
-    "plan5Font": "Inter Tight@400",
-    "plan1Color": "#2b2622",
-    "plan2Color": "#2b2622",
-    "plan3Color": "#2b2622",
-    "plan4Color": "#2b2622",
-    "plan5Color": "#2b2622"
-  },
   "textAnimation": {
     "in": "fade",
     "out": "fade"

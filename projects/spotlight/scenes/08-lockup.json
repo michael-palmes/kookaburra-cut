@@ -157,11 +157,5 @@
   "text": {
     "name": "Focus",
     "title": "Available now."
-  },
-  "textStyle": {
-    "nameColor": "#2b2622",
-    "nameFont": "Inter Tight@600",
-    "titleColor": "#5f574f",
-    "titleFont": "Inter Tight@400"
   }
 }

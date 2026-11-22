@@ -134,10 +134,6 @@
   "text": {
     "title": "Meet Focus."
   },
-  "textStyle": {
-    "titleColor": "#2b2622",
-    "titleFont": "Inter Tight@600"
-  },
   "textAnimation": {
     "in": "fade",
     "out": "fade"
