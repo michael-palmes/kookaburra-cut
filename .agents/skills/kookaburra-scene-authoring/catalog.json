@@ -28166,6 +28166,135 @@
           "blocks": ["backdrop", "background", "text", "textAnimation", "themeId"]
         }
       ]
+    },
+    {
+      "id": "release-reel",
+      "label": "Release Reel",
+      "summary": "Every release, cut to the beat: one colour, one word and one screen per new thing.",
+      "category": "update",
+      "tags": ["release", "what's new", "update", "version", "changelog", "music"],
+      "personas": ["pm", "marketer", "developer"],
+      "level": "standard",
+      "tier": "bold",
+      "uses": ["audio", "background", "camera-rig", "device"],
+      "highlights": [
+        "The version number slams in on bar 1",
+        "Each feature floods its own colour room on the downbeat",
+        "A cascade of chips covers everything else, then the call to action on the final hit"
+      ],
+      "bring": [
+        "App icon",
+        "Version number",
+        "Three features: a punch word and a line each",
+        "A recording per feature",
+        "Up to six small changes for And more",
+        "Product name",
+        "A call to action"
+      ],
+      "song": {
+        "title": "Headline",
+        "bpm": 128
+      },
+      "looks": ["kookaburra-colour-studio", "kookaburra-citrus", "kookaburra-lagoon"],
+      "sceneCount": 14,
+      "durationMs": 45015,
+      "aspects": ["16:9"],
+      "themeId": "kookaburra-colour-studio",
+      "scenes": [
+        {
+          "file": "scenes/01-version.tsx",
+          "durationMs": 3765,
+          "transition": null,
+          "blocks": ["background", "text", "textStyle"]
+        },
+        {
+          "file": "scenes/02-whats-new.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["background", "text", "textStyle"]
+        },
+        {
+          "file": "scenes/03-word-1.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["background", "text", "textStyle"]
+        },
+        {
+          "file": "scenes/04-proof-1.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "taps",
+            "text"
+          ]
+        },
+        {
+          "file": "scenes/05-detail-1.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["background", "text", "textStyle"]
+        },
+        {
+          "file": "scenes/06-word-2.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["background", "text", "textStyle"]
+        },
+        {
+          "file": "scenes/07-proof-2.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["background", "text", "textStyle"]
+        },
+        {
+          "file": "scenes/08-detail-2.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["background", "text", "textStyle"]
+        },
+        {
+          "file": "scenes/09-word-3.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["background", "text", "textStyle"]
+        },
+        {
+          "file": "scenes/10-proof-3.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["background", "text", "textStyle"]
+        },
+        {
+          "file": "scenes/11-detail-3.tsx",
+          "durationMs": 1875,
+          "transition": null,
+          "blocks": ["background", "text", "textStyle"]
+        },
+        {
+          "file": "scenes/12-and-more.tsx",
+          "durationMs": 7500,
+          "transition": null,
+          "blocks": ["background", "text", "textStyle"]
+        },
+        {
+          "file": "scenes/13-all-three.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["background", "text", "textStyle"]
+        },
+        {
+          "file": "scenes/14-lockup.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": ["background", "text", "textStyle"]
+        }
+      ]
     }
   ],
   "exportPresets": [
@@ -28425,6 +28554,9 @@
     },
     {
       "id": "fairywren-sorted-dark-phone.mp4"
+    },
+    {
+      "id": "fairywren-sorted-phone.mp4"
     },
     {
       "id": "fairywren-today-dark-phone.jpg"

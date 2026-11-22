@@ -137,12 +137,12 @@
     ]
   },
   "lighting": {
-    "ambient": 0.6,
+    "ambient": 0.8,
     "fills": [],
     "sun": {
       "azimuthDeg": -38,
-      "elevationDeg": 48,
-      "intensity": 2.0,
+      "elevationDeg": 44,
+      "intensity": 2.2,
       "color": "#fff4e6",
       "castShadow": true
     },
@@ -154,7 +154,7 @@
     "lights": [],
     "shadow": {
       "technique": "map",
-      "softness": 0.6,
+      "softness": 0.25,
       "opacity": 0.55,
       "mapSize": 2048,
       "bias": -0.0005
@@ -163,24 +163,28 @@
   "background": {
     "type": "gradient",
     "spec": {
-      "type": "linear",
-      "angleDeg": 135,
-      "stops": [["#ff9858", 0], ["#ff7a2f", 0.45], ["#f0651b", 1]],
+      "type": "radial",
+      "angleDeg": 0,
+      "centre": [0.2, 0.74],
+      "stops": [["#ff9f68", 0], ["#fb7a3a", 0.34], ["#ef5f22", 0.68], ["#cc4416", 1]],
       "space": "oklch"
     }
   },
   "backdrop": {
     "type": "satin",
-    "color": "#ff8a44",
+    "color": "#ff6c2c",
     "roughness": 0.35,
     "specular": 0.3,
     "centre": [1.5, 0],
     "fade": [7, 18],
     "reflection": {
-      "strength": 0.8,
-      "blur": 28,
-      "heightBlur": 1.6,
-      "contact": 0.75
+      "strength": 0.7,
+      "blur": 30,
+      "heightBlur": 1.0,
+      "contact": 0.5,
+      "stretch": 3,
+      "scatter": 6,
+      "reach": 2.8
     },
     "glitter": {
       "scale": 90,
@@ -188,8 +192,22 @@
       "roughness": 0.15,
       "tilt": 0.5,
       "weight": 0,
-      "grain": 0.5,
+      "grain": 0.6,
       "seed": 5
-    }
+    },
+    "shadow": {
+      "spread": 0.08,
+      "lighten": 0.35,
+      "reach": 5,
+      "contact": 0.55
+    },
+    "pools": [
+      {
+        "at": [-0.5, -0.5],
+        "radius": [10, 7],
+        "color": "#ff5a1e",
+        "intensity": 0.12
+      }
+    ]
   }
 }

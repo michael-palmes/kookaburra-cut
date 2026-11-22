@@ -35,9 +35,11 @@ export default defineScene({
     const at = (bar: number, beat = 1) =>
       grid ? grid.bar(bar, beat) : ((bar - FIRST_BAR) * 4 + beat - 1) * 468.75;
     const lineAt = at(6, 3);
+    const wordMs = (at(6, 4) - lineAt) / 4;
     const liftAt = at(7, 3);
     const typeOutAt = liftAt + 120;
     const lift = LIFT * ramp(localMs, liftAt, liftAt + 700, "outCubic");
+    const lineOpacity = 1 - ramp(localMs, typeOutAt, typeOutAt + 280, "outCubic");
     return (
       <SceneStage floorY={FLOOR_Y}>
         {hero ? (
@@ -82,13 +84,14 @@ export default defineScene({
         <AnimatedHeadline
           text={line}
           textKey="title"
+          preset="dolly"
           stagger="word"
+          staggerMs={wordMs}
+          to={wordMs * 4}
           hitAt={lineAt}
+          opacity={lineOpacity}
           fontSize={0.5}
           lineHeight={1.02}
-          outAt={typeOutAt}
-          outPreset="fade"
-          outDurationMs={280}
           anchorX="left"
           anchorY="top"
           textAlign="left"
