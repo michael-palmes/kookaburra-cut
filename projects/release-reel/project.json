@@ -8,10 +8,10 @@
     "file": "assets/song.flac",
     "grid": {
       "bpm": 128,
-      "offsetMs": -0.7,
+      "offsetMs": 15,
       "beatsPerBar": 4,
       "source": {
-        "sha256": "b110ff1d5d1c7b0f785ebcb680dd7bf343a830e864d9d57b1dd972a8342e9c60",
+        "sha256": "30b9c8b99ecb4d4746d37188ffb119d6cd2375736c59babb491753169f7bf293",
         "analysisVersion": 3,
         "tracker": "nn"
       }
@@ -62,10 +62,9 @@
     ],
     "cues": {
       "slam": "bar:1",
-      "fill-1": "bar:8",
+      "lift": "bar:5",
       "drop": "bar:9",
-      "fill-2": "bar:12",
-      "fill-3": "bar:16",
+      "step": "bar:17",
       "final-hit": "bar:24"
     }
   },
@@ -73,7 +72,7 @@
   "scenes": [
     {
       "file": "scenes/01-version.tsx",
-      "durationMs": 3749,
+      "durationMs": 3765,
       "cutAt": "bar:3"
     },
     {

@@ -31,7 +31,7 @@ const LINE_KEYS = ["c1", "c2", "c3", "c4"];
 
 export default defineScene({
   id: "release-reel-01-version",
-  durationMs: 3749,
+  durationMs: 3765,
   Scene() {
     const time = useTimeline();
     const { frame, safe } = useFormat();
