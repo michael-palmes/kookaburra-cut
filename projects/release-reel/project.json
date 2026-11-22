@@ -85,6 +85,13 @@
       "transition": {
         "type": "whip",
         "durationMs": 400
+      },
+      "effects": {
+        "lens": {
+          "intensity": 1,
+          "bloom": 0.12,
+          "bloomRadius": 0.88
+        }
       }
     },
     {

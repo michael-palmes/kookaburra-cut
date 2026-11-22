@@ -1,7 +1,7 @@
 import {
   defineScene,
   ExtrudedText,
-  ImageCard,
+  IconTile,
   ramp,
   SceneStage,
   useBeatGrid,
@@ -11,7 +11,13 @@ import {
 
 const FLOOR_Y = -1.905;
 const SIZE = 1.5;
-const ICON = 1.2;
+const DEPTH = 0.36;
+const EDGE = 0.06;
+const HALF_DEPTH = (SIZE * (DEPTH + 2 * EDGE)) / 2;
+const TILE = 0.88;
+const YAW = -0.2;
+const NUMERALS_X = -0.55;
+const TILE_X = 1.8;
 
 export default defineScene({
   id: "release-reel-01-version",
@@ -27,21 +33,31 @@ export default defineScene({
     const drop = 1 - ramp(localMs, at(2) - 260, at(2), "inCubic");
     return (
       <SceneStage floorY={FLOOR_Y}>
-        <group position={[-1.0, FLOOR_Y, 0]} rotation={[tip, 0, 0]} scale={hit}>
-          <ExtrudedText
-            text={version}
-            textKey="title"
-            from={0}
-            to={0}
-            fontSize={SIZE}
-            position={[0, SIZE * 0.385, 0]}
+        <group position={[0, FLOOR_Y, 0]} rotation={[0, YAW, 0]}>
+          <group position={[NUMERALS_X, 0, HALF_DEPTH]} rotation={[tip, 0, 0]} scale={hit}>
+            <ExtrudedText
+              text={version}
+              textKey="title"
+              from={0}
+              to={0}
+              fontSize={SIZE}
+              depth={SIZE * DEPTH}
+              bevel={{ size: 0.05, thickness: EDGE, segments: 10, corner: 0.07 }}
+              finish={{ roughness: 0.14, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.06 }}
+              shadow
+              anchorY="bottom"
+              position={[0, 0, -HALF_DEPTH]}
+            />
+          </group>
+          <IconTile
+            src="assets/app-icon.png"
+            size={TILE}
+            depth={TILE * 0.3}
+            shadow
+            position={[TILE_X, TILE / 2 + drop * 4.5, 0]}
+            rotation={[0, 0, -0.5 * drop]}
           />
         </group>
-        <ImageCard
-          src="assets/app-icon.png"
-          width={ICON}
-          position={[1.75, FLOOR_Y + ICON / 2 + 0.02 + drop * 4.5, 0.2]}
-        />
       </SceneStage>
     );
   },
