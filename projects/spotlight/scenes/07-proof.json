@@ -82,14 +82,14 @@
       {
         "from": "k1",
         "to": "k2",
-        "smooth": false,
-        "ease": "linear"
+        "ease": "linear",
+        "smooth": false
       },
       {
         "from": "k2",
         "to": "k3",
-        "smooth": false,
-        "ease": "inCubic"
+        "ease": "inCubic",
+        "smooth": false
       }
     ]
   },
@@ -141,5 +141,9 @@
     "unitFont": "Inter Tight@600",
     "captionColor": "#5f574f",
     "captionFont": "Inter Tight@400"
+  },
+  "textAnimation": {
+    "in": "fade",
+    "out": "fade"
   }
 }

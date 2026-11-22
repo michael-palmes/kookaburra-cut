@@ -99,22 +99,22 @@
       {
         "from": "k1",
         "to": "k2",
-        "smooth": false,
         "ease": "outQuad",
-        "easeDof": "inCubic"
+        "easeDof": "inCubic",
+        "smooth": false
       },
       {
         "from": "k2",
         "to": "k3",
-        "smooth": false,
         "ease": "linear",
-        "easeDof": "outCubic"
+        "easeDof": "outCubic",
+        "smooth": false
       },
       {
         "from": "k3",
         "to": "k4",
-        "smooth": false,
-        "ease": "linear"
+        "ease": "linear",
+        "smooth": false
       }
     ]
   },

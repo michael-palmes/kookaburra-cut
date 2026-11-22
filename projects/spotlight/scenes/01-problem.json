@@ -152,5 +152,9 @@
     "plan3Color": "#2b2622",
     "plan4Color": "#2b2622",
     "plan5Color": "#2b2622"
+  },
+  "textAnimation": {
+    "in": "fade",
+    "out": "fade"
   }
 }
