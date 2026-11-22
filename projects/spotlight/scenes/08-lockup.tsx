@@ -41,7 +41,6 @@ export default defineScene({
     const grid = useBeatGrid();
     const { localMs } = useTimeline();
     const { colors } = useTheme();
-    const highlight = useProjectShared<string>("highlight", colors.accent);
     const card = useProjectShared<[number, number, number, number]>(
       "proof.rect",
       [0.05, 0.2, 0.95, 0.35],
@@ -98,7 +97,7 @@ export default defineScene({
             <Pill
               width={TRACK_WIDTH}
               height={TRACK_HEIGHT}
-              color={highlight}
+              color={colors.accent}
               opacity={on}
               position={[0, 0, 0.002]}
             />

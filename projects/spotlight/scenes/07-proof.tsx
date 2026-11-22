@@ -41,7 +41,6 @@ export default defineScene({
     const grid = useBeatGrid();
     const { localMs } = useTimeline();
     const { colors, motion } = useTheme();
-    const highlight = useProjectShared<string>("highlight", colors.accent);
     const figure = useSceneText("figure", "0", "embedded");
     const unit = useSceneText("unit", "", "embedded");
     const caption = useSceneText("caption", "");
@@ -110,7 +109,7 @@ export default defineScene({
                   width={((span * Math.PI) / 180 / ARC_STEPS) * CLOCK_RADIUS * 1.5}
                   height={0.075}
                   radius={0.03}
-                  color={highlight}
+                  color={colors.accent}
                   opacity={lit * appear}
                   position={[0, CLOCK_RADIUS - 0.035, 0.004]}
                 />
@@ -132,7 +131,7 @@ export default defineScene({
               width={0.04}
               height={0.62}
               radius={0.02}
-              color={highlight}
+              color={colors.accent}
               opacity={appear}
               position={[0, 0.25, 0.008]}
             />

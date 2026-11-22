@@ -6,7 +6,6 @@ import {
   ramp,
   SceneStage,
   useBeatGrid,
-  useProjectShared,
   useSceneDevices,
   useSceneText,
   useTextMetrics,
@@ -32,7 +31,6 @@ export default defineScene({
     const grid = useBeatGrid();
     const { localMs } = useTimeline();
     const { colors, motion } = useTheme();
-    const highlight = useProjectShared<string>("highlight", colors.accent);
     const lead = useSceneText("lead", "");
     const title = useSceneText("title", "");
     const box = useTextMetrics("lead", lead, { fontSize: LEAD_SIZE });
@@ -51,7 +49,7 @@ export default defineScene({
             width={width}
             height={PILL_HEIGHT}
             scale={0.94 + 0.06 * fill}
-            color={highlight}
+            color={colors.accent}
             opacity={fill * leave}
             position={[LEFT_X - PILL_PAD + width / 2, LEAD_Y, DEPTH - 0.01]}
           />

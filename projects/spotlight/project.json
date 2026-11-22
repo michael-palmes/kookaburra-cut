@@ -2,7 +2,7 @@
   "id": "spotlight",
   "name": "Spotlight",
   "version": 2,
-  "themeId": "kookaburra-mid-century",
+  "themeId": "kookaburra-daylight-studio",
   "formats": ["16:9"],
   "audio": {
     "file": "assets/song.flac",
@@ -98,7 +98,6 @@
     },
     "proof": {
       "rect": [0.04, 0.172, 0.96, 0.343]
-    },
-    "highlight": "#b9472f"
+    }
   }
 }

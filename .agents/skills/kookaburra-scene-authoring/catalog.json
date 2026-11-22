@@ -27293,11 +27293,11 @@
         "title": "Daylight",
         "bpm": 128
       },
-      "looks": ["kookaburra-mid-century", "kookaburra-daylight", "kookaburra-ivory"],
+      "looks": ["kookaburra-daylight-studio", "kookaburra-daylight", "kookaburra-ivory"],
       "sceneCount": 8,
       "durationMs": 29999,
       "aspects": ["16:9"],
-      "themeId": "kookaburra-mid-century",
+      "themeId": "kookaburra-daylight-studio",
       "scenes": [
         {
           "file": "scenes/01-problem.tsx",
