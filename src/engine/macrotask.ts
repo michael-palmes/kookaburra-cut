@@ -22,3 +22,28 @@ export function yieldMacrotask(): Promise<void> {
   }
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
+
+const immediates = typeof MessageChannel !== "undefined" ? new MessageChannel() : null;
+const queued = new Map<number, () => void>();
+let nextImmediate = 1;
+if (immediates) {
+  immediates.port1.onmessage = (ev: MessageEvent<number>) => {
+    const fn = queued.get(ev.data);
+    queued.delete(ev.data);
+    fn?.();
+  };
+}
+
+/** `setImmediate` for the stage worker, which has none: a MessageChannel task, as React's scheduler would use by itself in a window. A timer waits a millisecond at least, and a worker's timers wait for an empty message queue. */
+export function channelImmediate(fn: () => void): number {
+  if (!immediates) return setTimeout(fn, 0) as unknown as number;
+  const id = -nextImmediate++;
+  queued.set(id, fn);
+  immediates.port2.postMessage(id);
+  return id;
+}
+
+export function clearChannelImmediate(id: number): void {
+  if (id < 0) queued.delete(id);
+  else clearTimeout(id);
+}

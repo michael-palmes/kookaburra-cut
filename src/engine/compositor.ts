@@ -77,6 +77,7 @@ import {
 } from "./sceneState";
 import type { Resolved, ResolvedTransition } from "./sceneTimeline";
 import { releaseShutterLane } from "./shutterLane";
+import { unshareSupersampleDraw } from "./supersample";
 import { setMaskUniforms, transitionMaskForFrame, withMaskUniforms } from "./transitionMask";
 import {
   EXT2_MIN_TYPE,
@@ -772,6 +773,7 @@ export function renderComposited(
   compare?: readonly CompareFrame[] | null,
 ): void {
   const plans = compare ?? [];
+  if (plans.length > 0) unshareSupersampleDraw();
   // Snapshots the root-scene values the state plan owns, restored at every exit so root-scene state never leaks into the next-loaded project; the environment snapshot doubles as the explicit fallback for scenes whose theme declares none (the lit primitives' studio environment keeps working through it). A compare frame carrying per-side states opts in too, since its project may otherwise be legacy.
   const wantsStatePlan = !!states || plans.some((p) => p.stateA || p.stateB);
   const prevStateBackground = wantsStatePlan ? scene.background : undefined;

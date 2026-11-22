@@ -1,10 +1,12 @@
 import type { PerspectiveCamera } from "three";
 import type { FrameRect } from "../toolkit/frame/frameLayout";
 import type { ExportOptions } from "./exporter";
+import type { ExportTiming } from "./exportTiming";
 import type { GizmoDomain } from "./gizmoRegistry";
 import type { GlCensus } from "./glContexts";
 import type { MemoryCensus } from "./memoryCensus";
 import type { PerfRow } from "./perfProbe";
+import type { DrawStats } from "./playbackProbe";
 import type { LoadedProject } from "./project";
 import type { SceneTextBox } from "./rangeRun";
 import type { RenderStateFingerprint } from "./renderFingerprint";
@@ -64,7 +66,7 @@ export interface StageHandle {
     boundClipFrame: number;
     fingerprint: RenderStateFingerprint | null;
   }>;
-  exportEnd(): Promise<void>;
+  exportEnd(): Promise<ExportTiming | null>;
   /** Holds the worker's export flag across a Verify's two passes. */
   holdExport(on: boolean): Promise<void>;
   captureFrame(
@@ -94,6 +96,12 @@ export interface StageHandle {
   stillsEnd(): Promise<void>;
   snapshot(tMs: number | null, width: number, format: "png" | "jpeg"): Promise<Uint8Array | null>;
   perfRun(): Promise<PerfRow[]>;
+  /** Sends the stage the display tick it asked for; a probe calls it in a window that has no animation frames. */
+  tickFrame(): void;
+  /** Starts (`on`) or ends a probe window's draw log; ending returns its gaps. */
+  drawStats(on: boolean): Promise<DrawStats | null>;
+  /** Each preview draw's clock value while a draw log records. */
+  subscribeDrawn(listener: (clockMs: number) => void): () => void;
   perfColdWaits(): Promise<{ referenced: number; bound: number; waits: number[] }>;
   hitTest(
     ndcX: number,

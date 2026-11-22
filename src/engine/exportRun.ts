@@ -46,6 +46,7 @@ import {
 } from "./exportFrame";
 import { normalExportFrameCount, posterFrameSample } from "./exportFrames";
 import { setExporting } from "./exportState";
+import { addPhase, type ExportTiming, newExportTiming } from "./exportTiming";
 import { computeFormat } from "./format";
 import { preloadPanelMeasures } from "./framePanelMeasure";
 import { useImageEditStore } from "./imageEditStore";
@@ -322,6 +323,7 @@ export async function beginExportRun(
   onPrepareStep?: (step: number) => void,
 ): Promise<ExportRun> {
   assertNoSceneHolds("export");
+  const startedAt = performance.now();
   const handle = canvasHandle.current;
   if (!handle) throw new Error("Export bridge not mounted: the canvas is not ready.");
   const { gl, scene, camera } = handle;
@@ -363,6 +365,7 @@ export async function beginExportRun(
       plans,
       cameraTrack: opts.cameraTrack,
       clockOwnedMs: null,
+      timing: newExportTiming(),
     };
     clockOwned = () => rig.clockOwnedMs;
     // Stale-pose healing: a fully trackless project never writes the camera inside the loop, and the shared camera persists across project switches, so heal it once before frame 0. Pristine case writes identical floats (fov unchanged, no projection update), so the gated no-track paths stay byte-identical. Mirrored in CompositorDriver.
@@ -374,6 +377,7 @@ export async function beginExportRun(
     }
     // Preview-only light helpers can never reach a capture: their layer is disabled on the camera for the whole run (the second guard on top of their mount gating) and given back in the restore.
     cam.layers.disable(HELPER_LAYER);
+    addPhase(rig.timing, "prepare", startedAt);
     return { rig, total, poster, opts, restore, released: new Set() };
   } catch (e) {
     restore();
@@ -394,10 +398,10 @@ export async function renderExportFrame(
   fingerprint: RenderStateFingerprint | null;
 }> {
   const { rig, opts, poster, total } = run;
-  // The previous frame's buffer left this realm (transferred to the window); adopt the one handed back, or a fresh one.
+  // The window may still be pushing the previous frame's buffer: adopt the one handed back, or a fresh one past frame 0, never the one just sent.
   const bytes = rig.width * rig.height * 4;
   if (buffer && buffer.byteLength === bytes) rig.rgba = new Uint8Array(buffer);
-  else if (rig.rgba.byteLength !== bytes) rig.rgba = new Uint8Array(bytes);
+  else if (frame > 0 || rig.rgba.byteLength !== bytes) rig.rgba = new Uint8Array(bytes);
   const resolved = frame === 0 && poster ? poster.resolved : resolveAt(opts.slots, tMs);
   // After the poster, frames only step forward, so a scene that has ended is never drawn again this run.
   if (!(frame === 0 && poster)) {
@@ -423,8 +427,9 @@ export async function renderExportFrame(
   return { rgba: rig.rgba, boundClipFrame: sampleBoundClipFrame(rig.scene), fingerprint };
 }
 
-export function endExportRun(run: ExportRun): void {
+export function endExportRun(run: ExportRun): ExportTiming | null {
   run.restore();
+  return run.rig.timing ?? null;
 }
 
 /** Renders one deterministic frame at tMs through the export path and returns its raw pixels (GL bottom-up row order): the shared core of screenshots, bridge captures and the render window's thumb service. */

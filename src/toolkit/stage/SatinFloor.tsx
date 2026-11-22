@@ -32,6 +32,7 @@ import {
 } from "three";
 import { createSeededRandom } from "../../engine/rng";
 import { useSceneRelease } from "../../engine/sceneRelease";
+import { createFrameShare } from "../../engine/supersample";
 
 /** A satin stage floor (the `satin` backdrop): a planar reflection blurred with the height of what it reflects, an albedo and sheen that fade with distance, blended over whatever is behind so it dissolves into the background, sparse glitter flakes, and floor-only pools standing in for caustics. Deterministic: fixed passes, no history. */
 
@@ -445,6 +446,7 @@ export function SatinFloor({
   // The mirror pass, per draw (three's Reflector): the eye mirrored in the floor plane, an oblique near plane at the floor, then a separable blur.
   const onBeforeRender = useMemo(() => {
     let busy = false;
+    const once = createFrameShare();
     const size = new Vector2();
     const eyePos = new Vector3();
     const look = new Vector3();
@@ -458,6 +460,9 @@ export function SatinFloor({
     return (renderer: WebGLRenderer, scene: Scene, camera: Camera) => {
       const strength = uniforms.kbReflOn.value;
       if (busy || strength < 0.5 || scene.overrideMaterial) return;
+      // A supersampled frame mirrors once: its draws differ by a fraction of a pixel, under the mirror's blur. A mirror made for another floor's reflection is never kept.
+      if (mirrorDepth > 0) once.reset();
+      else if (once.reuse()) return;
       const self = meshRef.current;
       const cam = camera as PerspectiveCamera;
       const outer = renderer.getRenderTarget();

@@ -9,6 +9,7 @@
  */
 
 import { installRealmGuard, provePolicy } from "./realmGuard";
+import { installWorkerFrames } from "./workerFrames";
 import { installWorkerInbox } from "./workerInbox";
 
 const scope = self as unknown as DedicatedWorkerGlobalScope & Record<string, unknown>;
@@ -66,9 +67,7 @@ const memStorage = (): Storage => {
 scope.sessionStorage = memStorage();
 scope.localStorage = memStorage();
 
-// anime.js takes its non-browser main loop here (there is no `window`); the loop itself stays off, the engine is driven by `seek`.
-scope.setImmediate ??= (fn: () => void) => setTimeout(fn, 0);
-scope.clearImmediate ??= (id: number) => clearTimeout(id);
+installWorkerFrames(scope);
 
 // ── OffscreenCanvas as the canvas element three, troika and TransformControls expect ──
 const OC = OffscreenCanvas.prototype as unknown as Record<string, unknown>;

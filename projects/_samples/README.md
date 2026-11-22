@@ -3,7 +3,8 @@
 `create_project` seeds the samples a project names into its `assets/`, plus
 `app-icon.png` (media files only, ancient-stamped so they sort below the user's
 own media), and a load restores a named one that has gone missing. Templates
-reference these by name and never ship a copy.
+reference these by name and never ship a copy. A product icon is the exception:
+it fills the app icon slot, so it ships in its template as `assets/app-icon.png`.
 
 ## Product family
 
@@ -17,14 +18,14 @@ Thornbill and Songlark; only the files a bundled template names are kept here.
 - Phone screens are 1206x2622 JPEG.
 - Recordings are 30 fps H.264, yuv420p, BT.709 tagged, faststart, 4 to 6 s and at
   most 1.5 MB each. Each still at a recording's settled moment matches its frame.
-- The icon is a 1024 PNG with transparent corners.
+- The icon is a 1024 PNG with transparent corners, shipped as Unveil's
+  `assets/app-icon.png`.
 - Keep the family under 18 MiB.
 - Fairywren's phone screens are drawn for the camera: type about a fifth larger than a
   real app and fewer rows, so they read on a phone inside a film frame.
 
 | File | Purpose |
 | --- | --- |
-| `fairywren-icon.png` | Fairywren app icon |
 | `fairywren-today-dark-phone.jpg` | Today |
 | `fairywren-focus-dark-phone.jpg` | Focus mode |
 | `fairywren-insights-dark-phone.jpg`, `fairywren-month-dark-phone.jpg` | Two more screens for a line-up |
