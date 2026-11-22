@@ -81,16 +81,27 @@
     {
       "file": "scenes/01-version.tsx",
       "durationMs": 3765,
-      "cutAt": "bar:3"
+      "cutAt": "bar:3",
+      "transition": {
+        "type": "whip",
+        "durationMs": 400
+      }
     },
     {
       "file": "scenes/02-whats-new.tsx",
-      "durationMs": 3750,
-      "cutAt": "bar:5"
+      "durationMs": 4150,
+      "cutAt": "bar:5",
+      "transition": {
+        "type": "luma",
+        "durationMs": 560,
+        "shape": "iris",
+        "center": [0.0, 0.5],
+        "softness": 0.16
+      }
     },
     {
       "file": "scenes/03-word-1.tsx",
-      "durationMs": 1875,
+      "durationMs": 2435,
       "cutAt": "bar:6"
     },
     {

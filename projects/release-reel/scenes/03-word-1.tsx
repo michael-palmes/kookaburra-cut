@@ -16,7 +16,7 @@ const WORD_Y = 0.34;
 
 export default defineScene({
   id: "release-reel-03-word-1",
-  durationMs: 1875,
+  durationMs: 2435,
   Scene() {
     const devices = useSceneDevices();
     const grid = useBeatGrid();

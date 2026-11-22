@@ -2,27 +2,169 @@
   "version": 1,
   "name": "Version",
   "text": {
-    "label": "01 · Version · ink room",
-    "bars": "Bars 1 to 2 · Intro: something new each bar",
-    "kicker": "",
-    "title": "2.4",
-    "c1": "1.1  The version slams into the ink room",
-    "c2": "1.3  Light rakes across the numerals",
-    "c3": "2.1  The app icon drops in beside them",
-    "c4": "2.3  Push in; the numerals tip to the lens"
+    "title": "2.4"
   },
   "textStyle": {
-    "labelColor": "#ffffff",
-    "barsColor": "#ffffff",
-    "kickerColor": "#ffffff",
-    "titleColor": "#ffffff",
-    "c1Color": "#ffffff",
-    "c2Color": "#ffffff",
-    "c3Color": "#ffffff",
-    "c4Color": "#ffffff"
+    "titleColor": "#e6e3ee"
+  },
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "position": [-1.6, -0.95, 12.6],
+          "aim": {
+            "mode": "point",
+            "at": [-0.15, -0.95, 0]
+          },
+          "fov": 18
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 2828,
+        "at": "bar:2.3",
+        "pose": {
+          "position": [0.3, -0.95, 11.6],
+          "aim": {
+            "mode": "point",
+            "at": [-0.1, -0.95, 0]
+          },
+          "fov": 18
+        }
+      },
+      {
+        "id": "k3",
+        "tMs": 3765,
+        "at": "bar:3",
+        "pose": {
+          "position": [0.1, -0.9, 9.6],
+          "aim": {
+            "mode": "point",
+            "at": [-0.2, -0.9, 0]
+          },
+          "fov": 18
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "linear",
+        "smooth": false
+      },
+      {
+        "from": "k2",
+        "to": "k3",
+        "ease": "inOutSine",
+        "smooth": false
+      }
+    ]
+  },
+  "motionBlur": {
+    "enabled": true,
+    "shutterDeg": 180,
+    "camera": true,
+    "objects": false
+  },
+  "lighting": {
+    "ambient": 0.2,
+    "fills": [],
+    "sun": {
+      "azimuthDeg": -38,
+      "elevationDeg": 44,
+      "intensity": 1.0,
+      "color": "#fff4e6",
+      "castShadow": true
+    },
+    "environment": {
+      "source": "kookaburra:cyclorama",
+      "intensity": 0.8,
+      "rotationDeg": 0
+    },
+    "lights": [
+      {
+        "id": "rim-warm",
+        "type": "point",
+        "intensity": 22,
+        "color": "#ff9457",
+        "decay": 2,
+        "placement": {
+          "mode": "point",
+          "position": [-3.8, 0.4, 2.2]
+        }
+      },
+      {
+        "id": "rim-cool",
+        "type": "point",
+        "intensity": 22,
+        "color": "#3ed6a6",
+        "decay": 2,
+        "placement": {
+          "mode": "point",
+          "position": [3.6, 0.4, 2.2]
+        }
+      }
+    ],
+    "shadow": {
+      "technique": "map",
+      "softness": 0.25,
+      "opacity": 0.55,
+      "mapSize": 2048,
+      "bias": -0.0005
+    }
   },
   "background": {
-    "type": "color",
-    "color": "#0b1030"
+    "type": "gradient",
+    "spec": {
+      "type": "radial",
+      "angleDeg": 0,
+      "centre": [0.2, 0.74],
+      "stops": [["#2c3aa8", 0], ["#1a2278", 0.34], ["#0f1548", 0.68], ["#080b26", 1]],
+      "space": "oklch"
+    }
+  },
+  "backdrop": {
+    "type": "satin",
+    "color": "#0d1345",
+    "roughness": 0.35,
+    "specular": 0.3,
+    "centre": [0, 0],
+    "fade": [7, 18],
+    "reflection": {
+      "strength": 0.85,
+      "blur": 30,
+      "heightBlur": 1.0,
+      "contact": 0.5,
+      "stretch": 3,
+      "scatter": 6,
+      "reach": 3.4
+    },
+    "glitter": {
+      "scale": 90,
+      "density": 0,
+      "roughness": 0.15,
+      "tilt": 0.5,
+      "weight": 0,
+      "grain": 0.6,
+      "seed": 5
+    },
+    "shadow": {
+      "spread": 0.08,
+      "lighten": 0.35,
+      "reach": 5,
+      "contact": 0.55
+    },
+    "pools": [
+      {
+        "at": [-0.5, -0.5],
+        "radius": [10, 7],
+        "color": "#1a2ad0",
+        "intensity": 0.12
+      }
+    ]
   }
 }

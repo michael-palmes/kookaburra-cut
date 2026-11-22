@@ -2,25 +2,128 @@
   "version": 1,
   "name": "What's new",
   "text": {
-    "label": "02 · What's new · paper room",
-    "bars": "Bars 3 to 4 · Intro: something new each bar",
-    "kicker": "",
-    "title": "What's new.",
-    "c1": "3.1  Paper room; the line stamps, a word a beat",
-    "c2": "4.1  Three colour bands wipe through behind it",
-    "c3": "4.3  Tangerine starts to take the room"
+    "title": "What’s new."
   },
   "textStyle": {
-    "labelColor": "#0b1030",
-    "barsColor": "#0b1030",
-    "kickerColor": "#0b1030",
-    "titleColor": "#0b1030",
-    "c1Color": "#0b1030",
-    "c2Color": "#0b1030",
-    "c3Color": "#0b1030"
+    "titleColor": "#0b1030"
+  },
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 400,
+        "at": "bar:3",
+        "pose": {
+          "position": [0.9, -0.4, 11.5],
+          "aim": {
+            "mode": "point",
+            "at": [0, 0, 0]
+          },
+          "fov": 18
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 4150,
+        "at": "bar:5",
+        "pose": {
+          "position": [-0.7, -0.2, 9.0],
+          "aim": {
+            "mode": "point",
+            "at": [0, 0.05, 0]
+          },
+          "fov": 18
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutSine",
+        "smooth": false
+      }
+    ]
+  },
+  "motionBlur": {
+    "enabled": true,
+    "shutterDeg": 180,
+    "camera": true,
+    "objects": false
+  },
+  "lighting": {
+    "ambient": 1.2,
+    "fills": [],
+    "sun": {
+      "azimuthDeg": -38,
+      "elevationDeg": 44,
+      "intensity": 2.6,
+      "color": "#fff4e6",
+      "castShadow": true
+    },
+    "environment": {
+      "source": "kookaburra:cyclorama",
+      "intensity": 1.6,
+      "rotationDeg": 0
+    },
+    "lights": [],
+    "shadow": {
+      "technique": "map",
+      "softness": 0.25,
+      "opacity": 0.35,
+      "mapSize": 2048,
+      "bias": -0.0005
+    }
   },
   "background": {
-    "type": "color",
-    "color": "#f7f5f0"
+    "type": "gradient",
+    "spec": {
+      "type": "radial",
+      "angleDeg": 0,
+      "centre": [0.2, 0.74],
+      "stops": [["#fffdf8", 0], ["#f7f5f0", 0.34], ["#ece8df", 0.68], ["#dcd6c9", 1]],
+      "space": "oklch"
+    }
+  },
+  "backdrop": {
+    "type": "satin",
+    "color": "#f3f0e9",
+    "roughness": 0.35,
+    "specular": 0.3,
+    "centre": [0, 0],
+    "fade": [7, 18],
+    "reflection": {
+      "strength": 0.7,
+      "blur": 30,
+      "heightBlur": 1.0,
+      "contact": 0.5,
+      "stretch": 3,
+      "scatter": 6,
+      "reach": 2.8
+    },
+    "glitter": {
+      "scale": 90,
+      "density": 0,
+      "roughness": 0.15,
+      "tilt": 0.5,
+      "weight": 0,
+      "grain": 0.6,
+      "seed": 5
+    },
+    "shadow": {
+      "spread": 0.08,
+      "lighten": 0.35,
+      "reach": 5,
+      "contact": 0.55
+    },
+    "pools": [
+      {
+        "at": [-0.5, -0.5],
+        "radius": [10, 7],
+        "color": "#ffffff",
+        "intensity": 0.12
+      }
+    ]
   }
 }
