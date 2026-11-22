@@ -53,8 +53,8 @@
 #                  text layers and metadata (a PNG zip must also match byte for byte; a PDF's
 #                  file hash is advisory)
 #         --size   4k|1080p|720p  (stills/stillsverify only, default 1080p) page short edge
-#         --lever  <L>  memory: the one change this run measures (clip-cache=N or
-#                  scene-release=off); perf: headless, which paces the window's playback and
+#         --lever  <L>  memory: the one change this run measures (clip-cache=N,
+#                  scene-release=off or supersample-share=off); perf: headless, which paces the window's playback and
 #                  scrub rows itself and skips the stage-only passes (a locked or hidden screen)
 #         --foreground  launch the app normally instead of in the background (no-focus-steal)
 #                  mode; always on for --action perf, which needs an honest visible window
