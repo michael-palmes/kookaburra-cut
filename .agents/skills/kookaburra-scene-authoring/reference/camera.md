@@ -194,8 +194,12 @@ the scene's; blur animates, the mode does not.
 "dof": { "mode": "lens", "fStop": 11, "focus": "auto" }
 ```
 - Everything blurs by its true depth, text and screens included: keep text you need
-  legible on the focus plane. `blur: 0` frames are unchanged. Inspector depth presets:
-  Subtle (blur 0.25, range 2), Cinematic (0.6, 1.2), Macro (0.9, 0.5).
+  legible on the focus plane. Flat shapes and images (`RoundedRect`, `Pill`, `ImageCard`)
+  write no depth, so they blur with whatever is behind them: give one `holdFocus` to keep
+  it sharp in front of a blurred backdrop (a lockup over a soft room). Text much further
+  out of focus than its stroke is wide blurs as an outline, so bring it in only gently
+  soft. `blur: 0` frames are unchanged. Inspector depth presets: Subtle (blur 0.25,
+  range 2), Cinematic (0.6, 1.2), Macro (0.9, 0.5).
 
 Focus keeps the UI readable. Each rule below fixed a shot where the words the scene was
 about went soft:

@@ -5,6 +5,7 @@ import { resolveTokenFill } from "../../engine/textStyleResolve";
 import { useTimeline } from "../../engine/timeline";
 import { useProjectAssetUrl } from "../../engine/useProjectAssetUrl";
 import { useTheme } from "../../theme";
+import { asRegionDepthMesh, REGION_DEPTH_ORDER } from "../device/screenRegionDepth";
 import { foldBandToChild, GroupAnimationContext, groupImageEffects } from "../group/context";
 import { SHINE_AXIS, SHINE_INTENSITY } from "../text/presets";
 import type { V3 } from "../types";
@@ -46,6 +47,8 @@ export interface ImageCardProps {
   tint?: "text" | "muted" | "accent" | (string & {});
   /** A hard offset shadow behind the card; absent draws none. */
   shadow?: HardShadowSpec;
+  /** Holds its own focus under lens depth of field, where the image is opaque, so it stays sharp in front of a blurred backdrop; absent blurs with whatever is behind it. */
+  holdFocus?: boolean;
 }
 
 const DEFAULT_OUT_MS = 300;
@@ -84,6 +87,7 @@ export function ImageCard(props: ImageCardProps) {
         fade={props}
         tint={props.tint}
         shadow={shadow}
+        holdFocus={props.holdFocus === true}
       />
     </AssetBoundary>
   );
@@ -212,6 +216,7 @@ function LoadedImageCard({
   fade,
   tint,
   shadow,
+  holdFocus,
 }: {
   url: string;
   position: V3;
@@ -220,6 +225,7 @@ function LoadedImageCard({
   fade: ImageCardFade;
   tint?: string;
   shadow?: HardShadowSpec;
+  holdFocus: boolean;
 }) {
   const { localMs } = useTimeline();
   const theme = useTheme();
@@ -272,6 +278,19 @@ function LoadedImageCard({
     return m;
   }, [texture, shineUniforms, motionUniforms, tintUniforms]);
   useLayoutEffect(() => () => material.dispose(), [material]);
+  const depthMaterial = useMemo(() => {
+    if (!holdFocus) return null;
+    const m = new MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      colorWrite: false,
+      depthWrite: true,
+      alphaTest: 0.5,
+    });
+    m.toneMapped = false;
+    return m;
+  }, [holdFocus, texture]);
+  useLayoutEffect(() => () => depthMaterial?.dispose(), [depthMaterial]);
 
   const img = texture.image as { width: number; height: number };
   const contained = containImageDimensions(img.width, img.height, width, maxHeight);
@@ -296,9 +315,18 @@ function LoadedImageCard({
   }
 
   const card = (
-    <mesh position={position} material={material}>
-      <planeGeometry args={[contained.width, contained.height]} />
-    </mesh>
+    <>
+      <mesh position={position} material={material}>
+        <planeGeometry args={[contained.width, contained.height]} />
+      </mesh>
+      {depthMaterial && material.opacity > 0 ? (
+        <group renderOrder={REGION_DEPTH_ORDER}>
+          <mesh ref={asRegionDepthMesh} position={position} material={depthMaterial}>
+            <planeGeometry args={[contained.width, contained.height]} />
+          </mesh>
+        </group>
+      ) : null}
+    </>
   );
   if (!shadow) return card;
   return (

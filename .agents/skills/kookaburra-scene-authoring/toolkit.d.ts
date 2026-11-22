@@ -1048,6 +1048,8 @@ declare module "@kookaburra/toolkit" {
     tint?: "text" | "muted" | "accent" | (string & {});
     /** A hard offset shadow behind the card; absent draws none. */
     shadow?: HardShadowSpec;
+    /** Holds its own focus under lens depth of field, where the image is opaque, so it stays sharp in front of a blurred backdrop; absent blurs with whatever is behind it. */
+    holdFocus?: boolean;
   }
 
   /** The scene document's layered-screenshot stack at its resolved pose (rest pose, or the sampled animation when the scene's animated track is the layered screenshot). Registers the scene as a consumer so the host-side fallback stands down. In-flight builder drafts merge here in React behind the store's export guard, so the export path only ever sees the sidecar. */
@@ -1164,6 +1166,8 @@ declare module "@kookaburra/toolkit" {
     rotation?: V3;
     scale?: number | V3;
     renderOrder?: number;
+    /** Holds its own focus under lens depth of field, so it stays sharp in front of a blurred backdrop; absent blurs with whatever is behind it. */
+    holdFocus?: boolean;
   }
 
   /** A library object placed directly in TSX: an id and where it sits. */
