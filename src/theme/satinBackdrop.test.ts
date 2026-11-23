@@ -70,12 +70,26 @@ describe("parseSatinBackdrop", () => {
       {
         color: "#101010",
         reflection: { stretch: 3, scatter: 99, reach: 3 },
-        shadow: { spread: 0.14, lighten: 2, reach: 5, contact: 0.5 },
+        shadow: {
+          spread: 0.14,
+          lighten: 2,
+          reach: 5,
+          contact: 0.5,
+          occlusion: 3,
+          occlusionReach: 0.2,
+        },
       },
       "t",
     );
     expect(v?.reflection).toEqual({ stretch: 3, scatter: 40, reach: 3 });
-    expect(v?.shadow).toEqual({ spread: 0.14, lighten: 1, reach: 5, contact: 0.5 });
+    expect(v?.shadow).toEqual({
+      spread: 0.14,
+      lighten: 1,
+      reach: 5,
+      contact: 0.5,
+      occlusion: 1,
+      occlusionReach: 0.2,
+    });
     expect(parseSatinBackdrop(v as unknown as Record<string, unknown>, "t")).toEqual(v);
     expect(parseSatinBackdrop({ color: "#101010", shadow: 3 }, "t")?.shadow).toBeUndefined();
   });

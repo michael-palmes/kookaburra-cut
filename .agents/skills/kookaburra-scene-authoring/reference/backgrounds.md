@@ -128,7 +128,10 @@ block softens the key light's shadow the way a real light does: `{ "spread": 0.0
 "lighten": 0.35, "reach": 5, "contact": 0.55 }` widens its edge with distance from
 what casts it (`spread`, the light's apparent size), lets it lose `lighten` of its
 depth by `reach` units along its length, and darkens the floor where something meets
-it (`contact`, which needs the reflection on). Keep the lighting `shadow.softness`
+it (`contact`, which needs the reflection on). For an object standing on a glossy
+floor add `"occlusion": 0.8, "occlusionReach": 0.12`: the reflection itself darkens
+where the object meets the floor, the dark seam that grounds it (`occlusionReach` is
+how much of the object's height the seam covers). Keep the lighting `shadow.softness`
 low (0.25) under it. It applies to the first shadow-casting directional light.
 
 Real cast shadows need a staged backdrop AND a lighting `shadow` with

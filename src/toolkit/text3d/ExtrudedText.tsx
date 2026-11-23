@@ -1,7 +1,6 @@
 import { useContext, useEffect, useId, useLayoutEffect, useMemo } from "react";
 import { ExtrudeGeometry } from "three";
 import { TextGeometry } from "three/examples/jsm/geometries/TextGeometry.js";
-import { toCreasedNormals } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { shouldRenderManagedTextRole } from "../../engine/managedText";
 import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import { useTextKeyRegistry } from "../../engine/textKeyRegistry";
@@ -16,6 +15,7 @@ import { useTheme } from "../../theme";
 import { LightRig } from "../lighting/LightRig";
 import { useSceneStaged } from "../stage/context";
 import type { V3 } from "../types";
+import { smoothExtrudeNormals } from "./extrudeNormals";
 import { text3dFont } from "./fonts";
 import { roundShapes } from "./roundCorners";
 
@@ -46,8 +46,6 @@ export interface ExtrudedTextProps {
   /** The sidecar style key this text honours: registers the row in the Edit-text drill and applies the `textStyle.<textKey>*` overrides (Size/Color/OffsetX/OffsetY/RotationDeg). */
   textKey?: string;
 }
-
-const SMOOTH_ANGLE = Math.PI / 4;
 
 export interface ExtrudedBevel {
   size?: number;
@@ -168,7 +166,7 @@ function ExtrudedTextRenderer(props: ExtrudedTextProps) {
             options,
           )
         : new TextGeometry(text, { font, size, ...options });
-    const geo = rounded ? toCreasedNormals(flat, SMOOTH_ANGLE) : flat;
+    const geo = rounded && bevelSize > 0 && bevelThickness > 0 ? smoothExtrudeNormals(flat) : flat;
     if (geo !== flat) flat.dispose();
     geo.center(); // anchor centre/middle like AnimatedHeadline (and centre the depth axis)
     if (anchorY === "bottom" && geo.boundingBox) geo.translate(0, -geo.boundingBox.min.y, 0);

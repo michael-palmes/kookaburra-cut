@@ -441,8 +441,15 @@ export interface SatinBackdropSpec {
         /** Height at which a reflection has faded out. */
         reach?: number;
       };
-  /** A directional light's shadow on the floor: `spread` widens its edge with distance from the caster, `lighten` is the share lost by `reach`, `contact` darkens where something meets the floor (it needs the reflection). */
-  shadow?: { spread?: number; lighten?: number; reach?: number; contact?: number };
+  /** A directional light's shadow on the floor: `spread` widens its edge with distance from the caster, `lighten` is the share lost by `reach`, `contact` darkens where something meets the floor, and `occlusion` is the share of the reflection lost there, fading over `occlusionReach` of what is reflected (both need the reflection). */
+  shadow?: {
+    spread?: number;
+    lighten?: number;
+    reach?: number;
+    contact?: number;
+    occlusion?: number;
+    occlusionReach?: number;
+  };
   /** Glossy flakes: `scale` flakes per unit, `density` the share that is flake, `grain` how much the sheen varies grain to grain. */
   glitter?: {
     scale?: number;

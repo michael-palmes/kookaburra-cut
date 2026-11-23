@@ -85,6 +85,8 @@ export function parseSatinBackdrop(
       lighten: [0, 1],
       reach: [0.1, 40],
       contact: [0, 1],
+      occlusion: [0, 1],
+      occlusionReach: [0.01, 4],
     });
     out.shadow = shadow;
   } else if (v.shadow !== undefined) {

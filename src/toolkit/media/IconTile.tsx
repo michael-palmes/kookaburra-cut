@@ -1,9 +1,9 @@
 import { useTexture } from "@react-three/drei";
 import { useEffect, useLayoutEffect, useMemo } from "react";
 import { type BufferGeometry, ExtrudeGeometry, Shape, SRGBColorSpace, type Texture } from "three";
-import { toCreasedNormals } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { useProjectAssetUrl } from "../../engine/useProjectAssetUrl";
 import type { ExtrudedFinish } from "../text3d/ExtrudedText";
+import { smoothExtrudeNormals } from "../text3d/extrudeNormals";
 import type { V3 } from "../types";
 import { AssetBoundary } from "./AssetBoundary";
 
@@ -69,7 +69,8 @@ export function iconTileGeometry(
     );
   }
   uvs.needsUpdate = true;
-  const smooth = toCreasedNormals(geometry, Math.PI / 4);
+  if (edge <= 0) return geometry;
+  const smooth = smoothExtrudeNormals(geometry);
   if (smooth !== geometry) geometry.dispose();
   return smooth;
 }

@@ -1196,7 +1196,8 @@ camera exactly:
   matrix). A `reach` fade is read from the mirror's depth at 8 taps on the same turned
   disc, spread over 0.6 of the blur's footprint, so a blurred reflection keeps its soft
   edge past the caster's outline. The tap counts, the search gap, the contact reach, the
-  reach spread and the scatter's grain multiple in `SatinFloor.tsx` are contract.
+  reach spread, the occlusion seam's spread and the scatter's grain multiple in
+  `SatinFloor.tsx` are contract.
 
 ### The fixed background
 

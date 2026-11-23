@@ -105,9 +105,20 @@ export interface FloorShadow {
   reach?: number;
   /** Darkening where something meets the floor; it reads the mirror, so it needs the reflection on. */
   contact?: number;
+  /** Share of the reflection lost where something meets the floor: the dark seam a standing object leaves. */
+  occlusion?: number;
+  /** Height of what is reflected over which that seam fades. */
+  occlusionReach?: number;
 }
 
-const SHADOW_DEFAULTS: Required<FloorShadow> = { spread: 0.12, lighten: 0.5, reach: 5, contact: 0 };
+const SHADOW_DEFAULTS: Required<FloorShadow> = {
+  spread: 0.12,
+  lighten: 0.5,
+  reach: 5,
+  contact: 0,
+  occlusion: 0,
+  occlusionReach: 0.12,
+};
 /** Soft shadow taps and reaches: export contract once shipped. */
 const SHADOW_SEARCH_TAPS = 16;
 const SHADOW_FILTER_TAPS = 40;
@@ -120,6 +131,8 @@ const CONTACT_REACH = 0.3;
 const SCATTER_FINE = 4;
 const REACH_TAPS = 8;
 const REACH_SPREAD = 0.6;
+/** The seam's softening, in pixels of a 1080p frame: export contract once shipped. */
+const OCCLUSION_SPREAD = 8;
 const MAX_POOLS = 4;
 /** How far the plane reaches past the fade: its edge never shows. */
 const PLANE_MARGIN = 1;
@@ -201,6 +214,9 @@ uniform vec4 kbShadowB;
 uniform vec3 kbReflX;
 uniform vec2 kbReflSpread;
 uniform vec2 kbShadowSlope;
+uniform vec2 kbOcclusion;
+uniform vec2 kbOcclusionSpread;
+uniform float kbOblique;
 uniform float kbSeed;
 `;
 
@@ -346,6 +362,27 @@ if ( kbReflOn > 0.5 ) {
 			}
 		}
 		kbRefl *= kbFade / ${REACH_TAPS}.0;
+	}
+	if ( kbOcclusion.x > 0.0 ) {
+		float kbNoise = fract( 52.9829189 * fract( dot( gl_FragCoord.xy, vec2( 0.06711056, 0.00583715 ) ) ) );
+		float kbPhi = 6.283185307 * fract( kbNoise + kbSeed * 0.61803398875 );
+		float kbSeam = 0.0;
+		for ( int i = 0; i < ${REACH_TAPS}; i ++ ) {
+			float kbR = sqrt( ( float( i ) + 0.5 ) / ${REACH_TAPS}.0 );
+			float kbA = float( i ) * 2.399963229728653 + kbPhi;
+			float kbD = texture2D( kbReflDepth, kbUv + vec2( cos( kbA ), sin( kbA ) ) * kbR * kbOcclusionSpread ).r;
+			// The mirror clips at the floor, so its depth is the height above the floor over the distance along the view.
+			float kbLeft = abs( kbRay.y ) - kbD * kbOblique * dot( kbRay, kbVirtualForward );
+			if ( kbD < 1.0 && kbLeft > 1e-5 ) {
+				float kbTapHeight = kbToFloor * abs( kbRay.y ) * ( abs( kbRay.y ) / kbLeft - 1.0 );
+				float kbTapNear = 1.0 - smoothstep( 0.0, kbOcclusion.y, kbTapHeight );
+				kbSeam += kbTapNear * kbTapNear;
+			}
+		}
+		kbSeam = 1.0 - kbOcclusion.x * kbSeam / ${REACH_TAPS}.0;
+		kbRefl *= kbSeam;
+		reflectedLight.directDiffuse *= kbSeam;
+		reflectedLight.indirectDiffuse *= kbSeam;
 	}
 	float kbNear = 1.0 - smoothstep( 0.0, ${CONTACT_REACH}, kbHeight );
 	float kbAo = 1.0 - kbShadowA.w * kbHit * kbNear * kbNear;
@@ -520,6 +557,9 @@ export function SatinFloor({
       kbReflX: { value: new Vector3() },
       kbReflSpread: { value: new Vector2() },
       kbShadowSlope: { value: new Vector2() },
+      kbOcclusion: { value: new Vector2() },
+      kbOcclusionSpread: { value: new Vector2() },
+      kbOblique: { value: 1 },
       kbSeed: supersampleSeed,
     }),
     [passes],
@@ -594,7 +634,7 @@ export function SatinFloor({
       shader.fragmentShader = fs;
     };
     m.customProgramCacheKey = () =>
-      soft ? "kookaburra-satin-floor-v7-soft" : "kookaburra-satin-floor-v6";
+      soft ? "kookaburra-satin-floor-v8-soft" : "kookaburra-satin-floor-v6";
     return m;
   }, [uniforms, soft]);
   useLayoutEffect(() => () => material.dispose(), [material]);
@@ -627,6 +667,10 @@ export function SatinFloor({
       perUnit,
     );
     uniforms.kbReflX.value.z = Math.max(0, reflect?.reach ?? 0);
+    uniforms.kbOcclusion.value.set(
+      cast ? Math.min(1, Math.max(0, cast.occlusion)) : 0,
+      cast ? Math.max(1e-3, cast.occlusionReach) : 1,
+    );
     const count = Math.min(MAX_POOLS, pools.length);
     uniforms.kbPoolCount.value = count;
     for (let i = 0; i < count; i++) {
@@ -705,6 +749,7 @@ export function SatinFloor({
         -1,
         (1 + pm[10]) / pm[14],
       );
+      uniforms.kbOblique.value = Math.abs(clip.dot(q));
       clip.multiplyScalar(2 / clip.dot(q));
       pm[2] = clip.x;
       pm[6] = clip.y;
@@ -745,6 +790,10 @@ export function SatinFloor({
       uniforms.kbReflSpread.value.set(
         (REACH_SPREAD * px) / w,
         (REACH_SPREAD * px * Math.max(1, reflect?.stretch ?? 1)) / h,
+      );
+      uniforms.kbOcclusionSpread.value.set(
+        (OCCLUSION_SPREAD * h) / (1080 * w),
+        OCCLUSION_SPREAD / 1080,
       );
       renderer.setRenderTarget(passes.blurred);
       renderer.render(passes.quad, passes.quadCamera);
