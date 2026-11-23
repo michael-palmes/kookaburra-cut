@@ -4,15 +4,14 @@ import {
   DustBurst,
   defineScene,
   ImageCard,
+  Ripple,
   ramp,
   SceneStage,
   Slab,
-  TapRing,
   useBeatGrid,
   useDeviceScreenPoint,
   useSceneDevices,
   useSceneText,
-  useTheme,
   useTimeline,
 } from "@kookaburra/toolkit";
 
@@ -111,8 +110,7 @@ export default defineScene({
   Scene() {
     const devices = useSceneDevices();
     const hero = devices.find((d) => d.id === "hero") ?? devices[0];
-    const screen = useDeviceScreenPoint(hero ?? NO_DEVICE, 0.5, 0.5);
-    const theme = useTheme();
+    const screen = useDeviceScreenPoint(hero ?? NO_DEVICE, 0.5, 0.5, { lift: 0.06 });
     const { localMs } = useTimeline();
     const grid = useBeatGrid();
     const title = useSceneText("title", "And more.");
@@ -220,12 +218,11 @@ export default defineScene({
               </Slab>
               {hero ? (
                 <group position={target} rotation={screen.rotation}>
-                  <TapRing
+                  <Ripple
                     at={launch + FLIGHT_MS - 40}
-                    radius={0.28}
-                    colour={theme.colors.accent}
-                    dot={false}
-                    position={[0, 0, 0.01]}
+                    radius={0.52}
+                    durationMs={650}
+                    position={[0, 0, 0.02]}
                   />
                   <group rotation={[Math.PI / 2, 0, 0]}>
                     <DustBurst
@@ -238,7 +235,7 @@ export default defineScene({
                       size={0.4}
                       flatten={1}
                       durationMs={420}
-                      opacity={0.3}
+                      opacity={0.16}
                       tone="accent"
                     />
                   </group>
