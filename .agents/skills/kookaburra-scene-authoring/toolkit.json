@@ -2753,6 +2753,84 @@
     "kind": "type",
     "signature": "interface RibbonProps { seed?: number; points?: number; bounds?: V3; radius?: number; from?: number; to?: number; tone?: \"text\" | \"accent\" | \"muted\"; lit?: boolean; glow?: number; position?: V3; rotation?: V3; }"
   },
+  "Ripple": {
+    "kind": "component",
+    "summary": "A clear ring of wave that opens across a surface and bends what is behind it, like a drop on water.",
+    "signature": "function Ripple(props: RippleProps): ReactElement;",
+    "doc": "A ripple crossing a surface: a ring of clear, glossy wave that opens from a point and bends what is behind it, like a drop landing on water or a pulse through glass. Place it just off the surface (a screen, a floor, a card) and turn it to face out of it. It refracts what the frame has already drawn, so it reads over a picture or a screen and shows nothing over a flat colour. Pure function of `useTimeline()`.",
+    "props": [
+      {
+        "name": "at",
+        "type": "number",
+        "required": true,
+        "units": "ms",
+        "doc": "When the ripple starts, in ms of local scene time."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]",
+        "doc": "Centre of the ripple, on the surface it crosses."
+      },
+      {
+        "name": "rotation",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]",
+        "units": "radians",
+        "doc": "Rotation in radians; the ripple spreads in its own XY plane and faces +z."
+      },
+      {
+        "name": "radius",
+        "type": "number",
+        "required": false,
+        "default": "0.4",
+        "units": "world units",
+        "doc": "World-unit radius the ring reaches."
+      },
+      {
+        "name": "width",
+        "type": "number",
+        "required": false,
+        "default": "0.6",
+        "doc": "The ring's width as a fraction of its radius."
+      },
+      {
+        "name": "height",
+        "type": "number",
+        "required": false,
+        "default": "0.2",
+        "doc": "How tall the wave stands against its width: the strength of the bend."
+      },
+      {
+        "name": "crests",
+        "type": "number",
+        "required": false,
+        "default": "2",
+        "doc": "Crests across the ring's width: 1 is a single swell, 2 a wave with a trailing ring."
+      },
+      {
+        "name": "ior",
+        "type": "number",
+        "required": false,
+        "default": "1.4",
+        "doc": "Index of refraction: 1.33 is water, 1.5 glass."
+      },
+      {
+        "name": "durationMs",
+        "type": "number",
+        "required": false,
+        "default": "600",
+        "units": "ms"
+      }
+    ],
+    "example": "<Ripple at={1} />"
+  },
+  "RippleProps": {
+    "kind": "type",
+    "signature": "interface RippleProps { at: number; position?: V3; rotation?: V3; radius?: number; width?: number; height?: number; crests?: number; ior?: number; durationMs?: number; }"
+  },
   "Room": {
     "kind": "component",
     "summary": "Camera-locked room: colour fills the frame behind all content, flood? grows over it. The sidecar room block draws its own.",

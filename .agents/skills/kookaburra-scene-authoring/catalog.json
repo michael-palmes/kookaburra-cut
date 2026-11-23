@@ -25789,6 +25789,11 @@
         "summary": "Seeded tube that grows along a curve."
       },
       {
+        "id": "Ripple",
+        "kind": "component",
+        "summary": "A clear ring of wave that opens across a surface and bends what is behind it, like a drop on water."
+      },
+      {
         "id": "Room",
         "kind": "component",
         "summary": "Camera-locked room: colour fills the frame behind all content, flood? grows over it. The sidecar room block draws its own."
@@ -26524,6 +26529,9 @@
       },
       {
         "id": "RibbonProps"
+      },
+      {
+        "id": "RippleProps"
       },
       {
         "id": "RoomFloodProps"

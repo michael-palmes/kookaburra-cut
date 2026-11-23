@@ -218,6 +218,7 @@ export { accentFluidColours, type FluidFill } from "./shapes/fluidFill";
 export { ParticleField, type ParticleFieldProps } from "./shapes/ParticleField";
 export { Ribbon, type RibbonProps } from "./shapes/Ribbon";
 // Flat, colour-exact rounded rectangles and pills.
+export { Ripple, type RippleProps } from "./shapes/Ripple";
 export { Pill, type PillProps, RoundedRect, type RoundedRectProps } from "./shapes/RoundedRect";
 export { Slab, type SlabProps } from "./shapes/Slab";
 export {

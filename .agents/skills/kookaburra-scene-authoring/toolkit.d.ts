@@ -1343,6 +1343,29 @@ declare module "@kookaburra/toolkit" {
     rotation?: V3;
   }
 
+  /** A ripple crossing a surface: a ring of clear, glossy wave that opens from a point and bends what is behind it, like a drop landing on water or a pulse through glass. Place it just off the surface (a screen, a floor, a card) and turn it to face out of it. It refracts what the frame has already drawn, so it reads over a picture or a screen and shows nothing over a flat colour. Pure function of `useTimeline()`. */
+  export function Ripple(props: RippleProps): ReactElement;
+
+  export interface RippleProps {
+    /** When the ripple starts, in ms of local scene time. */
+    at: number;
+    /** Centre of the ripple, on the surface it crosses. */
+    position?: V3;
+    /** Rotation in radians; the ripple spreads in its own XY plane and faces +z. */
+    rotation?: V3;
+    /** World-unit radius the ring reaches. */
+    radius?: number;
+    /** The ring's width as a fraction of its radius. */
+    width?: number;
+    /** How tall the wave stands against its width: the strength of the bend. */
+    height?: number;
+    /** Crests across the ring's width: 1 is a single swell, 2 a wave with a trailing ring. */
+    crests?: number;
+    /** Index of refraction: 1.33 is water, 1.5 glass. */
+    ior?: number;
+    durationMs?: number;
+  }
+
   /** A camera-locked room: a frame-filling colour behind all content plus an optional flood. Both meshes stay mounted, so a room changing never mounts or compiles anything mid-run. */
   export function Room(props: RoomProps): ReactElement;
 
