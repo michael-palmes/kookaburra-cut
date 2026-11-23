@@ -313,7 +313,8 @@ intuition before the probe settled it).
   is a non-factor": that holds until something makes a scene fill-rate bound.
   No preview knob was added, because the existing preview-quality DPR lever
   already covers the one measured case. Probe passes: `no-extra-lights`,
-  `no-fixtures`, `no-fixture-lights`, `no-area-lights`, `env-off`.
+  `no-fixtures`, `no-fixture-lights`, `no-area-lights`, `no-volumetric`,
+  `env-off`.
 - **Third measured impactor (2026-10-02): the lit set's environment.** Every
   built-in-lit `Device`, `DeviceMockup` and `HeroObject` mounted drei's
   `<Environment frames={1}>`, which re-renders its cube and PMREM whenever its
@@ -383,3 +384,11 @@ intuition before the probe settled it).
   better against the old picture on every frame (`--lever
   supersample-share=off` restores the old path). Thinning the lens gather the same way was
   rejected: wider taps softened the bokeh and strided ones left a ripple.
+- **Eleventh measured impactor (2026-11-22): the floor mirror made twice a
+  render.** Three draws an opaque mesh in its glass pass and its main pass and
+  calls `onBeforeRender` both times, so a satin floor rendered its whole
+  mirror (the scene again, its own glass pass, the haze march) twice a frame
+  wherever a scene has glass. The second ask now takes the first's
+  (`toolkit/stage/renderOnce.ts`): 36 to 47 fps on Unveil's six-phone fly-by,
+  bytes unchanged. What is left there is fill rate: the mirror, the haze
+  (`no-volumetric` reads 63 fps) and the lens blur.
