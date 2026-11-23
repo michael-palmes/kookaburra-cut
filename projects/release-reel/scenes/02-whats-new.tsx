@@ -17,7 +17,7 @@ const BAND_TRAVEL = 11;
 
 export default defineScene({
   id: "release-reel-02-whats-new",
-  durationMs: 4150,
+  durationMs: 3752,
   Scene() {
     const { localMs } = useTimeline();
     const grid = useBeatGrid();
@@ -57,7 +57,7 @@ export default defineScene({
           preset="stamp"
           stagger="word"
           staggerMs={beatMs}
-          hitAt={at(3)}
+          hitAt={at(3, 3)}
           fontSize={0.62}
           position={[0, 0.1, 0]}
         />

@@ -12,10 +12,10 @@
     "keys": [
       {
         "id": "k1",
-        "tMs": 400,
+        "tMs": 2,
         "at": "bar:3",
         "pose": {
-          "position": [0.9, -0.4, 11.5],
+          "position": [0.6, -0.35, 9.2],
           "aim": {
             "mode": "point",
             "at": [0, 0, 0]
@@ -25,10 +25,10 @@
       },
       {
         "id": "k2",
-        "tMs": 4150,
+        "tMs": 3752,
         "at": "bar:5",
         "pose": {
-          "position": [-0.7, -0.2, 9.0],
+          "position": [-0.6, -0.2, 11.2],
           "aim": {
             "mode": "point",
             "at": [0, 0.05, 0]
@@ -41,7 +41,7 @@
       {
         "from": "k1",
         "to": "k2",
-        "ease": "inOutSine",
+        "ease": "outCubic",
         "smooth": false
       }
     ]
@@ -96,7 +96,7 @@
     "reflection": {
       "strength": 0.7,
       "blur": 30,
-      "heightBlur": 1.0,
+      "heightBlur": 1,
       "contact": 0.5,
       "stretch": 3,
       "scatter": 6,

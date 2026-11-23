@@ -73,26 +73,13 @@
       },
       {
         "id": "k3",
-        "tMs": 2828,
-        "at": "bar:2.3",
+        "tMs": 4703,
+        "at": "bar:3.3",
         "pose": {
-          "position": [0.35, -1.4, 6.1],
+          "position": [0.75, -0.6, 10.2],
           "aim": {
             "mode": "point",
-            "at": [0.05, -1.015, 0]
-          },
-          "fov": 30
-        }
-      },
-      {
-        "id": "k4",
-        "tMs": 3765,
-        "at": "bar:3",
-        "pose": {
-          "position": [0.2, -1.385, 5.1],
-          "aim": {
-            "mode": "point",
-            "at": [-0.05, -1.14, 0]
+            "at": [0, -1, 0]
           },
           "fov": 30
         }
@@ -126,13 +113,7 @@
       {
         "from": "s3",
         "to": "k3",
-        "ease": "linear",
-        "smooth": false
-      },
-      {
-        "from": "k3",
-        "to": "k4",
-        "ease": "inOutSine",
+        "ease": "inQuart",
         "smooth": false
       }
     ]

@@ -80,11 +80,12 @@
   "scenes": [
     {
       "file": "scenes/01-version.tsx",
-      "durationMs": 3765,
-      "cutAt": "bar:3",
+      "durationMs": 4703,
+      "cutAt": "bar:3.3",
       "transition": {
-        "type": "whip",
-        "durationMs": 400
+        "type": "crossfade",
+        "durationMs": 940,
+        "ease": "smooth"
       },
       "effects": {
         "bloom": {
@@ -104,7 +105,7 @@
     },
     {
       "file": "scenes/02-whats-new.tsx",
-      "durationMs": 4150,
+      "durationMs": 3752,
       "cutAt": "bar:5",
       "transition": {
         "type": "luma",

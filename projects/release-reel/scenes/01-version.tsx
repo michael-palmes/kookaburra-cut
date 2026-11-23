@@ -25,7 +25,7 @@ const FALL_MS = 300;
 
 export default defineScene({
   id: "release-reel-01-version",
-  durationMs: 3765,
+  durationMs: 4703,
   Scene() {
     const { localMs } = useTimeline();
     const grid = useBeatGrid();
@@ -36,7 +36,6 @@ export default defineScene({
     const fall = FALL * (1 - ramp(localMs, land - FALL_MS, land, "inCubic"));
     const rebound = 0.03 * Math.sin(Math.PI * ramp(localMs, land, land + 130, "linear"));
     const jolt = 0.05 * Math.sin(Math.PI * ramp(localMs, land + 15, land + 215, "linear"));
-    const tip = 0.16 * ramp(localMs, at(2, 3), at(3), "inOutSine");
     return (
       <SceneStage floorY={FLOOR_Y}>
         <group position={[0, FLOOR_Y, 0]} rotation={[0, YAW, 0]}>
@@ -49,7 +48,7 @@ export default defineScene({
             shadow
             position={[TILE_X, TILE / 2 + jolt, 0]}
           />
-          <group position={[NUMERALS_X, fall + rebound, HALF_DEPTH]} rotation={[tip, 0, 0]}>
+          <group position={[NUMERALS_X, fall + rebound, HALF_DEPTH]}>
             <ExtrudedText
               text={version}
               textKey="title"
