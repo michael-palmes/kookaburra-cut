@@ -854,6 +854,35 @@ declare module "@kookaburra/toolkit" {
     ripple?: number;
   }
 
+  /** Dust thrown up where something lands hard on a floor: soft puffs that burst outwards from the footprint's edge, rise a little and clear. Every puff is drawn from `createSeededRandom(seed)` and placed as a pure function of `useTimeline()`, so it exports byte for byte the same. Unlit and camera-facing; it shows in a satin floor's reflection. */
+  export function DustBurst(props: DustBurstProps): ReactElement;
+
+  export interface DustBurstProps {
+    /** The impact, in ms of local scene time. */
+    at: number;
+    /** Centre of what lands, on the floor. */
+    position?: V3;
+    /** Width and depth of what lands: the puffs start along its edge. */
+    footprint?: [number, number];
+    /** Puff count. */
+    count?: number;
+    /** RNG seed; same seed, same burst, every run. */
+    seed?: number;
+    /** How far the puffs travel outwards, in world units. */
+    reach?: number;
+    /** How far they rise. */
+    lift?: number;
+    /** A puff's radius at its largest. */
+    size?: number;
+    /** A puff's height against its width: under 1 keeps the burst low, a skirt along the floor. */
+    flatten?: number;
+    /** How long the burst takes to clear. */
+    durationMs?: number;
+    opacity?: number;
+    /** Theme colour token (unlit). */
+    tone?: "text" | "accent" | "muted";
+  }
+
   /** Every valid ease name (stable order: linear, jump, then in/out/inOut per family). */
   export const EASE_NAMES: readonly EaseName[];
 
@@ -2568,6 +2597,15 @@ declare module "@kookaburra/toolkit" {
     count: number;
     dots: Float32Array;
     tints: Float32Array;
+  }
+
+  interface DustShape {
+    footprint: [number, number];
+    reach: number;
+    lift: number;
+    size: number;
+    flatten: number;
+    durationMs: number;
   }
 
   /** The easing families exposed to the UI/scene documents (each as in / out / inOut). */

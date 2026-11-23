@@ -199,6 +199,8 @@ export {
 } from "./shapes/DashedRule";
 // Hundreds of dots in one instanced draw: grids and waffles whose sizes, places and colours follow fields (a wave, a window, counts, a funnel, a gather, a merge into a tile).
 export { DotField, type DotFieldProps } from "./shapes/DotField";
+// Generative shapes: all randomness via createSeededRandom, all motion via the clock.
+export { DustBurst, type DustBurstProps } from "./shapes/DustBurst";
 export {
   DOT_ORDERS,
   type DotAdjust,
@@ -213,7 +215,6 @@ export {
 } from "./shapes/dotFieldMath";
 // The fluid gradient as a shape fill, sampled in screen space so filled shapes share one gradient.
 export { accentFluidColours, type FluidFill } from "./shapes/fluidFill";
-// Generative shapes: all randomness via createSeededRandom, all motion via the clock.
 export { ParticleField, type ParticleFieldProps } from "./shapes/ParticleField";
 export { Ribbon, type RibbonProps } from "./shapes/Ribbon";
 // Flat, colour-exact rounded rectangles and pills.

@@ -788,6 +788,10 @@ export const TOOLKIT_SUMMARIES: Record<
     summary: "Host-mounted 3D objects for scenes without StagedObject.",
     internal: true,
   },
+  DustBurst: {
+    summary:
+      "Dust thrown up where something lands hard on a floor: seeded soft puffs that burst out and clear.",
+  },
   ParticleField: { summary: "Seeded instanced particles drifting on the clock." },
   DotField: {
     summary:

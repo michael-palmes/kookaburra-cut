@@ -274,6 +274,7 @@ export default defineScene({
 Generative shapes (all motion from the clock, randomness from `seed`):
 
 - `<ParticleField count={200} seed={1} bounds={[6, 3.5, 2]} size drift twinkle tone="accent" glow />`
+- `<DustBurst at={ms} position={[x, floorY, z]} footprint={[width, depth]} count={120} seed={1} reach={1.6} lift={0.2} size={0.3} flatten={0.6} durationMs={800} opacity={0.35} tone="muted" />`: dust where something lands hard. Time `at` to the frame the object meets the floor, give it the object's footprint, and keep it short: a hard impact clears in under a second.
 - `<WireGrid size={12} divisions={24} amplitude wavelength speed tone opacity glow position rotation />`
 - `<Ribbon seed={1} points bounds radius={0.05} from={0} to={1500} tone lit glow />`
 - `glow` (a luminance such as 1.5) makes the shape an exact-colour emitter that a bloom

@@ -25697,6 +25697,11 @@
         "summary": "Grid or waffle of dots in one draw: reveal, wave, window, count, funnel, gather, merge, fill."
       },
       {
+        "id": "DustBurst",
+        "kind": "component",
+        "summary": "Dust thrown up where something lands hard on a floor: seeded soft puffs that burst out and clear."
+      },
+      {
         "id": "EASE_NAMES",
         "kind": "constant",
         "summary": "Every ease name (see kb catalog eases)."
@@ -26412,6 +26417,9 @@
       },
       {
         "id": "DotWindow"
+      },
+      {
+        "id": "DustBurstProps"
       },
       {
         "id": "EaseName"
