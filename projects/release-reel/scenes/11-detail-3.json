@@ -87,8 +87,8 @@
           "fov": 18,
           "dof": {
             "mode": "lens",
-            "fStop": 16,
-            "focus": "auto"
+            "fStop": 32,
+            "focus": 6.3
           }
         }
       }
