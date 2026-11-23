@@ -89,16 +89,16 @@
       "effects": {
         "bloom": {
           "intensity": 0.9,
-          "luminanceThreshold": 1.5,
-          "luminanceSmoothing": 0.25
+          "luminanceThreshold": 1.15,
+          "luminanceSmoothing": 0.5
         },
         "lens": {
           "intensity": 1,
           "bloom": 0.05,
           "bloomRadius": 0.9,
-          "glare": 0.015,
+          "glare": 0.02,
           "glarePoints": 2,
-          "glareThreshold": 3
+          "glareThreshold": 1.6
         }
       }
     },

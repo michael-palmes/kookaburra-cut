@@ -14,10 +14,10 @@
         "id": "k1",
         "tMs": 0,
         "pose": {
-          "position": [-1.6, -1.4, 5],
+          "position": [-1.8, -1.4, 2.4],
           "aim": {
             "mode": "point",
-            "at": [-0.6, -1.17, 0]
+            "at": [-1.97, -1.46, 0]
           },
           "fov": 30
         }
@@ -27,10 +27,46 @@
         "tMs": 1890,
         "at": "bar:2",
         "pose": {
-          "position": [0.2, -1.4, 6.2],
+          "position": [0.1, -1.4, 6.2],
           "aim": {
             "mode": "point",
-            "at": [0.15, -1.005, 0]
+            "at": [0.05, -1.005, 0]
+          },
+          "fov": 30
+        }
+      },
+      {
+        "id": "s1",
+        "tMs": 1935,
+        "pose": {
+          "position": [0.1, -1.45, 6.2],
+          "aim": {
+            "mode": "point",
+            "at": [0.05, -1.055, 0]
+          },
+          "fov": 30
+        }
+      },
+      {
+        "id": "s2",
+        "tMs": 2000,
+        "pose": {
+          "position": [0.1, -1.378, 6.2],
+          "aim": {
+            "mode": "point",
+            "at": [0.05, -0.983, 0]
+          },
+          "fov": 30
+        }
+      },
+      {
+        "id": "s3",
+        "tMs": 2075,
+        "pose": {
+          "position": [0.1, -1.4, 6.2],
+          "aim": {
+            "mode": "point",
+            "at": [0.05, -1.005, 0]
           },
           "fov": 30
         }
@@ -40,10 +76,10 @@
         "tMs": 2828,
         "at": "bar:2.3",
         "pose": {
-          "position": [0.45, -1.4, 6.1],
+          "position": [0.35, -1.4, 6.1],
           "aim": {
             "mode": "point",
-            "at": [0.15, -1.015, 0]
+            "at": [0.05, -1.015, 0]
           },
           "fov": 30
         }
@@ -53,10 +89,10 @@
         "tMs": 3765,
         "at": "bar:3",
         "pose": {
-          "position": [0.3, -1.385, 5.1],
+          "position": [0.2, -1.385, 5.1],
           "aim": {
             "mode": "point",
-            "at": [0.05, -1.14, 0]
+            "at": [-0.05, -1.14, 0]
           },
           "fov": 30
         }
@@ -66,11 +102,29 @@
       {
         "from": "k1",
         "to": "k2",
-        "ease": "inOutSine",
+        "ease": "inCubic",
         "smooth": false
       },
       {
         "from": "k2",
+        "to": "s1",
+        "ease": "outQuad",
+        "smooth": false
+      },
+      {
+        "from": "s1",
+        "to": "s2",
+        "ease": "inOutSine",
+        "smooth": false
+      },
+      {
+        "from": "s2",
+        "to": "s3",
+        "ease": "inOutSine",
+        "smooth": false
+      },
+      {
+        "from": "s3",
         "to": "k3",
         "ease": "linear",
         "smooth": false
