@@ -1,14 +1,18 @@
 import {
   AnimatedHeadline,
   Device,
+  DustBurst,
   defineScene,
   ImageCard,
   ramp,
   SceneStage,
   Slab,
+  TapRing,
   useBeatGrid,
+  useDeviceScreenPoint,
   useSceneDevices,
   useSceneText,
+  useTheme,
   useTimeline,
 } from "@kookaburra/toolkit";
 
@@ -19,8 +23,12 @@ const LABEL_SIZE = 0.2;
 const ICON_SIZE = 0.3;
 const PAD = 0.22;
 const GAP = 0.12;
-const TITLE_X = -3.9;
+const TITLE_X = -3.75;
 const TITLE_Y = 1.3;
+
+const FLIGHT_MS = 330;
+const FLIGHT_GAP_MS = 85;
+const NO_DEVICE = { model: "" };
 
 const CHIPS: {
   key: string;
@@ -29,62 +37,82 @@ const CHIPS: {
   position: [number, number, number];
   rotation: [number, number, number];
   scale: number;
+  screen: [number, number];
 }[] = [
   {
     key: "c1",
     bar: 18,
     beat: 1,
-    position: [-2.9, 0.42, -0.9],
+    position: [-2.7, 0.42, -0.9],
     rotation: [0.12, 0.3, -0.1],
     scale: 1.1,
+    screen: [-0.26, 0.5],
   },
   {
     key: "c2",
     bar: 18,
     beat: 2,
-    position: [3.0, 0.8, -0.9],
+    position: [2.8, 0.8, -0.9],
     rotation: [0.12, -0.3, 0.12],
     scale: 1.1,
+    screen: [0.26, 0.56],
   },
   {
     key: "c3",
     bar: 18,
     beat: 3,
-    position: [-2.75, -0.42, 0.4],
+    position: [-2.3, -0.42, 0.4],
     rotation: [0.06, 0.22, -0.06],
-    scale: 1.3,
+    scale: 1.15,
+    screen: [-0.26, 0.05],
   },
   {
     key: "c4",
     bar: 18,
     beat: 4,
-    position: [2.85, -0.3, 0.4],
+    position: [2.35, -0.3, 0.4],
     rotation: [0.06, -0.22, 0.04],
-    scale: 1.3,
+    scale: 1.15,
+    screen: [0.26, 0.12],
   },
   {
     key: "c5",
     bar: 19,
     beat: 1,
-    position: [-2.45, -1.25, 2.2],
+    position: [-2.23, -1.22, 1.2],
     rotation: [-0.14, 0.18, 0.1],
-    scale: 1.4,
+    scale: 1.15,
+    screen: [-0.24, -0.5],
   },
   {
     key: "c6",
     bar: 19,
     beat: 3,
-    position: [2.55, -1.2, 2.2],
+    position: [2.25, -1.18, 1.2],
     rotation: [-0.14, -0.18, -0.12],
-    scale: 1.4,
+    scale: 1.15,
+    screen: [0.24, -0.56],
   },
 ];
+
+function turn(v: [number, number, number], r: [number, number, number]): [number, number, number] {
+  const [cx, cy, cz] = [Math.cos(r[0]), Math.cos(r[1]), Math.cos(r[2])];
+  const [sx, sy, sz] = [Math.sin(r[0]), Math.sin(r[1]), Math.sin(r[2])];
+  const x1 = v[0] * cz - v[1] * sz;
+  const y1 = v[0] * sz + v[1] * cz;
+  const x2 = x1 * cy + v[2] * sy;
+  const z2 = -x1 * sy + v[2] * cy;
+  return [x2, y1 * cx - z2 * sx, y1 * sx + z2 * cx];
+}
 
 export default defineScene({
   id: "release-reel-12-and-more",
   durationMs: 7900,
   Scene() {
     const devices = useSceneDevices();
+    const hero = devices.find((d) => d.id === "hero") ?? devices[0];
+    const screen = useDeviceScreenPoint(hero ?? NO_DEVICE, 0.5, 0.5);
+    const theme = useTheme();
     const { localMs } = useTimeline();
     const grid = useBeatGrid();
     const title = useSceneText("title", "And more.");
@@ -130,41 +158,93 @@ export default defineScene({
           const left = -width / 2 + PAD;
           const from = at(chip.bar, chip.beat);
           const pop = ramp(localMs, from, from + 300, "outBack");
-          const off = ramp(localMs, at(20, 3) + i * 30, at(20, 3) + i * 30 + 420, "inCubic");
-          const bob = 0.03 * Math.sin(localMs / 700 + i * 1.7);
+          const launch = at(20, 3) + i * FLIGHT_GAP_MS;
+          const fly = ramp(localMs, launch, launch + FLIGHT_MS, "inCubic");
+          const bob = 0.03 * Math.sin(localMs / 700 + i * 1.7) * (1 - fly);
+          const spot = turn(
+            [chip.screen[0] * screen.scale, chip.screen[1] * screen.scale, 0],
+            screen.rotation,
+          );
+          const target: [number, number, number] = hero
+            ? [
+                screen.position[0] + spot[0],
+                screen.position[1] + spot[1],
+                screen.position[2] + spot[2],
+              ]
+            : [chip.position[0] + side * 7, chip.position[1], chip.position[2]];
+          const home: [number, number, number] = [
+            chip.position[0],
+            chip.position[1] + bob + (1 - pop) * -0.25,
+            chip.position[2],
+          ];
+          const shrink = hero
+            ? (1 - 0.86 * fly) *
+              (1 - ramp(localMs, launch + FLIGHT_MS * 0.86, launch + FLIGHT_MS, "linear"))
+            : 1;
           return (
-            <Slab
-              key={chip.key}
-              width={width}
-              height={CHIP_HEIGHT}
-              depth={0.42}
-              bevel={0.2}
-              color="muted"
-              finish={{ roughness: 0.22, clearcoatRoughness: 0.12 }}
-              shadow
-              position={[
-                chip.position[0] + side * off * 7,
-                chip.position[1] + bob + (1 - pop) * -0.25,
-                chip.position[2],
-              ]}
-              rotation={[chip.rotation[0], chip.rotation[1], chip.rotation[2] + side * off * 0.5]}
-              scale={Math.max(chip.scale * pop * settle, 0.0001)}
-            >
-              {icon ? (
-                <ImageCard src={icon} width={ICON_SIZE} position={[left + ICON_SIZE / 2, 0, 0]} />
+            <group key={chip.key}>
+              <Slab
+                width={width}
+                height={CHIP_HEIGHT}
+                depth={0.5}
+                bevel={0.42}
+                color="muted"
+                finish={{ roughness: 0.12, clearcoatRoughness: 0.04, envIntensity: 1.7 }}
+                shadow
+                position={[
+                  home[0] + (target[0] - home[0]) * fly,
+                  home[1] + (target[1] - home[1]) * fly,
+                  home[2] + (target[2] - home[2]) * fly + 0.6 * Math.sin(Math.PI * fly),
+                ]}
+                rotation={[
+                  chip.rotation[0] + (screen.rotation[0] - chip.rotation[0]) * fly,
+                  chip.rotation[1] + (screen.rotation[1] - chip.rotation[1]) * fly,
+                  chip.rotation[2] + (screen.rotation[2] - chip.rotation[2]) * fly,
+                ]}
+                scale={Math.max(chip.scale * pop * settle * shrink, 0.0001)}
+              >
+                {icon ? (
+                  <ImageCard src={icon} width={ICON_SIZE} position={[left + ICON_SIZE / 2, 0, 0]} />
+                ) : null}
+                <AnimatedHeadline
+                  text={label}
+                  textKey={chip.key}
+                  managedTextRole="embedded"
+                  preset="static"
+                  fontSize={LABEL_SIZE}
+                  anchorX="left"
+                  anchorY="middle"
+                  textAlign="left"
+                  position={[left + iconWidth, 0, 0]}
+                />
+              </Slab>
+              {hero ? (
+                <group position={target} rotation={screen.rotation}>
+                  <TapRing
+                    at={launch + FLIGHT_MS - 40}
+                    radius={0.28}
+                    colour={theme.colors.accent}
+                    dot={false}
+                    position={[0, 0, 0.01]}
+                  />
+                  <group rotation={[Math.PI / 2, 0, 0]}>
+                    <DustBurst
+                      at={launch + FLIGHT_MS - 40}
+                      footprint={[0.02, 0.02]}
+                      count={10}
+                      seed={i + 3}
+                      reach={0.3}
+                      lift={0.05}
+                      size={0.4}
+                      flatten={1}
+                      durationMs={420}
+                      opacity={0.3}
+                      tone="accent"
+                    />
+                  </group>
+                </group>
               ) : null}
-              <AnimatedHeadline
-                text={label}
-                textKey={chip.key}
-                managedTextRole="embedded"
-                preset="static"
-                fontSize={LABEL_SIZE}
-                anchorX="left"
-                anchorY="middle"
-                textAlign="left"
-                position={[left + iconWidth, 0, 0]}
-              />
-            </Slab>
+            </group>
           );
         })}
       </SceneStage>
