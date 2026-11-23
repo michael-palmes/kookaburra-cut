@@ -26,7 +26,7 @@ const VERSION_SIZE = 0.2;
 
 export default defineScene({
   id: "release-reel-14-lockup",
-  durationMs: 4220,
+  durationMs: 3981,
   Scene() {
     const { localMs } = useTimeline();
     const grid = useBeatGrid();

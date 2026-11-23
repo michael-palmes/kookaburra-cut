@@ -19,12 +19,12 @@
       "media": {
         "src": "assets/fairywren-sorted-phone.mp4",
         "kind": "video",
-        "inMs": 3125,
-        "startMs": 100
+        "inMs": 5800,
+        "startMs": 0
       },
       "placement": {
         "position": [-2.75, 0.079, 0.4],
-        "rotationDeg": [0, 8, 0],
+        "rotationDeg": [0, -12, 0],
         "scale": 1.12,
         "ground": true
       },
@@ -72,7 +72,7 @@
         "src": "assets/fairywren-quickadd-phone.mp4",
         "kind": "video",
         "inMs": 3400,
-        "startMs": 1040
+        "startMs": 1510
       },
       "placement": {
         "position": [0, 0.079, 0.4],
@@ -124,11 +124,11 @@
         "src": "assets/fairywren-share-phone.mp4",
         "kind": "video",
         "inMs": 4175,
-        "startMs": 1980
+        "startMs": 2450
       },
       "placement": {
         "position": [2.75, 0.079, 0.4],
-        "rotationDeg": [0, -8, 0],
+        "rotationDeg": [0, 10, 0],
         "scale": 1.12,
         "ground": true
       },
@@ -173,21 +173,33 @@
   "cameraRig": {
     "keys": [
       {
-        "id": "k1",
+        "id": "k0",
         "tMs": 0,
-        "at": "bar:21",
         "pose": {
-          "position": [-2.3, 0, 9],
+          "position": [-2.347, -0.449, 6.524],
           "aim": {
             "mode": "point",
-            "at": [-2.75, 0.1, 0]
+            "at": [-2.75, -0.449, 0.4]
+          },
+          "fov": 24
+        }
+      },
+      {
+        "id": "k1",
+        "tMs": 470,
+        "at": "bar:21",
+        "pose": {
+          "position": [-2.371, -0.449, 6.201],
+          "aim": {
+            "mode": "point",
+            "at": [-2.75, -0.449, 0.4]
           },
           "fov": 24
         }
       },
       {
         "id": "k2",
-        "tMs": 2813,
+        "tMs": 3283,
         "at": "bar:22.3",
         "pose": {
           "position": [0, -0.2, 13.4],
@@ -200,13 +212,13 @@
       },
       {
         "id": "k3",
-        "tMs": 3750,
-        "at": "bar:23",
+        "tMs": 4689,
+        "at": "bar:23.2",
         "pose": {
-          "position": [0, -0.2, 12.6],
+          "position": [0.12, -0.59, 11.66],
           "aim": {
             "mode": "point",
-            "at": [0, -0.3, 0]
+            "at": [0.09, -0.72, 0]
           },
           "fov": 24
         }
@@ -214,9 +226,15 @@
     ],
     "segments": [
       {
+        "from": "k0",
+        "to": "k1",
+        "ease": "linear",
+        "smooth": false
+      },
+      {
         "from": "k1",
         "to": "k2",
-        "ease": "outSine",
+        "ease": "outCubic",
         "smooth": false
       },
       {

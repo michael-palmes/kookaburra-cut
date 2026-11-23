@@ -32,7 +32,7 @@ const KEYS = ["c1", "c2", "c3"];
 
 export default defineScene({
   id: "release-reel-13-all-three",
-  durationMs: 3750,
+  durationMs: 4689,
   Scene() {
     const devices = useSceneDevices();
     const first = devices.find((d) => d.id === "first") ?? devices[0];
@@ -59,13 +59,16 @@ export default defineScene({
         {LANDS.map(([bar, beat], i) => {
           const from = at(bar, beat);
           const up = ramp(localMs, from, from + RISE_MS, "outBack");
-          const shown = localMs >= from;
-          const settle = ramp(localMs, from + 60, from + 60 + RISE_MS, "outCubic");
+          const settle = i === 0 ? 1 : ramp(localMs, from + 60, from + 60 + RISE_MS, "outCubic");
           const phone = phones[i];
           const x = (i - 1) * SPACING;
           return (
-            <group key={KEYS[i]} visible={shown}>
-              <group position={[x, FLOOR_Y, PANEL_Z]} rotation={[(up - 1) * (Math.PI / 2), 0, 0]}>
+            <group key={KEYS[i]}>
+              <group
+                position={[x, FLOOR_Y, PANEL_Z]}
+                rotation={[(up - 1) * (Math.PI / 2), 0, 0]}
+                visible={localMs >= from}
+              >
                 <Slab
                   width={PANEL_WIDTH}
                   height={PANEL_HEIGHT}
@@ -89,7 +92,7 @@ export default defineScene({
                 </Slab>
               </group>
               {phone ? (
-                <group position={[0, (1 - settle) * DROP, 0]}>
+                <group position={[0, (1 - settle) * DROP, 0]} visible={i === 0 || localMs >= from}>
                   <Device {...phone} />
                 </group>
               ) : null}

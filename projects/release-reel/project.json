@@ -175,12 +175,7 @@
     {
       "file": "scenes/12-and-more.tsx",
       "durationMs": 7900,
-      "cutAt": "bar:21"
-    },
-    {
-      "file": "scenes/13-all-three.tsx",
-      "durationMs": 3750,
-      "cutAt": "bar:23",
+      "cutAt": "bar:21",
       "transition": {
         "type": "crossfade",
         "durationMs": 470,
@@ -188,8 +183,18 @@
       }
     },
     {
+      "file": "scenes/13-all-three.tsx",
+      "durationMs": 4689,
+      "cutAt": "bar:23.2",
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 700,
+        "ease": "smooth"
+      }
+    },
+    {
       "file": "scenes/14-lockup.tsx",
-      "durationMs": 4220,
+      "durationMs": 3981,
       "cutAt": "bar:25"
     }
   ]

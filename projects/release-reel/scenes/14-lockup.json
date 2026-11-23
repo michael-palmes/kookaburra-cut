@@ -16,20 +16,32 @@
     "keys": [
       {
         "id": "k1",
-        "tMs": 470,
-        "at": "bar:23",
+        "tMs": 0,
         "pose": {
-          "position": [-1.7, -0.95, 4.6],
+          "position": [0.06, -0.396, 12.526],
           "aim": {
             "mode": "point",
-            "at": [-2, -1.1, 0]
+            "at": [0.045, -0.511, 0]
           },
           "fov": 24
         }
       },
       {
         "id": "k2",
-        "tMs": 1876,
+        "tMs": 700,
+        "at": "bar:23.2",
+        "pose": {
+          "position": [0.12, -0.59, 11.66],
+          "aim": {
+            "mode": "point",
+            "at": [0.09, -0.72, 0]
+          },
+          "fov": 24
+        }
+      },
+      {
+        "id": "k3",
+        "tMs": 1637,
         "at": "bar:23.4",
         "pose": {
           "position": [0.2, -0.85, 10.5],
@@ -42,7 +54,7 @@
       },
       {
         "id": "h0",
-        "tMs": 2345,
+        "tMs": 2106,
         "at": "bar:24",
         "pose": {
           "position": [0.2, -0.85, 10.46],
@@ -55,7 +67,7 @@
       },
       {
         "id": "h1",
-        "tMs": 2415,
+        "tMs": 2176,
         "pose": {
           "position": [0.2, -0.85, 9.75],
           "aim": {
@@ -67,7 +79,7 @@
       },
       {
         "id": "h2",
-        "tMs": 2585,
+        "tMs": 2346,
         "pose": {
           "position": [0.2, -0.85, 10.1],
           "aim": {
@@ -78,8 +90,8 @@
         }
       },
       {
-        "id": "k3",
-        "tMs": 4220,
+        "id": "k4",
+        "tMs": 3981,
         "at": "bar:25",
         "pose": {
           "position": [0.2, -0.85, 9.9],
@@ -95,11 +107,17 @@
       {
         "from": "k1",
         "to": "k2",
-        "ease": "inOutSine",
+        "ease": "linear",
         "smooth": false
       },
       {
         "from": "k2",
+        "to": "k3",
+        "ease": "outSine",
+        "smooth": false
+      },
+      {
+        "from": "k3",
         "to": "h0",
         "ease": "linear",
         "smooth": false
@@ -118,7 +136,7 @@
       },
       {
         "from": "h2",
-        "to": "k3",
+        "to": "k4",
         "ease": "outSine",
         "smooth": false
       }

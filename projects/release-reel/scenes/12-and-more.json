@@ -139,13 +139,51 @@
       },
       {
         "id": "k4",
-        "tMs": 7900,
-        "at": "bar:21",
+        "tMs": 6963,
+        "at": "bar:20.3",
         "pose": {
-          "position": [-0.1, -0.12, 10.9],
+          "position": [0.12, -0.1, 11.1],
           "aim": {
             "mode": "point",
             "at": [0, -0.12, 0]
+          },
+          "fov": 24,
+          "dof": {
+            "mode": "lens",
+            "fStop": 16,
+            "focus": "auto",
+            "blur": 1
+          }
+        }
+      },
+      {
+        "id": "k5",
+        "tMs": 7431,
+        "at": "bar:20.4",
+        "pose": {
+          "position": [0.5, -0.1, 7.6],
+          "aim": {
+            "mode": "point",
+            "at": [0, -0.1, 0]
+          },
+          "fov": 24,
+          "dof": {
+            "mode": "lens",
+            "fStop": 16,
+            "focus": "auto",
+            "blur": 1
+          }
+        }
+      },
+      {
+        "id": "k6",
+        "tMs": 7900,
+        "at": "bar:21",
+        "pose": {
+          "position": [0.47, -0.1, 7.2],
+          "aim": {
+            "mode": "point",
+            "at": [0, -0.1, 0]
           },
           "fov": 24,
           "dof": {
@@ -173,6 +211,18 @@
       {
         "from": "k3",
         "to": "k4",
+        "ease": "linear",
+        "smooth": false
+      },
+      {
+        "from": "k4",
+        "to": "k5",
+        "ease": "inOutCubic",
+        "smooth": false
+      },
+      {
+        "from": "k5",
+        "to": "k6",
         "ease": "linear",
         "smooth": false
       }
