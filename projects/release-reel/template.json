@@ -9,9 +9,9 @@
   "tier": "bold",
   "uses": ["audio", "background", "camera-rig", "device", "multi-device"],
   "highlights": [
-    "The version number slams in on bar 1",
+    "The app icon opens the film and the version number lands beside it on bar 2",
     "Each feature floods its own colour room on the downbeat",
-    "A cascade of chips covers everything else, then the call to action on the final hit"
+    "Six chips cover everything else and fly into the phone, then the call to action on the final hit"
   ],
   "bring": [
     "App icon",
@@ -28,11 +28,16 @@
   },
   "looks": ["kookaburra-colour-studio", "kookaburra-citrus", "kookaburra-lagoon"],
   "preview": {
-    "poster": 5,
-    "frames": [0, 5, 11, 13],
+    "poster": 0,
+    "frames": [
+      { "scene": 11, "atMs": 5600 },
+      { "scene": 0, "atMs": 2600 },
+      { "scene": 3, "atMs": 2600 },
+      { "scene": 13, "atMs": 3400 }
+    ],
     "loop": {
-      "scene": 5,
-      "atMs": 0,
+      "scene": 11,
+      "atMs": 1400,
       "durationMs": 6000
     }
   },
