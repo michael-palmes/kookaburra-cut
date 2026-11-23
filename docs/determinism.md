@@ -1504,6 +1504,11 @@ of which can move pixels for text that uses neither (proven EQUAL on
   Emphasis weight rewrites troika 0.53's own edge-offset sites per glyph (the quad
   grow and the edge alpha, the outline mechanism); the rewrite is pinned to troika's
   exact bytes and warns if they move, so re-check it on any troika upgrade.
+- **Wrapped staggers.** A char or word stagger with a `maxWidth` or a line break mounts
+  the `lines` walk (`uGanLine`), keying each unit by `x + span × line` so a wrapped
+  headline reveals in reading order. One line keeps its plain X keys (`uGanLine` is
+  zero), so its pixels cannot move. A standing project whose stagger wraps does move,
+  deliberately: its second line used to join the first line's units by X.
 - **Barriers.** Emphasis rects and the type head come from the first typeset's carets,
   so both report text-derived pending (`textDerivedState.ts`) until the carets land: no
   capture draws the pre-measure frame.
