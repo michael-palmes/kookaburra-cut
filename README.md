@@ -42,7 +42,7 @@ while you watch them update here.
 
 ## Secure and private
 
-Built for Macs that hold unreleased work. Nothing leaves the Mac unless a person starts it.
+Nothing leaves your Mac unless you choose.
 
 <p align="center">
   <img src="docs/assets/security-doors.png" width="900" alt="Your Mac as a walled box holding projects, render and export. Three switched doors lead to GitHub for updates, your own Claude app and a website you allow, each with the key a fleet forces to lock it. There is no other way out.">
@@ -58,7 +58,7 @@ Built for Macs that hold unreleased work. Nothing leaves the Mac unless a person
 | [Confidential files on the Mac](SECURITY.md#on-the-mac) | Projects stay in your home folder; nothing is uploaded or synchronised. App data is owner-only, sealed again at every launch and skipped by Spotlight. Encryption at rest is FileVault: the app adds none. |
 | [Your organisation needs a ceiling](docs/mdm.md) | A configuration profile forces eleven keys. A person's own `defaults write` grants nothing, and a malformed key fails closed. |
 
-**Not done yet:** one maintainer, no third-party penetration test, no SOC 2 or ISO 27001, no App Sandbox, and the agent is bounded by rules and prompts, not a sandbox. This is an early release in active development. [The full list](SECURITY.md#not-yet).
+**Not done yet:** one maintainer, no third-party penetration test, no SOC 2 or ISO 27001, no App Sandbox, and the agent is bounded by rules and prompts, not a sandbox. [The full list](SECURITY.md#not-yet).
 
 **Check it yourself:**
 
