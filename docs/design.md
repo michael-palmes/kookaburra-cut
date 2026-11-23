@@ -834,7 +834,7 @@ every day.
 bytes each run on one machine. Run it after changing the icon, and upload the social preview by hand.
 Change the art in that script, not in the output files.
 
-`pnpm setup:art security` prints only the files whose path holds that word.
+`pnpm setup:art security` prints only the files whose path holds that word. kookaburracut.com serves its own copies of the diagrams, so replace them there after a reprint.
 
 ### 16.6 Diagrams
 

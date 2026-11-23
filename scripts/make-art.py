@@ -288,7 +288,8 @@ def release():
         d.say(x, 140, 22, "SemiBold", CREAM, title, align=0.5)
         for j, text in enumerate(subs):
             d.say(x, 168 + j * 22, 16, "Regular", SUBTITLE, text, align=0.5)
-    d.c = rule(d.c, 2180 - 42 * 49.6, 480, 0.8, head=2180)
+    head = (110 + (len(steps) - 1) * 196) * 2
+    d.c = rule(d.c, head - 42 * 49.6, 480, 0.8, head=head)
     return d.done()
 
 
@@ -327,6 +328,8 @@ ART = [
     ("docs/assets/security-release.png", release, {"colours": 64}),
     ("docs/assets/security-shared.png", shared, {"colours": 64}),
 ]
-for path, make, how in ART:
-    if not sys.argv[1:] or any(word in path for word in sys.argv[1:]):
-        save(make(), path, **how)
+wanted = [art for art in ART if not sys.argv[1:] or any(word in art[0] for word in sys.argv[1:])]
+if not wanted:
+    sys.exit(f"No art path holds: {' '.join(sys.argv[1:])}")
+for path, make, how in wanted:
+    save(make(), path, **how)
