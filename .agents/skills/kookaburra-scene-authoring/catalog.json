@@ -28216,9 +28216,9 @@
       "tier": "bold",
       "uses": ["audio", "background", "camera-rig", "device", "multi-device"],
       "highlights": [
-        "The version number slams in on bar 1",
+        "The app icon opens the film and the version number lands beside it on bar 2",
         "Each feature floods its own colour room on the downbeat",
-        "A cascade of chips covers everything else, then the call to action on the final hit"
+        "Six chips cover everything else and fly into the phone, then the call to action on the final hit"
       ],
       "bring": [
         "App icon",
@@ -28233,7 +28233,7 @@
         "title": "Headline",
         "bpm": 128
       },
-      "looks": ["kookaburra-colour-studio", "kookaburra-citrus", "kookaburra-lagoon"],
+      "looks": ["kookaburra-colour-studio"],
       "sceneCount": 14,
       "durationMs": 45015,
       "aspects": ["16:9"],
@@ -28407,7 +28407,7 @@
         {
           "file": "scenes/12-and-more.tsx",
           "durationMs": 7900,
-          "transition": null,
+          "transition": "crossfade",
           "blocks": [
             "backdrop",
             "background",
@@ -28422,7 +28422,7 @@
         },
         {
           "file": "scenes/13-all-three.tsx",
-          "durationMs": 3750,
+          "durationMs": 4689,
           "transition": "crossfade",
           "blocks": [
             "backdrop",
@@ -28438,7 +28438,7 @@
         },
         {
           "file": "scenes/14-lockup.tsx",
-          "durationMs": 4220,
+          "durationMs": 3981,
           "transition": null,
           "blocks": [
             "backdrop",
