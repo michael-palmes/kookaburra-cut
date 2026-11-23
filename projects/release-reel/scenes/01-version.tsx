@@ -12,7 +12,7 @@ import {
 const FLOOR_Y = -1.905;
 const SIZE = 1.5;
 const DEPTH = 0.36;
-const EDGE = 0.06;
+const EDGE = 0.026;
 const HALF_DEPTH = (SIZE * (DEPTH + 2 * EDGE)) / 2;
 const TILE = 0.88;
 const YAW = -0.2;
@@ -42,8 +42,8 @@ export default defineScene({
               to={0}
               fontSize={SIZE}
               depth={SIZE * DEPTH}
-              bevel={{ size: 0.05, thickness: EDGE, segments: 10, corner: 0.07 }}
-              finish={{ roughness: 0.14, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.06 }}
+              bevel={{ size: 0.022, thickness: EDGE, segments: 8, corner: 0.03 }}
+              finish={{ roughness: 0.18, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.06 }}
               shadow
               anchorY="bottom"
               position={[0, 0, -HALF_DEPTH]}

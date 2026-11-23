@@ -87,10 +87,18 @@
         "durationMs": 400
       },
       "effects": {
+        "bloom": {
+          "intensity": 0.9,
+          "luminanceThreshold": 1.5,
+          "luminanceSmoothing": 0.25
+        },
         "lens": {
           "intensity": 1,
-          "bloom": 0.12,
-          "bloomRadius": 0.88
+          "bloom": 0.05,
+          "bloomRadius": 0.9,
+          "glare": 0.015,
+          "glarePoints": 2,
+          "glareThreshold": 3
         }
       }
     },
