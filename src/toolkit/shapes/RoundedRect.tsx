@@ -84,7 +84,8 @@ void main() {
     ring = smoothstep(-aa, aa, d + uStrokeWidth);
     rgb = mix(uColor, uStrokeColor, ring);
   }
-  gl_FragColor = vec4(rgb, coverage * uOpacity * mix(uFillOpacity, 1.0, ring));
+  float fill = uFillOpacity < 1.0 ? mix(uFillOpacity, 1.0, ring) : 1.0;
+  gl_FragColor = vec4(rgb, coverage * uOpacity * fill);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
