@@ -265,10 +265,8 @@ float kbFloorShadow( int index, sampler2D map, vec2 mapSize, float intensity, fl
 	float keep = 1.0 - kbShadowA.y * smoothstep( 0.0, kbShadowA.z, gap );
 	return mix( 1.0, lit, intensity * keep );
 }
-#else
-float kbFloorShadow( int index, sampler2D map, vec2 mapSize, float intensity, float bias, float radius, vec4 coord ) {
-	return getShadow( map, mapSize, intensity, bias, radius, coord );
-}
+#elif defined( USE_SHADOWMAP )
+#define kbFloorShadow( index, map, mapSize, intensity, bias, radius, coord ) getShadow( map, mapSize, intensity, bias, radius, coord )
 #endif
 `;
 
@@ -701,7 +699,7 @@ export function SatinFloor({
     const mirror = (v: Vector3, floor: number) => v.setY(2 * floor - v.y);
     const clearColor = new Color();
     return (renderer: WebGLRenderer, scene: Scene, camera: Camera) => {
-      if (mirrorDepth === 0) floorShadowSlope(scene, uniforms.kbShadowSlope.value);
+      if (soft && mirrorDepth === 0) floorShadowSlope(scene, uniforms.kbShadowSlope.value);
       const strength = uniforms.kbReflOn.value;
       if (busy || strength < 0.5 || scene.overrideMaterial) return;
       // A supersampled frame mirrors once: its draws differ by a fraction of a pixel, under the mirror's blur. A mirror made for another floor's reflection is never kept.
@@ -801,7 +799,16 @@ export function SatinFloor({
       renderer.shadowMap.autoUpdate = shadows;
       busy = false;
     };
-  }, [passes, uniforms, y, reflect?.scale, reflect?.blur, reflect?.stretch, reflect?.scatter]);
+  }, [
+    passes,
+    uniforms,
+    y,
+    soft,
+    reflect?.scale,
+    reflect?.blur,
+    reflect?.stretch,
+    reflect?.scatter,
+  ]);
 
   const reach = fade[1] + PLANE_MARGIN;
   const geometry = useMemo(
