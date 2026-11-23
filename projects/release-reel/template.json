@@ -26,7 +26,7 @@
     "title": "Headline",
     "bpm": 128
   },
-  "looks": ["kookaburra-colour-studio", "kookaburra-citrus", "kookaburra-lagoon"],
+  "looks": ["kookaburra-colour-studio"],
   "preview": {
     "poster": 0,
     "frames": [
