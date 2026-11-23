@@ -793,6 +793,10 @@ export const TOOLKIT_SUMMARIES: Record<
       "Dust thrown up where something lands hard on a floor: seeded soft puffs that burst out and clear.",
   },
   ParticleField: { summary: "Seeded instanced particles drifting on the clock." },
+  Slab: {
+    summary:
+      "A thick, glossy plate with rounded edges (a chip, badge or key) that carries a label or icon on its face.",
+  },
   DotField: {
     summary:
       "Grid or waffle of dots in one draw: reveal, wave, window, count, funnel, gather, merge, fill.",

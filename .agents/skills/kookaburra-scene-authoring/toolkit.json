@@ -3265,6 +3265,101 @@
     "signature": "interface SharedTransform { position: [number, number, number]; rotation: [number, number, number]; scale: number; opacity: number; }",
     "doc": "A fully-resolved morph transform for one frame."
   },
+  "Slab": {
+    "kind": "component",
+    "summary": "A thick, glossy plate with rounded edges (a chip, badge or key) that carries a label or icon on its face.",
+    "signature": "function Slab(props: SlabProps): ReactElement;",
+    "doc": "A thick, lit plate with rounded edges: a chip, a badge or a key standing in a scene, with whatever it carries (a label, an icon) drawn on its front face. It reflects in a satin floor and can cast a shadow.",
+    "props": [
+      {
+        "name": "width",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "units": "world units",
+        "doc": "World-unit width and height of the face."
+      },
+      {
+        "name": "height",
+        "type": "number",
+        "required": false,
+        "default": "0.4"
+      },
+      {
+        "name": "depth",
+        "type": "number",
+        "required": false,
+        "default": "half the smaller side",
+        "units": "world units",
+        "doc": "World-unit thickness. Defaults to half the smaller side."
+      },
+      {
+        "name": "radius",
+        "type": "number",
+        "required": false,
+        "default": "0.5",
+        "doc": "Corner radius as a fraction of the smaller side: 0.5 (the default) makes a capsule."
+      },
+      {
+        "name": "bevel",
+        "type": "number",
+        "required": false,
+        "default": "0.12",
+        "doc": "Edge rounding as a fraction of the smaller side (0.12)."
+      },
+      {
+        "name": "color",
+        "type": "string",
+        "required": false,
+        "default": "\"text\"",
+        "doc": "A theme colour token (`text`, `muted`, `accent`) or a hex colour."
+      },
+      {
+        "name": "finish",
+        "type": "ExtrudedFinish",
+        "required": false,
+        "doc": "The surface (clearcoated by default, so it takes gloss from lights and the environment)."
+      },
+      {
+        "name": "shadow",
+        "type": "boolean",
+        "required": false,
+        "default": "false",
+        "doc": "Cast and take the stage's shadows."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]"
+      },
+      {
+        "name": "rotation",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]",
+        "units": "radians",
+        "doc": "Rotation in radians."
+      },
+      {
+        "name": "scale",
+        "type": "number",
+        "required": false,
+        "default": "1"
+      },
+      {
+        "name": "children",
+        "type": "ReactNode",
+        "required": false,
+        "doc": "Drawn on the front face: a label, an icon."
+      }
+    ],
+    "example": "<Slab />"
+  },
+  "SlabProps": {
+    "kind": "type",
+    "signature": "interface SlabProps { width?: number; height?: number; depth?: number; radius?: number; bevel?: number; color?: string; finish?: ExtrudedFinish; shadow?: boolean; position?: V3; rotation?: V3; scale?: number; children?: ReactNode; }"
+  },
   "SplitField": {
     "kind": "component",
     "summary": "Frame split into tiles (images, videos, theme colours) with a staggered reveal that reflows per aspect; no tiles draws the sidecar mosaic.",

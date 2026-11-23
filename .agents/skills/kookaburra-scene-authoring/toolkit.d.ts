@@ -1678,6 +1678,33 @@ declare module "@kookaburra/toolkit" {
     opacity: number;
   }
 
+  /** A thick, lit plate with rounded edges: a chip, a badge or a key standing in a scene, with whatever it carries (a label, an icon) drawn on its front face. It reflects in a satin floor and can cast a shadow. */
+  export function Slab(props: SlabProps): ReactElement;
+
+  export interface SlabProps {
+    /** World-unit width and height of the face. */
+    width?: number;
+    height?: number;
+    /** World-unit thickness. Defaults to half the smaller side. */
+    depth?: number;
+    /** Corner radius as a fraction of the smaller side: 0.5 (the default) makes a capsule. */
+    radius?: number;
+    /** Edge rounding as a fraction of the smaller side (0.12). */
+    bevel?: number;
+    /** A theme colour token (`text`, `muted`, `accent`) or a hex colour. */
+    color?: string;
+    /** The surface (clearcoated by default, so it takes gloss from lights and the environment). */
+    finish?: ExtrudedFinish;
+    /** Cast and take the stage's shadows. */
+    shadow?: boolean;
+    position?: V3;
+    /** Rotation in radians. */
+    rotation?: V3;
+    scale?: number;
+    /** Drawn on the front face: a label, an icon. */
+    children?: ReactNode;
+  }
+
   /** A frame split into tiles (project images, videos or theme colours) with a staggered reveal; the grid reflows per aspect unless `columns` fixes it. Without `tiles` it draws the sidecar `mosaic` block, and mounting it stands the host fallback down. */
   export function SplitField(props: SplitFieldProps): ReactElement | null;
 

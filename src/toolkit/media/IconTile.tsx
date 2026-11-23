@@ -1,9 +1,9 @@
 import { useTexture } from "@react-three/drei";
 import { useEffect, useLayoutEffect, useMemo } from "react";
-import { type BufferGeometry, ExtrudeGeometry, Shape, SRGBColorSpace, type Texture } from "three";
+import { type BufferGeometry, SRGBColorSpace, type Texture } from "three";
 import { useProjectAssetUrl } from "../../engine/useProjectAssetUrl";
+import { slabGeometry } from "../shapes/slabGeometry";
 import type { ExtrudedFinish } from "../text3d/ExtrudedText";
-import { smoothExtrudeNormals } from "../text3d/extrudeNormals";
 import type { V3 } from "../types";
 import { AssetBoundary } from "./AssetBoundary";
 
@@ -37,28 +37,7 @@ export function iconTileGeometry(
   radius: number,
   bevel: number,
 ): BufferGeometry {
-  const edge = Math.min(Math.max(bevel, 0), 0.2) * size;
-  const half = size / 2 - edge;
-  const r = Math.min(Math.max(radius * size - edge, 0), half);
-  const shape = new Shape();
-  shape.moveTo(-half + r, -half);
-  shape.lineTo(half - r, -half);
-  shape.absarc(half - r, -half + r, r, -Math.PI / 2, 0, false);
-  shape.lineTo(half, half - r);
-  shape.absarc(half - r, half - r, r, 0, Math.PI / 2, false);
-  shape.lineTo(-half + r, half);
-  shape.absarc(-half + r, half - r, r, Math.PI / 2, Math.PI, false);
-  shape.lineTo(-half, -half + r);
-  shape.absarc(-half + r, -half + r, r, Math.PI, Math.PI * 1.5, false);
-  const geometry = new ExtrudeGeometry(shape, {
-    depth: Math.max(depth - 2 * edge, 0.0001),
-    curveSegments: 16,
-    bevelEnabled: edge > 0,
-    bevelSize: edge,
-    bevelThickness: edge,
-    bevelSegments: 6,
-  });
-  geometry.center();
+  const geometry = slabGeometry(size, size, depth, radius * size, bevel * size);
   const positions = geometry.getAttribute("position");
   const uvs = geometry.getAttribute("uv");
   for (let i = 0; i < positions.count; i++) {
@@ -69,10 +48,7 @@ export function iconTileGeometry(
     );
   }
   uvs.needsUpdate = true;
-  if (edge <= 0) return geometry;
-  const smooth = smoothExtrudeNormals(geometry);
-  if (smooth !== geometry) geometry.dispose();
-  return smooth;
+  return geometry;
 }
 
 /** An app icon as a thick, lit tile that stands on a stage: unlike the flat `ImageCard` it has depth, rounded edges and a glossy surface, shows in a floor's reflection and can cast a shadow. */

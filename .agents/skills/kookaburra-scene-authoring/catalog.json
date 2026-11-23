@@ -25829,6 +25829,11 @@
         "summary": "Clear to a colour, linear or radial, for text to sit on; inside a ScreenLayer."
       },
       {
+        "id": "Slab",
+        "kind": "component",
+        "summary": "A thick, glossy plate with rounded edges (a chip, badge or key) that carries a label or icon on its face."
+      },
+      {
         "id": "SplitField",
         "kind": "component",
         "summary": "Frame split into tiles (images, videos, theme colours) with a staggered reveal that reflows per aspect; no tiles draws the sidecar mosaic."
@@ -26594,6 +26599,9 @@
       },
       {
         "id": "SharedTransform"
+      },
+      {
+        "id": "SlabProps"
       },
       {
         "id": "SplitFieldProps"
@@ -28225,8 +28233,8 @@
       "scenes": [
         {
           "file": "scenes/01-version.tsx",
-          "durationMs": 3765,
-          "transition": "whip",
+          "durationMs": 4703,
+          "transition": "crossfade",
           "blocks": [
             "backdrop",
             "background",
@@ -28240,7 +28248,7 @@
         },
         {
           "file": "scenes/02-whats-new.tsx",
-          "durationMs": 4150,
+          "durationMs": 3752,
           "transition": "luma",
           "blocks": [
             "backdrop",
@@ -28392,7 +28400,17 @@
           "file": "scenes/12-and-more.tsx",
           "durationMs": 7900,
           "transition": null,
-          "blocks": ["background", "text", "textStyle"]
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "motionBlur",
+            "text",
+            "textStyle"
+          ]
         },
         {
           "file": "scenes/13-all-three.tsx",
