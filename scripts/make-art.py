@@ -298,10 +298,10 @@ def shared():
     d.block(60, 80, CREAM, "Shared work", "a project or pack from", "a colleague or download")
     d.arrow(304, 95, 340, 95)
     d.fill(RUST, 344, 40, 604, 150)
-    d.block(364, 80, CREAM, "Checked on import", "a pack's signature and", "every hash; nothing runs", sub=CREAM)
+    d.block(364, 80, CREAM, "Checked on import", "a pack's signature and", "hashes. Nothing runs.", sub=CREAM)
     d.arrow(608, 95, 644, 95)
     d.fill(RUST, 648, 40, 908, 150)
-    d.block(668, 80, CREAM, "A person allows it", "the default is Don't open;", "asks again on a change", sub=CREAM)
+    d.block(668, 80, CREAM, "You allow it", "Don't open is the default.", "A change asks again.", sub=CREAM)
     d.arrow(912, 95, 948, 95)
     d.frame(CREAM, 952, 40, 1160, 150, 6)
     d.block(974, 80, CREAM, "The stage", "no network,", "no app commands")
@@ -311,7 +311,7 @@ def shared():
     d.say(60, 294, 16, "JetBrainsMono-Regular", BUFF, "CLAUDE.md  .claude/")
     d.arrow(304, 275, 340, 275)
     d.fill(RUST, 344, 220, 1160, 330)
-    d.block(364, 262, CREAM, "Moved aside", "dropped on import, and a person sees the list before Claude starts", sub=CREAM)
+    d.block(364, 262, CREAM, "Set aside", "dropped on import, and you see the list before Claude starts", sub=CREAM)
     return d.done()
 
 

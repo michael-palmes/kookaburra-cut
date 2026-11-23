@@ -611,7 +611,7 @@ stay unsigned: they only move a progress bar.
 
 ## Scene code and the trust boundary
 
-![Shared work, a project or pack, is checked on import, where nothing runs. A person then allows it before its scene code runs on a stage with no network and no app commands. Agent settings inside it are moved aside, and a person sees the list before Claude starts.](docs/assets/security-shared.png)
+![Shared work, a project or pack, is checked on import, where nothing runs. You then allow it before its scene code runs on a stage with no network and no app commands. Agent settings inside it are set aside, and you see the list before Claude starts.](docs/assets/security-shared.png)
 
 - **The Allow gate** (`workspace.rs`, `request_project_trust`, `trust_project`,
   `check_project_trust`; `src-tauri/src/native_alert.rs`): an `NSAlert` sheet on

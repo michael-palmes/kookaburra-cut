@@ -34,7 +34,7 @@ while you watch them update here.
   </a>
 </p>
 
-- A signed and notarised `.dmg`; macOS 26.0+ on **Apple Silicon** (arm64) only, no Intel build
+- A signed and notarised `.dmg` for macOS 26.0+ on **Apple Silicon** (arm64). There's no Intel build
 - Free and open source. No accounts, no telemetry
 - The optional AI authoring path uses your own Claude Code install
 - Managed Macs install the signed `.pkg` through an MDM ([`docs/fleet.md`](docs/fleet.md))
@@ -48,17 +48,17 @@ Nothing leaves your Mac unless you choose.
   <img src="docs/assets/security-doors.png" width="900" alt="Your Mac as a walled box holding projects, render and export. Three switched doors lead to GitHub for updates, your own Claude app and a website you allow, each with the key a fleet forces to lock it. There is no other way out.">
 </p>
 
-| Risk | Control |
+| Risk | What the app does |
 | --- | --- |
-| [Unreleased work leaves the Mac](SECURITY.md#what-leaves-the-mac) | No accounts, telemetry or crash reports, and no HTTP client of its own. Three paths reach the network: updates, Edit with Claude and a website you allow in a scene. A person starts each, and a fleet can force each off. |
-| [The AI reads more than it should](SECURITY.md#what-reaches-your-agent) | The app holds no API key and never starts Claude. Edit with Claude opens one project folder in your own Claude install, which sends that project's files to Anthropic under your account and your organisation's Claude settings. |
-| [A shared project or pack runs code](SECURITY.md#scene-code-and-the-trust-boundary) | Nothing runs on import. Scene code runs only after a person presses Allow, on a stage with no network and no app commands. Packs are signed and every file is hashed again as it lands. |
-| [Text in a project gives the agent orders](SECURITY.md#what-reaches-your-agent) | What the agent reads from a project is escaped, capped and marked as data. Agent settings in a shared folder are moved aside, and a person sees the list before Claude starts. |
-| [A tampered release or update](SECURITY.md#release-integrity) | Built by GitHub Actions from a signed tag with no signing secret in reach, signed behind a second reviewer, notarised by Apple and attested, with an SBOM. An update installs only with a valid signature from the key built into the app. |
-| [Confidential files on the Mac](SECURITY.md#on-the-mac) | Projects stay in your home folder; nothing is uploaded or synchronised. App data is owner-only, sealed again at every launch and skipped by Spotlight. Encryption at rest is FileVault: the app adds none. |
-| [Your organisation needs a ceiling](docs/mdm.md) | A configuration profile forces eleven keys. A person's own `defaults write` grants nothing, and a malformed key fails closed. |
+| [Your work leaves the Mac](SECURITY.md#what-leaves-the-mac) | There are no accounts, no telemetry and no crash reports. The app goes online for three things: updates, Edit with Claude and a website you allow in a scene. You turn each one on, and IT can turn each one off. |
+| [The AI sees more than it should](SECURITY.md#what-reaches-your-agent) | The app has no API key and never starts Claude. Edit with Claude opens one project folder in your own Claude install. Claude then sends that project's files to Anthropic, under your account and your organisation's Claude settings. |
+| [A project or pack you were sent runs code](SECURITY.md#scene-code-and-the-trust-boundary) | Nothing runs when you import. Scene code runs only after you press Allow, and it can't reach the network or the app's commands. Packs are signed, and every file's hash is checked on import. |
+| [Text in a project tries to instruct the AI](SECURITY.md#what-reaches-your-agent) | Text that Claude reads from a project is escaped, capped and marked as data. Agent settings in a shared folder are set aside, and you see the list before Claude starts. |
+| [A release or update is tampered with](SECURITY.md#release-integrity) | GitHub Actions builds each release from a signed tag, with no signing secret in reach. Signing needs a second reviewer. Apple notarises the app, and each release comes with an attestation and an SBOM. An update installs only if it's signed with the key built into the app. |
+| [Confidential files sit on the Mac](SECURITY.md#on-the-mac) | Projects stay in your home folder. Nothing is uploaded or synced. Only your account can read the app's data, and Spotlight skips it. The app adds no encryption of its own, so use FileVault. |
+| [Your organisation needs to set limits](docs/mdm.md) | A configuration profile can lock eleven settings. People can't override them with `defaults write`. If a key is malformed, the app takes the safe option. |
 
-**Not done yet:** one maintainer, no third-party penetration test, no SOC 2 or ISO 27001, no App Sandbox, and the agent is bounded by rules and prompts, not a sandbox. [The full list](SECURITY.md#not-yet).
+**Not done yet.** There's one maintainer. There's been no third-party penetration test. There's no SOC 2 or ISO 27001, and no App Sandbox. The AI is limited by rules and prompts, not by a sandbox. [The full list](SECURITY.md#not-yet).
 
 **Check it yourself:**
 
