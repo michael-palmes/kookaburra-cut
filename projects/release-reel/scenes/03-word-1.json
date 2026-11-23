@@ -75,7 +75,8 @@
           "dof": {
             "mode": "lens",
             "fStop": 16,
-            "focus": "auto"
+            "focus": "auto",
+            "blur": 0
           }
         }
       },
@@ -93,7 +94,8 @@
           "dof": {
             "mode": "lens",
             "fStop": 16,
-            "focus": "auto"
+            "focus": "auto",
+            "blur": 0
           }
         }
       },
@@ -111,7 +113,8 @@
           "dof": {
             "mode": "lens",
             "fStop": 16,
-            "focus": "auto"
+            "focus": "auto",
+            "blur": 1
           }
         }
       }
@@ -181,7 +184,7 @@
     "reflection": {
       "strength": 0.7,
       "blur": 30,
-      "heightBlur": 1.0,
+      "heightBlur": 1,
       "contact": 0.5,
       "stretch": 3,
       "scatter": 6,
