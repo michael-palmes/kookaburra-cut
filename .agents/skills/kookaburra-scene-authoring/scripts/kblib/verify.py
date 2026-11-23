@@ -219,7 +219,7 @@ def step_static(project: Any, indices: List[int], scoped: bool) -> Step:
     if scoped:
         stems = [project.resolve(str(i))[1] for i in indices]
         files = [rel for stem in stems for rel in (f"scenes/{stem}.tsx", f"scenes/{stem}.json") if (project.root / rel).is_file()]
-    report = checkmod.check_project(project, files=files, heartbeat=bridge.live_heartbeat(project), once=True)
+    report = checkmod.check_project(project, files=files, heartbeat=bridge.live_heartbeat(project), once=True, camera=True)
     st.errors, st.warnings = lines_of(report, "error"), lines_of(report, "warning")
     return st
 

@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "position": [0, -0.985, 11.488],
+          "aim": { "mode": "point", "at": [0, -0.1, 0] },
+          "fov": 21
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1875,
+        "at": "bar:12",
+        "pose": {
+          "position": [0.07, -0.97, 11.3],
+          "aim": { "mode": "point", "at": [0, -0.1, 0] },
+          "fov": 21
+        }
+      },
+      {
+        "id": "k3",
+        "tMs": 2300,
+        "pose": {
+          "position": [0.09, -0.965, 11.25],
+          "aim": { "mode": "point", "at": [0, -0.1, 0] },
+          "fov": 21
+        }
+      },
+      {
+        "id": "k4",
+        "tMs": 3750,
+        "pose": {
+          "position": [0.15, -0.95, 11.1],
+          "aim": { "mode": "point", "at": [0, -0.1, 0] },
+          "fov": 21
+        }
+      }
+    ],
+    "segments": [
+      { "from": "k1", "to": "k2", "ease": "linear" },
+      { "from": "k2", "to": "k3", "ease": "linear" },
+      { "from": "k3", "to": "k4", "ease": "linear" }
+    ]
+  },
+  "cameraKicks": [
+    { "at": "bar:11", "zoom": 1.03, "releaseMs": 350 },
+    { "at": "bar:12.3", "zoom": 1.02, "rollDeg": 0.5, "releaseMs": 500 }
+  ],
+  "deviceTrack": {
+    "keys": [
+      { "id": "d1", "tMs": 0, "pose": { "hero": { "rotationDeg": [0, 0, 0] } } },
+      {
+        "id": "d2",
+        "tMs": 2812,
+        "at": "bar:12.3",
+        "pose": { "hero": { "rotationDeg": [0, 0, 0] } }
+      },
+      { "id": "d3", "tMs": 3300, "pose": { "hero": { "rotationDeg": [0, -6, 0] } } }
+    ],
+    "segments": [
+      { "from": "d1", "to": "d2", "ease": "jump" },
+      { "from": "d2", "to": "d3", "ease": "outCubic" }
+    ]
+  },
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-15-pro",
+      "placement": {
+        "position": [-2.05, 0.079, -0.318],
+        "rotationDeg": [0, 42, 0],
+        "scale": 1.39,
+        "ground": true
+      }
+    }
+  ]
+}

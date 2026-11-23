@@ -1,0 +1,168 @@
+{
+  "id": "unveil",
+  "name": "Unveil",
+  "version": 2,
+  "themeId": "kookaburra-obsidian-stage",
+  "formats": ["16:9"],
+  "audio": {
+    "grid": {
+      "bpm": 128,
+      "offsetMs": -17.358,
+      "beatsPerBar": 4
+    },
+    "cues": {
+      "full-stop": "bar:8.4",
+      "reveal": "bar:9",
+      "drums-in": "bar:11",
+      "fill-1": "bar:16",
+      "breakdown": "bar:17",
+      "fill-2": "bar:20",
+      "lift": "bar:22",
+      "fill-3": "bar:24",
+      "double-time": "bar:25",
+      "final-hit": "bar:32"
+    },
+    "sections": [
+      {
+        "id": "cold-open",
+        "label": "Cold open",
+        "from": "bar:1",
+        "to": "bar:9"
+      },
+      {
+        "id": "reveal",
+        "label": "Reveal",
+        "from": "bar:9",
+        "to": "bar:11"
+      },
+      {
+        "id": "name",
+        "label": "Name",
+        "from": "bar:11",
+        "to": "bar:13"
+      },
+      {
+        "id": "feature-1",
+        "label": "Feature one",
+        "from": "bar:13",
+        "to": "bar:17"
+      },
+      {
+        "id": "feature-2",
+        "label": "Feature two",
+        "from": "bar:17",
+        "to": "bar:21"
+      },
+      {
+        "id": "feature-3",
+        "label": "Feature three",
+        "from": "bar:21",
+        "to": "bar:25"
+      },
+      {
+        "id": "montage",
+        "label": "Montage",
+        "from": "bar:25",
+        "to": "bar:29"
+      },
+      {
+        "id": "lockup",
+        "label": "Lockup",
+        "from": "bar:29",
+        "to": "bar:33"
+      }
+    ]
+  },
+  "scenes": [
+    {
+      "file": "scenes/01-edge.tsx",
+      "durationMs": 1858,
+      "cutAt": "bar:2"
+    },
+    {
+      "file": "scenes/02-glass.tsx",
+      "durationMs": 1875,
+      "cutAt": "bar:3"
+    },
+    {
+      "file": "scenes/03-glimpses.tsx",
+      "durationMs": 7500,
+      "cutAt": "bar:7"
+    },
+    {
+      "file": "scenes/04-question.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:9"
+    },
+    {
+      "file": "scenes/05-reveal.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:11"
+    },
+    {
+      "file": "scenes/06-name.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:13"
+    },
+    {
+      "file": "scenes/07-claim-1.tsx",
+      "durationMs": 1875,
+      "cutAt": "bar:14"
+    },
+    {
+      "file": "scenes/08-proof-1.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:16"
+    },
+    {
+      "file": "scenes/09-detail-1.tsx",
+      "durationMs": 1875,
+      "cutAt": "bar:17"
+    },
+    {
+      "file": "scenes/10-claim-2.tsx",
+      "durationMs": 1875,
+      "cutAt": "bar:18"
+    },
+    {
+      "file": "scenes/11-proof-2.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:20"
+    },
+    {
+      "file": "scenes/12-detail-2.tsx",
+      "durationMs": 1875,
+      "cutAt": "bar:21"
+    },
+    {
+      "file": "scenes/13-claim-3.tsx",
+      "durationMs": 1875,
+      "cutAt": "bar:22"
+    },
+    {
+      "file": "scenes/14-lineup.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:24"
+    },
+    {
+      "file": "scenes/15-flyby.tsx",
+      "durationMs": 1875,
+      "cutAt": "bar:25"
+    },
+    {
+      "file": "scenes/16-montage.tsx",
+      "durationMs": 7500,
+      "cutAt": "bar:29"
+    },
+    {
+      "file": "scenes/17-hero.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:31"
+    },
+    {
+      "file": "scenes/18-lockup.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:33"
+    }
+  ]
+}

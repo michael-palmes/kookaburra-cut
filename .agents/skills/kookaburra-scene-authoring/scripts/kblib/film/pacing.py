@@ -462,13 +462,13 @@ def load_last(project: Project) -> Optional[Dict[str, Any]]:
     return doc if isinstance(doc, dict) and isinstance(doc.get("issues"), list) else None
 
 
-def load_accepted(project: Project) -> List[Dict[str, Any]]:
+def load_accepted(project: Project, kinds: Tuple[str, ...] = KINDS) -> List[Dict[str, Any]]:
     try:
         doc = json.loads((project.root / ACCEPTED_FILE).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return []
     rows = doc.get("accepted") if isinstance(doc, dict) else None
-    return [r for r in rows or [] if isinstance(r, dict) and r.get("kind") in KINDS and isinstance(r.get("why"), str)]
+    return [r for r in rows or [] if isinstance(r, dict) and r.get("kind") in kinds and isinstance(r.get("why"), str)]
 
 
 def accepted_merge(doc: Any, rows: List[Dict[str, Any]]) -> Dict[str, Any]:
