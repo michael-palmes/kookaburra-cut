@@ -2,41 +2,260 @@
   "version": 1,
   "name": "And more",
   "text": {
-    "label": "12 · And more · lilac room",
-    "bars": "Bars 17 to 20 · Burst: a chip a beat",
-    "kicker": "",
     "title": "And more.",
-    "c1": "17.1  Lilac floods the room; the line slams",
-    "c2": "17.3  The phone lands centre",
-    "c3": "18.1  Chip: Widgets",
-    "c4": "18.2  Chip: Dark mode",
-    "c5": "18.3  Chip: Faster sync",
-    "c6": "18.4  Chip: New icons",
-    "c7": "19.1  Chip: Shortcuts",
-    "c8": "19.2  Chip: Offline",
-    "c9": "19.3  Pull back: all six around the phone",
-    "c10": "20.1  Kick; the chips settle",
-    "c11": "20.3  The chips sweep off; the room splits in three"
+    "c1": "Widgets",
+    "c2": "Dark mode",
+    "c3": "Faster sync",
+    "c4": "New icons",
+    "c5": "Shortcuts",
+    "c6": "Offline",
+    "c1Icon": "assets/chip-widgets.png",
+    "c2Icon": "assets/chip-dark-mode.png",
+    "c3Icon": "assets/chip-sync.png",
+    "c4Icon": "assets/chip-icons.png",
+    "c5Icon": "assets/chip-shortcuts.png",
+    "c6Icon": "assets/chip-offline.png"
   },
   "textStyle": {
-    "labelColor": "#0b1030",
-    "barsColor": "#0b1030",
-    "kickerColor": "#0b1030",
     "titleColor": "#0b1030",
     "c1Color": "#0b1030",
     "c2Color": "#0b1030",
     "c3Color": "#0b1030",
     "c4Color": "#0b1030",
     "c5Color": "#0b1030",
-    "c6Color": "#0b1030",
-    "c7Color": "#0b1030",
-    "c8Color": "#0b1030",
-    "c9Color": "#0b1030",
-    "c10Color": "#0b1030",
-    "c11Color": "#0b1030"
+    "c6Color": "#0b1030"
+  },
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "media": {
+        "src": "assets/fairywren-sorted-phone.mp4",
+        "kind": "video"
+      },
+      "placement": {
+        "position": [0, 0.079, 0],
+        "rotationDeg": [0, -12, 0],
+        "scale": 1.39,
+        "ground": true
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "none",
+      "finish": {
+        "frame": {
+          "roughness": 0.3,
+          "metalness": 1,
+          "anisotropy": 0.4,
+          "grain": 1,
+          "grainScale": 20000,
+          "brushedMap": 0,
+          "chamferRoughness": 0.08,
+          "envIntensity": 1.6,
+          "iblTaps": 7
+        },
+        "polished": {
+          "roughness": 0.06,
+          "envIntensity": 1.8
+        },
+        "glass": {
+          "roughness": 0.05,
+          "ior": 1.5,
+          "specularIntensity": 1,
+          "envIntensity": 1.5
+        },
+        "back": {
+          "roughness": 0.45,
+          "metalness": 0,
+          "tint": 0.55,
+          "clearcoat": 0.6,
+          "clearcoatRoughness": 0.12,
+          "envIntensity": 1.3
+        }
+      }
+    }
+  ],
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 400,
+        "at": "bar:17",
+        "pose": {
+          "position": [-2.3, 1.2, 5.6],
+          "aim": {
+            "mode": "point",
+            "at": [-2.25, 1.3, 0]
+          },
+          "fov": 24,
+          "dof": {
+            "mode": "lens",
+            "fStop": 16,
+            "focus": "auto",
+            "blur": 0
+          }
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1338,
+        "at": "bar:17.3",
+        "pose": {
+          "position": [-0.6, 0.25, 9.6],
+          "aim": {
+            "mode": "point",
+            "at": [-0.7, 0.1, 0]
+          },
+          "fov": 24,
+          "dof": {
+            "mode": "lens",
+            "fStop": 16,
+            "focus": "auto",
+            "blur": 0
+          }
+        }
+      },
+      {
+        "id": "k3",
+        "tMs": 5088,
+        "at": "bar:19.3",
+        "pose": {
+          "position": [0.15, -0.1, 11.6],
+          "aim": {
+            "mode": "point",
+            "at": [0, -0.12, 0]
+          },
+          "fov": 24,
+          "dof": {
+            "mode": "lens",
+            "fStop": 16,
+            "focus": "auto",
+            "blur": 1
+          }
+        }
+      },
+      {
+        "id": "k4",
+        "tMs": 7900,
+        "at": "bar:21",
+        "pose": {
+          "position": [-0.1, -0.12, 10.9],
+          "aim": {
+            "mode": "point",
+            "at": [0, -0.12, 0]
+          },
+          "fov": 24,
+          "dof": {
+            "mode": "lens",
+            "fStop": 16,
+            "focus": "auto",
+            "blur": 1
+          }
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic",
+        "smooth": false
+      },
+      {
+        "from": "k2",
+        "to": "k3",
+        "ease": "outSine",
+        "smooth": false
+      },
+      {
+        "from": "k3",
+        "to": "k4",
+        "ease": "linear",
+        "smooth": false
+      }
+    ]
+  },
+  "motionBlur": {
+    "enabled": true,
+    "shutterDeg": 180,
+    "camera": true,
+    "objects": false
+  },
+  "lighting": {
+    "ambient": 0.8,
+    "fills": [],
+    "sun": {
+      "azimuthDeg": -38,
+      "elevationDeg": 44,
+      "intensity": 2.2,
+      "color": "#fff4e6",
+      "castShadow": true
+    },
+    "environment": {
+      "source": "kookaburra:cyclorama",
+      "intensity": 1.6,
+      "rotationDeg": 0
+    },
+    "lights": [],
+    "shadow": {
+      "technique": "map",
+      "softness": 0.25,
+      "opacity": 0.55,
+      "mapSize": 2048,
+      "bias": -0.0005
+    }
   },
   "background": {
-    "type": "color",
-    "color": "#b69cff"
+    "type": "gradient",
+    "spec": {
+      "type": "radial",
+      "angleDeg": 0,
+      "centre": [0.2, 0.74],
+      "stops": [["#cebfff", 0], ["#baa3fd", 0.34], ["#a98fef", 0.68], ["#8d75cd", 1]],
+      "space": "oklch"
+    }
+  },
+  "backdrop": {
+    "type": "satin",
+    "color": "#b69cff",
+    "roughness": 0.35,
+    "specular": 0.3,
+    "centre": [0, 0],
+    "fade": [7, 18],
+    "reflection": {
+      "strength": 0.7,
+      "blur": 30,
+      "heightBlur": 1,
+      "contact": 0.5,
+      "stretch": 3,
+      "scatter": 6,
+      "reach": 2.8
+    },
+    "glitter": {
+      "scale": 90,
+      "density": 0,
+      "roughness": 0.15,
+      "tilt": 0.5,
+      "weight": 0,
+      "grain": 0.6,
+      "seed": 5
+    },
+    "shadow": {
+      "spread": 0.08,
+      "lighten": 0.35,
+      "reach": 5,
+      "contact": 0.55
+    },
+    "pools": [
+      {
+        "at": [-0.5, -0.5],
+        "radius": [10, 7],
+        "color": "#b092fe",
+        "intensity": 0.12
+      }
+    ]
   }
 }
