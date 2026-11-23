@@ -23,7 +23,8 @@
     "c3Color": "#0b1030",
     "c4Color": "#0b1030",
     "c5Color": "#0b1030",
-    "c6Color": "#0b1030"
+    "c6Color": "#0b1030",
+    "chipColor": "#dde2ff"
   },
   "devices": [
     {

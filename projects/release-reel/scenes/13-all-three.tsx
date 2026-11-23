@@ -7,6 +7,7 @@ import {
   Slab,
   useBeatGrid,
   useSceneDevices,
+  useSceneDoc,
   useSceneText,
   useTheme,
   useTimeline,
@@ -47,10 +48,15 @@ export default defineScene({
       useSceneText("c2", "Smarter.", "embedded"),
       useSceneText("c3", "Together.", "embedded"),
     ];
+    const style = useSceneDoc()?.textStyle;
+    const pinned = (key: string, fallback: string) => {
+      const value = style?.[key];
+      return typeof value === "string" ? value : fallback;
+    };
     const colours = [
-      theme.chartColors?.[0] ?? theme.colors.accent,
-      theme.colors.background,
-      theme.chartColors?.[2] ?? theme.colors.muted,
+      pinned("panel1Color", theme.chartColors?.[0] ?? theme.colors.accent),
+      pinned("panel2Color", theme.colors.background),
+      pinned("panel3Color", theme.chartColors?.[2] ?? theme.colors.muted),
     ];
     const at = (bar: number, beat = 1) =>
       grid ? grid.bar(bar, beat) : ((bar - FIRST_BAR) * 4 + beat - 1) * 468.75;

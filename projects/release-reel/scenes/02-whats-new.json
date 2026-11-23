@@ -5,7 +5,10 @@
     "title": "What’s new."
   },
   "textStyle": {
-    "titleColor": "#0b1030"
+    "titleColor": "#0b1030",
+    "band1Color": "#ff9457",
+    "band2Color": "#1129b4",
+    "band3Color": "#3ed6a6"
   },
   "cameraMode": "rig",
   "cameraRig": {

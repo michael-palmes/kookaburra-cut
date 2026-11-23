@@ -9,7 +9,10 @@
   "textStyle": {
     "c1Color": "#ffffff",
     "c2Color": "#ffffff",
-    "c3Color": "#0b1030"
+    "c3Color": "#0b1030",
+    "panel1Color": "#ff9457",
+    "panel2Color": "#1129b4",
+    "panel3Color": "#3ed6a6"
   },
   "devices": [
     {

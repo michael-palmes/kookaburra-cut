@@ -7,6 +7,7 @@ import {
   ramp,
   SceneStage,
   useBeatGrid,
+  useSceneDoc,
   useSceneText,
   useTheme,
   useTimeline,
@@ -31,6 +32,7 @@ export default defineScene({
     const { localMs } = useTimeline();
     const grid = useBeatGrid();
     const theme = useTheme();
+    const badge = useSceneDoc()?.textStyle?.versionColor;
     const name = useSceneText("kicker", "Fairywren");
     const version = useSceneText("version", "2.4", "embedded");
     const line = useSceneText("title", "Update today.");
@@ -72,7 +74,7 @@ export default defineScene({
             color={theme.colors.background}
             fillOpacity={0}
             strokeWidth={0.035}
-            strokeColor={theme.colors.text}
+            strokeColor={typeof badge === "string" ? badge : theme.colors.text}
           />
           <AnimatedHeadline
             text={version}

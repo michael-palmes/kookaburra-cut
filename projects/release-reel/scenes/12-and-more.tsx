@@ -11,7 +11,9 @@ import {
   useBeatGrid,
   useDeviceScreenPoint,
   useSceneDevices,
+  useSceneDoc,
   useSceneText,
+  useTheme,
   useTimeline,
 } from "@kookaburra/toolkit";
 
@@ -113,6 +115,9 @@ export default defineScene({
     const screen = useDeviceScreenPoint(hero ?? NO_DEVICE, 0.5, 0.5, { lift: 0.06 });
     const { localMs } = useTimeline();
     const grid = useBeatGrid();
+    const theme = useTheme();
+    const chipColour = useSceneDoc()?.textStyle?.chipColor;
+    const chipFill = typeof chipColour === "string" ? chipColour : theme.colors.muted;
     const title = useSceneText("title", "And more.");
     const labels = [
       useSceneText("c1", "Widgets", "embedded"),
@@ -186,7 +191,7 @@ export default defineScene({
                 height={CHIP_HEIGHT}
                 depth={0.5}
                 bevel={0.42}
-                color="muted"
+                color={chipFill}
                 finish={{ roughness: 0.12, clearcoatRoughness: 0.04, envIntensity: 1.7 }}
                 shadow
                 position={[

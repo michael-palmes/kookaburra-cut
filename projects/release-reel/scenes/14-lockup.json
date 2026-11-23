@@ -9,7 +9,7 @@
   "textStyle": {
     "kickerColor": "#ffffff",
     "versionColor": "#ffffff",
-    "titleColor": "accent"
+    "titleColor": "#ff9457"
   },
   "cameraMode": "rig",
   "cameraRig": {
