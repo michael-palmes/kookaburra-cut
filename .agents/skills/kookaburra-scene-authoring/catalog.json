@@ -28214,7 +28214,7 @@
       "personas": ["pm", "marketer", "developer"],
       "level": "standard",
       "tier": "bold",
-      "uses": ["audio", "background", "camera-rig", "device"],
+      "uses": ["audio", "background", "camera-rig", "device", "multi-device"],
       "highlights": [
         "The version number slams in on bar 1",
         "Each feature floods its own colour room on the downbeat",
@@ -28423,14 +28423,33 @@
         {
           "file": "scenes/13-all-three.tsx",
           "durationMs": 3750,
-          "transition": null,
-          "blocks": ["background", "text", "textStyle"]
+          "transition": "crossfade",
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "motionBlur",
+            "text",
+            "textStyle"
+          ]
         },
         {
           "file": "scenes/14-lockup.tsx",
-          "durationMs": 3750,
+          "durationMs": 4220,
           "transition": null,
-          "blocks": ["background", "text", "textStyle"]
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "lighting",
+            "motionBlur",
+            "text",
+            "textStyle"
+          ]
         }
       ]
     }

@@ -2491,6 +2491,14 @@
         "default": "1"
       },
       {
+        "name": "fillOpacity",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "units": "0..1",
+        "doc": "How solid the fill is under the border, 0..1 (default 1): 0 with a `strokeWidth` leaves an outline. Flat fills only."
+      },
+      {
         "name": "strokeWidth",
         "type": "number",
         "required": false,
@@ -2541,7 +2549,7 @@
   },
   "PillProps": {
     "kind": "type",
-    "signature": "interface PillProps { width: number; height: number; color?: string; opacity?: number; strokeWidth?: number; strokeColor?: string; fill?: FluidFill | boolean; position?: V3; rotation?: V3; scale?: number | V3; renderOrder?: number; }"
+    "signature": "interface PillProps { width: number; height: number; color?: string; opacity?: number; fillOpacity?: number; strokeWidth?: number; strokeColor?: string; fill?: FluidFill | boolean; position?: V3; rotation?: V3; scale?: number | V3; renderOrder?: number; }"
   },
   "PlacedObjectProps": {
     "kind": "type",
@@ -2937,6 +2945,14 @@
         "type": "number",
         "required": false,
         "default": "1"
+      },
+      {
+        "name": "fillOpacity",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "units": "0..1",
+        "doc": "How solid the fill is under the border, 0..1 (default 1): 0 with a `strokeWidth` leaves an outline. Flat fills only."
       },
       {
         "name": "strokeWidth",

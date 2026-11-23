@@ -1227,6 +1227,8 @@ declare module "@kookaburra/toolkit" {
     /** Fill colour (a theme token hex); defaults to the theme accent. */
     color?: string;
     opacity?: number;
+    /** How solid the fill is under the border, 0..1 (default 1): 0 with a `strokeWidth` leaves an outline. Flat fills only. */
+    fillOpacity?: number;
     /** Border ring width in world units, drawn just inside the edge; 0 or absent draws none. */
     strokeWidth?: number;
     /** Border colour; defaults to the theme text colour. */
