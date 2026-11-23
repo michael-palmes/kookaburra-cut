@@ -8,7 +8,10 @@ import type { SceneDoc } from "./sceneDocSchema";
 export interface SceneTimeContext {
   index: number;
   startMs: number;
+  /** How long the host keeps the scene live: Present stretches it while a slide holds, so a scene's length is `useSceneDuration()`. */
   durationMs: number;
+  /** The scene's played length when the host stretches `durationMs`; absent means `durationMs`. */
+  lengthMs?: number;
   /** Present only inside a comparison's side-B subtree; timing is identical to side A, so `useTimeline()` consumers never care. */
   side?: "b";
 }

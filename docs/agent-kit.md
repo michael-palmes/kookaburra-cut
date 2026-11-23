@@ -246,6 +246,7 @@ under the project lock (`kblib.lock`) and re-validated after writing.
 | `scenes` | Roster: index, stem, name, duration, transition, text, overrides (replaces `inspect.py`) |
 | `check [--app] [--render] [files...]` | Static checks (below); `--app` adds the running app's real compile, load and font checks; `--render` also renders each scene once; `check film ...` hands its arguments to `kblib/film` (`run(ctx, rest)`), and `check film --range SPAN \| --scene S` is the ranged flash check ("Ranged checks") |
 | `capture [--scene S] [--at SEC\|POS] [--aspect A] [--frames S@SEC,S@POS,POS,bars:A-B,beats:A-B] [--around SEC\|POS --count N] [--sheet] [--width N \| --scale F] [--probe X,Y[,X,Y...]] [--crop X,Y,W,H] [--diff A B] [--out DIR \| --no-copy]` | Frames from the running app (one frame native, several or a sheet at a 1280 px long edge); prints the paths of copies in `.kb/captures/`; `--sheet` adds one contact-sheet PNG; `--probe` returns exact pixel values ("The capture service"). A musical position resolves against `audio.grid` to the scene that owns it (mid-transition, the one the editor shows as current); with `--scene` a position outside it is exit 1; `bars:`/`beats:` ranges expand to downbeats or beats, 48 frames at most; answers carry `position` and `projectMs`. Motion and joins: "Captures for motion and joins" |
+| `try S --at SEC\|POS [--set PATH=V1,V2]... [--variant NAME=PATCH]... [--aspect A] [--width N]` | Up to 8 sidecar variants of one scene at one moment beside the saved scene, in ONE capture request whose frames carry each variant as a whole `sceneDoc`; the render window renders them in memory and nothing in the project is written. Each variant is built by `cli.sidecar_edit` (exactly what `kb doc` would write) and refused before sending when it adds errors; repeated `--set` make a grid. Writes `try.png` (`contact.write_sheets`) beside the copies in `.kb/captures/`, prints a keep command per variant, and warns when the sidecar's hash changed during the render. Needs `sceneDoc` in `captureFeatures` (exit 2 otherwise). Code: `kblib/try_cli.py` |
 | `verify [--scene S]... [--aspect A] [--no-render] [--film \| --quick] [--formats]`, `verify --last` | Every check before calling the work done, one step at a time (below); `--last` prints the saved verdict and exits with its code |
 | `debug contexts`, `debug lose-context [--window render\|editor]` | Every window's WebGL contexts; force a context loss to exercise the stall recovery (the editor only in dev builds) |
 | `scene add <stem> [--preset P \| --copy S] [--after S \| --at N] [--duration MS] [--name N] [--transition TYPE[:MS]\|none]` | New scene, unique stem and `defineScene` id, registered once; presets insert through the app when it runs, else copy from the app bundle. `--transition` takes the place of the project's default at the boundary it would seed: the cut into a scene added last (the scene before it), else the new scene's own cut out |
@@ -1447,7 +1448,7 @@ lands in `responses/<id>.json`. A request without `kind` is a v1 capture.
   "instancePid": 87186, "client": "session-1a2b3c4d",
   "deadlineAtMs": 1792020120000, "retryOf": null,
   "scene": "03-feature-checks", "at": 1.5, "aspect": "9:16",
-  "frames": [{ "scene": "3", "at": 2.0 }], "sheet": true,
+  "frames": [{ "scene": "3", "at": 2.0 }, { "scene": "3", "at": 2.0, "sceneDoc": { "version": 3 } }], "sheet": true,
   "width": 1280, "scale": null, "probe": [[100, 200], [640, 360]],
   "op": "lose-context", "window": "render",
   "render": false,
@@ -1481,6 +1482,15 @@ unclaimed or unanswered request exits 3 (`bridge-timeout`); `needsTrust` exits 2
   most 48 frames. `aspect` overrides the editor's aspect for this request only; an
   unknown aspect, a `scale` outside (0, 1] or a `width` that is not a whole number of
   pixels is an error.
+  A frame's `sceneDoc` (`kb try`) is a whole sidecar for that frame's scene, used for that frame
+  only: the window loads the project with `loadProject`'s `sceneDocOverlay` (parsed by the same
+  `parseSceneDoc`, never a write base, no TSX recompile), renders, and never caches it; the real
+  project is parked and re-applied by the next request without a recompile, and any failure
+  reloads cold. Frames group by overlay (the saved project first, each overlay loading once), and
+  answer `sceneDoc: true` plus `sceneDocWarnings` (what the parser dropped); `timing.sceneDocLoads`
+  counts the loads. Workspace projects only, a frame naming its scene, one scene per overlay, at
+  most 8 distinct overlays of 256 KB each; anything else is an error before rendering. Each
+  distinct overlay costs one unit on top of its pixels.
 - `check`: `project`, `scenes: [{ index, file, id, ok, phase?, error?, warnings }]`,
   `fonts: [{ ref, ok, error?, fallback? }]` (passing refs included),
   `assets: [{ path, ok, error? }]`, `warnings`, `rendered`. Built from a real load in
@@ -1653,8 +1663,8 @@ is `kblib/queue.py` and `kblib/capture.py`. Bridge captures are never baselines.
   exact against a decoded MP4 or across sizes near edges.
 - **Cost.** A capture costs frames x ceil(width x height / 921 600) units (a 4K frame is
   9, 1280x720 is 1); a `range` request costs its frames' pixels with four frames to a unit
-  (it skips the per-frame preamble and PNG save: a minute at 640x360 and 30 fps is 113);
-  other kinds cost 1. A capture or range over 144 units is answered `{ ok: false, tooLarge:
+  (it skips the per-frame preamble and PNG save: a minute at 640x360 and 30 fps is 113); each
+  distinct `sceneDoc` adds one; other kinds cost 1. A capture or range over 144 units is answered `{ ok: false, tooLarge:
   true, units, maxUnits, hint }` (kb exit 1, `too-large`; kb splits long ranged checks itself).
 - **Ranged renders.** The `range` kind ("Ranged checks") renders at a 360 px short edge (or
   `width`) and 30 fps (1 to 60) unless sized; `range_size` and `range_frames` in
@@ -1743,7 +1753,7 @@ order and the estimate to each answer, from the last 32 capture durations):
 ```json
 {
   "version": 1,
-  "captureFeatures": ["scale", "width", "probe", "client", "deadline", "recycle", "debug", "range", "texts"],
+  "captureFeatures": ["scale", "width", "probe", "client", "deadline", "recycle", "debug", "range", "texts", "sceneDoc"],
   "queue": { "depth": 2, "oldestAgeMs": 4200,
     "order": ["0001792020004000-311-c0ffee", "0001792020003000-207-beef01"],
     "etaMs": [3800, 6000],

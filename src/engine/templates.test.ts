@@ -12,6 +12,7 @@ import {
   TEMPLATE_CATEGORIES,
   TEMPLATE_CATEGORY_ALIASES,
   TEMPLATE_PERSONAS,
+  TEMPLATE_PREVIEW_COUNT,
   TEMPLATE_USES,
   type TemplateManifest,
   type TemplateManifestResult,
@@ -527,6 +528,16 @@ describe("template manifest version 2", () => {
     ]);
   });
 
+  it("names the poster as a still slot", () => {
+    const parsed = templateManifestSchema.safeParse(
+      v2Manifest({ preview: { poster: -1, frames: [0, 0, 0, 0] } }),
+    );
+    const messages = parsed.success
+      ? []
+      : parsed.error.issues.map((i) => `${i.path}: ${i.message}`);
+    expect(messages).toEqual(["preview.poster: must be a still slot, 0 to 3"]);
+  });
+
   it("keeps the version 1 ids out of a version 2 manifest", () => {
     expect(issuePaths(v2Manifest({ category: "app-updates" }))).toEqual(["category"]);
   });
@@ -896,11 +907,11 @@ describe.skipIf(templateIds.length === 0)("each bundled template", () => {
     const preview = entry.manifest?.preview;
     if (!preview) return;
     const count = (entry.project?.scenes ?? []).length;
-    const indices = [
-      preview.poster,
-      ...preview.frames.map((frame) => (typeof frame === "number" ? frame : frame.scene)),
-    ];
+    const indices = preview.frames.map((frame) =>
+      typeof frame === "number" ? frame : frame.scene,
+    );
     expect(indices.filter((index) => index >= count)).toEqual([]);
+    expect(preview.poster).toBeLessThan(TEMPLATE_PREVIEW_COUNT);
   });
 
   it.each(templateIds)("%s keeps the version 2 contract when it declares version 2", (id) => {

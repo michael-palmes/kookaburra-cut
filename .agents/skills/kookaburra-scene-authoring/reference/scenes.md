@@ -60,6 +60,7 @@ needs no React import. Consequences:
 | Hook | Returns |
 | --- | --- |
 | `useTimeline()` | `{ localMs, globalMs, progress }`. `localMs` is scene time: drive ALL motion from it. `progress` is the whole PROJECT 0..1. |
+| `useSceneDuration()` | The scene's length in ms as the project plays it: `project.json` and a pinned `cutAt` move it, the TSX `durationMs` is only the default. Time exits and whole-scene ramps from it, never a literal end: `const endMs = useSceneDuration();` then `outAt={endMs - 165}` or `ramp(localMs, 0, endMs)` |
 | `useFormat()` | `{ width, height, aspect, shape, frame: { width, height }, safe: { top, right, bottom, left } }`; frame and safe in world units at z = 0; `shape` is `"wide"` from aspect 1.2 (16:9, 3:2, 5:4), `"tall"` at 0.85 and below (9:16, 2:3, 4:5, phone), else `"square"` (1:1) |
 | `useTheme()` | Tokens: `colors.{background,text,accent,muted}`, `typography.{headline,body,scale}`, `motion.durations.{fast,base,slow}`, `motion.easings`, `chartColors`, `gradients` |
 | `useSceneText(key, fallback?, role?)` | Sidecar copy for a text key; `role` `"embedded"` for positioned labels that must never become managed text |

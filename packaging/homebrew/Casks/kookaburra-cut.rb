@@ -1,6 +1,6 @@
 cask "kookaburra-cut" do
-  version "0.22.4"
-  sha256 "a71315babdc38eac53dfcb75163416709721b8edb515db1385ac214c86e35278"
+  version "0.23.0"
+  sha256 "dea62660bf982d8bd9dcd6d5a370076c333a2b5f48b0c3f664e4d33f907f41da"
 
   url "https://github.com/michael-palmes/kookaburra-cut/releases/download/v#{version}/KookaburraCut-#{version}.dmg"
   name "Kookaburra Cut"

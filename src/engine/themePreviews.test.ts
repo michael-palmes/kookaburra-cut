@@ -4,7 +4,12 @@ import { setExporting } from "./exportState";
 import type { LoadedProject } from "./project";
 import { loadProject } from "./project";
 import { captureFrameAt } from "./snapshots";
-import { ensureUserThemePreviews, themePreviewKey, themeVariantsOf } from "./themePreviews";
+import {
+  awaitProjectCommitted,
+  ensureUserThemePreviews,
+  themePreviewKey,
+  themeVariantsOf,
+} from "./themePreviews";
 
 const state = vi.hoisted(() => ({
   applied: null as unknown,
@@ -14,6 +19,9 @@ const state = vi.hoisted(() => ({
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("./exportBridge", () => ({ canvasCommittedProject: () => state.applied }));
 vi.mock("./exporter", () => ({ awaitSceneHostsCommitted: vi.fn() }));
+vi.mock("./macrotask", () => ({
+  yieldMacrotask: () => new Promise<void>((resolve) => setImmediate(resolve)),
+}));
 vi.mock("./media", () => ({ fsUrl: (path: string) => path }));
 vi.mock("../theme/schema", () => ({ parseThemeDoc: (doc: unknown) => doc }));
 vi.mock("./project", () => ({ loadProject: vi.fn(async () => state.starter) }));
@@ -38,6 +46,17 @@ beforeEach(() => {
   setExporting(false);
   vi.mocked(invoke).mockResolvedValue(null);
   vi.mocked(captureFrameAt).mockResolvedValue(new Uint8Array([1]));
+});
+
+describe("awaitProjectCommitted", () => {
+  it("gives up after its spins, or waits out a floor for a slow swap", async () => {
+    const project = {} as LoadedProject;
+    await expect(awaitProjectCommitted(project, 0)).rejects.toThrow(/never committed/);
+    setTimeout(() => {
+      state.applied = project;
+    }, 60);
+    await expect(awaitProjectCommitted(project, 5_000)).resolves.toBeUndefined();
+  });
 });
 
 describe("theme preview generation", () => {

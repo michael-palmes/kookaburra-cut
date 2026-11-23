@@ -361,6 +361,7 @@ export function FramePanel({
   index,
   startMs,
   durationMs,
+  lengthMs,
   doc,
   theme,
   frame,
@@ -368,6 +369,7 @@ export function FramePanel({
   index: number;
   startMs: number;
   durationMs: number;
+  lengthMs?: number;
   doc?: SceneDoc;
   theme?: Theme;
   frame?: FrameSpec;
@@ -391,7 +393,7 @@ export function FramePanel({
 
   // Overlay chrome is screen-locked, so it never takes motion blur.
   return (
-    <SceneContext.Provider value={{ index, startMs, durationMs }}>
+    <SceneContext.Provider value={{ index, startMs, durationMs, lengthMs }}>
       <MotionBlurContext.Provider value={0}>
         <SceneDocContext.Provider value={doc ?? null}>
           <SceneThemeContext.Provider value={theme ?? null}>

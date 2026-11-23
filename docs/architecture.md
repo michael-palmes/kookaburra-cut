@@ -210,7 +210,7 @@ than restating versions.) Pins live in `package.json` and `src-tauri/Cargo.toml`
 | React + react-dom | 19.3.x | UI and scene component model; react-dom renders the chrome, fiber the canvas | MIT |
 | TypeScript | 7.0.x | Typed toolkit and scene files | Apache-2.0 |
 | Vite | 8.3.x | Dev server, HMR preview, prod bundle (Oxc transform/minify) | MIT |
-| @vitejs/plugin-react | 6.1.x | React fast-refresh / JSX for Vite | MIT |
+| @vitejs/plugin-react | 6.3.x | React fast-refresh / JSX for Vite | MIT |
 | three | 0.186.x | WebGL renderer and scene graph | MIT |
 | @react-three/fiber | 9.8.x | React renderer for Three.js | MIT |
 | @react-three/drei | 10.7.x | Loaders, controls, `<Text>` helper | MIT |
@@ -219,7 +219,7 @@ than restating versions.) Pins live in `package.json` and `src-tauri/Cargo.toml`
 | anime.js | 4.5.x | Global seekable timeline / sequencing | MIT |
 | d3-ease | 3.x | Permissive easing primitives | ISC |
 | d3-interpolate | 3.x | Permissive value interpolation primitives | ISC |
-| zustand | 5.0.x | Editor / preview / timeline UI state | MIT |
+| zustand | 5.1.x | Editor / preview / timeline UI state | MIT |
 | esbuild-wasm | exact-pinned | In-webview compile of workspace scene TSX | MIT |
 | ffmpeg + ffprobe (sidecars) | 8.x (pinned source build) | Frame encoding (H.264 / H.265 / ProRes / FFV1) + media probing | LGPL / GPL (see note) |
 | Vitest | 5.x | Tests, incl. the determinism harness | MIT |

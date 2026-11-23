@@ -29,3 +29,24 @@ prints (the copies in `.kb/captures/`). One request at a time, at most 48 frames
   whatever the capture size; kb maps them into the returned image and prints both.
 - `./kb verify --formats` captures every scene's first and last frames in each aspect in
   `formats`, and warns when text crosses the safe area, by key and aspect.
+
+## Variants: kb try
+
+Compare sidecar values in one pass instead of edit, capture, undo. The app renders each variant in
+memory beside the scene as saved; nothing in `scenes/` changes.
+
+```
+./kb try 04-reveal --at 9 --set backdrop.roughness=0.12,0.25,0.35,0.5
+./kb try 04-reveal --at 9 --set lighting.lights.0.intensity=260,360 --set backdrop.roughness=0.12,0.3
+./kb try 04-reveal --at bar:13 --variant matte=@.kb/agents/a/matte.json --variant 'mirror={"backdrop":{"roughness":0.05}}'
+```
+
+- One scene, one moment, at most 8 variants. Repeated `--set` make a grid; `--variant NAME=PATCH`
+  is a JSON merge patch (`kb doc merge`'s rules), inline or `@file`.
+- Read `try.png`: one labelled tile per variant, and a `saved` tile unless a variant matches the
+  saved scene (marked `(saved)`).
+- A variant that would add errors renders nothing; fix the value. Keep one with the command kb
+  prints beside it (`./kb doc ...`), then capture again to confirm.
+- Lighting, floor, camera and material values suit it best. Text, timing and media changes still
+  render, but judge motion with `--around` or `./kb preview` after keeping one.
+- Showing the person: put the sheet in front of them with your pick and why, not the numbers.
