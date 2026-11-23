@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "position": [0, -0.985, 11.488],
+          "aim": { "mode": "point", "at": [0, -0.1, 0] },
+          "fov": 21
+        },
+        "at": "bar:7"
+      },
+      {
+        "id": "k2",
+        "tMs": 3750,
+        "pose": {
+          "position": [0.0, -0.9346, 10.8332],
+          "aim": { "mode": "point", "at": [0, -0.1, 0] },
+          "fov": 21
+        },
+        "at": "bar:9"
+      }
+    ],
+    "segments": [{ "from": "k1", "to": "k2", "ease": "linear" }]
+  },
+  "cameraKicks": [{ "at": "cue:full-stop", "releaseMs": 350, "zoom": 1.04 }]
+}

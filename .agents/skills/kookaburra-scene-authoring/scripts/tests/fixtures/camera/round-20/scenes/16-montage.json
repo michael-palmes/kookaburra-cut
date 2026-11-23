@@ -1,0 +1,628 @@
+{
+  "version": 1,
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "s1a",
+        "tMs": 0,
+        "pose": {
+          "position": [0.8206, 1.3926, 3.2182],
+          "aim": { "mode": "point", "at": [-2.0243, 0.7706, -0.1722] },
+          "fov": 24,
+          "dof": { "mode": "lens", "fStop": 11, "focus": "auto" }
+        }
+      },
+      {
+        "id": "s1b",
+        "tMs": 936,
+        "pose": {
+          "position": [0.8131, 1.3553, 2.8705],
+          "aim": { "mode": "point", "at": [-2.0243, 0.7706, -0.1722] },
+          "fov": 24,
+          "dof": { "mode": "lens", "fStop": 11, "focus": "auto" }
+        }
+      },
+      {
+        "id": "s2a",
+        "tMs": 937,
+        "pose": {
+          "position": [-1.2062, 0.2643, 2.4711],
+          "aim": { "mode": "point", "at": [-1.9692, 0.4579, -0.1899] },
+          "fov": 16,
+          "dof": { "mode": "lens", "fStop": 16, "focus": "auto" }
+        },
+        "at": "bar:25.3"
+      },
+      {
+        "id": "s2b",
+        "tMs": 1874,
+        "pose": {
+          "position": [-1.122, 0.276, 2.2705],
+          "aim": { "mode": "point", "at": [-1.9692, 0.4579, -0.1899] },
+          "fov": 16,
+          "dof": { "mode": "lens", "fStop": 16, "focus": "auto" }
+        }
+      },
+      {
+        "id": "s3a",
+        "tMs": 1875,
+        "pose": {
+          "position": [-0.909, 0.5388, 4.8301],
+          "aim": { "mode": "point", "at": [-1.976, 0.18, -0.1898] },
+          "fov": 22,
+          "dof": { "mode": "lens", "fStop": 11, "focus": "auto" }
+        },
+        "at": "bar:26"
+      },
+      {
+        "id": "s3b",
+        "tMs": 2811,
+        "pose": {
+          "position": [-0.7274, 0.5173, 4.4699],
+          "aim": { "mode": "point", "at": [-1.976, 0.18, -0.1898] },
+          "fov": 22,
+          "dof": { "mode": "lens", "fStop": 11, "focus": "auto" }
+        }
+      },
+      {
+        "id": "s4a",
+        "tMs": 2812,
+        "pose": {
+          "position": [-0.6274, 2.168, 1.9105],
+          "aim": { "mode": "point", "at": [-1.9874, 0.3537, -0.1838] },
+          "fov": 22,
+          "dof": { "mode": "lens", "fStop": 11, "focus": "auto" }
+        },
+        "at": "bar:26.3"
+      },
+      {
+        "id": "s4b",
+        "tMs": 3749,
+        "pose": {
+          "position": [-0.6077, 2.0592, 1.7152],
+          "aim": { "mode": "point", "at": [-1.9874, 0.3537, -0.1838] },
+          "fov": 22,
+          "dof": { "mode": "lens", "fStop": 11, "focus": "auto" }
+        }
+      },
+      {
+        "id": "s5a",
+        "tMs": 3750,
+        "pose": {
+          "position": [-1.8807, -0.9323, 3.787],
+          "aim": { "mode": "point", "at": [-2.0883, -1.0708, -0.175] },
+          "fov": 20,
+          "dof": { "mode": "lens", "fStop": 11, "focus": "auto" }
+        },
+        "at": "bar:27"
+      },
+      {
+        "id": "s5b",
+        "tMs": 4217,
+        "pose": {
+          "position": [-1.6985, -0.9406, 3.534],
+          "aim": { "mode": "point", "at": [-2.0883, -1.0708, -0.175] },
+          "fov": 20,
+          "dof": { "mode": "lens", "fStop": 11, "focus": "auto" }
+        }
+      },
+      {
+        "id": "s6a",
+        "tMs": 4218,
+        "pose": {
+          "position": [-0.5729, 1.2475, 2.2323],
+          "aim": { "mode": "point", "at": [-2.0165, 0.7532, -0.1703] },
+          "fov": 16,
+          "dof": { "mode": "lens", "fStop": 16, "focus": "auto" }
+        },
+        "at": "bar:27.2"
+      },
+      {
+        "id": "s6b",
+        "tMs": 4686,
+        "pose": {
+          "position": [-0.5432, 1.2178, 2.014],
+          "aim": { "mode": "point", "at": [-2.0165, 0.7532, -0.1703] },
+          "fov": 16,
+          "dof": { "mode": "lens", "fStop": 16, "focus": "auto" }
+        }
+      },
+      {
+        "id": "s7a",
+        "tMs": 4687,
+        "pose": {
+          "position": [-2.9987, 0.6312, 2.622],
+          "aim": { "mode": "point", "at": [-2.0371, 0.1105, -0.1705] },
+          "fov": 18,
+          "dof": { "mode": "lens", "fStop": 16, "focus": "auto" }
+        },
+        "at": "bar:27.3"
+      },
+      {
+        "id": "s7b",
+        "tMs": 5155,
+        "pose": {
+          "position": [-2.8023, 0.6, 2.4982],
+          "aim": { "mode": "point", "at": [-2.0371, 0.1105, -0.1705] },
+          "fov": 18,
+          "dof": { "mode": "lens", "fStop": 16, "focus": "auto" }
+        }
+      },
+      {
+        "id": "s8a",
+        "tMs": 5156,
+        "pose": {
+          "position": [-2.1303, 2.6593, 1.2218],
+          "aim": { "mode": "point", "at": [-2.1303, -1.537, -0.7349] },
+          "fov": 22,
+          "dof": { "mode": "lens", "fStop": 11, "focus": "auto" }
+        },
+        "at": "bar:27.4"
+      },
+      {
+        "id": "s8b",
+        "tMs": 5624,
+        "pose": {
+          "position": [-1.9238, 2.4021, 1.1044],
+          "aim": { "mode": "point", "at": [-2.1303, -1.537, -0.7349] },
+          "fov": 22,
+          "dof": { "mode": "lens", "fStop": 11, "focus": "auto" }
+        }
+      },
+      {
+        "id": "s9a",
+        "tMs": 5625,
+        "pose": {
+          "position": [7.0954, -0.5648, 9.4995],
+          "aim": { "mode": "point", "at": [-2.0213, -0.098, -0.277] },
+          "fov": 22,
+          "dof": { "mode": "lens", "fStop": 16, "focus": "auto" }
+        },
+        "at": "bar:28"
+      },
+      {
+        "id": "s9b",
+        "tMs": 6092,
+        "pose": {
+          "position": [7.0176, -0.5368, 8.4518],
+          "aim": { "mode": "point", "at": [-2.0213, -0.098, -0.277] },
+          "fov": 22,
+          "dof": { "mode": "lens", "fStop": 16, "focus": "auto" }
+        }
+      },
+      {
+        "id": "s10a",
+        "tMs": 6093,
+        "pose": {
+          "position": [-1.8861, -1.2279, 2.493],
+          "aim": { "mode": "point", "at": [-1.7931, -1.0882, -0.17] },
+          "fov": 16,
+          "dof": { "mode": "lens", "fStop": 16, "focus": "auto" }
+        },
+        "at": "bar:28.2"
+      },
+      {
+        "id": "s10b",
+        "tMs": 6561,
+        "pose": {
+          "position": [-1.7494, -1.2195, 2.3344],
+          "aim": { "mode": "point", "at": [-1.7931, -1.0882, -0.17] },
+          "fov": 16,
+          "dof": { "mode": "lens", "fStop": 16, "focus": "auto" }
+        }
+      },
+      {
+        "id": "s11a",
+        "tMs": 6562,
+        "pose": {
+          "position": [-1.9632, -0.6191, 2.6037],
+          "aim": { "mode": "point", "at": [-2.0117, -1.2098, -0.175] },
+          "fov": 18,
+          "dof": { "mode": "lens", "fStop": 16, "focus": "auto" }
+        },
+        "at": "bar:28.3"
+      },
+      {
+        "id": "s11b",
+        "tMs": 7030,
+        "pose": {
+          "position": [-1.8295, -0.6545, 2.431],
+          "aim": { "mode": "point", "at": [-2.0117, -1.2098, -0.175] },
+          "fov": 18,
+          "dof": { "mode": "lens", "fStop": 16, "focus": "auto" }
+        }
+      },
+      {
+        "id": "s12a",
+        "tMs": 7031,
+        "pose": {
+          "position": [-0.8927, 1.329, 2.5415],
+          "aim": { "mode": "point", "at": [-2.3089, 1.1181, -0.122] },
+          "fov": 16,
+          "dof": { "mode": "lens", "fStop": 16, "focus": "auto" }
+        },
+        "at": "bar:28.4"
+      },
+      {
+        "id": "s12b",
+        "tMs": 7500,
+        "pose": {
+          "position": [-0.8484, 1.3163, 2.3086],
+          "aim": { "mode": "point", "at": [-2.3089, 1.1181, -0.122] },
+          "fov": 16,
+          "dof": { "mode": "lens", "fStop": 16, "focus": "auto" }
+        }
+      }
+    ],
+    "segments": [
+      { "from": "s1a", "to": "s1b", "ease": "linear" },
+      { "from": "s1b", "to": "s2a", "ease": "jump" },
+      { "from": "s2a", "to": "s2b", "ease": "linear" },
+      { "from": "s2b", "to": "s3a", "ease": "jump" },
+      { "from": "s3a", "to": "s3b", "ease": "linear" },
+      { "from": "s3b", "to": "s4a", "ease": "jump" },
+      { "from": "s4a", "to": "s4b", "ease": "linear" },
+      { "from": "s4b", "to": "s5a", "ease": "jump" },
+      { "from": "s5a", "to": "s5b", "ease": "linear" },
+      { "from": "s5b", "to": "s6a", "ease": "jump" },
+      { "from": "s6a", "to": "s6b", "ease": "linear" },
+      { "from": "s6b", "to": "s7a", "ease": "jump" },
+      { "from": "s7a", "to": "s7b", "ease": "linear" },
+      { "from": "s7b", "to": "s8a", "ease": "jump" },
+      { "from": "s8a", "to": "s8b", "ease": "linear" },
+      { "from": "s8b", "to": "s9a", "ease": "jump" },
+      { "from": "s9a", "to": "s9b", "ease": "linear" },
+      { "from": "s9b", "to": "s10a", "ease": "jump" },
+      { "from": "s10a", "to": "s10b", "ease": "linear" },
+      { "from": "s10b", "to": "s11a", "ease": "jump" },
+      { "from": "s11a", "to": "s11b", "ease": "linear" },
+      { "from": "s11b", "to": "s12a", "ease": "jump" },
+      { "from": "s12a", "to": "s12b", "ease": "linear" }
+    ]
+  },
+  "deviceTrack": {
+    "keys": [
+      {
+        "id": "d1",
+        "tMs": 0,
+        "pose": {
+          "sorted": { "offset": [0, 0, 0], "rotationDeg": [0, 0, 0] },
+          "plan": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "reschedule": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "quickadd": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "share": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "insights": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "month": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "focus": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "afternoon": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "added": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "today": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] }
+        }
+      },
+      {
+        "id": "d2",
+        "tMs": 937,
+        "pose": {
+          "sorted": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "plan": { "offset": [0, 0, 0], "rotationDeg": [0, 0, 0] },
+          "reschedule": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "quickadd": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "share": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "insights": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "month": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "focus": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "afternoon": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "added": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "today": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] }
+        },
+        "at": "bar:25.3"
+      },
+      {
+        "id": "d3",
+        "tMs": 1875,
+        "pose": {
+          "sorted": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "plan": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "reschedule": { "offset": [0, 0, 0], "rotationDeg": [0, 0, 0] },
+          "quickadd": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "share": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "insights": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "month": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "focus": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "afternoon": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "added": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "today": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] }
+        },
+        "at": "bar:26"
+      },
+      {
+        "id": "d4",
+        "tMs": 2812,
+        "pose": {
+          "sorted": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "plan": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "reschedule": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "quickadd": { "offset": [0, 0, 0], "rotationDeg": [0, 0, 0] },
+          "share": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "insights": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "month": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "focus": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "afternoon": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "added": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "today": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] }
+        },
+        "at": "bar:26.3"
+      },
+      {
+        "id": "d5",
+        "tMs": 3750,
+        "pose": {
+          "sorted": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "plan": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "reschedule": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "quickadd": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "share": { "offset": [0, 0, 0], "rotationDeg": [0, 0, 0] },
+          "insights": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "month": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "focus": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "afternoon": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "added": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "today": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] }
+        },
+        "at": "bar:27"
+      },
+      {
+        "id": "d6",
+        "tMs": 4218,
+        "pose": {
+          "sorted": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "plan": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "reschedule": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "quickadd": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "share": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "insights": { "offset": [0, 0, 0], "rotationDeg": [0, 0, 0] },
+          "month": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "focus": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "afternoon": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "added": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "today": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] }
+        },
+        "at": "bar:27.2"
+      },
+      {
+        "id": "d7",
+        "tMs": 4687,
+        "pose": {
+          "sorted": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "plan": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "reschedule": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "quickadd": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "share": { "offset": [0, 0, 0], "rotationDeg": [0, 20, 0] },
+          "insights": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "month": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "focus": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "afternoon": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "added": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "today": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] }
+        },
+        "at": "bar:27.3"
+      },
+      {
+        "id": "d8",
+        "tMs": 5156,
+        "pose": {
+          "sorted": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "plan": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "reschedule": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "quickadd": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "share": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "insights": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "month": { "offset": [0, 0, 0], "rotationDeg": [0, 0, 0] },
+          "focus": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "afternoon": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "added": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "today": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] }
+        },
+        "at": "bar:27.4"
+      },
+      {
+        "id": "d9",
+        "tMs": 5625,
+        "pose": {
+          "sorted": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "plan": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "reschedule": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "quickadd": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "share": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "insights": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "month": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "focus": { "offset": [0, 0, 0], "rotationDeg": [0, 0, 0] },
+          "afternoon": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "added": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "today": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] }
+        },
+        "at": "bar:28"
+      },
+      {
+        "id": "d10",
+        "tMs": 6093,
+        "pose": {
+          "sorted": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "plan": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "reschedule": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "quickadd": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "share": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "insights": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "month": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "focus": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "afternoon": { "offset": [0, 0, 0], "rotationDeg": [0, 0, 0] },
+          "added": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "today": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] }
+        },
+        "at": "bar:28.2"
+      },
+      {
+        "id": "d11",
+        "tMs": 6562,
+        "pose": {
+          "sorted": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "plan": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "reschedule": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "quickadd": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "share": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "insights": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "month": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "focus": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "afternoon": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "added": { "offset": [0, 0, 0], "rotationDeg": [0, 0, 0] },
+          "today": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] }
+        },
+        "at": "bar:28.3"
+      },
+      {
+        "id": "d12",
+        "tMs": 7031,
+        "pose": {
+          "sorted": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "plan": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "reschedule": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "quickadd": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "share": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "insights": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "month": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "focus": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "afternoon": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "added": { "offset": [0, 0, 400], "rotationDeg": [0, 0, 0] },
+          "today": { "offset": [0, 0, 0], "rotationDeg": [0, 0, 0] }
+        },
+        "at": "bar:28.4"
+      }
+    ],
+    "segments": [
+      { "from": "d1", "to": "d2", "ease": "jump" },
+      { "from": "d2", "to": "d3", "ease": "jump" },
+      { "from": "d3", "to": "d4", "ease": "jump" },
+      { "from": "d4", "to": "d5", "ease": "jump" },
+      { "from": "d5", "to": "d6", "ease": "jump" },
+      { "from": "d6", "to": "d7", "ease": "jump" },
+      { "from": "d7", "to": "d8", "ease": "jump" },
+      { "from": "d8", "to": "d9", "ease": "jump" },
+      { "from": "d9", "to": "d10", "ease": "jump" },
+      { "from": "d10", "to": "d11", "ease": "jump" },
+      { "from": "d11", "to": "d12", "ease": "jump" }
+    ]
+  },
+  "devices": [
+    {
+      "id": "sorted",
+      "model": "iphone-15-pro",
+      "placement": {
+        "position": [-2.05, 0.079, -0.318],
+        "rotationDeg": [0, 10, 0],
+        "scale": 1.39,
+        "ground": true
+      }
+    },
+    {
+      "id": "plan",
+      "model": "iphone-15-pro",
+      "placement": {
+        "position": [-2.05, 0.079, -0.318],
+        "rotationDeg": [0, 20, 0],
+        "scale": 1.39,
+        "ground": true
+      }
+    },
+    {
+      "id": "reschedule",
+      "model": "iphone-15-pro",
+      "placement": {
+        "position": [-2.05, 0.079, -0.318],
+        "rotationDeg": [0, 30, 0],
+        "scale": 1.39,
+        "ground": true
+      }
+    },
+    {
+      "id": "quickadd",
+      "model": "iphone-15-pro",
+      "placement": {
+        "position": [-2.05, 0.079, -0.318],
+        "rotationDeg": [0, 25, 0],
+        "scale": 1.39,
+        "ground": true
+      }
+    },
+    {
+      "id": "share",
+      "model": "iphone-15-pro",
+      "placement": {
+        "position": [-2.05, 0.079, -0.318],
+        "rotationDeg": [0, -15, 0],
+        "scale": 1.39,
+        "ground": true
+      }
+    },
+    {
+      "id": "insights",
+      "model": "iphone-15-pro",
+      "placement": {
+        "position": [-2.05, 0.079, -0.318],
+        "rotationDeg": [0, 25, 0],
+        "scale": 1.39,
+        "ground": true
+      }
+    },
+    {
+      "id": "month",
+      "model": "iphone-15-pro",
+      "placement": {
+        "position": [-2.05, 0.079, -0.318],
+        "rotationDeg": [-90, 0, 0],
+        "scale": 1.39,
+        "ground": true
+      }
+    },
+    {
+      "id": "focus",
+      "model": "iphone-15-pro",
+      "placement": {
+        "position": [-2.05, 0.079, -0.318],
+        "rotationDeg": [0, 35, 0],
+        "scale": 1.39,
+        "ground": true
+      }
+    },
+    {
+      "id": "afternoon",
+      "model": "iphone-15-pro",
+      "placement": {
+        "position": [-2.05, 0.079, -0.318],
+        "rotationDeg": [0, 0, 0],
+        "scale": 1.39,
+        "ground": true
+      }
+    },
+    {
+      "id": "added",
+      "model": "iphone-15-pro",
+      "placement": {
+        "position": [-2.05, 0.079, -0.318],
+        "rotationDeg": [0, 15, 0],
+        "scale": 1.39,
+        "ground": true
+      }
+    },
+    {
+      "id": "today",
+      "model": "iphone-15-pro",
+      "placement": {
+        "position": [-2.05, 0.079, -0.318],
+        "rotationDeg": [0, 10, 0],
+        "scale": 1.39,
+        "ground": true
+      }
+    }
+  ]
+}

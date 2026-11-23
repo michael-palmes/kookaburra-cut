@@ -35,6 +35,7 @@ import {
 import { createSeededRandom } from "../../engine/rng";
 import { useSceneRelease } from "../../engine/sceneRelease";
 import { createFrameShare, supersampleSeed } from "../../engine/supersample";
+import { createRenderOnce } from "./renderOnce";
 import { SHADOW_FAR, SHADOW_FRUSTUM_EXTENT, SHADOW_NEAR } from "./shadowRig";
 
 /** A satin stage floor (the `satin` backdrop): a planar reflection blurred with the height of what it reflects, an albedo and sheen that fade with distance, blended over whatever is behind so it dissolves into the background, sparse glitter flakes, and floor-only pools standing in for caustics. Deterministic: fixed passes, no history. */
@@ -687,6 +688,7 @@ export function SatinFloor({
   const onBeforeRender = useMemo(() => {
     let busy = false;
     const once = createFrameShare();
+    const thisRender = createRenderOnce();
     const size = new Vector2();
     const eyePos = new Vector3();
     const look = new Vector3();
@@ -712,7 +714,10 @@ export function SatinFloor({
       const scale = Math.max(0.1, Math.min(1, reflect?.scale ?? 1));
       const w = Math.max(1, Math.round(size.x * scale));
       const h = Math.max(1, Math.round(size.y * scale));
-      if (passes.sharp.width !== w || passes.sharp.height !== h) passes.sharp.setSize(w, h);
+      const sized = passes.sharp.width === w && passes.sharp.height === h;
+      // One render asks twice, in its glass pass and its main pass: the second takes the first's mirror.
+      if (mirrorDepth === 0 && sized && thisRender.fresh(renderer, camera)) return;
+      if (!sized) passes.sharp.setSize(w, h);
       // The blur runs at half size: smoother for the same taps, and a quarter of the work.
       const bw = Math.max(1, Math.round(w / 2));
       const bh = Math.max(1, Math.round(h / 2));
@@ -796,6 +801,8 @@ export function SatinFloor({
       renderer.render(passes.quad, passes.quadCamera);
       renderer.setRenderTarget(outer);
       renderer.shadowMap.autoUpdate = shadows;
+      if (mirrorDepth === 0) thisRender.made(renderer, camera);
+      else thisRender.reset();
       busy = false;
     };
   }, [

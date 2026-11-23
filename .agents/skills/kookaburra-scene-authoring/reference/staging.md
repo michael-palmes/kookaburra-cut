@@ -30,7 +30,7 @@ hobby render, however good each shot is alone.
 3. Roll its world across every scene: the same sidecar `backdrop`, `background` and
    `lighting` (key, fill, haze, environment), and the same lens look in the `effects` on
    each scene's entry in `project.json` (Unveil's `lens`: bloom 0.08, halation 0.2,
-   `LensParams` in toolkit.d.ts). Save the sidecar blocks once in
+   reference/project.md, Lens). Save the sidecar blocks once in
    `.kb/agents/<name>/world.json` and apply them with
    `./kb doc S merge @.kb/agents/<name>/world.json`. Keep the subject on the hero's mark
    where you can, so the key, its haze box and the floor's pools still land on it (Unveil's
@@ -69,9 +69,9 @@ of drift, reads as a low quality rasterised render. Capture each staged shot and
       in blur). A subject on flat black has no depth.
 - [ ] **A motivated key and rim.** One key from a side you could point to (a spot with
       `castShadow`), a rim that draws the edge against the dark (an area light in the
-      `dark-rim` pattern, or a narrow `environment.strips` line from behind, `EnvStripSpec`
-      in toolkit.d.ts), and `ambient` at or near 0 (Unveil: 0). Broad even light flattens
-      metal and glass.
+      `dark-rim` pattern, or a narrow `environment.strips` line from behind,
+      reference/lighting.md, Environment strips), and `ambient` at or near 0 (Unveil: 0).
+      Broad even light flattens metal and glass.
 - [ ] **Real lens blur from a little way off.** `dof` mode `lens`, the camera 2.7 to 4.5
       units (15 to 25 cm) from the subject on a long lens (`fov` 16 to 18) at `fStop` 4 to
       5.6, so the background melts into round bokeh. At about 1 unit (a 6 cm macro) the

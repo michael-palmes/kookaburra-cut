@@ -22,6 +22,8 @@ interface SceneHostProps {
   id: string;
   startMs: number;
   durationMs: number;
+  /** The scene's played length when `durationMs` is stretched (Present's held slide). */
+  lengthMs?: number;
   /** The scene's sidecar document, if it has one. */
   doc?: SceneDoc;
   /** The scene's resolved theme (`LoadedProject.sceneThemes[index]`). */
@@ -41,6 +43,7 @@ export function SceneHost({
   id,
   startMs,
   durationMs,
+  lengthMs,
   doc,
   theme,
   frame,
@@ -68,7 +71,7 @@ export function SceneHost({
   }, [key, index, id, startMs, durationMs, side]);
 
   return (
-    <SceneContext.Provider value={{ index, startMs, durationMs, side }}>
+    <SceneContext.Provider value={{ index, startMs, durationMs, lengthMs, side }}>
       <SceneDocContext.Provider value={doc ?? null}>
         <AnimatedFixtureLightIdsContext.Provider
           value={animatedFixtureLightIds ?? NO_ANIMATED_FIXTURE_LIGHT_IDS}

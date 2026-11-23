@@ -1186,7 +1186,11 @@ camera exactly:
   mipmapped flake map and up to four floor-only pools. It fades out with premultiplied
   alpha over whatever drew first (the fixed background), on a plane fitted to the fade,
   so no edge shows. Fixed passes, no history. The plane margin, the blend, the flake
-  map size, the blur taps and the defaults in `backdrops.tsx` are contract. A floor
+  map size, the blur taps and the defaults in `backdrops.tsx` are contract. One render
+  asks for the mirror twice, since three draws the opaque floor in its glass
+  (transmission) pass and again in its main pass; the second ask takes the first's
+  mirror (`toolkit/stage/renderOnce.ts`: no render has run since), the same bytes for
+  one mirror less a frame. A floor
   with a `shadow` block, or `reflection.scatter` or `reach`, compiles a second program
   (cache key `-soft`), so a floor without them keeps its bytes: the first
   shadow-casting directional light's VSM map is read through a 16-tap blocker search
@@ -2222,6 +2226,16 @@ Verify ×2 here (the 2026-10-23 note):
 > and the pre-merge review fixes, so neither moves its pixels. Later look rounds
 > moved the film off `2c1fdbf3…` above. It stays out of the table: a run takes
 > about half an hour and needs the screen unlocked (see "What breaks it").
+
+> **2026-11-20 (`useSceneDuration`, hash-neutral):** `SceneContext` gains an
+> optional `lengthMs`, set only by Present (whose held slide stretches
+> `durationMs` by a day), and the hook reads it before `durationMs`. Editor and
+> export hosts leave it unset, so they render as before. Unveil's claim exits
+> (`1875 - 165`) and Detail 1's ramp now read the scene's length: the
+> export-path screenshots at 1.8 s in each claim and 0.9 s and 1.8 s in Detail 1
+> are byte-identical before and after. `pnpm ready` is EQUAL ×2 (`showcase-tour`
+> 16:9 `fe6b6c20…` and 9:16 `0194aa22…`, `ws:launch-2026` `cc23761e…`,
+> `ws:device-video-spike` `c1a9ff92…`).
 
 > **2026-11-14 (troika 0.53.1: hash-neutral):** troika-three-text and
 > troika-three-utils move to `0.53.1`. The only code change is `BatchedText`'s

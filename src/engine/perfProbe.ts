@@ -213,6 +213,20 @@ const PASSES: PerfPass[] = [
     apply: (_gl, scene) => hidePass(scene, (obj) => obj.userData.kookaburraFixtureLight === true),
   },
   {
+    // The haze march and its dust: fill rate, once in the frame and once more in a mirrored floor.
+    id: "no-volumetric",
+    apply: (_gl, scene) =>
+      hidePass(scene, (obj) => {
+        const material = (obj as Mesh).material;
+        return (
+          !!material &&
+          !Array.isArray(material) &&
+          (material.name === "kookaburra-volumetric-spot" ||
+            material.name === "kookaburra-beam-dust")
+        );
+      }),
+  },
+  {
     // Free area lights and fixture rect lights together: isolates the LTC cost.
     id: "no-area-lights",
     apply: (_gl, scene) =>

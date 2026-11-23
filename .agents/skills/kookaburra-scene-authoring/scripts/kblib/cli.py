@@ -87,6 +87,7 @@ the cwd, or uses $CLAUDE_PROJECT_DIR.
              verify-export FILE [--no-sheet] [--no-flashes] [--allow-flashes] [--loudness-target LUFS]
              check film [flashes colour handoffs pacing] [--file F] [--standard wcag|itu|both]
              pacing [accept ID|S --why TEXT [--kind K] | forget ID|S]   (pacing warnings the person kept)
+             check camera [S...] | camera [accept ID|S --why TEXT [--kind K] | forget ID|S]
              sync-check FILE [--bpm N [--offset MS]] [--poster-frame auto|on|off]
   History    checkpoint [MESSAGE] [--scene S]... [--files P]... | history [--scene S]
              undo [REV] [--scene S | --all] | diff [REV] [--scene S] | plan COMMAND ...
@@ -266,6 +267,10 @@ def cmd_check(ctx: Ctx) -> int:
     args = ctx.args
     if args.files and args.files[0] == "film":
         return check_film(ctx, list(args.files[1:]))
+    if args.files and args.files[0] == "camera":
+        from .camera import cli as cameramod
+
+        return cameramod.check_camera(ctx, list(args.files[1:]))
     project = ctx.project
     files = None
     if args.files:
@@ -290,7 +295,7 @@ def cmd_check(ctx: Ctx) -> int:
         if not resp.get("error"):
             # Recorded before the static pass so fonts the app just vetted stop reading as unvetted.
             fontmod.record_verdicts([f for f in resp.get("fonts") or [] if isinstance(f, dict)], hb.get("appVersion") if hb else None)
-    report = checkmod.check_project(project, files=files, heartbeat=bridge.live_heartbeat(), once=True)
+    report = checkmod.check_project(project, files=files, heartbeat=bridge.live_heartbeat(), once=True, camera=True)
     notes: List[str] = []
     if resp is not None:
         if resp.get("error"):
@@ -684,20 +689,26 @@ def cmd_doc(ctx: Ctx) -> int:
         arg = None
 
     def edit(doc: Any) -> Tuple[Any, str]:
-        if doc is not None and not isinstance(doc, dict):
-            raise KbError(f"{label} must be a JSON object")
-        if a.op == "unset" and doc is None:
-            raise KbError(f"{label} does not exist")
-        new, summary = docmod.edit(doc if doc is not None else {"version": version}, a.op, getattr(a, "path", "") or "", arg)
-        from .beats import model as beatsmodel
-
-        stray = beatsmodel.stray_positions(doc, new)
-        if stray:
-            raise beatsmodel.stray_error(stray)
-        patch = arg if a.op == "merge" else None
-        return settle_music(project, stem, doc, checkmod.stamp_stagger_exact(doc, new), summary, patch)
+        return sidecar_edit(project, stem, doc, a.op, getattr(a, "path", "") or "", arg, version)
 
     return guarded_write(ctx, label, label, edit, sidecar_validator(ctx, label))
+
+
+def sidecar_edit(project: Project, stem: str, doc: Any, op: str, path: str, arg: Any, version: int) -> Tuple[Any, str]:
+    """One `kb doc` set, unset or merge on a fresh sidecar, music settled: (new doc, summary). `kb try` builds variants with it."""
+    label = f"scenes/{stem}.json"
+    if doc is not None and not isinstance(doc, dict):
+        raise KbError(f"{label} must be a JSON object")
+    if op == "unset" and doc is None:
+        raise KbError(f"{label} does not exist")
+    new, summary = docmod.edit(doc if doc is not None else {"version": version}, op, path, arg)
+    from .beats import model as beatsmodel
+
+    stray = beatsmodel.stray_positions(doc, new)
+    if stray:
+        raise beatsmodel.stray_error(stray)
+    patch = arg if op == "merge" else None
+    return settle_music(project, stem, doc, checkmod.stamp_stagger_exact(doc, new), summary, patch)
 
 
 def settle_music(project: Project, stem: str, before: Any, after: Any, summary: str, patch: Optional[Dict[str, Any]] = None) -> Tuple[Any, str]:
@@ -1127,8 +1138,10 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
         epilog="Static: manifest shape, files, transitions, aspects, theme, audio; sidecar keys, enums, fonts,\n"
         "asset paths (exact case); TSX imports (toolkit only), one defineScene with a unique literal id,\n"
         "no wall clock, timers, Math.random, DOM, <Html> or React hooks.\n"
+        "Plus kb check camera's warnings (kicks, sway, wobble, climb, focus) for the scenes checked.\n"
         "Errors exit 1; warnings print but pass. Fix errors before capturing.\n\n"
         "  kb check                     whole project\n"
+        "  kb check camera [S...]       the camera alone, with each warning's id (kb check camera --help)\n"
         "  kb check scenes/03-x.tsx     one file (plus project.json errors)\n"
         "  kb check --app               + compile, evaluate, fonts and assets in the running app\n"
         "  kb check --render            + render every scene once (slow)",
@@ -1140,6 +1153,9 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     s.set_defaults(fn=cmd_check)
 
     capturemod.register(sub, common, Formatter)
+    from . import try_cli
+
+    try_cli.register(sub, common, Formatter)
 
     scene = add("scene", "add, duplicate, move, remove or retime scenes (keeps project.json, files and ids consistent)")
     ss = scene.add_subparsers(dest="op", metavar="OP")
@@ -1400,9 +1416,11 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     verify.register(sub, common, Formatter)
     plan.register(sub, common, Formatter)
     from . import flashes_cli, pacing_cli, preview
+    from .camera import cli as cameramod
 
     flashes_cli.register(sub, common, Formatter)
     pacing_cli.register(sub, common, Formatter)
+    cameramod.register(sub, common, Formatter)
     preview.register(sub, common, Formatter)
 
     from .beats import commands as beatsmod
@@ -1432,9 +1450,9 @@ def usage_failure(e: UsageError) -> int:
     return EXIT_ENV
 
 
-def film_argv(argv: List[str]) -> Optional[Tuple[argparse.Namespace, List[str]]]:
-    """kb check film ...: its own options pass through untouched, so it is split off before kb's parser sees them."""
-    if "check" not in argv or "film" not in argv:
+def film_argv(argv: List[str], name: str = "film") -> Optional[Tuple[argparse.Namespace, List[str]]]:
+    """kb check film (or camera) ...: its own options pass through untouched, so it is split off before kb's parser sees them."""
+    if "check" not in argv or name not in argv:
         return None
     pre = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
     pre.add_argument("--json", action="store_true")
@@ -1444,9 +1462,9 @@ def film_argv(argv: List[str]) -> Optional[Tuple[argparse.Namespace, List[str]]]
         ns, rest = pre.parse_known_args(argv)
     except SystemExit:
         return None
-    if rest[:2] != ["check", "film"]:
+    if rest[:2] != ["check", name]:
         return None
-    ns.command, ns.op = "check", "film"
+    ns.command, ns.op = "check", name
     return ns, rest[2:]
 
 
@@ -1482,6 +1500,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     if film is not None:
         ns, rest = film
         return run(Ctx(ns), lambda ctx: check_film(ctx, rest))
+    camera = film_argv(argv, "camera")
+    if camera is not None:
+        from .camera import cli as cameramod
+
+        ns, rest = camera
+        return run(Ctx(ns), lambda ctx: cameramod.check_camera(ctx, rest))
     parser = build_parser(video_extensions=argv[:1] == ["video"])
     if argv[:1] == ["hook"]:
         try:

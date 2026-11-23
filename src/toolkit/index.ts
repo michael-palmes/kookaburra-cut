@@ -42,7 +42,7 @@ export {
   type TrackedDevice,
 } from "../engine/sharedElement";
 // Time / format / theme hooks
-export { useTimeline } from "../engine/timeline";
+export { useSceneDuration, useTimeline } from "../engine/timeline";
 export { useTheme } from "../theme";
 // Text metrics from the parsed faces: size a pill or underline to a headline, or place things on its letters, without capturing frames.
 export {

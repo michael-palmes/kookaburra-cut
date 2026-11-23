@@ -232,6 +232,7 @@ scenes under the app's Resources folder (`./kb status` prints it): `projects/<te
 | `./kb scenes` | Roster: index, stem, name, duration, transition, text |
 | `./kb check [--app] [--render] [files]` | Static checks; `--app` real compile and load |
 | `./kb capture [--scene S] [--at SEC\|POS] [--aspect A] [--frames S@SEC,POS,bars:A-B,beats:A-B] [--sheet] [--scale F] [--probe X,Y]` | Rendered PNGs to Read |
+| `./kb try S --at SEC --set PATH=V1,V2 [--variant NAME=PATCH]` | Up to 8 sidecar variants rendered in memory as one labelled sheet; nothing written (reference/captures.md) |
 | `./kb verify [--scene S] [--aspect A] [--no-render] [--film]` | Every check before calling the work done |
 | `./kb scene add <name> --preset P [--after S \| --at N] [--duration MS] [--name N]` | Insert a preset scene, numbered stem (or `--copy S`); default position is the end |
 | `./kb scene duplicate S`, `move S --to N`, `remove S`, `set S --duration MS\|--duration-bars N\|--cut-at POS --transition TYPE:MS\|none --ease E` | Manifest-safe scene operations (indexes 0-based) |
@@ -247,6 +248,7 @@ scenes under the app's Resources folder (`./kb status` prints it): `projects/<te
 | `./kb checkpoint [MSG] [--scene S]`, `history`, `undo [REV] [--scene S]`, `diff` | Git safety net |
 | `./kb lease S`, `leases`, `note TEXT [--scene S]`, `notes`, `events [--follow]` | Several agents: who edits what, messages, the event feed |
 | `./kb export [--aspect A] [--preset ID]`, `./kb verify-export FILE`, `./kb check film`, `./kb pacing accept S --kind K --why T` | The finished film and its checks; a pacing warning the person keeps (reference/export.md) |
+| `./kb check camera [S...]`, `./kb camera accept ID --why T` | Camera moves that read as mistakes (kicks, sway, wobble, climb, focus); one the person keeps (reference/camera.md) |
 | `./kb song analyse [--accept] [--lyrics]` | The soundtrack's tempo fit, downbeat, sections (reference/beats.md) |
 | `./kb beats [--scene S]`, `plan [--scenes N] [--apply]`, `set-grid`, `set-downbeat`, `clear-grid`, `cue`, `section`, `resolve` | The beat grid, a scene plan drafted from the song, cues, sections, positions |
 | `./kb chart ...` | Chart data and keys |

@@ -59,9 +59,19 @@ export async function loadSceneDoc(
   bundledDocs: Record<string, () => Promise<{ default: unknown }>>,
   bundledDir?: string,
   warnings?: string[],
+  overlay?: { doc: unknown },
 ): Promise<SceneDoc | undefined> {
   const docFile = sceneFile.replace(/\.tsx$/, ".json");
   if (docFile === sceneFile) return undefined;
+  if (overlay) {
+    // A capture's in-memory sidecar: parsed like the file, never remembered as a write base.
+    const doc = parseInto(warnings, () =>
+      parseSceneDoc(structuredClone(overlay.doc), `${projectId}/${docFile}`),
+    );
+    if (!doc)
+      throw new Error(`the sceneDoc for ${docFile} isn't a scene document this version can read`);
+    return doc;
+  }
   if (isEditableProjectId(projectId)) {
     const slug = nativeProjectSlug(projectId);
     try {

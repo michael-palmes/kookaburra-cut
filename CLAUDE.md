@@ -83,6 +83,10 @@ pnpm kookaburra:run --action preset-previews            # --project <slug,...> s
 # then confirm with one or two autorun screenshots (tools/look-lab/README.md).
 pnpm look-lab --look <id> --gpu                          # --compare 4,8 for motion, --grid for all 9 presets
 
+# Variant lab: variants of a bundled template's scenes as one stills run and one labelled sheet,
+# written to the git-ignored dev fixture fixtures/lab-<base>/ (tools/variant-lab/README.md).
+python3 -I tools/variant-lab/lab.py unveil floor.py
+
 # Fuzz harness (src-tauri/fuzz, README there): libFuzzer over the untrusted-input parsers via the
 # app's `fuzzing` feature. Stable runs every target over its seeds (CI's rust job); nightly fuzzes.
 # The RUSTFLAGS let rten's unused cdylib link under sancov (the README says why).
@@ -132,6 +136,12 @@ every build script's output, so the first build recompiles only the crates that
 depend on a build script (240 of 573, about 3 minutes). `pnpm setup:target` does the same
 for a Rust-only session; it never touches an existing target. `du` counts
 clones in full, so judge real usage with `df`.
+
+**Catalogue tests in a fresh worktree:** `src/agentKit/catalog.test.ts` failing
+there is real, not a flake. An older checkout can pass on a stale
+`import.meta.glob` list (a look list did, until `pnpm install` refreshed it)
+while the committed `catalog.json` is missing entries, so run
+`pnpm agent:catalog` and commit the result.
 
 Rust: the native shell is in `src-tauri/` (`cargo check --manifest-path src-tauri/Cargo.toml` to typecheck without bundling).
 
@@ -303,7 +313,8 @@ intuition before the probe settled it).
   is a non-factor": that holds until something makes a scene fill-rate bound.
   No preview knob was added, because the existing preview-quality DPR lever
   already covers the one measured case. Probe passes: `no-extra-lights`,
-  `no-fixtures`, `no-fixture-lights`, `no-area-lights`, `env-off`.
+  `no-fixtures`, `no-fixture-lights`, `no-area-lights`, `no-volumetric`,
+  `env-off`.
 - **Third measured impactor (2026-10-02): the lit set's environment.** Every
   built-in-lit `Device`, `DeviceMockup` and `HeroObject` mounted drei's
   `<Environment frames={1}>`, which re-renders its cube and PMREM whenever its
@@ -373,3 +384,11 @@ intuition before the probe settled it).
   better against the old picture on every frame (`--lever
   supersample-share=off` restores the old path). Thinning the lens gather the same way was
   rejected: wider taps softened the bokeh and strided ones left a ripple.
+- **Eleventh measured impactor (2026-11-22): the floor mirror made twice a
+  render.** Three draws an opaque mesh in its glass pass and its main pass and
+  calls `onBeforeRender` both times, so a satin floor rendered its whole
+  mirror (the scene again, its own glass pass, the haze march) twice a frame
+  wherever a scene has glass. The second ask now takes the first's
+  (`toolkit/stage/renderOnce.ts`): 36 to 47 fps on Unveil's six-phone fly-by,
+  bytes unchanged. What is left there is fill rate: the mirror, the haze
+  (`no-volumetric` reads 63 fps) and the lens blur.

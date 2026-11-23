@@ -2137,6 +2137,9 @@ declare module "@kookaburra/toolkit" {
   /** The mounted scene's document, or null when it has none. */
   export function useSceneDoc(): SceneDoc | null;
 
+  /** The scene's length as the project plays it (a `project.json` retime or a pinned cut, never the TSX default), steady while Present holds a slide; outside a scene, the project's. Never re-renders per frame, so time an exit from the end: `const endMs = useSceneDuration()`, then `outAt={endMs - 165}`. */
+  export function useSceneDuration(): number;
+
   /** The scene document's layeredScreenshot block, deep-validated, or null when absent; registers the scene as a consumer so `LayeredScreenshotFallback` stands down (the useSceneDevices pattern). */
   export function useSceneLayeredScreenshot(): NormalizedLayeredScreenshot | null;
 
@@ -2155,7 +2158,7 @@ declare module "@kookaburra/toolkit" {
   /** The active theme: inside `<SceneHost>` it's the scene's resolved theme (project theme unless the sidecar overrides `themeId`); elsewhere it falls back to the editor store's theme, since r3f's reconciler doesn't bridge context outside the `<Canvas>` boundary. */
   export function useTheme(): Theme;
 
-  /** Reactive scene time for the active scrub position. `localMs` is relative to the enclosing scene's start (supplied by `<SceneHost>` via `SceneContext`); with no scene context it falls back to project time so a lone scene anchored at t=0 keeps `localMs === globalMs` (the v0 contract). `progress` stays project-global per the `SceneTime` type; authors derive scene-local progress from `localMs / scene.durationMs`. Inside a motion blur sample the time moves by the scene's shutter offset times `scale` (default: the `MotionBlurContext`); 0 never moves and never re-renders for a sample. Inside `SteppedTime` the frame instant steps BEFORE that offset, so a held pose blurs around itself and never ghosts into the next step. */
+  /** Reactive scene time for the active scrub position. `localMs` is relative to the enclosing scene's start (supplied by `<SceneHost>` via `SceneContext`); with no scene context it falls back to project time so a lone scene anchored at t=0 keeps `localMs === globalMs` (the v0 contract). `progress` stays project-global per the `SceneTime` type; authors derive scene-local progress from `localMs / useSceneDuration()`. Inside a motion blur sample the time moves by the scene's shutter offset times `scale` (default: the `MotionBlurContext`); 0 never moves and never re-renders for a sample. Inside `SteppedTime` the frame instant steps BEFORE that offset, so a held pose blurs around itself and never ghosts into the next step. */
   export function useTimeline(scale?: number): SceneTime;
 
   /** Bloom / glow params (see engine/effects.ts). `intensity` 0 = no bloom. */
