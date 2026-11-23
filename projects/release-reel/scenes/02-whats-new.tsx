@@ -15,6 +15,7 @@ const FLOOR_Y = -1.905;
 const BAND_WIDTH = 1.7;
 const BAND_HEIGHT = 7;
 const BAND_TRAVEL = 11;
+const BAND_KEYS = ["first", "second", "third"];
 
 export default defineScene({
   id: "release-reel-02-whats-new",
@@ -43,7 +44,7 @@ export default defineScene({
           const t = ramp(localMs, at(4), at(4) + 1.8 * beatMs, "inOutCubic");
           return (
             <RoundedRect
-              key={colour}
+              key={BAND_KEYS[i]}
               width={BAND_WIDTH}
               height={BAND_HEIGHT}
               radius={0}
