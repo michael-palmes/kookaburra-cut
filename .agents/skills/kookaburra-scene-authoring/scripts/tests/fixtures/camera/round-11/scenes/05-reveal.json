@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "position": [-0.6, 2.2, 9.8],
+          "aim": { "mode": "point", "at": [-1.5, 0.8, -0.3] },
+          "fov": 28
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 2812,
+        "at": "bar:10.3",
+        "pose": {
+          "position": [-0.7, 2.1, 9.5],
+          "aim": { "mode": "point", "at": [-1.5, 0.75, -0.3] },
+          "fov": 28
+        }
+      },
+      {
+        "id": "k3",
+        "tMs": 3750,
+        "pose": {
+          "position": [0, -0.985, 11.488],
+          "aim": { "mode": "point", "at": [0, 0, 0] },
+          "fov": 21
+        }
+      }
+    ],
+    "segments": [
+      { "from": "k1", "to": "k2", "ease": "inOutSine" },
+      { "from": "k2", "to": "k3", "ease": "inOutCubic" }
+    ]
+  },
+  "cameraKicks": [{ "at": "bar:9", "zoom": 1.04, "releaseMs": 450 }],
+  "deviceTrack": {
+    "keys": [
+      { "id": "d1", "tMs": 0, "pose": { "hero": { "offset": [0, -3, 0] } } },
+      { "id": "d2", "tMs": 650, "pose": { "hero": { "offset": [0, 0, 0] } } },
+      { "id": "d3", "tMs": 1875, "at": "bar:10", "pose": {} },
+      { "id": "d4", "tMs": 2250, "pose": {} }
+    ],
+    "segments": [
+      { "from": "d1", "to": "d2", "ease": "outExpo" },
+      { "from": "d2", "to": "d3", "ease": "jump" },
+      { "from": "d3", "to": "d4", "ease": "outQuad" }
+    ]
+  },
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-15-pro",
+      "placement": {
+        "position": [-1.967, 0.079, -0.318],
+        "rotationDeg": [-29.5, 40.4, 17.8],
+        "scale": 1.571,
+        "ground": true
+      }
+    }
+  ]
+}

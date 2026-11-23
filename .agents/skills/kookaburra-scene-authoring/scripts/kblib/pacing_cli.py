@@ -84,7 +84,7 @@ def accept(ctx: Any) -> int:
             if not pc.looks_like_id(a.scene):
                 raise
             raise KbError(f"no scene or pacing warning has the id {a.scene}", EXIT_PROBLEMS, kind="invalid",
-                          hint="./kb check film pacing prints each open warning's id") from None
+                          hint="./kb check film pacing prints each open warning's id; a camera warning's id goes to ./kb camera accept") from None
         kinds, where = ([a.kind], None) if a.kind else open_kinds(ctx.project, stem)
     by = getattr(ctx.caller, "name", None)
     rows: List[Dict[str, Any]] = [{"id": pc.issue_id(k, stem), "kind": k, "scene": stem, "why": why, "by": by, "atMs": now_ms()} for k in kinds]

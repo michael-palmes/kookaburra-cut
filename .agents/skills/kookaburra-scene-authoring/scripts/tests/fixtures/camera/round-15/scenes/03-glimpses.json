@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "g1a",
+        "tMs": 0,
+        "pose": {
+          "position": [-0.1355, 0.4881, 2.3371],
+          "aim": { "mode": "point", "at": [0.0282, 0.3651, -0.004] },
+          "fov": 28,
+          "dof": { "mode": "lens", "fStop": 64, "focus": "auto" }
+        }
+      },
+      {
+        "id": "g1b",
+        "tMs": 1874,
+        "pose": {
+          "position": [-0.0617, 0.4776, 2.1412],
+          "aim": { "mode": "point", "at": [0.0282, 0.3651, -0.004] },
+          "fov": 28,
+          "dof": { "mode": "lens", "fStop": 64, "focus": "auto" }
+        }
+      },
+      {
+        "id": "g2a",
+        "tMs": 1875,
+        "pose": {
+          "position": [25.1414, 0.5007, 1.9211],
+          "aim": { "mode": "point", "at": [24.9718, 0.3647, -0.0167] },
+          "fov": 28,
+          "dof": { "mode": "lens", "fStop": 64, "focus": "auto" }
+        },
+        "at": "bar:4"
+      },
+      {
+        "id": "g2b",
+        "tMs": 3749,
+        "pose": {
+          "position": [25.0648, 0.4889, 1.7565],
+          "aim": { "mode": "point", "at": [24.9718, 0.3647, -0.0167] },
+          "fov": 28,
+          "dof": { "mode": "lens", "fStop": 64, "focus": "auto" }
+        }
+      },
+      {
+        "id": "g3a",
+        "tMs": 3750,
+        "pose": {
+          "position": [49.8033, 0.3283, 2.2616],
+          "aim": { "mode": "point", "at": [49.9991, 0.2105, 0.0232] },
+          "fov": 28,
+          "dof": { "mode": "lens", "fStop": 64, "focus": "auto" }
+        },
+        "at": "bar:5"
+      },
+      {
+        "id": "g3b",
+        "tMs": 5624,
+        "pose": {
+          "position": [49.892, 0.3178, 2.0676],
+          "aim": { "mode": "point", "at": [49.9991, 0.2105, 0.0232] },
+          "fov": 28,
+          "dof": { "mode": "lens", "fStop": 64, "focus": "auto" }
+        }
+      },
+      {
+        "id": "g4a",
+        "tMs": 5625,
+        "pose": {
+          "position": [75.1335, -0.686, 2.3871],
+          "aim": { "mode": "point", "at": [74.9375, -0.7645, 0.1471] },
+          "fov": 28,
+          "dof": { "mode": "lens", "fStop": 64, "focus": "auto" }
+        },
+        "at": "bar:6"
+      },
+      {
+        "id": "g4b",
+        "tMs": 7500,
+        "pose": {
+          "position": [75.0448, -0.693, 2.193],
+          "aim": { "mode": "point", "at": [74.9375, -0.7645, 0.1471] },
+          "fov": 28,
+          "dof": { "mode": "lens", "fStop": 64, "focus": "auto" }
+        }
+      }
+    ],
+    "segments": [
+      { "from": "g1a", "to": "g1b", "ease": "linear" },
+      { "from": "g1b", "to": "g2a", "ease": "jump" },
+      { "from": "g2a", "to": "g2b", "ease": "linear" },
+      { "from": "g2b", "to": "g3a", "ease": "jump" },
+      { "from": "g3a", "to": "g3b", "ease": "linear" },
+      { "from": "g3b", "to": "g4a", "ease": "jump" },
+      { "from": "g4a", "to": "g4b", "ease": "linear" }
+    ]
+  },
+  "devices": [
+    {
+      "id": "planned",
+      "model": "iphone-15-pro",
+      "placement": { "position": [0, 0, 0], "rotationDeg": [-6, 14, -3], "scale": 1 }
+    },
+    {
+      "id": "typed",
+      "model": "iphone-15-pro",
+      "placement": { "position": [25, 0, 0], "rotationDeg": [-8, -14, 3], "scale": 1 }
+    },
+    {
+      "id": "moved",
+      "model": "iphone-15-pro",
+      "placement": { "position": [50, 0, 0], "rotationDeg": [-5, 14, 3], "scale": 1 }
+    },
+    {
+      "id": "shared",
+      "model": "iphone-15-pro",
+      "placement": { "position": [75, 0, 0], "rotationDeg": [-9, -14, -4], "scale": 1 }
+    }
+  ]
+}

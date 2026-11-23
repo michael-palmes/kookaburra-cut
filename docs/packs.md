@@ -231,7 +231,7 @@ what the author wanted the agent told and moves what they agree with into
 notes, not rules.
 
 Accepted warnings never land. `flashes.accepted.json` (`docs/agent-kit.md`,
-"Accepted flash warnings") and `pacing.accepted.json` (kept pacing warnings,
+"Accepted flash warnings") and `pacing.accepted.json` (kept pacing and camera warnings,
 with their reasons) are one person's decision about their own film, and a
 warning either matches stops reading as a warning, so nobody else's may arrive
 in a pack. Export leaves both out. Apply removes them from anything a hand-built
