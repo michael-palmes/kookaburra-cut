@@ -35,57 +35,42 @@ while you watch them update here.
 </p>
 
 - A signed and notarised `.dmg`; macOS 26.0+ on **Apple Silicon** (arm64) only, no Intel build
-- Free and open source. No accounts, no telemetry. Nothing leaves your Mac
-  unless you start it: the opt-in update check, Edit with Claude, or a website
-  you allow in a scene
+- Free and open source. No accounts, no telemetry
 - The optional AI authoring path uses your own Claude Code install
-- Managed Macs: a configuration profile can turn off the Claude entry points,
-  the agent kit, live websites, pack export or update checks, limit packs to
-  approved publishers and live websites to your own sites, point updates at
-  your own server, keep exports in the project, copy the activity log for your
-  collector and fix the workspace location ([`docs/fleet.md`](docs/fleet.md),
-  [`docs/mdm.md`](docs/mdm.md))
-- Accessibility: the WCAG 2.2 AA conformance report (VPAT), keyboard map and open
-  findings are in [`docs/accessibility.md`](docs/accessibility.md)
+- Managed Macs install the signed `.pkg` through an MDM ([`docs/fleet.md`](docs/fleet.md))
+- Accessibility: the WCAG 2.2 AA conformance report (VPAT), keyboard map and open findings are in [`docs/accessibility.md`](docs/accessibility.md)
 
-Every release is built by this repository's release workflow from a signed tag,
-signed with a Developer ID certificate and notarised by Apple. Managed Macs can
-install the release's signed `.pkg` through an MDM instead
-([`docs/mdm.md`](docs/mdm.md#installing-with-the-pkg)). To check a download
-against the release's `SHA256SUMS` and its build provenance (the same for the
-`.pkg`), and the pkg's installer signature:
+## Secure and private
+
+Built for Macs that hold unreleased work. Nothing leaves the Mac unless a person starts it.
+
+<p align="center">
+  <img src="docs/assets/security-doors.png" width="900" alt="Your Mac as a walled box holding projects, render and export. Three switched doors lead to GitHub for updates, your own Claude app and a website you allow, each with the key a fleet forces to lock it. There is no other way out.">
+</p>
+
+| Risk | Control |
+| --- | --- |
+| [Unreleased work leaves the Mac](SECURITY.md#what-leaves-the-mac) | No accounts, telemetry or crash reports, and no HTTP client of its own. Three paths reach the network: updates, Edit with Claude and a website you allow in a scene. A person starts each, and a fleet can force each off. |
+| [The AI reads more than it should](SECURITY.md#what-reaches-your-agent) | The app holds no API key and never starts Claude. Edit with Claude opens one project folder in your own Claude install, which sends that project's files to Anthropic under your account and your organisation's Claude settings. |
+| [A shared project or pack runs code](SECURITY.md#scene-code-and-the-trust-boundary) | Nothing runs on import. Scene code runs only after a person presses Allow, on a stage with no network and no app commands. Packs are signed and every file is hashed again as it lands. |
+| [Text in a project gives the agent orders](SECURITY.md#what-reaches-your-agent) | What the agent reads from a project is escaped, capped and marked as data. Agent settings in a shared folder are moved aside, and a person sees the list before Claude starts. |
+| [A tampered release or update](SECURITY.md#release-integrity) | Built by GitHub Actions from a signed tag with no signing secret in reach, signed behind a second reviewer, notarised by Apple and attested, with an SBOM. An update installs only with a valid signature from the key built into the app. |
+| [Confidential files on the Mac](SECURITY.md#on-the-mac) | Projects stay in your home folder; nothing is uploaded or synchronised. App data is owner-only, sealed again at every launch and skipped by Spotlight. Encryption at rest is FileVault: the app adds none. |
+| [Your organisation needs a ceiling](docs/mdm.md) | A configuration profile forces eleven keys. A person's own `defaults write` grants nothing, and a malformed key fails closed. |
+
+**Not done yet:** one maintainer, no third-party penetration test, no SOC 2 or ISO 27001, no App Sandbox, and the agent is bounded by rules and prompts, not a sandbox. This is an early release in active development. [The full list](SECURITY.md#not-yet).
+
+**Check it yourself:**
 
 ```bash
-shasum -a 256 -c SHA256SUMS --ignore-missing
+codesign -dvv "/Applications/Kookaburra Cut.app"         # Developer ID Application, hardened runtime
+spctl -a -t exec -vv "/Applications/Kookaburra Cut.app"  # source=Notarized Developer ID
 gh attestation verify KookaburraCut-<version>.dmg --repo michael-palmes/kookaburra-cut \
   --signer-workflow michael-palmes/kookaburra-cut/.github/workflows/release.yml \
-  --source-ref refs/tags/v<version> --deny-self-hosted-runners
-pkgutil --check-signature KookaburraCut-<version>.pkg  # Developer ID Installer, trusted by the Apple notary service
-spctl -a -t install -vv KookaburraCut-<version>.pkg    # accepted, source=Notarized Developer ID
+  --source-ref refs/tags/v<version> --deny-self-hosted-runners  # built by this repository's release workflow at that tag
 ```
 
-Offline, against the release's provenance bundle:
-
-```bash
-gh attestation verify KookaburraCut-<version>.dmg --bundle KookaburraCut-<version>.intoto.jsonl \
-  --repo michael-palmes/kookaburra-cut \
-  --signer-workflow michael-palmes/kookaburra-cut/.github/workflows/release.yml \
-  --source-ref refs/tags/v<version> --deny-self-hosted-runners
-```
-
-> Status: early release, in active development. Every path off your Mac, with
-> its off switch, is in [`docs/privacy.md`](docs/privacy.md) and
-> [`SECURITY.md`](SECURITY.md).
-
-## For security teams
-
-- [`docs/security-overview.md`](docs/security-overview.md): what leaves the Mac,
-  where data rests, how releases are built, questionnaire answers and what is
-  not done yet, for the team deciding whether it may run on managed Macs.
-- [`SECURITY.md`](SECURITY.md): the engineering record, every control with the
-  file or command behind it, and how to report a vulnerability.
-- [`docs/fleet.md`](docs/fleet.md): deploying it on managed Macs: verifying a
-  release, the keys to force, Claude Code's own settings, what to expect in EDR.
+For your security team: [one page](docs/security-overview.md) · [threat model](SECURITY.md) · [managed Macs](docs/fleet.md) · [verify a release](docs/fleet.md#verify-a-release) · [privacy in plain words](docs/privacy.md) · [report privately](https://github.com/michael-palmes/kookaburra-cut/security/advisories/new)
 
 ## Core features
 
@@ -171,17 +156,9 @@ work, [`docs/determinism.md`](docs/determinism.md) is the byte-identical-export
 contract, and [`docs/decisions.md`](docs/decisions.md) records every locked
 decision and why.
 
-## Contributing & security
+## Contributing
 
-This is a personal, source-available project. Issues and discussion are welcome;
-pull requests may be declined: see [`CONTRIBUTING.md`](CONTRIBUTING.md).
-Security: [`SECURITY.md`](SECURITY.md) is the engineering record and the
-place to report a vulnerability, for the security engineer, auditor and
-contributor; [`docs/security-overview.md`](docs/security-overview.md) is the
-summary for the security lead, CTO or engineering manager;
-[`docs/fleet.md`](docs/fleet.md) is the deployment guide for the IT team; and
-[`docs/privacy.md`](docs/privacy.md) says it in plain words for the person
-using the app.
+This is a personal, source-available project. Issues and discussion are welcome; pull requests may be declined: see [`CONTRIBUTING.md`](CONTRIBUTING.md). Report a vulnerability privately, as [`SECURITY.md`](SECURITY.md#reporting-a-vulnerability) sets out.
 
 ## Licensing
 

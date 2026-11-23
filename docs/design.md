@@ -821,6 +821,9 @@ navy measures 14.3:1 and the subtitle ink 9.8:1.
 | README header | `docs/assets/readme-banner.jpg` | 2400 × 800 |
 | Update dialogs (no type: the dialog has its own) | `src/assets/update-banner.jpg` | 960 × 320 |
 | Styled DMG (no bird: the app icon is there) | `src-tauri/dmg/dmg_bg.png`, `dmg_bg@2x.png` | 806 × 488, 1612 × 976 |
+| Diagram: what leaves the Mac (README, security overview, website) | `docs/assets/security-doors.png` | 2400 × 1360 |
+| Diagram: from tag to your Mac (security overview, website) | `docs/assets/security-release.png` | 2400 × 600 |
+| Diagram: shared work (SECURITY.md, website) | `docs/assets/security-shared.png` | 2400 × 740 |
 
 Working surfaces carry no art (§3.13). The Welcome screen stays wordmark only, since people open it
 every day.
@@ -830,3 +833,16 @@ every day.
 `pnpm setup:art` prints every file above from the icon document with `scripts/make-art.py`, the same
 bytes each run on one machine. Run it after changing the icon, and upload the social preview by hand.
 Change the art in that script, not in the output files.
+
+`pnpm setup:art security` prints only the files whose path holds that word.
+
+### 16.6 Diagrams
+
+A diagram shows a mechanism a reader would otherwise piece together from prose: what leaves the Mac, how a release is built, what happens to shared work. It is the one new subject the print allows, cut from the same inks by `Diagram` in `scripts/make-art.py`, with no bird, moon or title.
+
+- **Flat inks on navy.** No tooth and no screen, so small type stays sharp and the file stays small.
+- **Boxes and straight lines, on hard edges.** Cream outlines what the reader owns or reaches, slate what stays put. Rust is a gate or a stop. Buff names a managed key or a file.
+- **A dashed line runs only when a person starts it.**
+- **One claim a picture,** in the words a busy reviewer would use.
+- **Every label is a fact `SECURITY.md` states.** Change the two together.
+- **Type is Inter,** with JetBrains Mono for a key or a file name, no smaller than 16 px on a 1,200 px sheet.
