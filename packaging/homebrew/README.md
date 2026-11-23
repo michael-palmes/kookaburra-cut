@@ -81,9 +81,8 @@ brew bump-cask-pr --version "$V" --sha256 "$SHA" --no-fork --no-browse michael-p
 `brew bump-cask-pr` rewrites `version` and `sha256`, runs `brew style` and
 `brew audit`, and opens a pull request on the tap. Only those two lines change
 while the DMG keeps its name, `KookaburraCut-<version>.dmg`
-(`.github/workflows/release.yml`): at 0.23.0 they become 0.23.0 and the hash its
-`SHA256SUMS` lists. Until the tap exists, edit this copy instead, together with
-the defaults in `packaging/mdm/install-kookaburra-cut.sh`;
+(`.github/workflows/release.yml`). Until the tap exists, edit this copy
+instead, together with the defaults in `packaging/mdm/install-kookaburra-cut.sh`;
 `scripts/fleet-profiles.test.mjs` fails while the two disagree.
 
 ## Audit record

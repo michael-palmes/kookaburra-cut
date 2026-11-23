@@ -114,14 +114,41 @@ rules (four aspects, the old bands). A version 2 template must:
 - carry a song exactly when it carries audio, with the grid (and its `source`),
   sections and cues intact through `sanitiseAudioMusic`, and the song's BPM the grid's
 - name only visible bundled themes as looks, with no scene sidecar pinning `themeId`
-  (the test cannot see legibility: render a text scene in each look first, since a light
-  theme's text colour disappears on a dark staged film)
 - list something to bring, and a loop window inside the film
+- keep the checkable editability rules below
 
 A song ships as FLAC in the template's own `assets/`, copied on create. Shared
 media stays in `projects/_samples/`: `create_project` seeds only the samples a
 project names (by the in-use rule, plus `app-icon.png`), and a load restores a
-named sample that has gone missing.
+named sample that has gone missing. Seeding never overwrites, so a template that
+ships its own `assets/app-icon.png` keeps it over the generic one.
+
+### Editable by design
+
+Once someone creates from a template, their icon, screens, words and look replace
+the samples. A version 2 template keeps these rules so every swap lands; the test
+checks the ones marked *tested*.
+
+- **Standard slots.** The app icon is `assets/app-icon.png`, the file Set app icon
+  writes; a template showing its own product's icon ships it under that name.
+  Screens and recordings are named in sidecars, where Replace reaches them. Scene
+  code names no asset but the app icon and no sample by name (*tested*), and finds
+  a device by id with a fallback, `devices.find((d) => d.id === "hero") ?? devices[0]`,
+  never by position alone (*tested*).
+- **The stage stays.** With a device removed, the floor, lights and words remain:
+  a scene module that reads devices always returns its stage (*tested*).
+- **Nothing fitted to the samples.** No crop rectangles in a recording's pixels
+  (`mediaPixelToScreenUv`, *tested*) and no clip times in scene code; what depends
+  on the media lives in the sidecar or follows the beat grid.
+- **Readable in every look.** Text over a stage the template fixes (a dark floor, a
+  set gradient) pins its colour in the sidecar (`titleColor`), so a light look's
+  text never lands on a dark stage.
+- **Every look rendered.** Render the text scenes and the hero shot in each look
+  through the export path before listing it; the test cannot see legibility.
+
+Unveil's Proof 1 and Detail 1 still map the lifted card from the sample
+recording's pixels, the test's only listed exceptions, until a scene can read a
+screen region from its sidecar.
 
 In the picker, a card plays `src/assets/template-previews/<id>-loop.mp4`, muted,
 while hovered or selected; without a loop, or under Reduce motion, it keeps its
@@ -129,6 +156,38 @@ stills. The selected template's detail strip shows the song, what to bring and
 the highlights. The Look step lists the template's looks first, badged
 Suggested, and preselects the first. Changing template re-seeds the look until
 the user picks one.
+
+## Crafting a template
+
+The order that worked across Unveil's 21 rounds. Craft (pacing, camera, devices,
+type) lives in the stamped skill's
+[DESIGN.md](../.agents/skills/kookaburra-scene-authoring/DESIGN.md) and
+[beats reference](../.agents/skills/kookaburra-scene-authoring/reference/beats.md).
+
+1. **Brief and song.** What shipped, who it's for, why it matters; then the song,
+   its grid, sections and cues.
+2. **Beat-map animatic.** Cards on the grid, something new each bar, signed off
+   before anything is lit.
+3. **Target frames.** Stills of the key shots, agreed as the look.
+4. **One hero shot.** Built in the app against its target until the developer
+   signs it off there.
+5. **Roll the look.** The hero's stage, floor, light, background and lens across
+   every scene, each frame checked beside the hero.
+6. **The rest in rounds.** Scenes go to sub-sessions the developer steers, each with
+   its own worktree and app window, and a full film is exported every round.
+7. **Pre-PR tidy.** Renumber the scenes, finish `template.json`, picker art
+   (`--action template-previews`), a looks sheet of every candidate look,
+   `pnpm agent:catalog`, the create smoke, `pnpm ready`, and Verify ×2 of the
+   template.
+
+What cost time:
+
+- Lit shots built before the look was set: the first play-through scored the
+  opening 4 out of 10, and it was rebuilt.
+- Background research agents instead of steered sessions: they returned reports to
+  judge, not shots to shape.
+- Placeholders reaching the PR branch: storyboard cards and unused samples had to be
+  split out before review.
 
 ## Theme editing
 
@@ -220,8 +279,9 @@ Capture current frame shows a spinner and stays disabled until its preview has
 refreshed or failed. Its status identifies waits for playback or export to finish.
 
 Templates store slot images in `previews/1.png` through `previews/4.png`; presets
-store `poster.png`. A template's selected slot is its gallery cover, with the
-legacy `poster.png` or `poster.jpg` retained until slot images exist. Listings
+store `poster.png`. A template's selected slot (`preview.poster`, a still slot
+from 0 to 3) is its gallery cover, with the legacy `poster.png` or `poster.jpg`
+retained until slot images exist. Listings
 expose all four images and refresh their URLs after capture. Native preview access
 permits only the item's validated image files, including checkout captures, before
 returning paths or announcing a completed capture. Duplication copies existing

@@ -102,6 +102,30 @@ beforeEach(() => {
   vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 
+describe("loadProject with a capture's sceneDoc", () => {
+  it("hands the overlay to its own scene only, and refuses one for a scene the project lacks", async () => {
+    themes.set("brand", brand);
+    themes.set("brand-light", { ...brand, id: "brand-light", extends: "ws:brand" });
+    setProject({
+      scenes: [
+        { file: "scenes/01-a.tsx", durationMs: 1000 },
+        { file: "./scenes/02-b.tsx", durationMs: 1000 },
+      ],
+    });
+    const { loadSceneDoc } = await import("./sceneDoc");
+    vi.mocked(loadSceneDoc).mockClear();
+    const doc = { version: 1, name: "Variant" };
+    await loadProject("ws:demo", { sceneDocOverlay: { file: "scenes/02-b.tsx", doc } });
+    expect(vi.mocked(loadSceneDoc).mock.calls.map((c) => [c[1], c[5]])).toEqual([
+      ["scenes/01-a.tsx", undefined],
+      ["./scenes/02-b.tsx", { file: "scenes/02-b.tsx", doc }],
+    ]);
+    await expect(
+      loadProject("ws:demo", { sceneDocOverlay: { file: "scenes/09-x.tsx", doc } }),
+    ).rejects.toThrow(/scenes\/09-x.tsx, which isn't a scene in this project/);
+  });
+});
+
 describe("loadProject parse warnings", () => {
   it("resolves a variant through its base and names each ignored setting by file", async () => {
     themes.set("brand", brand);

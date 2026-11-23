@@ -62,11 +62,16 @@ first), then build around their real product, paced to the song (DESIGN.md, Paci
 5. `./kb capture --scene <s> --at <seconds>` and Read the PNG. When layout changed, capture
    a landscape AND a portrait aspect (`--aspect 16:9`, `--aspect 9:16`).
    `--frames 1@0.5,2@1.2 --sheet` captures several frames plus one contact sheet.
-6. Look hard (legibility, safe areas, overlap, colour), fix, repeat.
+6. Look hard (legibility, safe areas, overlap, colour), fix, repeat. After a camera or
+   timing change, stills hide sway and jumps: step through every cut, key and kick with
+   `./kb capture --scene S --around <sec> --count 12` and watch `./kb preview --scene S`.
 7. Before calling the work done: `./kb verify` (static check, the app's load and render,
    each scene's first and last frames, the handoffs between them, and the flashes of a
    fresh export) and Read the sheets it lists. Never end a turn with the project failing
    to load: `./kb status` must be clean, or `./kb undo` back to the checkpoint and say so.
+   Show anything the person must judge: the scene and time, a frame or clip per option
+   with your pick marked, the film's full path and `open -a "QuickTime Player" "<path>"`.
+   Never ask in beats or milliseconds they can't see.
 
 ## Brand
 
@@ -80,9 +85,8 @@ say so and offer to build it (the kookaburra-brand-packs skill). After applying,
 every scene: a scene's own `background` or `textStyle.*Color` survives the theme switch, so
 a dark brand theme over a light scene background turns copy unreadable. List those
 overrides and offer to drop them (`./kb doc S unset background`) so the brand theme shows.
-`./kb brand clear`
-removes it (theme and fonts stay); `./kb brand show` lists its colours, gradients and
-image folders.
+`./kb brand clear` removes it (theme and fonts stay); `./kb brand show` lists its colours,
+gradients and image folders.
 
 When `./kb status` shows a Brand line naming this project's brand, read `BRAND.md` before
 planning, designing or writing copy. Start from it: its theme, fonts, colours, imagery and voice are the safe defaults.
@@ -213,12 +217,12 @@ kookaburra-video-editing skill. Something behaves oddly (stale preview, a fade w
 word, colours off, a stall): reference/gotchas.md first. Topic files in reference/:
 project (project.json, themes, transitions, music, effects), sidecar (every key,
 overlays, stills, keyed tracks), scenes (TSX), text (copy, fonts, motion, looks),
-devices (devices, screen timing, layouts, objects, before/after), camera (keys, kicks),
+devices (devices, screen timing, layouts, objects, before/after), camera (keys, kicks,
+moves, focus), staging (staged 3D films: look, product shots, shot checklist, render),
 backgrounds, lighting, media (assets, screen recordings, conform), charts, beats (the
 beat grid, cues, musical positions), export (exports, film checks, the flash gate),
 gotchas (symptom, cause, fix). Worked examples: `./kb presets show <slug>`, and template
-scenes under the app's Resources folder (`./kb status` prints it):
-`projects/<template>/scenes/`.
+scenes under the app's Resources folder (`./kb status` prints it): `projects/<template>/scenes/`.
 
 ## kb cheat sheet
 
@@ -228,6 +232,7 @@ scenes under the app's Resources folder (`./kb status` prints it):
 | `./kb scenes` | Roster: index, stem, name, duration, transition, text |
 | `./kb check [--app] [--render] [files]` | Static checks; `--app` real compile and load |
 | `./kb capture [--scene S] [--at SEC\|POS] [--aspect A] [--frames S@SEC,POS,bars:A-B,beats:A-B] [--sheet] [--scale F] [--probe X,Y]` | Rendered PNGs to Read |
+| `./kb try S --at SEC --set PATH=V1,V2 [--variant NAME=PATCH]` | Up to 8 sidecar variants rendered in memory as one labelled sheet; nothing written (reference/captures.md) |
 | `./kb verify [--scene S] [--aspect A] [--no-render] [--film]` | Every check before calling the work done |
 | `./kb scene add <name> --preset P [--after S \| --at N] [--duration MS] [--name N]` | Insert a preset scene, numbered stem (or `--copy S`); default position is the end |
 | `./kb scene duplicate S`, `move S --to N`, `remove S`, `set S --duration MS\|--duration-bars N\|--cut-at POS --transition TYPE:MS\|none --ease E` | Manifest-safe scene operations (indexes 0-based) |

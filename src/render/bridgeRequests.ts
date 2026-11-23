@@ -42,7 +42,14 @@ export const MAX_CAPTURE_FRAMES = 48;
 export interface BridgeFrame {
   scene?: string | null;
   at?: number | null;
+  /** A whole sidecar for this frame's scene, rendered in memory and never written (`kb try`). */
+  sceneDoc?: unknown;
 }
+
+/** Distinct `sceneDoc` overlays one capture may carry; each reloads the project. */
+export const MAX_SCENE_DOC_OVERLAYS = 8;
+/** Serialised bytes one overlay may take. */
+export const MAX_SCENE_DOC_BYTES = 256 * 1024;
 
 /** Mirror of bridge.rs's BridgeRequest; a request without `kind` is a v1 capture. */
 export interface BridgeRequest {
@@ -346,20 +353,93 @@ export function requestFormat(
   return FORMATS[(editorAspect ?? "16:9") as AspectName] ?? FORMATS["16:9"];
 }
 
-/** The frames a capture renders: the `frames` list, else the single top-level scene/at. */
-export function requestFrames(
-  request: BridgeRequest,
-): { scene: string | null; at: number | null }[] {
-  const frames = request.frames?.length
+export interface CaptureFrame {
+  scene: string | null;
+  at: number | null;
+  /** The frame's `sceneDoc`, validated, and the key frames sharing it group under (its JSON). */
+  overlay?: { doc: Record<string, unknown>; key: string };
+}
+
+/** The frames a capture renders: the `frames` list, else the single top-level scene/at. A `sceneDoc` must be a JSON object under 256 KB on a frame that names its scene, at most 8 distinct a request. */
+export function requestFrames(request: BridgeRequest): CaptureFrame[] {
+  const frames: BridgeFrame[] = request.frames?.length
     ? request.frames
     : [{ scene: request.scene ?? null, at: request.at ?? null }];
   if (frames.length > MAX_CAPTURE_FRAMES) {
     throw new Error(`a capture takes at most ${MAX_CAPTURE_FRAMES} frames (got ${frames.length})`);
   }
-  return frames.map((frame) => ({
-    scene: frame.scene == null ? null : String(frame.scene),
-    at: typeof frame.at === "number" && Number.isFinite(frame.at) ? frame.at : null,
-  }));
+  const keys = new Set<string>();
+  const out = frames.map((frame, n): CaptureFrame => {
+    const scene = frame.scene == null ? null : String(frame.scene);
+    const at = typeof frame.at === "number" && Number.isFinite(frame.at) ? frame.at : null;
+    if (frame.sceneDoc == null) return { scene, at };
+    const doc = frame.sceneDoc;
+    if (typeof doc !== "object" || Array.isArray(doc)) {
+      throw new Error(`frame ${n + 1}'s sceneDoc must be a JSON object (a whole sidecar)`);
+    }
+    if (scene === null)
+      throw new Error(`frame ${n + 1} carries a sceneDoc, so it must name its scene`);
+    const key = JSON.stringify(doc);
+    if (key.length > MAX_SCENE_DOC_BYTES) {
+      throw new Error(
+        `frame ${n + 1}'s sceneDoc is ${key.length} bytes; one takes at most ${MAX_SCENE_DOC_BYTES}`,
+      );
+    }
+    keys.add(key);
+    return { scene, at, overlay: { doc: doc as Record<string, unknown>, key } };
+  });
+  if (keys.size > MAX_SCENE_DOC_OVERLAYS) {
+    throw new Error(
+      `a capture takes at most ${MAX_SCENE_DOC_OVERLAYS} distinct sceneDocs (got ${keys.size})`,
+    );
+  }
+  return out;
+}
+
+/** Distinct overlays among the frames: each costs a unit on top of its pixels (mirror of `scene_doc_overlays`). */
+export function sceneDocOverlays(frames: readonly CaptureFrame[]): number {
+  return new Set(frames.flatMap((frame) => (frame.overlay ? [frame.overlay.key] : []))).size;
+}
+
+export interface CaptureGroup {
+  /** The scene module the overlay replaces the sidecar of; null for frames of the project as saved. */
+  file: string | null;
+  doc?: Record<string, unknown>;
+  /** Indices into the request's frames, in request order. */
+  frames: number[];
+}
+
+/** Frames grouped by what they render: the project as saved first, then one group per overlay in first-seen order, so each overlay loads once. An overlay names one known scene by index or stem; anything else is refused rather than guessed. */
+export function captureGroups(
+  project: Pick<LoadedProject, "sceneFiles">,
+  frames: readonly CaptureFrame[],
+): CaptureGroup[] {
+  const saved: CaptureGroup = { file: null, frames: [] };
+  const byKey = new Map<string, CaptureGroup>();
+  frames.forEach((frame, n) => {
+    if (!frame.overlay) {
+      saved.frames.push(n);
+      return;
+    }
+    const selector = frame.scene ?? "";
+    const index = /^\d+$/.test(selector)
+      ? Number(selector)
+      : project.sceneFiles.findIndex((file) => sceneFileStem(file) === selector);
+    const file = project.sceneFiles[index];
+    if (file === undefined)
+      throw new Error(
+        `frame ${n + 1}'s sceneDoc names scene "${selector}", which isn't in this project`,
+      );
+    const group = byKey.get(frame.overlay.key);
+    if (!group) {
+      byKey.set(frame.overlay.key, { file, doc: frame.overlay.doc, frames: [n] });
+    } else if (group.file !== file) {
+      throw new Error(`one sceneDoc is for one scene; frame ${n + 1} uses it on a second scene`);
+    } else {
+      group.frames.push(n);
+    }
+  });
+  return [...(saved.frames.length ? [saved] : []), ...byKey.values()];
 }
 
 /** Which scene a captured time landed in and how far into it, for the response and the sheet label. */

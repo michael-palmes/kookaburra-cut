@@ -330,10 +330,44 @@ project. A scene can override fields in its manifest entry:
 | `vignette` | `offset`, `darkness` (0 off) |
 | `lut` | `url` (project `.cube`), `intensity` 0..1; all LUTs in a project share one size |
 | `grain` | `intensity` (0 off), `hold` (frames each pattern stays, default 1: 5 is a 12 fps paper boil, 1 to 60) |
+| `lens` | `intensity` (0 off) and the optical finish fields (below) |
 
 Overrides merge field by field onto the theme's effect. When the theme lacks that
 effect, give every field. Effects blend across transitions. A LUT that fails to load is
 dropped with a warning (the scene renders ungraded).
+
+### Lens
+
+`lens` is a camera lens's response to real light levels, for staged, lit films: a wide
+glow that conserves energy (it mixes, never adds, so only pixels far brighter than their
+surroundings visibly glow), a warm halation round hot edges, and optional glare streaks.
+It runs on the linear image before exposure and the tone map, and after depth of field, so
+a defocused highlight blooms as a disc. Reach for it when strips on metal, fixtures or
+`emissive` above 1 should glow like a lens, not when white text or UI should; `bloom`
+thresholds the frame instead.
+
+| Field | Range (default) | Meaning |
+| --- | --- | --- |
+| `intensity` | 0..1 (0) | Master: scales bloom, halation and glare. Always give it |
+| `bloom`, `bloomRadius` | 0..0.5 (0.05), 0..1 (0.8) | Mix of the wide glow, and its spread |
+| `karis` | 0..1 (1) | Tames single hot pixels so they stop flickering; keep 1 |
+| `halation`, `halationThreshold`, `halationColor` | 0..4 (0), 0..64 (1), hex (`#ff6a2a`) | Tinted fringe round pixels brighter than the threshold (linear, 1 is white) |
+| `glare`, `glareThreshold` | 0..4 (0), 0..64 (4) | Streaks off pixels brighter than the threshold |
+| `glarePoints`, `glareAngleDeg`, `glareFalloff` | 2..6 (4), -360..360 (0), 0.5..0.98 (0.86) | 2 one streak, 3 or 4 a cross, 5 or 6 a six-point star; its turn; streak length |
+
+Unveil's finish, on every scene's entry (its theme has no lens, so each entry gives
+`intensity`; an entry without it stays off):
+
+```json
+"effects": { "lens": { "intensity": 1, "bloom": 0.08, "bloomRadius": 0.88,
+  "halation": 0.2, "halationThreshold": 1, "halationColor": "#ff7a30" } }
+```
+
+Numbers outside a range clamp; a wrong type drops that field with a warning. Cost: a
+half-size pass and seven blur levels a frame, plus three passes for each glare axis. Like
+every effect it runs each frame through the effect chain, so `exactText` no longer holds.
+Give every scene of a world the same block: a lens on one side of a cut fades in across
+the transition.
 
 ## Project camera
 

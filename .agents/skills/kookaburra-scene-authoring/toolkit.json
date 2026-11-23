@@ -4044,6 +4044,17 @@
     "signature": "function useSceneDoc(): SceneDoc | null;",
     "doc": "The mounted scene's document, or null when it has none."
   },
+  "useSceneDuration": {
+    "kind": "hook",
+    "summary": "The scene's played length in ms (a retime or pinned cut moves it); time exits from it.",
+    "signature": "function useSceneDuration(): number;",
+    "doc": "The scene's length as the project plays it (a `project.json` retime or a pinned cut, never the TSX default), steady while Present holds a slide; outside a scene, the project's. Never re-renders per frame, so time an exit from the end: `const endMs = useSceneDuration()`, then `outAt={endMs - 165}`.",
+    "example": "const endMs = useSceneDuration();\nconst outAt = endMs - 165;",
+    "timing": [
+      "The length the project plays: project.json's durationMs and a pinned cutAt move it; the TSX durationMs is only the default. Steady while Present holds a slide; outside a scene, the project's length.",
+      "An exit with outAt = endMs - outDurationMs ends on the cut, wherever a retime moves it."
+    ]
+  },
   "useSceneLayeredScreenshot": {
     "kind": "hook",
     "summary": "The validated layeredScreenshot block, or null.",
@@ -4089,6 +4100,6 @@
     "kind": "hook",
     "summary": "{ localMs, globalMs, progress }; progress is PROJECT-wide.",
     "signature": "function useTimeline(scale?: number): SceneTime;",
-    "doc": "Reactive scene time for the active scrub position. `localMs` is relative to the enclosing scene's start (supplied by `<SceneHost>` via `SceneContext`); with no scene context it falls back to project time so a lone scene anchored at t=0 keeps `localMs === globalMs` (the v0 contract). `progress` stays project-global per the `SceneTime` type; authors derive scene-local progress from `localMs / scene.durationMs`. Inside a motion blur sample the time moves by the scene's shutter offset times `scale` (default: the `MotionBlurContext`); 0 never moves and never re-renders for a sample. Inside `SteppedTime` the frame instant steps BEFORE that offset, so a held pose blurs around itself and never ghosts into the next step."
+    "doc": "Reactive scene time for the active scrub position. `localMs` is relative to the enclosing scene's start (supplied by `<SceneHost>` via `SceneContext`); with no scene context it falls back to project time so a lone scene anchored at t=0 keeps `localMs === globalMs` (the v0 contract). `progress` stays project-global per the `SceneTime` type; authors derive scene-local progress from `localMs / useSceneDuration()`. Inside a motion blur sample the time moves by the scene's shutter offset times `scale` (default: the `MotionBlurContext`); 0 never moves and never re-renders for a sample. Inside `SteppedTime` the frame instant steps BEFORE that offset, so a held pose blurs around itself and never ghosts into the next step."
   }
 }

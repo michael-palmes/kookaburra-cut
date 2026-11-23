@@ -80,6 +80,9 @@ pub struct BridgeFrame {
     pub scene: Option<String>,
     #[serde(default)]
     pub at: Option<f64>,
+    /// A whole sidecar for this frame's scene, rendered in memory and never written (`kb try`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scene_doc: Option<Value>,
 }
 
 /// A bridge request, v1 (`capture.py`: no `kind`) or v2 (`kb`). Only the fields its kind reads matter; unknown fields are ignored.
@@ -2468,7 +2471,8 @@ mod tests {
             r#"{ "version": 2, "id": "0001792020000000-123-abc", "kind": "capture",
               "project": "ws:demo", "requestedAtMs": 1792020000000,
               "scene": 3, "at": 1.5, "aspect": "9:16",
-              "frames": [{ "scene": "3", "at": 2.0 }, { "scene": 4 }, {}], "sheet": true,
+              "frames": [{ "scene": "3", "at": 2.0, "sceneDoc": { "backdrop": { "roughness": 0.2 } } },
+                { "scene": 4 }, {}], "sheet": true,
               "render": false, "refs": ["Menlo@400"], "listFamilies": false,
               "preset": "title", "position": 4, "name": "Highlights", "future": [1] }"#,
         )
@@ -2476,20 +2480,27 @@ mod tests {
         assert_eq!(request.kind.as_deref(), Some("capture"));
         assert_eq!(request.scene.as_deref(), Some("3"));
         assert_eq!(request.aspect.as_deref(), Some("9:16"));
+        let frames = request.frames.clone().unwrap();
         assert_eq!(
-            request.frames.unwrap(),
+            frames,
             vec![
                 BridgeFrame {
                     scene: Some("3".into()),
-                    at: Some(2.0)
+                    at: Some(2.0),
+                    scene_doc: Some(json!({ "backdrop": { "roughness": 0.2 } })),
                 },
                 BridgeFrame {
                     scene: Some("4".into()),
-                    at: None
+                    at: None,
+                    scene_doc: None,
                 },
                 BridgeFrame::default(),
             ]
         );
+        // The render window reads the claimed request back through serde, so the overlay must survive it.
+        let wire = serde_json::to_value(&frames).unwrap();
+        assert_eq!(wire[0]["sceneDoc"]["backdrop"]["roughness"], json!(0.2));
+        assert!(wire[1].get("sceneDoc").is_none());
         assert_eq!(request.sheet, Some(true));
         assert_eq!(request.render, Some(false));
         assert_eq!(request.refs.unwrap(), vec!["Menlo@400".to_string()]);

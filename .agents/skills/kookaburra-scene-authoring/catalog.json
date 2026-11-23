@@ -23513,6 +23513,10 @@
         "summary": "Procedural softbox reflections."
       },
       {
+        "id": "kookaburra:strips",
+        "summary": "Strip lights from the environment's own strips list (up to 16), for streaks on metal and glass."
+      },
+      {
         "id": "none",
         "summary": "No reflections (distinct from absent, which inherits)."
       },
@@ -23605,7 +23609,7 @@
       "summary": "Lens response for hot highlights: energy-conserving bloom, warm halation, glare.",
       "fields": {
         "intensity": "0 turns it off",
-        "bloom": "0..0.3 mix of the wide glow (default 0.05)",
+        "bloom": "0..0.5 mix of the wide glow (default 0.05)",
         "halation": "warm glow round hot edges (default 0)",
         "glare": "streaks on the hottest speculars (default 0)"
       }
@@ -26195,6 +26199,11 @@
         "summary": "The raw sidecar document, or null."
       },
       {
+        "id": "useSceneDuration",
+        "kind": "hook",
+        "summary": "The scene's played length in ms (a retime or pinned cut moves it); time exits from it."
+      },
+      {
         "id": "useSceneLayeredScreenshot",
         "kind": "hook",
         "summary": "The validated layeredScreenshot block, or null."
@@ -28401,9 +28410,6 @@
     },
     {
       "id": "fairywren-focus-dark-phone.jpg"
-    },
-    {
-      "id": "fairywren-icon.png"
     },
     {
       "id": "fairywren-insights-dark-phone.jpg"

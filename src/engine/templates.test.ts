@@ -12,6 +12,7 @@ import {
   TEMPLATE_CATEGORIES,
   TEMPLATE_CATEGORY_ALIASES,
   TEMPLATE_PERSONAS,
+  TEMPLATE_PREVIEW_COUNT,
   TEMPLATE_USES,
   type TemplateManifest,
   type TemplateManifestResult,
@@ -43,6 +44,11 @@ const sceneDocGlob = import.meta.glob<unknown>("../../projects/*/scenes/*.json",
 });
 // Existence only: lazy globs are a map of loaders, so nothing here is read or decoded.
 const sceneModuleGlob = import.meta.glob("../../projects/*/scenes/*.tsx");
+const sceneSourceGlob = import.meta.glob<string>("../../projects/*/scenes/*.tsx", {
+  eager: true,
+  query: "?raw",
+  import: "default",
+});
 const assetGlob = import.meta.glob("../../projects/*/assets/**", { query: "?url" });
 const sharedSampleGlob = import.meta.glob("../../projects/_samples/*", { query: "?url" });
 const fixtureManifestGlob = import.meta.glob("../../fixtures/**/template.json");
@@ -239,6 +245,79 @@ function warningsOf<T>(fn: () => T): { result: T; warnings: string[] } {
   } finally {
     warn.mockRestore();
   }
+}
+
+/** The slot Set app icon writes. */
+const APP_ICON = "assets/app-icon.png";
+const sampleNames = Object.keys(sharedSampleGlob)
+  .map((key) => key.split("/").pop() ?? "")
+  .filter((name) => ASSET_FILE.test(name) && `assets/${name}` !== APP_ICON);
+
+/** Unveil's lifted card maps the sample recording's pixels until a scene can read a screen region from its sidecar. */
+const SAMPLE_PIXEL_EXCEPTIONS: Record<string, readonly string[]> = {
+  unveil: ["scenes/06-proof-1.tsx", "scenes/07-detail-1.tsx"],
+};
+
+interface SceneSource {
+  file: string;
+  code: string;
+}
+
+function sceneSources(entry: TemplateFolder): SceneSource[] {
+  const files = (entry.project?.scenes ?? []).map((scene) => scene.file);
+  if (entry.project?.persistent) files.push(entry.project.persistent);
+  return files.flatMap((file) => {
+    const code = sceneSourceGlob[`../../projects/${entry.id}/${file}`];
+    return code === undefined ? [] : [{ file, code }];
+  });
+}
+
+/** The editability rules code can see (docs/content-library.md, "Editable by design"), as problems. */
+function editabilityProblems(
+  id: string,
+  sources: SceneSource[],
+  sidecars: { file: string; raw: unknown }[],
+): string[] {
+  const problems: string[] = [];
+  for (const { file, code } of sources) {
+    const named = new Set<string>();
+    const paths = new Set([...code.matchAll(/["'`](assets\/[^"'`\s]+)["'`]/g)].map((m) => m[1]));
+    for (const path of paths) {
+      if (path === APP_ICON || !ASSET_FILE.test(path)) continue;
+      named.add(path.split("/").pop() ?? path);
+      problems.push(`${file} names ${path}; media belongs in the sidecar`);
+    }
+    for (const name of sampleNames) {
+      if (!named.has(name) && code.includes(name)) {
+        problems.push(`${file} names the sample ${name}`);
+      }
+    }
+    const readsDevices = code.includes("useSceneDevices(");
+    if (/\[[^\]]*\]\s*=\s*useSceneDevices\(|useSceneDevices\(\)\s*(\[|\.at\()/.test(code)) {
+      problems.push(`${file} takes a device by position; find it by id with a fallback`);
+    }
+    for (const match of code.matchAll(/\bdevices(\[\d+\]|\.at\(\d+\))/g)) {
+      if (!/\?\?\s*$/.test(code.slice(Math.max(0, match.index - 40), match.index))) {
+        problems.push(`${file} takes ${match[0]} without finding a device by id first`);
+      }
+    }
+    if (readsDevices && /\breturn\s*(null\b|undefined\b|;)/.test(code)) {
+      problems.push(`${file} returns nothing; return the stage so it stays without a device`);
+    }
+    const excepted = SAMPLE_PIXEL_EXCEPTIONS[id]?.includes(file) ?? false;
+    if (!excepted && code.includes("mediaPixelToScreenUv(")) {
+      problems.push(`${file} maps a recording's pixels; a user's own media won't fit them`);
+    }
+  }
+  for (const sidecar of sidecars) {
+    for (const ref of collectAssetRefs(sidecar.raw)) {
+      const name = ref.split("/").pop() ?? ref;
+      if (ref !== APP_ICON && /(^|[-_.])icon([-_.]|$)/i.test(name)) {
+        problems.push(`${sidecar.file} shows ${ref}; the app icon is ${APP_ICON}`);
+      }
+    }
+  }
+  return problems;
 }
 
 /** Version 2's added rules for a bundled template, as problems; empty is a pass. Version 1 manifests never reach it, so the old set keeps today's contract. */
@@ -449,6 +528,16 @@ describe("template manifest version 2", () => {
     ]);
   });
 
+  it("names the poster as a still slot", () => {
+    const parsed = templateManifestSchema.safeParse(
+      v2Manifest({ preview: { poster: -1, frames: [0, 0, 0, 0] } }),
+    );
+    const messages = parsed.success
+      ? []
+      : parsed.error.issues.map((i) => `${i.path}: ${i.message}`);
+    expect(messages).toEqual(["preview.poster: must be a still slot, 0 to 3"]);
+  });
+
   it("keeps the version 1 ids out of a version 2 manifest", () => {
     expect(issuePaths(v2Manifest({ category: "app-updates" }))).toEqual(["category"]);
   });
@@ -621,6 +710,85 @@ describe("template contract version 2", () => {
   });
 });
 
+describe("template editability", () => {
+  const scene = (code: string): SceneSource[] => [{ file: "scenes/01.tsx", code }];
+  const stage = `
+    const devices = useSceneDevices();
+    const hero = devices.find((d) => d.id === "hero") ?? devices[0];
+    if (!hero) return <SceneStage />;
+    return <SceneStage><ImageCard src="assets/app-icon.png" /></SceneStage>;`;
+
+  it("passes scene code that finds its device by id and keeps its stage", () => {
+    expect(editabilityProblems("launch", scene(stage), [])).toEqual([]);
+    const wrapped = stage.replace("?? devices[0]", "??\n          devices[0]");
+    expect(editabilityProblems("launch", scene(wrapped), [])).toEqual([]);
+  });
+
+  it("keeps media and samples out of scene code, the app icon aside", () => {
+    expect(
+      editabilityProblems(
+        "launch",
+        scene(`<ImageCard src="assets/fairywren-icon.png" /><Clip src="assets/screen.mp4" />`),
+        [],
+      ),
+    ).toEqual([
+      "scenes/01.tsx names assets/fairywren-icon.png; media belongs in the sidecar",
+      "scenes/01.tsx names assets/screen.mp4; media belongs in the sidecar",
+    ]);
+    expect(editabilityProblems("launch", scene(`const SHOT = "shot-a-sample.jpg";`), [])).toEqual([
+      "scenes/01.tsx names the sample shot-a-sample.jpg",
+    ]);
+  });
+
+  it("finds devices by id with a fallback, never by position alone", () => {
+    expect(
+      editabilityProblems(
+        "launch",
+        scene(`const devices = useSceneDevices(); const hero = devices[0]!;`),
+        [],
+      ),
+    ).toEqual(["scenes/01.tsx takes devices[0] without finding a device by id first"]);
+    expect(editabilityProblems("launch", scene(`const [hero] = useSceneDevices();`), [])).toEqual([
+      "scenes/01.tsx takes a device by position; find it by id with a fallback",
+    ]);
+  });
+
+  it("keeps the stage when the device is gone", () => {
+    const message = "scenes/01.tsx returns nothing; return the stage so it stays without a device";
+    for (const empty of ["return null;", "return;"]) {
+      const code = stage.replace("return <SceneStage />;", empty);
+      expect(editabilityProblems("launch", scene(code), [])).toEqual([message]);
+    }
+  });
+
+  it("fits nothing to a recording's pixels", () => {
+    const code = `const [u, v] = mediaPixelToScreenUv(hero.model, [48, 450], MEDIA);`;
+    expect(editabilityProblems("launch", scene(code), [])).toEqual([
+      "scenes/01.tsx maps a recording's pixels; a user's own media won't fit them",
+    ]);
+  });
+
+  it("shows only the app icon slot as an icon in sidecars", () => {
+    const sidecars = [
+      { file: "scenes/01.json", raw: { media: { src: "assets/brand-icon.png" } } },
+      { file: "scenes/02.json", raw: { media: { src: "assets/silicone-case.jpg" } } },
+    ];
+    expect(editabilityProblems("launch", [], sidecars)).toEqual([
+      "scenes/01.json shows assets/brand-icon.png; the app icon is assets/app-icon.png",
+    ]);
+  });
+
+  it("lists only exceptions that still map sample pixels", () => {
+    const stale = Object.entries(SAMPLE_PIXEL_EXCEPTIONS).flatMap(([id, files]) =>
+      files.filter(
+        (file) =>
+          !sceneSourceGlob[`../../projects/${id}/${file}`]?.includes("mediaPixelToScreenUv("),
+      ),
+    );
+    expect(stale).toEqual([]);
+  });
+});
+
 describe("template manifest source", () => {
   const minimal = (over: Record<string, unknown> = {}) => ({
     version: 1,
@@ -739,16 +907,23 @@ describe.skipIf(templateIds.length === 0)("each bundled template", () => {
     const preview = entry.manifest?.preview;
     if (!preview) return;
     const count = (entry.project?.scenes ?? []).length;
-    const indices = [
-      preview.poster,
-      ...preview.frames.map((frame) => (typeof frame === "number" ? frame : frame.scene)),
-    ];
+    const indices = preview.frames.map((frame) =>
+      typeof frame === "number" ? frame : frame.scene,
+    );
     expect(indices.filter((index) => index >= count)).toEqual([]);
+    expect(preview.poster).toBeLessThan(TEMPLATE_PREVIEW_COUNT);
   });
 
   it.each(templateIds)("%s keeps the version 2 contract when it declares version 2", (id) => {
     const entry = template(id);
     expect(isV2(entry) ? v2Problems(entry) : []).toEqual([]);
+  });
+
+  it.each(templateIds)("%s keeps scene code editable when it declares version 2", (id) => {
+    const entry = template(id);
+    expect(isV2(entry) ? editabilityProblems(id, sceneSources(entry), entry.sidecars) : []).toEqual(
+      [],
+    );
   });
 
   it.each(templateIds)("%s stays inside its scene-count and runtime band", (id) => {

@@ -28,6 +28,9 @@ src-tauri/resources/models/
 src-tauri/resources/licenses/*
 !src-tauri/resources/licenses/README.md
 
+# Variant lab scratch fixtures (tools/variant-lab); never committed
+fixtures/lab-*/
+
 # Licensed third-party assets — bundled into app builds, never committed
 src/assets/models/licensed/
 
