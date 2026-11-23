@@ -218,6 +218,12 @@ uniform vec2 kbOcclusion;
 uniform vec2 kbOcclusionSpread;
 uniform float kbOblique;
 uniform float kbSeed;
+// The mirror clips at the floor, so its depth is the height above the floor over the distance along the view.
+float kbHeightAt( float depth, vec3 ray, float toFloor ) {
+	float left = abs( ray.y ) - depth * kbOblique * dot( ray, kbVirtualForward );
+	if ( left <= 1e-5 ) return 1e6;
+	return toFloor * abs( ray.y ) * ( abs( ray.y ) / left - 1.0 );
+}
 `;
 
 // The key's shadow with a blocker search, so its edge widens with the gap between caster and floor. Three's VSM map holds the floor too, so every tap is tested against the floor's own depth there.
@@ -337,11 +343,8 @@ if ( kbReflOn > 0.5 ) {
 	vec3 kbRay = vKbWorld - kbVirtualEye;
 	float kbToFloor = length( kbRay );
 	kbRay /= kbToFloor;
-	float kbZ = kbDepth * 2.0 - 1.0;
-	float kbViewZ = 2.0 * kbNearFar.x * kbNearFar.y / ( kbNearFar.y + kbNearFar.x - kbZ * ( kbNearFar.y - kbNearFar.x ) );
-	float kbToHit = kbViewZ / max( dot( kbRay, kbVirtualForward ), 1e-4 );
-	float kbHeight = max( kbToHit - kbToFloor, 0.0 ) * abs( kbRay.y );
 	float kbHit = kbDepth >= 1.0 ? 0.0 : 1.0;
+	float kbHeight = kbHeightAt( kbDepth, kbRay, kbToFloor );
 	float kbK = kbHit < 0.5 ? 1.0 : max( kbContact, smoothstep( 0.0, kbHeightBlur, kbHeight ) );
 	vec3 kbRefl = mix( kbSharp, kbBlurred, kbK );
 	if ( kbReflX.z > 0.0 ) {
@@ -353,11 +356,7 @@ if ( kbReflOn > 0.5 ) {
 			float kbR = sqrt( ( float( i ) + 0.5 ) / ${REACH_TAPS}.0 );
 			float kbA = float( i ) * 2.399963229728653 + kbPhi;
 			float kbD = texture2D( kbReflDepth, kbUv + vec2( cos( kbA ), sin( kbA ) ) * kbR * kbReflSpread ).r;
-			if ( kbD < 1.0 ) {
-				float kbTapZ = 2.0 * kbNearFar.x * kbNearFar.y / ( kbNearFar.y + kbNearFar.x - ( kbD * 2.0 - 1.0 ) * ( kbNearFar.y - kbNearFar.x ) );
-				float kbTapHeight = max( kbTapZ / max( dot( kbRay, kbVirtualForward ), 1e-4 ) - kbToFloor, 0.0 ) * abs( kbRay.y );
-				kbFade += 1.0 - smoothstep( 0.0, kbReflX.z, kbTapHeight );
-			}
+			if ( kbD < 1.0 ) kbFade += 1.0 - smoothstep( 0.0, kbReflX.z, kbHeightAt( kbD, kbRay, kbToFloor ) );
 		}
 		kbRefl *= kbFade / ${REACH_TAPS}.0;
 	}
@@ -632,7 +631,7 @@ export function SatinFloor({
       shader.fragmentShader = fs;
     };
     m.customProgramCacheKey = () =>
-      soft ? "kookaburra-satin-floor-v8-soft" : "kookaburra-satin-floor-v6";
+      soft ? "kookaburra-satin-floor-v9-soft" : "kookaburra-satin-floor-v6";
     return m;
   }, [uniforms, soft]);
   useLayoutEffect(() => () => material.dispose(), [material]);

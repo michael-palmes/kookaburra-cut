@@ -1195,7 +1195,10 @@ camera exactly:
   (three's VSM map holds receivers too; the slope comes from the light's shadow
   matrix). A `reach` fade is read from the mirror's depth at 8 taps on the same turned
   disc, spread over 0.6 of the blur's footprint, so a blurred reflection keeps its soft
-  edge past the caster's outline. The tap counts, the search gap, the contact reach, the
+  edge past the caster's outline. The soft program reads every height (the blur's
+  `heightBlur`, `reach`, `shadow.contact` and the occlusion seam) from the mirror's own
+  depth, which is height over view distance because the mirror clips at the floor; the
+  first program keeps its older read. The tap counts, the search gap, the contact reach, the
   reach spread, the occlusion seam's spread and the scatter's grain multiple in
   `SatinFloor.tsx` are contract.
 
