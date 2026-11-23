@@ -1831,7 +1831,7 @@
   },
   "ExtrudedFinish": {
     "kind": "type",
-    "signature": "interface ExtrudedFinish { roughness?: number; metalness?: number; clearcoat?: number; clearcoatRoughness?: number; }"
+    "signature": "interface ExtrudedFinish { roughness?: number; metalness?: number; clearcoat?: number; clearcoatRoughness?: number; envIntensity?: number; }"
   },
   "ExtrudedText": {
     "kind": "component",
@@ -3305,7 +3305,7 @@
         "type": "number",
         "required": false,
         "default": "0.12",
-        "doc": "Edge rounding as a fraction of the smaller side (0.12)."
+        "doc": "Edge rounding as a fraction of the smaller side (0.12); towards 0.45 with a depth near the height it becomes a fully round pill."
       },
       {
         "name": "color",

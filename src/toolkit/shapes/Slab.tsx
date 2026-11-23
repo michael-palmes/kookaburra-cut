@@ -13,7 +13,7 @@ export interface SlabProps {
   depth?: number;
   /** Corner radius as a fraction of the smaller side: 0.5 (the default) makes a capsule. */
   radius?: number;
-  /** Edge rounding as a fraction of the smaller side (0.12). */
+  /** Edge rounding as a fraction of the smaller side (0.12); towards 0.45 with a depth near the height it becomes a fully round pill. */
   bevel?: number;
   /** A theme colour token (`text`, `muted`, `accent`) or a hex colour. */
   color?: string;
@@ -64,6 +64,7 @@ export function Slab({
           metalness={finish?.metalness ?? 0}
           clearcoat={finish?.clearcoat ?? 1}
           clearcoatRoughness={finish?.clearcoatRoughness ?? 0.3}
+          envMapIntensity={finish?.envIntensity ?? 1}
         />
       </mesh>
       <group position={[0, 0, thickness * (0.5 + SLAB_FACE_GAP)]}>{children}</group>

@@ -59,6 +59,8 @@ export interface ExtrudedFinish {
   metalness?: number;
   clearcoat?: number;
   clearcoatRoughness?: number;
+  /** How strongly the surface reflects the scene's environment (1). */
+  envIntensity?: number;
 }
 
 /** Extruded 3D text: real depth + bevels via FontLoader/TextGeometry, unlike the flat troika SDF of `AnimatedHeadline`; geometry is a pure function of props + the bundled typeface (parsed synchronously from JSON, see `fonts.ts`), and the reveal (rise + tilt settle) is a pure function of `useTimeline()`, never the wall clock. It animates transforms only, no transparency, so mid-reveal frames never show internal faces. With a `textKey` it joins the managed-text lifecycle, so it stands down under a generic takeover like every scene-owned text primitive. */
@@ -204,6 +206,7 @@ function ExtrudedTextRenderer(props: ExtrudedTextProps) {
               metalness={finish.metalness ?? 0.2}
               clearcoat={finish.clearcoat ?? 1}
               clearcoatRoughness={finish.clearcoatRoughness ?? 0.1}
+              envMapIntensity={finish.envIntensity ?? 1}
             />
           ) : (
             <meshStandardMaterial color={fill} roughness={0.35} metalness={0.2} />

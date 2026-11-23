@@ -1,7 +1,7 @@
 import { type BufferGeometry, ExtrudeGeometry, Shape } from "three";
 import { smoothExtrudeNormals } from "../text3d/extrudeNormals";
 
-/** A rounded plate, centred: `radius` and `edge` are in world units, the corner radius capped at half the smaller side so 0.5 of it makes a capsule, the edge rounding capped below the half depth. Bevelled plates get smooth normals with truly flat faces. */
+/** A rounded plate, centred: `radius` and `edge` are in world units, the corner radius capped at half the smaller side so 0.5 of it makes a capsule, the edge rounding capped just under half the smaller side and half the depth, where the rim is a full half round. Bevelled plates get smooth normals with truly flat faces. */
 export function slabGeometry(
   width: number,
   height: number,
@@ -10,7 +10,7 @@ export function slabGeometry(
   edge: number,
 ): BufferGeometry {
   const least = Math.min(width, height);
-  const e = Math.min(Math.max(edge, 0), least * 0.2, depth * 0.45);
+  const e = Math.min(Math.max(edge, 0), least * 0.45, depth * 0.5 - 1e-4);
   const halfW = width / 2 - e;
   const halfH = height / 2 - e;
   const r = Math.min(Math.max(radius - e, 0), halfW, halfH);

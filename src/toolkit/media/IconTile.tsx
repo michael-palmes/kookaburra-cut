@@ -98,6 +98,7 @@ function LoadedIconTile({
         metalness={finish?.metalness ?? 0}
         clearcoat={finish?.clearcoat ?? 1}
         clearcoatRoughness={finish?.clearcoatRoughness ?? 0.08}
+        envMapIntensity={finish?.envIntensity ?? 1}
       />
     </mesh>
   );
