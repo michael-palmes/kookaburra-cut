@@ -32,6 +32,15 @@
       "why": "The switch flips on and the call to action appears on the final hit; the change is small on screen, so the check misses it",
       "by": "template",
       "atMs": 1795384114437
+    },
+    {
+      "id": "e6fe4867",
+      "kind": "focus",
+      "scene": "08-lockup",
+      "anchor": "k3",
+      "why": "Focus holds the lockup row at depth -2.5, in front of the aim point",
+      "by": "template",
+      "atMs": 1795474160732
     }
   ]
 }
