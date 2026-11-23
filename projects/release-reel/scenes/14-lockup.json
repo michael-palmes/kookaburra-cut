@@ -2,25 +2,255 @@
   "version": 1,
   "name": "Lockup",
   "text": {
-    "label": "14 · Lockup · ink room",
-    "bars": "Bars 23 to 24 · Final hit, then a bar of ring-out",
-    "kicker": "Fairywren 2.4",
-    "title": "Update today.",
-    "c1": "23.1  Ink room; the app icon lands",
-    "c2": "23.3  Name and version set beside it",
-    "c3": "24.1  Final hit: the call to action"
+    "kicker": "Fairywren",
+    "version": "2.4",
+    "title": "Update today."
   },
   "textStyle": {
-    "labelColor": "#ffffff",
-    "barsColor": "#ffffff",
     "kickerColor": "#ffffff",
-    "titleColor": "#ffffff",
-    "c1Color": "#ffffff",
-    "c2Color": "#ffffff",
-    "c3Color": "#ffffff"
+    "versionColor": "#ffffff",
+    "titleColor": "accent"
+  },
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 470,
+        "at": "bar:23",
+        "pose": {
+          "position": [-1.7, -0.95, 4.6],
+          "aim": {
+            "mode": "point",
+            "at": [-2, -1.1, 0]
+          },
+          "fov": 24
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1876,
+        "at": "bar:23.4",
+        "pose": {
+          "position": [0.2, -0.85, 9.6],
+          "aim": {
+            "mode": "point",
+            "at": [0.15, -1, 0]
+          },
+          "fov": 24
+        }
+      },
+      {
+        "id": "h0",
+        "tMs": 2345,
+        "at": "bar:24",
+        "pose": {
+          "position": [0.2, -0.85, 9.56],
+          "aim": {
+            "mode": "point",
+            "at": [0.15, -1, 0]
+          },
+          "fov": 24
+        }
+      },
+      {
+        "id": "h1",
+        "tMs": 2415,
+        "pose": {
+          "position": [0.2, -0.85, 8.85],
+          "aim": {
+            "mode": "point",
+            "at": [0.15, -1, 0]
+          },
+          "fov": 24
+        }
+      },
+      {
+        "id": "h2",
+        "tMs": 2585,
+        "pose": {
+          "position": [0.2, -0.85, 9.2],
+          "aim": {
+            "mode": "point",
+            "at": [0.15, -1, 0]
+          },
+          "fov": 24
+        }
+      },
+      {
+        "id": "k3",
+        "tMs": 4220,
+        "at": "bar:25",
+        "pose": {
+          "position": [0.2, -0.85, 9],
+          "aim": {
+            "mode": "point",
+            "at": [0.15, -1, 0]
+          },
+          "fov": 24
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutSine",
+        "smooth": false
+      },
+      {
+        "from": "k2",
+        "to": "h0",
+        "ease": "linear",
+        "smooth": false
+      },
+      {
+        "from": "h0",
+        "to": "h1",
+        "ease": "outCubic",
+        "smooth": false
+      },
+      {
+        "from": "h1",
+        "to": "h2",
+        "ease": "inOutSine",
+        "smooth": false
+      },
+      {
+        "from": "h2",
+        "to": "k3",
+        "ease": "outSine",
+        "smooth": false
+      }
+    ]
+  },
+  "motionBlur": {
+    "enabled": true,
+    "shutterDeg": 180,
+    "camera": true,
+    "objects": false
+  },
+  "lighting": {
+    "ambient": 0.03,
+    "fills": [],
+    "sun": {
+      "azimuthDeg": -32,
+      "elevationDeg": 52,
+      "intensity": 2.7,
+      "color": "#fff6ee",
+      "castShadow": true
+    },
+    "environment": {
+      "source": "kookaburra:cyclorama",
+      "intensity": 0.32,
+      "rotationDeg": 0
+    },
+    "lights": [
+      {
+        "id": "gloss",
+        "type": "area",
+        "intensity": 3,
+        "color": "#ffffff",
+        "width": 3,
+        "height": 2,
+        "placement": {
+          "mode": "point",
+          "position": [-2.9, 0.3, 4.6]
+        },
+        "target": [-1.5, -1, 0.3]
+      },
+      {
+        "id": "rim-warm",
+        "type": "directional",
+        "intensity": 20,
+        "color": "#ff6a2a",
+        "placement": {
+          "mode": "point",
+          "position": [-9, -1.9, -1.9]
+        },
+        "target": [0, -1.9, 0]
+      },
+      {
+        "id": "rim-blue",
+        "type": "directional",
+        "intensity": 4.5,
+        "color": "#3f5cff",
+        "placement": {
+          "mode": "point",
+          "position": [1.5, 7, -3.5]
+        },
+        "target": [0, -1, 0]
+      },
+      {
+        "id": "rim-green",
+        "type": "directional",
+        "intensity": 3.5,
+        "color": "#2fe0a2",
+        "placement": {
+          "mode": "point",
+          "position": [9, -1.9, -3]
+        },
+        "target": [0, -1.9, 0]
+      }
+    ],
+    "shadow": {
+      "technique": "map",
+      "softness": 0.25,
+      "opacity": 0.65,
+      "mapSize": 2048,
+      "bias": -0.0005
+    }
   },
   "background": {
-    "type": "color",
-    "color": "#0b1030"
+    "type": "image",
+    "src": "assets/lockup-wall.jpg"
+  },
+  "backdrop": {
+    "type": "satin",
+    "color": "#48485c",
+    "roughness": 0.35,
+    "specular": 0.35,
+    "centre": [0, 1.5],
+    "fade": [4, 11],
+    "reflection": {
+      "strength": 1,
+      "blur": 60,
+      "heightBlur": 0.25,
+      "contact": 0.85,
+      "stretch": 3,
+      "scatter": 10,
+      "reach": 2.4
+    },
+    "glitter": {
+      "scale": 90,
+      "density": 0,
+      "roughness": 0.15,
+      "tilt": 0.5,
+      "weight": 0,
+      "grain": 0.6,
+      "seed": 5
+    },
+    "shadow": {
+      "spread": 0.08,
+      "lighten": 0.35,
+      "reach": 5,
+      "contact": 0,
+      "occlusion": 0.9,
+      "occlusionReach": 0.1
+    },
+    "pools": [
+      {
+        "at": [-4, 0.5],
+        "radius": [4, 3],
+        "color": "#ff5a1e",
+        "intensity": 0.06
+      },
+      {
+        "at": [4.5, 0.5],
+        "radius": [4, 3],
+        "color": "#2fd0a0",
+        "intensity": 0.05
+      }
+    ]
   }
 }

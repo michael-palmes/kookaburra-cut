@@ -180,11 +180,16 @@
     {
       "file": "scenes/13-all-three.tsx",
       "durationMs": 3750,
-      "cutAt": "bar:23"
+      "cutAt": "bar:23",
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 470,
+        "ease": "smooth"
+      }
     },
     {
       "file": "scenes/14-lockup.tsx",
-      "durationMs": 3750,
+      "durationMs": 4220,
       "cutAt": "bar:25"
     }
   ]

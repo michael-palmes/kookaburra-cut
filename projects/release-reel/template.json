@@ -7,7 +7,7 @@
   "personas": ["pm", "marketer", "developer"],
   "level": "standard",
   "tier": "bold",
-  "uses": ["audio", "background", "camera-rig", "device"],
+  "uses": ["audio", "background", "camera-rig", "device", "multi-device"],
   "highlights": [
     "The version number slams in on bar 1",
     "Each feature floods its own colour room on the downbeat",
