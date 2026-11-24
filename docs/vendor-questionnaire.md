@@ -38,11 +38,16 @@ before that release is tagged. On 0.24.0, the latest release, these rows differ:
   app loads no web page.
 - **Data at rest:** 0.24.0 keeps one WebKit store per project for those
   websites, cleared in Settings ▸ Website data. 0.25.0 deletes them at launch.
+- **Data flows, Managed Macs and AI:** on 0.24.0 Claude is on from the first
+  launch unless `DisableAgentKit` is forced, `RequireManagedClaude` is ignored,
+  and a copy installed from the pkg checks GitHub for updates unless
+  `DisableUpdateCheck` is forced.
 
 A version line marked "pending" names a release not yet tagged; the change
-that bumps the version drops it here and in
-[subprocessors.md](./subprocessors.md), and `scripts/vendor-docs.test.mjs`
-fails until it does.
+that bumps the version drops it here, in
+[subprocessors.md](./subprocessors.md) and in
+[third-party-assessment.md](./third-party-assessment.md), and
+`scripts/vendor-docs.test.mjs` fails until it does.
 
 ## What applies
 
@@ -102,9 +107,9 @@ SIG: Asset and information management, Network security. CAIQ: DSP.
 | --- | --- | --- | --- |
 | Is customer data sent to or stored by the vendor? | No | [SECURITY.md, "What leaves the Mac"](../SECURITY.md#what-leaves-the-mac) | No account, no server, no telemetry. Opening, editing, importing, exporting and presenting make no request. |
 | Is there a data-flow statement? | Yes | [SECURITY.md, "What leaves the Mac"](../SECURITY.md#what-leaves-the-mac), [security-overview.md](./security-overview.md#what-leaves-the-mac) | Three paths, each started by a person, each with an off switch. |
-| Update check: what is sent, and can it be turned off? | Yes | [updater.rs](../src-tauri/src/updater.rs), [updates.ts](../src/engine/updates.ts), [mdm.md](./mdm.md#keys) | One GET for `latest.json` from `github.com`, only with the first-run consent on or on Check for Updates. No identifier, no version in the URL; the user agent is the updater plugin's name and version. Off: the first-run switch, Settings ▸ Updates, `DisableUpdateCheck`; `UpdateEndpoint` sends it to your server instead. |
+| Update check: what is sent, and can it be turned off? | Yes | [updater.rs](../src-tauri/src/updater.rs), [updates.ts](../src/engine/updates.ts), [mdm.md](./mdm.md#keys) | One GET for `latest.json` from `github.com`, only with the first-run consent on or on Check for Updates, and never on a copy installed from the pkg unless a profile turns it on. No identifier, no version in the URL; the user agent is the updater plugin's name and version. Off: the first-run switch, Settings ▸ Updates, `DisableUpdateCheck`; `UpdateEndpoint` sends it to your server instead. |
 | Update install: what is sent? | Yes | [updater.rs](../src-tauri/src/updater.rs) | Nothing goes up. The signed archive comes down only on Install and relaunch. Off: Later, or `DisableUpdateCheck`. |
-| Edit with Claude: what is sent? | Yes | [claude_app.rs](../src-tauri/src/claude_app.rs), [SECURITY.md, "What reaches your agent"](../SECURITY.md#what-reaches-your-agent) | The project folder's path and a starter prompt, handed to the Claude desktop app on the same Mac and never sent until the person presses Enter there. Claude Code then sends project files to Anthropic under the person's own account. Off: `DisableClaude`, `DisableAgentKit`. |
+| Edit with Claude: what is sent? | Yes | [claude_app.rs](../src-tauri/src/claude_app.rs), [SECURITY.md, "What reaches your agent"](../SECURITY.md#what-reaches-your-agent) | The project folder's path and a starter prompt, handed to the Claude desktop app on the same Mac and never sent until the person presses Enter there. Claude Code then sends project files to Anthropic under the person's own account. Off until a person turns Claude on; kept off by `DisableClaude` and `DisableAgentKit`; `RequireManagedClaude` allows it only under your organisation's Claude Code policy. |
 | Does the app open other pages? | Yes | [claude_app.rs](../src-tauri/src/claude_app.rs) | Get Claude and What leaves your Mac open fixed URLs in the default browser, nothing appended. |
 | Is there any other network client in the app? | No | [Cargo.toml](../src-tauri/Cargo.toml), [realmGuard.ts](../src/stage/realmGuard.ts), [build-ffmpeg-sidecar.sh](../scripts/build-ffmpeg-sidecar.sh) | No Rust HTTP client of its own (reqwest only through the updater plugin, and `deny.toml` bans the rest); scene code runs behind a guard that refuses every network API but the app's own files; the release ffmpeg is built with `--disable-network`. |
 | Can an organisation list and restrict egress? | Yes | [subprocessors.md](./subprocessors.md), [fleet.md](./fleet.md) | Hosts: `github.com` and `release-assets.githubusercontent.com` (or your `UpdateEndpoint`). With `DisableUpdateCheck` and `DisableClaude` the app makes no request of its own; What leaves your Mac still opens the privacy page in the browser. |
@@ -274,7 +279,7 @@ SIG: Endpoint security. CAIQ: UEM.
 | Can the project location be fixed? | Yes | [mdm.md](./mdm.md#keys) | `WorkspaceRoot`. |
 | Does the app install background processes? | No | [security-overview.md](./security-overview.md#what-the-app-does-not-do), [fleet.md](./fleet.md#what-to-expect-in-edr) | No launch agent, login item or helper tool. Its child processes are listed for EDR. |
 | Does it run sandboxed? | Partial | [decisions.md](./decisions.md), [realmGuard.ts](../src/stage/realmGuard.ts) | Hardened runtime, no entitlements, no App Sandbox. Scene code runs in a worker with no DOM, IPC or network. |
-| Can versions be installed and pinned through MDM? | Partial | [fleet.md](./fleet.md#updates-in-app-or-mdm-delivery), [SECURITY.md, "Not yet"](../SECURITY.md#not-yet) | Deliver the signed pkg (or the DMG) and set `DisableUpdateCheck`. A Homebrew cask is staged in [packaging/homebrew](../packaging/homebrew/) until its tap is published; [fleet-deployment.md](./fleet-deployment.md) has an install script that pins a version and its SHA-256. |
+| Can versions be installed and pinned through MDM? | Partial | [fleet.md](./fleet.md#updates-in-app-or-mdm-delivery), [SECURITY.md, "Not yet"](../SECURITY.md#not-yet) | Deliver the signed pkg, which never updates itself; set `DisableUpdateCheck` for a copy from the DMG. A Homebrew cask is staged in [packaging/homebrew](../packaging/homebrew/) until its tap is published; [fleet-deployment.md](./fleet-deployment.md) has an install script that pins a version and its SHA-256. |
 
 ## Privacy
 
@@ -298,7 +303,7 @@ SIG: Artificial intelligence. The CAIQ v4 has no AI domain.
 | Does the product use AI or machine learning? | Yes | [setup-models.sh](../scripts/setup-models.sh), [ocr.rs](../src-tauri/src/ocr.rs) | On the Mac only: a bundled, pinned beat-tracking model for music, and Apple's Vision for text in stills. Neither sends anything. |
 | Does the vendor call a hosted AI model? | No | [SECURITY.md, "What reaches your agent"](../SECURITY.md#what-reaches-your-agent) | The app holds no API key and starts no Claude Code. Edit with Claude hands off to the person's own install. |
 | Is customer data used to train models? | No | [subprocessors.md](./subprocessors.md) | The vendor receives none. Claude Code's data use is set by the person's Anthropic account and organisation. |
-| Can the AI integration be turned off? | Yes | [mdm.md](./mdm.md#keys) | `DisableClaude` and `DisableAgentKit`. |
+| Can the AI integration be turned off? | Yes | [mdm.md](./mdm.md#keys), [third-party-assessment.md](./third-party-assessment.md#ai-data-flows) | It is off until a person turns it on. `DisableClaude` and `DisableAgentKit` keep it off; `RequireManagedClaude` allows it only where Claude Code's managed settings pin sign-in to your organisation. |
 | Is the agent bounded? | Partial | [SECURITY.md, "What reaches your agent"](../SECURITY.md#what-reaches-your-agent), [fleet.md](./fleet.md#claude-codes-own-managed-settings-on-top) | Project text is data, never instructions; commands that look like sending work off the Mac ask first; kb refuses credential folders. Not a sandbox: a script a misled agent runs can still read a file. |
 
 ## Compliance

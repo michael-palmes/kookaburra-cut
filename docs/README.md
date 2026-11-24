@@ -30,6 +30,7 @@ architecture → determinism → decisions.
 | [fleet-deployment.md](./fleet-deployment.md) | The IT team deploying it | Recipes for Jamf Pro, Kandji (Iru), Mosyle and Intune: the install script, three ready profiles, checks on a Mac, an update mirror and removal |
 | [mdm.md](./mdm.md) | The administrator writing the profile | Managed preferences: the keys a configuration profile can force, a sample profile, and how to verify |
 | [security-assessment-scope.md](./security-assessment-scope.md) | A third-party security assessor | The threat model, trust boundaries and their entry files, existing tests and fuzzing, rules of engagement, deliverables and a vendor shortlist |
+| [third-party-assessment.md](./third-party-assessment.md) | The security team assessing the app before allowing it | The AI data flows, source code integrity, common deployment conditions mapped to the control behind each, and what no control here can give |
 | [vendor-questionnaire.md](./vendor-questionnaire.md) | The procurement or security team filling in a questionnaire | SIG Lite and CAIQ v4 answers by domain: Yes, No, Partial or Not applicable, each with the file, workflow or command that proves it |
 | [subprocessors.md](./subprocessors.md) | The privacy or procurement reviewer | Every third party a Mac running the app can reach: when, what is sent, identifiers, the off switch and the file behind it |
 

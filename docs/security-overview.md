@@ -27,8 +27,10 @@ The three documents, nothing repeated between them on purpose:
 
 The deployment guide for the IT team is [fleet.md](./fleet.md); the keys it
 forces are in [mdm.md](./mdm.md). Procurement's long form is
-[vendor-questionnaire.md](./vendor-questionnaire.md), and every third party a
-Mac can reach is in [subprocessors.md](./subprocessors.md).
+[vendor-questionnaire.md](./vendor-questionnaire.md), every third party a
+Mac can reach is in [subprocessors.md](./subprocessors.md), and a team running
+its own assessment starts at
+[third-party-assessment.md](./third-party-assessment.md).
 
 ## In one paragraph
 

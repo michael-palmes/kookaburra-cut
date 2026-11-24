@@ -1,4 +1,4 @@
-// The vendor questionnaire and subprocessors pages: every relative link resolves, answers use four words, the version line keeps step.
+// The vendor questionnaire, subprocessors and third-party assessment pages: every relative link resolves, answers use four words, the version line keeps step.
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
@@ -6,7 +6,11 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const DOCS = ["docs/vendor-questionnaire.md", "docs/subprocessors.md"];
+const DOCS = [
+  "docs/vendor-questionnaire.md",
+  "docs/subprocessors.md",
+  "docs/third-party-assessment.md",
+];
 const ANSWERS = new Set(["Yes", "No", "Partial", "Not applicable"]);
 const VERSION_LINE = /^\*\*Version:\*\* (\d+\.\d+\.\d+)(, pending)?\.$/m;
 
@@ -103,7 +107,7 @@ test("the version line is the shipped version, or a later one marked pending", (
       assert.equal(version, shipped, `${doc} describes ${version}; tauri.conf.json is ${shipped}`);
     }
   }
-  assert.equal(described.size, 1, "the two documents describe different versions");
+  assert.equal(described.size, 1, "the documents describe different versions");
 });
 
 test("heading anchors follow GitHub's rules", () => {
