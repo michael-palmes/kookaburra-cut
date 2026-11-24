@@ -1,6 +1,6 @@
 # Vendor questionnaire
 
-**Version:** 0.23.0.
+**Version:** 0.24.0.
 
 Pre-filled answers for the security questionnaire a procurement or security
 team sends before a pilot: the SIG Lite, arranged by the SIG's risk domains,
@@ -28,7 +28,7 @@ app with no service, no account and no hosted data.
 
 ## Version
 
-This page describes 0.23.0. On 0.22.4 and earlier these rows differ:
+This page describes 0.24.0. On 0.22.4 and earlier these rows differ:
 
 - **Logging and audit:** 0.22.4 keeps no log in a release build.
 - **Data at rest:** Settings ▸ Allowed projects ▸ Forget and Settings ▸ Storage

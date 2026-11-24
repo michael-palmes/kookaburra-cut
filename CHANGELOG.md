@@ -6,6 +6,38 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-11-24
+
+### Added
+
+- Two launch templates. **Spotlight**: one camera travels through one room with no visible cuts, in three looks. **Release Reel**: 14 scenes in 45 seconds across five colour rooms, cut to its own song.
+- New toolkit pieces for your own scenes: `IconTile`, `Slab`, `DustBurst`, `Ripple`, a rounded glossy `ExtrudedText` and an outline `Pill`. `RoundedRect` takes a `fillOpacity`, radial gradients can sit off centre, and shapes and image cards can hold focus under lens blur.
+- Satin floors can carry a soft key shadow, a contact seam and a stretched, scattered reflection. Floors that don't ask for them export the same bytes.
+- `useSceneDuration()` gives a scene its own played length, so an exit follows a retime or a moved cut instead of breaking at a fixed time.
+- `kb try` renders sidecar variants of a scene as one labelled sheet, so Claude can compare options before changing your project.
+- `kb check camera` warns about camera moves that read as mistakes: a kick on a carried cut or as a turn starts, drift off the line and back, alternating jump cuts, a push that climbs round its subject and focus that reaches no subject.
+- The scene authoring skill gains guidance on staged films, the lens finish and environment strips.
+
+### Changed
+
+- Faster playback, skimming and exports. A 19 second 4K60 device film exports in 36 seconds instead of 55 with the same bytes, skimming over clips draws again (45 to 50 fps where it drew almost nothing), and a busy device scene plays at 44 fps instead of 20.
+- Supersampled frames of a hazy, mirrored stage render about 1.7 times faster. Their picture moves slightly (51 dB or better against the old one), so an export of such a film no longer matches a 0.23.0 export byte for byte.
+- Scenes with glass over a satin floor play faster (36 to 47 fps on Unveil's fly-by), bytes unchanged.
+- Wrapped text now staggers its words and characters in reading order. A film with a staggered, wrapped line exports differently from 0.23.0.
+- The README leads with the security answers and three diagrams.
+- Tauri, wry and other dependencies are on their current minor and patch releases.
+
+### Fixed
+
+- Abandoned clip staging no longer counts against the clip cache's limit.
+- Unveil's claims exit from each scene's end, and its feature deep dive pushes in straight instead of drifting.
+- A template manifest with a bad `preview.poster` now says it must be a still slot, 0 to 3.
+
+### Security
+
+- A deeply nested `blob:` URL could overflow the stack and crash the app (RUSTSEC-2026-0592). The `url` crate is now 2.5.9.
+- Known and not yet fixed: `cookie` 0.18.1 carries RUSTSEC-2026-0594, where private cookie nonces can repeat after a fork. The app doesn't build that crate's private cookie support, so nothing here uses the affected code. The fixed crate follows in the next release.
+
 ## [0.23.0] - 2026-11-20
 
 ### Added

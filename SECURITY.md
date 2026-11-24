@@ -1,6 +1,6 @@
 # Security policy
 
-**As of version 0.23.0.** This file describes that version. Older versions
+**As of version 0.24.0.** This file describes that version. Older versions
 have less: 0.22.4 and 0.22.3 keep no log in a release build, share one website
 store across projects, leave bridge requests unsigned, have no Allowed
 projects list, Clear all app data, `AuditLogPath` or `AllowedWebsiteOrigins`,

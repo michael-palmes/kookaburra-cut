@@ -6,7 +6,7 @@ and how an engagement should run. Quote from it freely. Every claim it points at
 is stated, with its control, in [SECURITY.md](../SECURITY.md) at the version
 under test; where the two disagree, SECURITY.md wins and this file is stale.
 
-Checked against 0.23.0, the latest release.
+Checked against 0.24.0, the latest release.
 
 ## The product
 
@@ -283,7 +283,7 @@ Ask each firm for a fixed quote against this file.
 
 Every release from 0.22.0 on carries what an install's integrity rests on
 (SECURITY.md, "Release integrity"; `build-info.txt` from 0.22.1). Later
-releases may add assets, and their own `SECURITY.md` lists them. For 0.23.0
+releases may add assets, and their own `SECURITY.md` lists them. From 0.23.0
 (0.22.4 has no pkg, SBOM or source archives):
 
 | Asset | What it proves |
