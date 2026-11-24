@@ -1,0 +1,103 @@
+{
+  "id": "spotlight",
+  "name": "Spotlight",
+  "version": 2,
+  "themeId": "kookaburra-daylight-studio",
+  "formats": ["16:9"],
+  "audio": {
+    "file": "assets/song.flac",
+    "grid": {
+      "bpm": 128,
+      "offsetMs": -0.588,
+      "beatsPerBar": 4,
+      "source": {
+        "sha256": "b0a995800b25781134417d998778606cfc96d2aa9ebcb6740defd192a0b842c2",
+        "analysisVersion": 3,
+        "tracker": "nn",
+        "residualMs": 1.58
+      }
+    },
+    "cues": {
+      "reveal": "bar:9",
+      "fill-1": "bar:11.4",
+      "final-hits": "bar:14.2",
+      "final-hit": "bar:16"
+    },
+    "sections": [
+      {
+        "id": "intro",
+        "from": "bar:1",
+        "to": "bar:9",
+        "label": "Intro"
+      },
+      {
+        "id": "peak-1",
+        "from": "bar:9",
+        "to": "bar:17",
+        "label": "Peak 1"
+      }
+    ]
+  },
+  "render": {
+    "motionBlur": {
+      "enabled": true,
+      "shutterDeg": 180,
+      "samples": 8,
+      "camera": true,
+      "objects": false
+    }
+  },
+  "defaultTransition": null,
+  "scenes": [
+    {
+      "file": "scenes/01-problem.tsx",
+      "durationMs": 3749,
+      "cutAt": "bar:3"
+    },
+    {
+      "file": "scenes/02-name.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:5"
+    },
+    {
+      "file": "scenes/03-flow-a.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:7"
+    },
+    {
+      "file": "scenes/04-flow-b.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:9"
+    },
+    {
+      "file": "scenes/05-close-up.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:11"
+    },
+    {
+      "file": "scenes/06-claim.tsx",
+      "durationMs": 1875,
+      "cutAt": "bar:12"
+    },
+    {
+      "file": "scenes/07-proof.tsx",
+      "durationMs": 5625,
+      "cutAt": "bar:15"
+    },
+    {
+      "file": "scenes/08-lockup.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:17"
+    }
+  ],
+  "shared": {
+    "control": {
+      "rect": [0.04, 0.327, 0.96, 0.451],
+      "timer": [0.2, 0.497],
+      "switch": [0.818, 0.389]
+    },
+    "proof": {
+      "rect": [0.04, 0.172, 0.96, 0.343]
+    }
+  }
+}

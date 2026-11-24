@@ -205,7 +205,9 @@ scene's; blur can animate, the family cannot swap mid-flight.
   on stays exact). Keep legibility-critical text on or near the focus plane.
   A lifted `ScreenRegion` blurs at its own depth in lens mode: a depth-only
   copy of its shape sits on `LENS_DEPTH_LAYER` (`src/engine/lensDepth.ts`),
-  which only the draw feeding an active lens pose's depth turns on.
+  which only the draw feeding an active lens pose's depth turns on. `RoundedRect`,
+  `Pill` and `ImageCard` do the same under `holdFocus`; without it a flat shape
+  writes no depth and blurs with whatever is behind it.
 - In a project with NO declared effects, dof never regrades the frame: every
   frame renders on the original byte-identical paths, and a pose with active
   blur is then blurred IN PLACE (the finished pixels are copied, the dof

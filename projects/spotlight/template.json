@@ -1,0 +1,58 @@
+{
+  "version": 2,
+  "name": "Spotlight",
+  "tagline": "One feature, start to finish, in a calm daylight studio.",
+  "category": "feature",
+  "tags": ["feature", "explainer", "how it works", "demo", "music", "calm"],
+  "personas": ["pm", "marketer"],
+  "level": "standard",
+  "tier": "safe",
+  "uses": ["audio", "background", "camera-rig", "device", "text-motion"],
+  "highlights": [
+    "The problem in a line, then the feature by name",
+    "In close on the one control that matters",
+    "The benefit proved on a clock, then a lockup that switches on"
+  ],
+  "bring": [
+    "A problem line",
+    "Feature name",
+    "One screen recording of the flow",
+    "A screenshot that proves the benefit",
+    "A benefit line, with a figure or quote to prove it",
+    "A call to action",
+    "App icon"
+  ],
+  "song": {
+    "title": "Daylight",
+    "bpm": 128
+  },
+  "looks": ["kookaburra-daylight-studio", "kookaburra-daylight", "kookaburra-ivory"],
+  "preview": {
+    "poster": 0,
+    "frames": [
+      {
+        "scene": 1,
+        "atMs": 2300
+      },
+      {
+        "scene": 4,
+        "atMs": 1000
+      },
+      {
+        "scene": 6,
+        "atMs": 3800
+      },
+      {
+        "scene": 7,
+        "atMs": 3400
+      }
+    ],
+    "loop": {
+      "scene": 0,
+      "atMs": 1400,
+      "durationMs": 6000
+    }
+  },
+  "order": 103,
+  "status": "beta"
+}
