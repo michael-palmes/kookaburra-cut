@@ -1,0 +1,143 @@
+{
+  "version": 1,
+  "name": "Flow A",
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "media": {
+        "src": "assets/fairywren-focusflow-phone.mp4",
+        "kind": "video",
+        "startMs": 0,
+        "inMs": 560,
+        "outMs": 3850
+      },
+      "placement": {
+        "position": [-0.7799999999999998, -0.7, -4.2],
+        "rotationDeg": [0, -28, 0],
+        "scale": 1,
+        "ground": true
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "long"
+    }
+  ],
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "position": [-2.4225, -0.7, 3.5274],
+          "aim": {
+            "mode": "point",
+            "at": [-0.7799999999999998, -0.7, -4.2]
+          },
+          "fov": 22,
+          "dof": {
+            "mode": "lens",
+            "fStop": 22,
+            "focus": 7.9,
+            "blur": 1
+          }
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 2812,
+        "pose": {
+          "position": [-2.5542, -0.7, 3.19],
+          "aim": {
+            "mode": "point",
+            "at": [-0.7799999999999998, -0.7, -4.2]
+          },
+          "fov": 22,
+          "dof": {
+            "fStop": 22,
+            "focus": 7.6,
+            "blur": 1
+          }
+        }
+      },
+      {
+        "id": "k3",
+        "tMs": 3750,
+        "pose": {
+          "position": [-2.3137, -0.575, 0.9776],
+          "aim": {
+            "mode": "point",
+            "at": [-0.7799999999999998, -0.575, -4.2]
+          },
+          "fov": 22,
+          "dof": {
+            "fStop": 32,
+            "focus": 5.4,
+            "blur": 1
+          }
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "linear",
+        "smooth": false
+      },
+      {
+        "from": "k2",
+        "to": "k3",
+        "ease": "inOutSine",
+        "smooth": false
+      }
+    ]
+  },
+  "background": {
+    "backing": {
+      "color": "#efe6dc",
+      "type": "color"
+    },
+    "colors": ["#d6c8b8", "#fff6e8", "#cfc0ae"],
+    "look": "sunroom",
+    "params": {
+      "drift": 2,
+      "opening": 0.66,
+      "panes": 3,
+      "patch": 0.07,
+      "slatPitch": 0.5,
+      "softness": 0.8,
+      "sunHeight": 26,
+      "sunSide": 36,
+      "wallDistance": 7
+    },
+    "speed": 1,
+    "type": "scene3d"
+  },
+  "lighting": {
+    "ambient": 0.45,
+    "environment": {
+      "intensity": 1.2,
+      "rotationDeg": 0,
+      "source": "kookaburra:cyclorama"
+    },
+    "sun": {
+      "angularDeg": 1.5,
+      "azimuthDeg": 38.66,
+      "elevationDeg": 26,
+      "intensity": 2.2,
+      "kelvin": 4600
+    }
+  },
+  "taps": [
+    {
+      "at": 938,
+      "screenUv": [0.818, 0.389],
+      "device": "hero",
+      "colour": "#e8604c"
+    }
+  ]
+}

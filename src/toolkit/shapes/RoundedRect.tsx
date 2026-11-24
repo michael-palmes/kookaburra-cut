@@ -2,6 +2,12 @@ import { useContext, useLayoutEffect, useMemo } from "react";
 import { Color, GLSL3, ShaderMaterial, Vector2 } from "three";
 import { useFormat } from "../../engine/format";
 import { useTheme } from "../../theme";
+import {
+  asRegionDepthMesh,
+  holdsFocusNow,
+  REGION_DEPTH_ORDER,
+  regionDepthMaterial,
+} from "../device/screenRegionDepth";
 import { GroupAnimationContext } from "../group/context";
 import type { V3 } from "../types";
 import {
@@ -36,6 +42,8 @@ export interface PillProps {
   rotation?: V3;
   scale?: number | V3;
   renderOrder?: number;
+  /** Holds its own focus under lens depth of field, so it stays sharp in front of a blurred backdrop; absent blurs with whatever is behind it. */
+  holdFocus?: boolean;
 }
 
 export interface RoundedRectProps extends PillProps {
@@ -131,11 +139,13 @@ function FlatRoundedRect(props: RoundedRectProps) {
     rotation = [0, 0, 0],
     scale = 1,
     renderOrder = 0,
+    holdFocus = false,
   } = props;
   const theme = useTheme();
   const group = useContext(GroupAnimationContext);
   const { material, uniforms } = useMemo(rectMaterial, []);
   useLayoutEffect(() => () => material.dispose(), [material]);
+  const depth = useFocusDepth(holdFocus, uniforms);
 
   const w = Math.max(0, width);
   const h = Math.max(0, height);
@@ -158,6 +168,7 @@ function FlatRoundedRect(props: RoundedRectProps) {
       >
         <planeGeometry args={[1, 1]} />
       </mesh>
+      <FocusDepth material={depth} width={w} height={h} opacity={uniforms.uOpacity.value} />
     </group>
   );
 }
@@ -231,6 +242,7 @@ function FluidRoundedRect(props: RoundedRectProps) {
     rotation = [0, 0, 0],
     scale = 1,
     renderOrder = 0,
+    holdFocus = false,
   } = props;
   const theme = useTheme();
   const { width: frameW, height: frameH } = useFormat();
@@ -241,6 +253,7 @@ function FluidRoundedRect(props: RoundedRectProps) {
     [fill, frameW, frameH],
   );
   useLayoutEffect(() => () => material?.dispose(), [material]);
+  const depth = useFocusDepth(holdFocus && !!material, material?.uniforms as FocusUniforms);
   const speed = fill?.speed ?? 0;
   const beforeRender = useMemo(
     () => () => {
@@ -269,6 +282,35 @@ function FluidRoundedRect(props: RoundedRectProps) {
         visible={w > 0 && h > 0}
         onBeforeRender={beforeRender}
       >
+        <planeGeometry args={[1, 1]} />
+      </mesh>
+      <FocusDepth material={depth} width={w} height={h} opacity={u.uOpacity.value} />
+    </group>
+  );
+}
+
+type FocusUniforms = { uSize: { value: unknown }; uRadius: { value: unknown } };
+
+function useFocusDepth(on: boolean, uniforms: FocusUniforms | undefined): ShaderMaterial | null {
+  const depth = useMemo(
+    () => (on && uniforms ? regionDepthMaterial(uniforms) : null),
+    [on, uniforms],
+  );
+  useLayoutEffect(() => () => depth?.dispose(), [depth]);
+  return depth;
+}
+
+function FocusDepth(props: {
+  material: ShaderMaterial | null;
+  width: number;
+  height: number;
+  opacity: number;
+}) {
+  const { material, width, height, opacity } = props;
+  if (!material || !holdsFocusNow(width, height, opacity)) return null;
+  return (
+    <group renderOrder={REGION_DEPTH_ORDER}>
+      <mesh ref={asRegionDepthMesh} material={material} scale={[width, height, 1]}>
         <planeGeometry args={[1, 1]} />
       </mesh>
     </group>

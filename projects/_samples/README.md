@@ -8,8 +8,8 @@ it fills the app icon slot, so it ships in its template as `assets/app-icon.png`
 
 ## Product family
 
-Unveil and Release Reel show one fictional product, Fairywren (a calm planner). Its screens are
-rendered from HTML and CSS by `tools/sample-product/` (`pnpm assets:sample-product`),
+Unveil, Release Reel and Spotlight show one fictional product, Fairywren (a calm planner).
+Its screens are rendered from HTML and CSS by `tools/sample-product/` (`pnpm assets:sample-product`),
 which steps a deterministic clock frame by frame in headless Chrome. Fictional brand,
 people and data only; the name was checked against IP Australia, USPTO and the App
 Store (see that README). The tool also draws light twins and two sibling products,
@@ -29,6 +29,7 @@ Thornbill and Songlark; only the files a bundled template names are kept here.
 | `fairywren-today-dark-phone.jpg` | Today |
 | `fairywren-focus-dark-phone.jpg` | Focus mode |
 | `fairywren-insights-dark-phone.jpg`, `fairywren-month-dark-phone.jpg` | Two more screens for a line-up |
+| `fairywren-insights-phone.jpg` | Insights in light mode: Spotlight's proof screen. The "Focus this week" card is `[0.04, 0.172, 0.96, 0.343]` |
 | `fairywren-share-dark-phone.jpg` | A shared list |
 | `fairywren-plan-dark-phone.mp4` | Plans land, one is ticked off, a new plan is typed |
 | `fairywren-sorted-dark-phone.mp4` | "Plans your week for you": the week sorts itself under a "This week, sorted" card |
@@ -38,6 +39,7 @@ Thornbill and Songlark; only the files a bundled template names are kept here.
 | `fairywren-reschedule-dark-phone.mp4` | A meeting runs over and two plans move to fit |
 | `fairywren-share-dark-phone.mp4` | A list shared with three people, who tick items off |
 | `fairywren-share-phone.mp4` | The same share in light mode (Release Reel) |
+| `fairywren-focusflow-phone.mp4` | Spotlight's flow in light mode: one large Focus toggle, no baked tap |
 
 ### Timings and regions
 
@@ -54,6 +56,9 @@ Regions are screen UV `[u0, v0, u1, v1]` (`ScreenRegion rect`), times are second
 - Share sheet: `[0.02, 0.613, 0.98, 0.991]`, still from 1.6 to 2.3 s (Share at 2.3 s). The share
   button is at `(0.862, 0.216)`, pressed at 0.95 s. The list's card is `[0.04, 0.172, 0.96, 0.322]`; its
   three faces arrive at 2.75 s and the first tick lands at 3.75 s.
+- Focus flow: the toggle centre is `(0.818, 0.389)` and flips at 1.5 s; the Focus card is
+  `[0.04, 0.327, 0.96, 0.451]` until it grows from 1.9 s, with the timer at `(0.2, 0.497)`. The timer
+  ticks at 3.9, 4.9 and 5.9 s.
 
 ## Kooka set
 

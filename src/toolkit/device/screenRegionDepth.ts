@@ -48,6 +48,11 @@ export function regionDepthMaterial(card: {
   return material;
 }
 
+/** Whether a shape that holds focus mounts its depth copy: only while it has a size and shows at all, so an invisible shape never pins the blur behind it. */
+export function holdsFocusNow(width: number, height: number, opacity: number): boolean {
+  return width > 0 && height > 0 && opacity > 0;
+}
+
 /** Puts the depth mesh on the lens depth layer alone, out of every other camera, shadow and pick. */
 export function asRegionDepthMesh(mesh: Mesh | null): void {
   mesh?.layers.set(LENS_DEPTH_LAYER);

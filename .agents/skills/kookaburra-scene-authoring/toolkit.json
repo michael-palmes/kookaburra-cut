@@ -2285,6 +2285,12 @@
         "type": "HardShadowSpec",
         "required": false,
         "doc": "A hard offset shadow behind the card; absent draws none."
+      },
+      {
+        "name": "holdFocus",
+        "type": "boolean",
+        "required": false,
+        "doc": "Holds its own focus under lens depth of field, where the image is opaque, so it stays sharp in front of a blurred backdrop; absent blurs with whatever is behind it. Stands down while a group wipe hides part of the image."
       }
     ],
     "example": "<ImageCard src=\"assets/mark.png\" width={1} tint=\"accent\" from={0} to={300} outAt={3000} />",
@@ -2294,7 +2300,7 @@
   },
   "ImageCardProps": {
     "kind": "type",
-    "signature": "interface ImageCardProps { src: string; position?: V3; width?: number; maxHeight?: number; from?: number; to?: number; opacity?: number; outAt?: number; outDurationMs?: number; tint?: \"text\" | \"muted\" | \"accent\" | (string & {}); shadow?: HardShadowSpec; }"
+    "signature": "interface ImageCardProps { src: string; position?: V3; width?: number; maxHeight?: number; from?: number; to?: number; opacity?: number; outAt?: number; outDurationMs?: number; tint?: \"text\" | \"muted\" | \"accent\" | (string & {}); shadow?: HardShadowSpec; holdFocus?: boolean; }"
   },
   "LayeredScreenshot": {
     "kind": "component",
@@ -2543,13 +2549,20 @@
         "type": "number",
         "required": false,
         "default": "0"
+      },
+      {
+        "name": "holdFocus",
+        "type": "boolean",
+        "required": false,
+        "default": "false",
+        "doc": "Holds its own focus under lens depth of field, so it stays sharp in front of a blurred backdrop; absent blurs with whatever is behind it."
       }
     ],
     "example": "<Pill width={1} height={1} />"
   },
   "PillProps": {
     "kind": "type",
-    "signature": "interface PillProps { width: number; height: number; color?: string; opacity?: number; fillOpacity?: number; strokeWidth?: number; strokeColor?: string; fill?: FluidFill | boolean; position?: V3; rotation?: V3; scale?: number | V3; renderOrder?: number; }"
+    "signature": "interface PillProps { width: number; height: number; color?: string; opacity?: number; fillOpacity?: number; strokeWidth?: number; strokeColor?: string; fill?: FluidFill | boolean; position?: V3; rotation?: V3; scale?: number | V3; renderOrder?: number; holdFocus?: boolean; }"
   },
   "PlacedObjectProps": {
     "kind": "type",
@@ -2999,6 +3012,13 @@
         "type": "number",
         "required": false,
         "default": "0"
+      },
+      {
+        "name": "holdFocus",
+        "type": "boolean",
+        "required": false,
+        "default": "false",
+        "doc": "Holds its own focus under lens depth of field, so it stays sharp in front of a blurred backdrop; absent blurs with whatever is behind it."
       }
     ],
     "example": "<RoundedRect width={1} height={1} />"
