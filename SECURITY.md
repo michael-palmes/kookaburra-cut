@@ -10,11 +10,13 @@ the Keychain for the pack key whenever Settings or Export opens, and its Later
 stops the launch check offering that version again; 0.22.0 is 0.22.1 built
 before the pinned toolchain and the whole-bundle record ("Release integrity");
 and "Version 0.21.1" below lists what that version lacks.
-One thing here is ahead of 0.24.0: live scene websites are removed and gone
+Two things here are ahead of 0.24.0. Live scene websites are removed and gone
 from the next release, so this file lists nothing they brought. 0.24.0 itself
 can still open a website a person allows in a scene, with `DisableLiveWebsites`
 and `AllowedWebsiteOrigins` as its locks; that version's copy of this file
-describes it.
+describes it. And Claude is off until a person turns it on ("What reaches your
+agent"); on 0.24.0 the kit is stamped and the bridge serves from the first
+launch, and `DisableAgentKit` is what stops them.
 Each release from 0.22.0 on carries its own copy of this file in its assets.
 
 On a managed Mac, a configuration profile can pin the posture an organisation
@@ -158,7 +160,7 @@ checkout only (`vite.config.ts`, `server.fs.allow`), never the home folder.
 | --- | --- | --- | --- | --- | --- |
 | Update check | At launch and hourly while the main window is open, at most every 20 h, only with the consent on and never during an export; or Check for Updates (menu, ⌘K, Settings), which runs without consent and stores nothing | `github.com/michael-palmes/kookaburra-cut/releases/latest/download/latest.json`, or the https URL a profile forces as `UpdateEndpoint` | One GET; no identifiers, no version in the URL; the plugin's user agent only | First-run welcome switch (on by default, Escape saves off); Settings ▸ Updates. `update_check_consent` in `$APPDATA/settings.json` | `src-tauri/src/updater.rs`, `src/engine/updates.ts`; `KOOKABURRA_UPDATE_ENDPOINT` is honoured only in debug builds; `managed::usable_endpoint` refuses an `UpdateEndpoint` with a query, fragment, login or `{{…}}` template, and an unusable one means no check, never GitHub |
 | Update install | Install and relaunch on the update dialog | The release asset `latest.json` names | The signed updater archive | Later hides the offer until the next check | `updater.rs` (`download_and_install`); the ed25519 signature is checked against `plugins.updater.pubkey` before anything is written |
-| Edit with Claude (`claude://` handoff) | Edit with Claude, with the Claude desktop app installed | The Claude desktop app on this Mac, which talks to Anthropic under the user's account | The project folder path and a starter prompt, typed in, never sent | Not pressing it; `DisableClaude` turns it off for a fleet | `src-tauri/src/claude_app.rs` (`code_session_link`, `open_in_claude`) |
+| Edit with Claude (`claude://` handoff) | Edit with Claude, once Claude is turned on and with the Claude desktop app installed | The Claude desktop app on this Mac, which talks to Anthropic under the user's account | The project folder path and a starter prompt, typed in, never sent | Leaving Claude off, or not pressing it; `DisableClaude` turns it off for a fleet | `src-tauri/src/claude_app.rs` (`code_session_link`, `open_in_claude`) |
 | Fixed pages in the browser | Get Claude, or What leaves your Mac | `claude.ai/download`; `github.com/.../docs/privacy.md` at the installed version's tag (`main` in a dev build) | The constant URL, nothing appended | Not pressing it | `claude_app.rs` (`open_claude_download`, `open_privacy_page`, `privacy_url`) |
 
 Dev-time only, never in the app: `pnpm setup:models` downloads the beat model
@@ -447,11 +449,30 @@ Claude Code runs outside the app, in the Claude desktop app or the person's own
 terminal, under their own account, install and settings. The app holds no API
 key, sends nothing to Anthropic itself and starts no Claude Code, and no shell
 but the updater's administrator install, so no credential passes through it and
-no window can type into a session. A profile forcing `DisableAgentKit` turns off
-everything below: no kit is stamped or healed (`stamp_claude_provisioning` in
-`workspace.rs`), the bridge never serves and the app never creates `_bridge`
-(`bridge_role`, `bridge_root`), and the handoff refuses (`open_in_claude`). A kit
-stamped before the profile stays in its folder, and its kb still runs.
+no window can type into a session.
+
+Everything below is off until a person turns Claude on. One gate
+(`agent_gate.rs`, `deny`) stands in front of all of it: a profile forcing
+`DisableAgentKit` shuts it first, and after that it opens only on a stored
+answer of yes (`claudeConsent` in `settings.json`), given on the first-launch
+ask or in Settings ▸ Claude and changed there at any time. No answer counts as
+off, and so does a dismissed ask. While the gate is shut no kit is stamped or
+healed (`stamp_claude_provisioning` and `heal_project_kit` in `workspace.rs`),
+a pack import keeps no default `CLAUDE.md` (`pack/commands.rs`, `apply_import`),
+the bridge never serves and the app never creates `_bridge` (`bridge_root`,
+`serving`), no heartbeat is written, the handoff and the Claude download page
+refuse (`open_in_claude`, `open_claude_download`), and every Claude entry point
+is hidden. The gate is read live: turning Claude on in a running app draws the
+bridge key and starts the heartbeat without a relaunch, and turning it off
+removes this instance's heartbeat and key within one refresh (`bridge.rs`,
+`apply_gate`). `set_claude_consent` records off whatever it is asked while a
+profile forces `DisableClaude` or `DisableAgentKit`, and each change is one
+`[claude]` line in the log. Settings ▸ Clear all app data forgets the answer,
+so Claude is off until it is asked for again. A kit stamped before Claude was
+turned off, or before a profile, stays in its folder, and its kb still runs:
+the gate governs what the app lays out, not a Claude Code session a person
+starts in a terminal. A debug build takes `KOOKABURRA_CLAUDE=1` as the answer,
+for throwaway-home test runs; a release build never reads it.
 
 - **The `claude://` handoff** (`claude_app.rs`): `open claude://code/new?folder=<project>&q=<prompt>`,
   the prompt capped at the Claude app's limit, opened only when LaunchServices

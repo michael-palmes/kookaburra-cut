@@ -28,7 +28,7 @@ const NO_VERIFY = [
   /^packaging\//,
   // The pack round trip still renders every pack change against the baseline.
   /^src-tauri\/src\/pack\//,
-  /^src-tauri\/src\/(bridge|bridge_export|bridge_health|capture_service|claude_app|cli|cli_check|cli_media|cli_song|edit|edit_masks|export_presets|fuzz_api|global_screenshots|history|kit|library|library_previews|live_edits|packs_win|present|preset_posters|render_win|retired_websites|settings_win|tap_dot_frames\.generated|theme_editor_win|theme_move|updater)\.rs$/,
+  /^src-tauri\/src\/(agent_gate|bridge|bridge_export|bridge_health|capture_service|claude_app|cli|cli_check|cli_media|cli_song|edit|edit_masks|export_presets|fuzz_api|global_screenshots|history|kit|library|library_previews|live_edits|packs_win|present|preset_posters|render_win|retired_websites|settings_win|tap_dot_frames\.generated|theme_editor_win|theme_move|updater)\.rs$/,
 ];
 
 // src/ files the closure can't see but the export path still depends on.

@@ -75,8 +75,12 @@ scripts/
   deleted while the app runs comes back on the next save or reopen, with every rule below
   applied: foreign hooks, permissions, env, commands, agents and skills go; `kit.json` records
   the hashes; declining the trust prompt stamps nothing. Autoruns never stamp, and neither
-  does a Mac whose profile forces `DisableAgentKit` (`docs/mdm.md`): nothing is written,
-  moved or healed, and a kit already in a folder stays as it is.
+  does a Mac whose agent gate is shut (`agent_gate.rs`): a profile forces `DisableAgentKit`
+  (`docs/mdm.md`), or Claude is not turned on, which is how every install starts until a
+  person answers the first-launch ask or the Use Claude switch in Settings ▸ Claude. Nothing
+  is written, moved or healed, and a kit already in a folder stays as it is. Turning Claude
+  on stamps the open project at once (`forgetStampedKits` in `appHeartbeat.ts`) and every
+  other one on its next load.
 - **Edits are never lost silently.** Before a restamp replaces a skill, any file that differs
   from `kit.json`'s record (`files`), or that the record does not list, is copied to
   `.kb/kit-replaced/<stampedAtMs>/<skill>/<rel>` (1 MiB a file, the newest 5 sets) and logged as
@@ -1328,9 +1332,12 @@ release build ignores it. kb reads `KB_BRIDGE_DIR`, then `KOOKABURRA_BRIDGE_DIR`
 Several app instances can run on one machine (the packaged app, a dev build, acceptance
 bundles, autoruns). Each decides once at start whether it serves the bridge, in order:
 
-1. An autorun never serves, and neither does a Mac whose profile forces `DisableAgentKit`,
-   whatever `KOOKABURRA_BRIDGE` says; there `bridge_root` refuses, so the app never creates
-   `_bridge` and writes no heartbeat.
+1. An autorun never serves, and neither does a Mac whose agent gate is shut, whatever
+   `KOOKABURRA_BRIDGE` says: a profile forces `DisableAgentKit`, or Claude is not turned on
+   (`agent_gate.rs`). There `bridge_root` refuses, so the app never creates `_bridge` and
+   writes no heartbeat. A debug build takes `KOOKABURRA_CLAUDE=1` as the person's answer, so
+   a throwaway-home test instance needs it beside `KOOKABURRA_BRIDGE=1`; a release build
+   never reads it.
 2. `KOOKABURRA_BRIDGE=0` turns serving off; `KOOKABURRA_BRIDGE=1` turns it on (any other
    value is ignored with a warning).
 3. An overridden workspace root (`KOOKABURRA_WORKSPACE_ROOT`), a non-production bundle id
@@ -1338,9 +1345,13 @@ bundles, autoruns). Each decides once at start whether it serves the bridge, in 
    (its checkout's `.git` is a file) does not serve.
 4. Everything else serves: the packaged app and a dev build from the main checkout.
 
-The role is decided once in `bridge::init` (pure `bridge_role`) and reported as
-`bridge: { serving, reason }`; `reason` names why a passive instance does not serve, and an
-opted-in one says so. Code: `src-tauri/src/bridge.rs`; `bridge_instance` returns the
+The base role is decided once in `bridge::init` (pure `bridge_role`); the agent gate and
+the key file are read live on top (pure `current_role`), so the role reported as
+`bridge: { serving, reason }` follows a person turning Claude on or off without a relaunch.
+`apply_gate` runs at boot, when the answer changes and on every heartbeat refresh: opening
+the gate draws the key once and writes it, shutting it removes this instance's key and
+both heartbeat files, and a heartbeat is only ever written while the gate is open. `reason`
+names why a passive instance does not serve, and an opted-in one says so. Code: `src-tauri/src/bridge.rs`; `bridge_instance` returns the
 identity, role, effective root and `rootSource` (the app's "not found" errors name it).
 
 - **Heartbeats are per process:** `_bridge/apps/<pid>.json` (the `app.json` body below plus

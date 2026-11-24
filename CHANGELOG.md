@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Claude is off until you turn it on. The app asks once, and Settings ▸ Claude
+  has the switch. While it is off the app writes no agent files into your
+  projects, keeps no bridge folder and shows no Claude buttons. Turning it on
+  works at once, with no relaunch. After updating, turn it on again to keep
+  using Edit with Claude.
+
 ### Removed
 
 - Live websites in a scene. The app no longer opens any web page, so the
@@ -24,6 +32,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - With live websites gone, nothing loads remote content inside the app. What
   leaves your Mac is the update check, its install and Edit with Claude, each
   only when you choose.
+- Nothing is prepared for an AI agent until you turn Claude on. Before this,
+  every project you opened got the agent kit and the app kept a bridge folder,
+  whether or not you used Claude.
 
 ## [0.24.0] - 2026-11-24
 

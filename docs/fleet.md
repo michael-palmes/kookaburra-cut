@@ -1,8 +1,10 @@
 # Kookaburra Cut on managed Macs
 
-Describes version 0.24.0. One change since: live website scenes are removed
+Describes version 0.24.0. Two changes since: live website scenes are removed
 and gone from the next release, so nothing here covers them
 ([mdm.md, "Retired keys"](./mdm.md#retired-keys) for Macs still on 0.24.0).
+And Claude is off until a person turns it on, where on 0.24.0 only
+`DisableAgentKit` keeps it off.
 For the IT and security team deploying Kookaburra Cut to a fleet. The keys themselves, their types and a sample profile are in
 [mdm.md](./mdm.md); the decision-maker's summary is
 [security-overview.md](./security-overview.md); the engineering record with the
@@ -115,13 +117,19 @@ later before relying on them. `AuditLogPath` needs 0.23.0.
 | `DisablePackExport` | `true` where nothing should leave as a pack | Removes Share as pack, and the signing key is never minted in the Keychain. Imports are governed by `AllowedPublisherKeyIds` (`pack/commands.rs`, `pack/key.rs`). |
 | `WorkspaceRoot` | Only to standardise; a local, unsynced path | Projects hold unreleased footage, so keep them out of synced folders. The agent bridge stays in `~/Kookaburra Cut/_bridge` either way (`bridge.rs`). |
 | `DisableAgentKit` | `true` where Claude Code is not approved for this work | Stops everything the app lays out for an agent: no kit stamped into a project, no `_bridge` folder, no handoff, and the Claude entry points go with it (`workspace.rs`, `bridge.rs`). Where Claude Code is approved, leave it unset: the kit is what gives the agent its rules. |
-| `DisableClaude` | Unset where Claude Code is approved; `true` beside `DisableAgentKit` where it is not | Removes the Edit with Claude buttons and the Claude download link, nothing more (`claude_app.rs`). |
+| `DisableClaude` | Unset where Claude Code is approved; `true` beside `DisableAgentKit` where it is not | Removes the Edit with Claude buttons, the Claude download link and the switch that turns Claude on, so Claude can't be turned on from then; a Mac where it was already on keeps its kit and bridge (`claude_app.rs`). |
 | `AuditLogPath` | `/Library/Logs/Kookaburra Cut`, where your collector reads logs | Copies every log line to `<folder>/<login>.log`, 0600 and owned by the person; an unusable folder means no copy and one `[managed]` line, never a failed launch. On a Mac with several accounts, create the folder first ([mdm.md, "A copy for your collector"](./mdm.md#a-copy-for-your-collector)) (`audit_mirror.rs`). |
+
+With no profile at all, Claude is off until the person turns it on, on the
+first-launch ask or in Settings ▸ Claude: until then the app stamps no kit,
+keeps no `_bridge` folder and shows no Claude button (`agent_gate.rs`). That is
+a default a person can change, not a control, so force a key where the answer
+is the organisation's to give.
 
 `DisableClaude` on its own is not recommended, because it removes a button, not
 a capability: anyone can still open the folder in Claude Code from a terminal,
-which skips the app's review sheet, and the kit is still stamped and the
-bridge still runs. Where the decision is "not for this data", force
+which skips the app's review sheet, and on a Mac where Claude was already
+turned on the kit is still stamped and the bridge still runs. Where the decision is "not for this data", force
 `DisableAgentKit` with it and enforce the decision through Claude Code's own
 policy or your application control. Where Claude Code is approved, the kit is
 the control you want in place, and `DisableClaude` would only push people to

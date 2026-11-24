@@ -71,6 +71,11 @@ export function reportLastLoad(report: LastLoadReport): void {
 const stampedThisSession = new Set<string>();
 const healing = new Set<string>();
 
+/** Claude was turned on mid-session: the stamps skipped while it was off are owed again on each project's next load. */
+export function forgetStampedKits(): void {
+  stampedThisSession.clear();
+}
+
 /** Re-stamp the project's Claude Code kit in full once per project per app session (every live reload is a load, and each save would otherwise re-walk the kit), and on every later load restore whatever has gone missing, which costs only a few stats until something has; native, off the main thread, never awaited by the load. A failed stamp retries on the next load. */
 export function stampProjectKit(projectId: string): void {
   if (!isWorkspaceProjectId(projectId)) return;

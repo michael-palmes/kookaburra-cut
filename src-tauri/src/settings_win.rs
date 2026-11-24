@@ -206,6 +206,10 @@ pub async fn clear_app_data(
     bridge::forget_session_grants(&app);
     if let Err(e) = workspace::reset_settings(&app, &state) {
         failed.push(format!("settings: {e}"));
+    } else {
+        crate::agent_gate::note(None);
+        bridge::apply_gate(&app);
+        let _ = app.emit(crate::agent_gate::CHANGED_EVENT, ());
     }
     if let Err(e) = clip_cache::clear(&app) {
         failed.push(format!("clip cache: {e}"));

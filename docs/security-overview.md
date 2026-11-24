@@ -1,9 +1,11 @@
 # Security overview
 
-Describes version 0.24.0. One change since: live website scenes are removed
+Describes version 0.24.0. Two changes since: live website scenes are removed
 and gone from the next release, so this page lists nothing they brought; on
 0.24.0 itself `DisableLiveWebsites` turns them off
-([mdm.md, "Retired keys"](./mdm.md#retired-keys)). For the team deciding
+([mdm.md, "Retired keys"](./mdm.md#retired-keys)). And Claude is off until a
+person turns it on; on 0.24.0 it is on from the first launch, and
+`DisableAgentKit` turns it off. For the team deciding
 whether Kookaburra Cut can run on managed Macs: the security lead, CTO or
 engineering manager. Every line
 links to the file, command or release asset behind it, and anything not done
@@ -50,7 +52,7 @@ Nothing leaves the Mac unless a person starts it
 | --- | --- | --- | --- | --- |
 | Update check | At launch and then hourly while the app is open, at most once every 20 hours, only with the first-run consent on; or Check for Updates by hand | `github.com`, which redirects to `release-assets.githubusercontent.com` | One GET for `latest.json`; no identifiers, no version in the URL | The first-run switch or Settings ▸ Updates; `DisableUpdateCheck` for a fleet, or `UpdateEndpoint` to point it at your own server. `src-tauri/src/updater.rs`, `src/engine/updates.ts` |
 | Update install | Install and relaunch on the update dialog | The host `latest.json` names (GitHub's release assets, or your mirror) | The signed updater archive, checked against the ed25519 key built into the app and bound to the announced version before anything is written | Later; `DisableUpdateCheck`. `updater.rs` (`download_and_install`) |
-| Edit with Claude | Pressing Edit with Claude, with the Claude desktop app installed | The Claude desktop app on this Mac, which talks to Anthropic under the person's own account | The project folder's path and a starter prompt, typed into that app and never sent until the person presses Enter there | Not pressing it; `DisableClaude` removes the buttons, `DisableAgentKit` removes everything the app lays out for an agent. `src-tauri/src/claude_app.rs` |
+| Edit with Claude | Pressing Edit with Claude, once Claude is turned on and with the Claude desktop app installed | The Claude desktop app on this Mac, which talks to Anthropic under the person's own account | The project folder's path and a starter prompt, typed into that app and never sent until the person presses Enter there | Leaving Claude off (it is off until a person turns it on), or not pressing it; `DisableClaude` removes the buttons, `DisableAgentKit` removes everything the app lays out for an agent. `src-tauri/src/agent_gate.rs`, `src-tauri/src/claude_app.rs` |
 
 Two buttons open a fixed page in the default browser: Get Claude
 (`claude.ai/download`) and What leaves your Mac (this repository's
@@ -204,6 +206,9 @@ that tag on GitHub's own runners.
 - **Never starts Claude Code, and never holds an API key.** A session begins in
   the Claude desktop app or the person's own terminal, under their own account
   ([SECURITY.md, "What reaches your agent"](../SECURITY.md#what-reaches-your-agent)).
+- **Nothing for an agent until asked.** Claude is off until a person turns it
+  on: no agent files in a project, no bridge folder and no Claude button
+  before that (`src-tauri/src/agent_gate.rs`).
 - **No shell**, except the updater's administrator install when the app's
   folder is not writable, behind macOS's own password prompt;
   `DisableUpdateCheck` removes it

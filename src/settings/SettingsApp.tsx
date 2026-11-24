@@ -31,8 +31,10 @@ import {
   openPrivacyPage,
   setClaudePreferences,
 } from "../engine/claudeApp";
+import { useClaudeConsent } from "../engine/claudeConsent";
 import {
   claudeLocked,
+  plainError,
   updateChecksLocked,
   updateEndpointUnusable,
   updateServerHost,
@@ -614,6 +616,14 @@ export function SettingsApp() {
   const workspaceLocked = managed?.workspaceRootLocked ?? false;
   const claudeOff = managed !== null && claudeLocked(managed);
   const kitOff = managed?.disableAgentKit ?? false;
+  const claude = useClaudeConsent();
+  const claudeOn = claude.consent === "on";
+  const toggleClaudeConsent = useCallback(
+    (on: boolean) => {
+      claude.set(on).catch((e) => setError(plainError(e)));
+    },
+    [claude.set],
+  );
   const claudeLockDetail = managed?.disableClaude
     ? "A configuration profile turns Claude off (DisableClaude)."
     : "A configuration profile turns the agent kit off, and Claude with it (DisableAgentKit).";
@@ -785,6 +795,35 @@ export function SettingsApp() {
         <h2>Claude</h2>
         <div className="settings-row">
           <div className="settings-row-text">
+            <span
+              className="settings-row-title"
+              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+            >
+              <span className="titlebar-claude-mark">
+                <ClaudeSpark size={13} />
+              </span>
+              Use Claude
+            </span>
+            <span className="muted settings-row-detail">
+              {claudeOff
+                ? "Turned off by your organisation."
+                : "Sends the project you open in Claude to Anthropic, under your own account."}
+            </span>
+          </div>
+          {claudeOff ? (
+            <ManagedLock detail={claudeLockDetail} />
+          ) : (
+            <input
+              type="checkbox"
+              aria-label="Use Claude"
+              checked={claudeOn}
+              disabled={claude.consent === "loading"}
+              onChange={(e) => toggleClaudeConsent(e.target.checked)}
+            />
+          )}
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-text">
             <span className="settings-row-title">Claude app</span>
             <span className="muted settings-row-detail">
               {claudeOff
@@ -834,7 +873,7 @@ export function SettingsApp() {
               type="checkbox"
               aria-label="Show on a new project's first open"
               checked={claudeFirstOpen ?? true}
-              disabled={claudeFirstOpen === null}
+              disabled={claudeFirstOpen === null || !claudeOn}
               onChange={(e) => toggleClaudeFirstOpen(e.target.checked)}
             />
           )}
@@ -851,13 +890,15 @@ export function SettingsApp() {
             <span className="muted settings-row-detail">
               {kitOff
                 ? "Turned off by your organisation: projects get no agent files and the agent bridge stays closed."
-                : "The rules, skills and kb tool each project carries for Claude Code."}
+                : claude.allowed
+                  ? "The rules, skills and kb tool each project carries for Claude Code."
+                  : "Off while Claude is off: projects get no agent files and the agent bridge stays closed."}
             </span>
           </div>
           {kitOff ? (
             <ManagedLock detail="A configuration profile turns the agent kit off (DisableAgentKit)." />
           ) : (
-            <span className="muted">On</span>
+            <span className="muted">{claude.allowed ? "On" : "Off"}</span>
           )}
         </div>
       </section>

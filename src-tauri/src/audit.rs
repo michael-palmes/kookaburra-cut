@@ -167,6 +167,15 @@ pub(crate) fn handoff_line(slug: &str, dir: &Path) -> String {
     )
 }
 
+/// A person answered whether Claude is on; `granted` differs from `asked` when a profile pins it off.
+pub(crate) fn claude_consent_line(asked: bool, granted: bool) -> String {
+    match (asked, granted) {
+        (true, true) => "[claude] turned on: the agent kit, the bridge and Edit with Claude may run".to_owned(),
+        (true, false) => "[claude] turning on was refused by a configuration profile; it stays off".to_owned(),
+        (false, _) => "[claude] turned off: no agent kit, no bridge, no handoff".to_owned(),
+    }
+}
+
 /// A finished video or stills export: `what` is its kind, aspect and format.
 pub(crate) fn export_line(project: &str, what: &str, dest: &Path) -> String {
     format!(

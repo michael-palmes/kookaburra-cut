@@ -2,6 +2,7 @@
 
 #[cfg(test)]
 mod acl;
+mod agent_gate;
 mod asset_meta;
 mod asset_reach;
 mod audit;
@@ -1618,6 +1619,8 @@ macro_rules! kookaburra_handler {
             fonts::list_workspace_fonts,
             fonts::pin_system_font,
             claude_app::claude_app_status,
+            claude_app::set_claude_consent,
+            agent_gate::claude_status,
             claude_app::open_in_claude,
             claude_app::open_project_folder,
             claude_app::open_claude_download,
@@ -1801,6 +1804,7 @@ pub fn run() {
             audit::log_mirror_at_boot(&mirror);
             retired_websites::clear_at_launch(app.handle());
             asset_reach::init(app.handle());
+            agent_gate::load_at_boot(app.handle());
             bridge::init(app.handle());
             bridge::spawn_heartbeat(app.handle().clone());
             export_health::spawn_sampler(app.handle().clone());

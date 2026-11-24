@@ -1,24 +1,32 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ClaudeStatus } from "../engine/claudeConsent";
 import type { ManagedPolicy } from "../engine/managed";
 
+const CLAUDE_ON: ClaudeStatus = { consent: true, allowed: true, reason: null };
+
 let policy: Partial<ManagedPolicy> = {};
+let claude: ClaudeStatus = CLAUDE_ON;
 
 vi.mock("@tauri-apps/api/core", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tauri-apps/api/core")>()),
   invoke: vi.fn(async (cmd: string) => {
+    if (cmd === "claude_status") return claude;
     if (cmd !== "managed_policy") throw new Error(`unexpected command ${cmd}`);
     const { UNMANAGED } = await import("../engine/managed");
     return { ...UNMANAGED, ...policy };
   }),
 }));
 
-/** Settings as a managed Mac first paints it: the policy is read before the window renders. */
-async function render(forced: Partial<ManagedPolicy>): Promise<string> {
+/** Settings as a managed Mac first paints it: the policy and the Claude answer are read before the window renders. */
+async function render(forced: Partial<ManagedPolicy>, answer = CLAUDE_ON): Promise<string> {
   policy = { managed: true, ...forced };
+  claude = answer;
   vi.resetModules();
   const managed = await import("../engine/managed");
   await managed.managedPolicy();
+  const consent = await import("../engine/claudeConsent");
+  await consent.claudeStatus();
   const { SettingsApp } = await import("./SettingsApp");
   return renderToStaticMarkup(<SettingsApp />);
 }
@@ -35,6 +43,7 @@ const LOCK = "Managed by your organisation";
 
 beforeEach(() => {
   policy = {};
+  claude = CLAUDE_ON;
 });
 
 describe("Settings rows a profile governs", () => {
@@ -48,18 +57,36 @@ describe("Settings rows a profile governs", () => {
     expect(html).not.toContain("Live websites");
   });
 
+  it("keeps Claude and the agent kit off until the switch is on", async () => {
+    const unanswered = await render(
+      { managed: false },
+      { consent: null, allowed: false, reason: "Claude is off. Turn it on in Settings ▸ Claude" },
+    );
+    const use = row(unanswered, "Use Claude");
+    expect(use).toContain('type="checkbox"');
+    expect(use).not.toContain("checked");
+    expect(use).toContain("to Anthropic, under your own account");
+    expect(row(unanswered, "Agent kit")).toContain(">Off<");
+    expect(row(unanswered, "Show on a new project&#x27;s first open")).toContain("disabled");
+
+    const on = row(await render({ managed: false }), "Use Claude");
+    expect(on).toContain("checked");
+  });
+
   it("locks the Agent kit row and every Claude row under DisableAgentKit", async () => {
     const html = await render({ disableAgentKit: true, forcedKeys: ["DisableAgentKit"] });
     const kit = row(html, "Agent kit");
     expect(kit).toContain(LOCK);
     expect(kit).toContain("(DisableAgentKit)");
     expect(kit).toContain("<svg");
+    expect(row(html, "Use Claude")).toContain(LOCK);
     expect(row(html, "Claude app")).toContain(LOCK);
     expect(row(html, "Show on a new project&#x27;s first open")).toContain(LOCK);
   });
 
   it("locks the Claude rows but leaves the kit on under DisableClaude alone", async () => {
     const html = await render({ disableClaude: true, forcedKeys: ["DisableClaude"] });
+    expect(row(html, "Use Claude")).toContain("(DisableClaude)");
     expect(row(html, "Claude app")).toContain("(DisableClaude)");
     expect(row(html, "Agent kit")).toContain(">On<");
   });

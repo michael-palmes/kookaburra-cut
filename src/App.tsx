@@ -12,7 +12,12 @@ import {
   useSyncExternalStore,
 } from "react";
 import { formatBytes } from "./engine/appCache";
-import { lastLoadReport, reportLastLoad, stampProjectKit } from "./engine/appHeartbeat";
+import {
+  forgetStampedKits,
+  lastLoadReport,
+  reportLastLoad,
+  stampProjectKit,
+} from "./engine/appHeartbeat";
 import {
   noteAssetWritten,
   observeAssetStamp,
@@ -46,6 +51,7 @@ import {
   queueClaudeLauncherGreeting,
   rearmClaudeLauncherGreeting,
 } from "./engine/claudeApp";
+import { useClaudeConsent } from "./engine/claudeConsent";
 import {
   clipExtractionCount,
   clipExtractionProgress,
@@ -472,9 +478,13 @@ export default function App() {
   const closeClaudeLauncher = useCallback(() => setClaudeLauncher(null), []);
   // What a configuration profile forces; null until read, and every Claude entry point waits for it so nothing managed flashes open.
   const managed = useManagedPolicy();
-  const claudeAllowed = managed !== null && !claudeLocked(managed);
-  // Copy and the start card only: unknown reads as not yet turned off, so an unmanaged welcome never flashes the managed wording.
-  const claudeOffered = managed === null || !claudeLocked(managed);
+  // Claude is off until a person turns it on (agent_gate.rs); every entry point that starts or prepares a session waits for that too.
+  const claude = useClaudeConsent();
+  const claudeAllowed = managed !== null && !claudeLocked(managed) && claude.allowed;
+  // Copy and the start card only: an unread policy reads as not yet turned off, so an unmanaged welcome never flashes the managed wording.
+  const claudeOffered = (managed === null || !claudeLocked(managed)) && claude.allowed;
+  const claudeOffReasonRef = useRef<string | null>(null);
+  claudeOffReasonRef.current = claudeAllowed ? null : claude.reason;
   const claudeAllowedRef = useRef(false);
   claudeAllowedRef.current = claudeAllowed;
   // Read by the load-time greeting without re-running it.
@@ -604,7 +614,9 @@ export default function App() {
     if (isAutoRun) return;
     const unlisten = listen("kookaburra://edit-in-claude", () => {
       // ⌥⌘E only means something with an editable project open; say so elsewhere instead of silently doing nothing.
-      if (view === "editor" && isEditableProjectId(useEditorStore.getState().projectId)) {
+      if (claudeOffReasonRef.current) {
+        setToast({ kind: "error", message: plainError(claudeOffReasonRef.current) });
+      } else if (view === "editor" && isEditableProjectId(useEditorStore.getState().projectId)) {
         toggleClaude();
       } else {
         setToast({ kind: "error", message: "Open an editable project to edit with Claude." });
@@ -2053,10 +2065,21 @@ export default function App() {
   // Greet a new project's first open with the Claude launcher, and close it where it can't work. Keyed on the id: in-memory doc patches swap the project object per edit and must not reopen what the user closed.
   useEffect(() => {
     if (!loadedProjectId || isAutoRun || !managed) return;
-    const editable = isEditableProjectId(loadedProjectId) && !claudeLocked(managed);
+    const editable = isEditableProjectId(loadedProjectId) && claudeAllowed;
     const greet = editable && claimClaudeLauncherGreeting(loadedProjectId);
     setClaudeLauncher(greet && claudeFirstOpenRef.current ? { firstRun: true } : null);
-  }, [loadedProjectId, isAutoRun, managed]);
+  }, [loadedProjectId, isAutoRun, managed, claudeAllowed]);
+
+  // Claude turned on while a project is open: its kit is written now, as a load would have, so a session started from a terminal finds it too.
+  const claudeWasAllowedRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (claude.consent === "loading" || isAutoRun) return;
+    const was = claudeWasAllowedRef.current;
+    claudeWasAllowedRef.current = claude.allowed;
+    if (was !== false || !claude.allowed) return;
+    forgetStampedKits();
+    if (loadedProjectId) stampProjectKit(loadedProjectId);
+  }, [claude.allowed, claude.consent, isAutoRun, loadedProjectId]);
 
   // Terminal scenes bake here, at author time; never during an export or an autorun.
   useEffect(() => {

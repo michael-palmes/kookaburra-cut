@@ -24,6 +24,8 @@ export interface AppSettings {
   updateCheckConsent?: boolean | null;
   /** Unix-ms of the last update check; only persisted while consent is on. */
   lastUpdateCheckMs?: number | null;
+  /** Tri-state answer to "use Claude here?": absent/null = not asked yet, which counts as off (claudeConsent.ts). */
+  claudeConsent?: boolean | null;
   /** Inverted flag so its default (false) means the Claude launcher greets a new project's first open. */
   disableClaudeFirstOpen?: boolean;
   /** Last Present-modal pick per project id + the cross-project default. */
