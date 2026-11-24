@@ -257,7 +257,7 @@ export default defineScene({
 | `AnimatedGroup` | Animate an icon + text lockup as one unit with the text presets |
 | `Device`, `DeviceMockup` (legacy) | Devices (reference/devices.md) |
 | `DeviceScreenAnchor`, `ScreenRegion`, `useDeviceScreenPoint` | Content pinned to a screen, a lifted card or lens of the screen itself, and a moving screen's point for match moves (reference/devices.md) |
-| `ImageCard`, `VideoClip`, `LayeredScreenshot`, `VideoWindow` (legacy) | Media (reference/media.md) |
+| `ImageCard`, `IconTile`, `VideoClip`, `LayeredScreenshot`, `VideoWindow` (legacy) | Media (reference/media.md) |
 | `Chart` | The sidecar chart (reference/charts.md) |
 | `StagedObject`, `HeroObject` | 3D objects |
 | `ParticleField`, `WireGrid`, `Ribbon` | Seeded generative shapes on the clock |
@@ -275,11 +275,14 @@ export default defineScene({
 Generative shapes (all motion from the clock, randomness from `seed`):
 
 - `<ParticleField count={200} seed={1} bounds={[6, 3.5, 2]} size drift twinkle tone="accent" glow />`
+- `<Ripple at={ms} position={[x, y, z]} rotation radius={0.4} width={0.6} height={0.2} crests={2} ior={1.4} durationMs={600} />`: a clear ring of wave that opens from a point and bends what is behind it, for something landing on a screen or a pulse through a card. Put it just off the surface and turn it to face out of it (a screen's `useDeviceScreenPoint` gives both). It refracts what is already drawn behind it, so it shows over a picture and not over a flat colour.
+- `<Slab width={1.8} height={0.5} depth radius={0.5} bevel={0.12} color="text" finish shadow position rotation scale>…</Slab>`: a thick glossy plate, a capsule by default. Its children are drawn on its front face, so a chip is a `Slab` holding an `ImageCard` icon and an `AnimatedHeadline` label; pop it in by animating `scale`.
+- `<DustBurst at={ms} position={[x, floorY, z]} footprint={[width, depth]} count={120} seed={1} reach={1.6} lift={0.2} size={0.3} flatten={0.6} durationMs={800} opacity={0.35} tone="muted" />`: dust where something lands hard. Time `at` to the frame the object meets the floor, give it the object's footprint, and keep it short: a hard impact clears in under a second.
 - `<WireGrid size={12} divisions={24} amplitude wavelength speed tone opacity glow position rotation />`
 - `<Ribbon seed={1} points bounds radius={0.05} from={0} to={1500} tone lit glow />`
 - `glow` (a luminance such as 1.5) makes the shape an exact-colour emitter that a bloom
   threshold above 1 catches (reference/lighting.md, "Real glow").
-- `<ExtrudedText text from to position rotation fontSize depth bevel tone lit textKey />`
+- `<ExtrudedText text from to position rotation fontSize depth bevel finish shadow anchorY tone lit textKey />`
   (rotation in radians; bundled faces only)
 - `<HeroObject model="handset" position rotation scale spinDegPerSec floatAmplitude floatHz lit />`
 

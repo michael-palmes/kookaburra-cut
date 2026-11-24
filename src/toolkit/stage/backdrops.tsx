@@ -115,15 +115,21 @@ export function gradientTexture(spec: GradientSpec): DataTexture {
   const dy = Math.cos(a);
   const extent = 0.5 * (Math.abs(dx) + Math.abs(dy)) || 1;
   const radial = spec.type === "radial";
+  const centre = radial ? spec.centre : undefined;
+  const reach = centre
+    ? Math.hypot(Math.max(centre[0], 1 - centre[0]), Math.max(centre[1], 1 - centre[1])) || 1
+    : RADIAL_EXTENT;
   const size = GRADIENT_SIZE;
   const data = new Uint8Array(size * size * 4);
   for (let yPix = 0; yPix < size; yPix++) {
     const v = yPix / (size - 1); // v=0 at the texture's bottom row (three UV convention)
     for (let xPix = 0; xPix < size; xPix++) {
       const u = xPix / (size - 1);
-      const t = radial
-        ? Math.min(1, Math.hypot(u - 0.5, v - 0.5) / RADIAL_EXTENT)
-        : Math.min(1, Math.max(0, (((u - 0.5) * dx + (v - 0.5) * dy) / extent) * 0.5 + 0.5));
+      const t = centre
+        ? Math.min(1, Math.hypot(u - centre[0], v - centre[1]) / reach)
+        : radial
+          ? Math.min(1, Math.hypot(u - 0.5, v - 0.5) / RADIAL_EXTENT)
+          : Math.min(1, Math.max(0, (((u - 0.5) * dx + (v - 0.5) * dy) / extent) * 0.5 + 0.5));
       let lo = stops[0];
       let hi = stops[stops.length - 1];
       for (let s = 0; s < stops.length - 1; s++) {
@@ -457,6 +463,7 @@ function SatinBackdrop({
       reflection={
         spec.reflection === false ? undefined : { ...SATIN.reflection, ...spec.reflection }
       }
+      shadow={spec.shadow}
       glitter={{ ...SATIN.glitter, ...spec.glitter }}
       pools={spec.pools}
     />

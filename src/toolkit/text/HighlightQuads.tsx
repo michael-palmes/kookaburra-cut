@@ -1,5 +1,5 @@
 import type { StaggerUnits, TextUnitSample } from "./presets";
-import { unitIndexForKey } from "./presets";
+import { staggerKeyAt, unitIndexForKey } from "./presets";
 
 /** Accent block padding beyond the unit's ink extents, em. */
 export const HIGHLIGHT_PAD_X_EM = 0.14;
@@ -23,10 +23,11 @@ export function computeUnitYExtents(
     if (/\s/.test(text[i])) continue;
     const yLo = Math.min(caretPositions[i * 4 + 2], caretPositions[i * 4 + 3]);
     const yHi = Math.max(caretPositions[i * 4 + 2], caretPositions[i * 4 + 3]);
-    const key =
-      units.axis === "-y"
-        ? -(yLo + yHi) / 2
-        : (caretPositions[i * 4] + caretPositions[i * 4 + 1]) / 2;
+    const key = staggerKeyAt(
+      units,
+      (caretPositions[i * 4] + caretPositions[i * 4 + 1]) / 2,
+      (yLo + yHi) / 2,
+    );
     const unit = unitIndexForKey(units, key);
     boxes[unit * 2] = Math.min(boxes[unit * 2], yLo);
     boxes[unit * 2 + 1] = Math.max(boxes[unit * 2 + 1], yHi);

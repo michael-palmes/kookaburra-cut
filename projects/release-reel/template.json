@@ -1,0 +1,46 @@
+{
+  "version": 2,
+  "name": "Release Reel",
+  "tagline": "Every release, cut to the beat: one colour, one word and one screen per new thing.",
+  "category": "update",
+  "tags": ["release", "what's new", "update", "version", "changelog", "music"],
+  "personas": ["pm", "marketer", "developer"],
+  "level": "standard",
+  "tier": "bold",
+  "uses": ["audio", "background", "camera-rig", "device", "multi-device"],
+  "highlights": [
+    "The app icon opens the film and the version number lands beside it on bar 2",
+    "Each feature floods its own colour room on the downbeat",
+    "Six chips cover everything else and fly into the phone, then the call to action on the final hit"
+  ],
+  "bring": [
+    "App icon",
+    "Version number",
+    "Three features: a punch word and a line each",
+    "A recording per feature",
+    "Up to six small changes for And more",
+    "Product name",
+    "A call to action"
+  ],
+  "song": {
+    "title": "Headline",
+    "bpm": 128
+  },
+  "looks": ["kookaburra-colour-studio"],
+  "preview": {
+    "poster": 0,
+    "frames": [
+      { "scene": 11, "atMs": 5600 },
+      { "scene": 0, "atMs": 2600 },
+      { "scene": 3, "atMs": 2600 },
+      { "scene": 13, "atMs": 3400 }
+    ],
+    "loop": {
+      "scene": 11,
+      "atMs": 1400,
+      "durationMs": 6000
+    }
+  },
+  "order": 102,
+  "status": "beta"
+}

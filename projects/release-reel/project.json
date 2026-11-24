@@ -1,0 +1,201 @@
+{
+  "id": "release-reel",
+  "name": "Release Reel",
+  "version": 2,
+  "themeId": "kookaburra-colour-studio",
+  "formats": ["16:9"],
+  "render": {
+    "toneMapping": "neutral",
+    "antialias": "smaa",
+    "supersample": 4,
+    "dither": true,
+    "specularAA": true,
+    "textBlur": "optical"
+  },
+  "audio": {
+    "file": "assets/song.flac",
+    "grid": {
+      "bpm": 128,
+      "offsetMs": 15,
+      "beatsPerBar": 4,
+      "source": {
+        "sha256": "30b9c8b99ecb4d4746d37188ffb119d6cd2375736c59babb491753169f7bf293",
+        "analysisVersion": 3,
+        "tracker": "nn"
+      }
+    },
+    "sections": [
+      {
+        "id": "opening",
+        "label": "Opening",
+        "from": "bar:1",
+        "to": "bar:5"
+      },
+      {
+        "id": "feature-1",
+        "label": "Feature one",
+        "from": "bar:5",
+        "to": "bar:9"
+      },
+      {
+        "id": "feature-2",
+        "label": "Feature two",
+        "from": "bar:9",
+        "to": "bar:13"
+      },
+      {
+        "id": "feature-3",
+        "label": "Feature three",
+        "from": "bar:13",
+        "to": "bar:17"
+      },
+      {
+        "id": "and-more",
+        "label": "And more",
+        "from": "bar:17",
+        "to": "bar:21"
+      },
+      {
+        "id": "all-three",
+        "label": "All three",
+        "from": "bar:21",
+        "to": "bar:23"
+      },
+      {
+        "id": "lockup",
+        "label": "Lockup",
+        "from": "bar:23",
+        "to": "bar:25"
+      }
+    ],
+    "cues": {
+      "slam": "bar:1",
+      "lift": "bar:5",
+      "drop": "bar:9",
+      "step": "bar:17",
+      "final-hit": "bar:24"
+    }
+  },
+  "defaultTransition": null,
+  "scenes": [
+    {
+      "file": "scenes/01-version.tsx",
+      "durationMs": 4703,
+      "cutAt": "bar:3.3",
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 940,
+        "ease": "smooth"
+      },
+      "effects": {
+        "bloom": {
+          "intensity": 0.9,
+          "luminanceThreshold": 1.15,
+          "luminanceSmoothing": 0.5
+        },
+        "lens": {
+          "intensity": 1,
+          "bloom": 0.05,
+          "bloomRadius": 0.9,
+          "glare": 0.02,
+          "glarePoints": 2,
+          "glareThreshold": 1.6
+        }
+      }
+    },
+    {
+      "file": "scenes/02-whats-new.tsx",
+      "durationMs": 3752,
+      "cutAt": "bar:5",
+      "transition": {
+        "type": "luma",
+        "durationMs": 560,
+        "shape": "iris",
+        "center": [0.0, 0.5],
+        "softness": 0.16
+      }
+    },
+    {
+      "file": "scenes/03-word-1.tsx",
+      "durationMs": 2435,
+      "cutAt": "bar:6"
+    },
+    {
+      "file": "scenes/04-proof-1.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:8"
+    },
+    {
+      "file": "scenes/05-detail-1.tsx",
+      "durationMs": 1875,
+      "cutAt": "bar:9",
+      "transition": {
+        "type": "whip",
+        "durationMs": 400
+      }
+    },
+    {
+      "file": "scenes/06-word-2.tsx",
+      "durationMs": 2275,
+      "cutAt": "bar:10"
+    },
+    {
+      "file": "scenes/07-proof-2.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:12"
+    },
+    {
+      "file": "scenes/08-detail-2.tsx",
+      "durationMs": 1875,
+      "cutAt": "bar:13",
+      "transition": {
+        "type": "whip",
+        "durationMs": 400
+      }
+    },
+    {
+      "file": "scenes/09-word-3.tsx",
+      "durationMs": 2275,
+      "cutAt": "bar:14"
+    },
+    {
+      "file": "scenes/10-proof-3.tsx",
+      "durationMs": 3750,
+      "cutAt": "bar:16"
+    },
+    {
+      "file": "scenes/11-detail-3.tsx",
+      "durationMs": 1875,
+      "cutAt": "bar:17",
+      "transition": {
+        "type": "whip",
+        "durationMs": 400
+      }
+    },
+    {
+      "file": "scenes/12-and-more.tsx",
+      "durationMs": 7900,
+      "cutAt": "bar:21",
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 470,
+        "ease": "smooth"
+      }
+    },
+    {
+      "file": "scenes/13-all-three.tsx",
+      "durationMs": 4689,
+      "cutAt": "bar:23.2",
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 700,
+        "ease": "smooth"
+      }
+    },
+    {
+      "file": "scenes/14-lockup.tsx",
+      "durationMs": 3981,
+      "cutAt": "bar:25"
+    }
+  ]
+}

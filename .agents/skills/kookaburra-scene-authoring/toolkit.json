@@ -1712,6 +1712,104 @@
     "signature": "interface DotWindow { open: number; radius?: number; softness?: number; centre?: readonly [number, number]; roundness?: number; ripple?: number; }",
     "doc": "A clearing that opens from a point: the dots there shrink away, the nearest first, leaving a window for a hero number."
   },
+  "DustBurst": {
+    "kind": "component",
+    "summary": "Dust thrown up where something lands hard on a floor: seeded soft puffs that burst out and clear.",
+    "signature": "function DustBurst(props: DustBurstProps): ReactElement;",
+    "doc": "Dust thrown up where something lands hard on a floor: soft puffs that burst outwards from the footprint's edge, rise a little and clear. Every puff is drawn from `createSeededRandom(seed)` and placed as a pure function of `useTimeline()`, so it exports byte for byte the same. Unlit and camera-facing; it shows in a satin floor's reflection.",
+    "props": [
+      {
+        "name": "at",
+        "type": "number",
+        "required": true,
+        "units": "ms",
+        "doc": "The impact, in ms of local scene time."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]",
+        "doc": "Centre of what lands, on the floor."
+      },
+      {
+        "name": "footprint",
+        "type": "[number, number]",
+        "required": false,
+        "default": "[1, 0.5]",
+        "doc": "Width and depth of what lands: the puffs start along its edge."
+      },
+      {
+        "name": "count",
+        "type": "number",
+        "required": false,
+        "default": "120",
+        "doc": "Puff count."
+      },
+      {
+        "name": "seed",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "doc": "RNG seed; same seed, same burst, every run."
+      },
+      {
+        "name": "reach",
+        "type": "number",
+        "required": false,
+        "default": "1.6",
+        "units": "world units",
+        "doc": "How far the puffs travel outwards, in world units."
+      },
+      {
+        "name": "lift",
+        "type": "number",
+        "required": false,
+        "default": "0.2",
+        "doc": "How far they rise."
+      },
+      {
+        "name": "size",
+        "type": "number",
+        "required": false,
+        "default": "0.3",
+        "doc": "A puff's radius at its largest."
+      },
+      {
+        "name": "flatten",
+        "type": "number",
+        "required": false,
+        "default": "0.6",
+        "doc": "A puff's height against its width: under 1 keeps the burst low, a skirt along the floor."
+      },
+      {
+        "name": "durationMs",
+        "type": "number",
+        "required": false,
+        "default": "800",
+        "units": "ms",
+        "doc": "How long the burst takes to clear."
+      },
+      {
+        "name": "opacity",
+        "type": "number",
+        "required": false,
+        "default": "0.35"
+      },
+      {
+        "name": "tone",
+        "type": "\"text\" | \"accent\" | \"muted\"",
+        "required": false,
+        "default": "\"muted\"",
+        "doc": "Theme colour token (unlit)."
+      }
+    ],
+    "example": "<DustBurst at={1} />"
+  },
+  "DustBurstProps": {
+    "kind": "type",
+    "signature": "interface DustBurstProps { at: number; position?: V3; footprint?: [number, number]; count?: number; seed?: number; reach?: number; lift?: number; size?: number; flatten?: number; durationMs?: number; opacity?: number; tone?: \"text\" | \"accent\" | \"muted\"; }"
+  },
   "EASE_NAMES": {
     "kind": "constant",
     "summary": "Every ease name (see kb catalog eases).",
@@ -1726,6 +1824,14 @@
     "kind": "type",
     "signature": "interface EaseOptions { overshoot?: number; }",
     "doc": "Per-call curve options; absent fields keep the table curves exactly."
+  },
+  "ExtrudedBevel": {
+    "kind": "type",
+    "signature": "interface ExtrudedBevel { size?: number; thickness?: number; segments?: number; corner?: number; }"
+  },
+  "ExtrudedFinish": {
+    "kind": "type",
+    "signature": "interface ExtrudedFinish { roughness?: number; metalness?: number; clearcoat?: number; clearcoatRoughness?: number; envIntensity?: number; }"
   },
   "ExtrudedText": {
     "kind": "component",
@@ -1784,10 +1890,31 @@
       },
       {
         "name": "bevel",
-        "type": "boolean",
+        "type": "boolean | ExtrudedBevel",
         "required": false,
         "default": "true",
-        "doc": "Bevelled edges (on by default; bevels are what sell the extrusion under light)."
+        "units": "em",
+        "doc": "Bevelled edges (on by default; bevels are what sell the extrusion under light). An object rounds them: `size` and `thickness` in em (0.015 and 0.02 by default), `segments` (3), and `corner`, an em radius that also rounds each glyph's own sharp corners."
+      },
+      {
+        "name": "finish",
+        "type": "ExtrudedFinish",
+        "required": false,
+        "doc": "The surface. Absent keeps the satin default; any field switches to a clearcoated finish whose gloss shows under area lights and the environment."
+      },
+      {
+        "name": "shadow",
+        "type": "boolean",
+        "required": false,
+        "default": "false",
+        "doc": "Cast and take the stage's shadows."
+      },
+      {
+        "name": "anchorY",
+        "type": "\"middle\" | \"bottom\"",
+        "required": false,
+        "default": "\"middle\"",
+        "doc": "`\"bottom\"` stands the text on its position (its lowest point at y 0) instead of centring it."
       },
       {
         "name": "tone",
@@ -1813,7 +1940,7 @@
   },
   "ExtrudedTextProps": {
     "kind": "type",
-    "signature": "interface ExtrudedTextProps { text: string; from?: number; to?: number; position?: V3; rotation?: V3; fontSize?: number; depth?: number; bevel?: boolean; tone?: \"text\" | \"accent\" | \"muted\"; lit?: boolean; textKey?: string; }"
+    "signature": "interface ExtrudedTextProps { text: string; from?: number; to?: number; position?: V3; rotation?: V3; fontSize?: number; depth?: number; bevel?: boolean | ExtrudedBevel; finish?: ExtrudedFinish; shadow?: boolean; anchorY?: \"middle\" | \"bottom\"; tone?: \"text\" | \"accent\" | \"muted\"; lit?: boolean; textKey?: string; }"
   },
   "FALLBACK_DEVICE_ID": {
     "kind": "constant",
@@ -2002,6 +2129,82 @@
   "HeroObjectProps": {
     "kind": "type",
     "signature": "interface HeroObjectProps { model: HeroModelName; position?: V3; rotation?: V3; scale?: number; spinDegPerSec?: number; floatAmplitude?: number; floatHz?: number; lit?: boolean; }"
+  },
+  "IconTile": {
+    "kind": "component",
+    "summary": "An app icon as a thick, glossy, lit tile that stands on a stage.",
+    "signature": "function IconTile(props: IconTileProps): ReactElement | null;",
+    "doc": "An app icon as a thick, lit tile that stands on a stage: unlike the flat `ImageCard` it has depth, rounded edges and a glossy surface, shows in a floor's reflection and can cast a shadow.",
+    "props": [
+      {
+        "name": "src",
+        "type": "string",
+        "required": true,
+        "doc": "Project-relative image path (e.g. `assets/app-icon.png`)."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]"
+      },
+      {
+        "name": "rotation",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]",
+        "units": "radians",
+        "doc": "Rotation in radians."
+      },
+      {
+        "name": "size",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "units": "world units",
+        "doc": "World-unit width and height of the tile's face."
+      },
+      {
+        "name": "depth",
+        "type": "number",
+        "required": false,
+        "default": "size * 0.28",
+        "units": "world units",
+        "doc": "World-unit thickness. Defaults to `size * 0.28`."
+      },
+      {
+        "name": "radius",
+        "type": "number",
+        "required": false,
+        "default": "0.225",
+        "doc": "Corner radius as a fraction of `size` (0.225, an app icon's corner)."
+      },
+      {
+        "name": "bevel",
+        "type": "number",
+        "required": false,
+        "default": "0.035",
+        "doc": "Edge rounding as a fraction of `size` (0.035)."
+      },
+      {
+        "name": "finish",
+        "type": "ExtrudedFinish",
+        "required": false,
+        "doc": "The surface (clearcoated by default, so it takes gloss from area lights and the environment)."
+      },
+      {
+        "name": "shadow",
+        "type": "boolean",
+        "required": false,
+        "default": "false",
+        "doc": "Cast and take the stage's shadows."
+      }
+    ],
+    "example": "<IconTile src=\"...\" />"
+  },
+  "IconTileProps": {
+    "kind": "type",
+    "signature": "interface IconTileProps { src: string; position?: V3; rotation?: V3; size?: number; depth?: number; radius?: number; bevel?: number; finish?: ExtrudedFinish; shadow?: boolean; }"
   },
   "ImageCard": {
     "kind": "component",
@@ -2294,6 +2497,14 @@
         "default": "1"
       },
       {
+        "name": "fillOpacity",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "units": "0..1",
+        "doc": "How solid the fill is under the border, 0..1 (default 1): 0 with a `strokeWidth` leaves an outline. Flat fills only."
+      },
+      {
         "name": "strokeWidth",
         "type": "number",
         "required": false,
@@ -2351,7 +2562,7 @@
   },
   "PillProps": {
     "kind": "type",
-    "signature": "interface PillProps { width: number; height: number; color?: string; opacity?: number; strokeWidth?: number; strokeColor?: string; fill?: FluidFill | boolean; position?: V3; rotation?: V3; scale?: number | V3; renderOrder?: number; holdFocus?: boolean; }"
+    "signature": "interface PillProps { width: number; height: number; color?: string; opacity?: number; fillOpacity?: number; strokeWidth?: number; strokeColor?: string; fill?: FluidFill | boolean; position?: V3; rotation?: V3; scale?: number | V3; renderOrder?: number; holdFocus?: boolean; }"
   },
   "PlacedObjectProps": {
     "kind": "type",
@@ -2563,6 +2774,84 @@
     "kind": "type",
     "signature": "interface RibbonProps { seed?: number; points?: number; bounds?: V3; radius?: number; from?: number; to?: number; tone?: \"text\" | \"accent\" | \"muted\"; lit?: boolean; glow?: number; position?: V3; rotation?: V3; }"
   },
+  "Ripple": {
+    "kind": "component",
+    "summary": "A clear ring of wave that opens across a surface and bends what is behind it, like a drop on water.",
+    "signature": "function Ripple(props: RippleProps): ReactElement;",
+    "doc": "A ripple crossing a surface: a ring of clear, glossy wave that opens from a point and bends what is behind it, like a drop landing on water or a pulse through glass. Place it just off the surface (a screen, a floor, a card) and turn it to face out of it. It refracts what the frame has already drawn, so it reads over a picture or a screen and shows nothing over a flat colour. Pure function of `useTimeline()`.",
+    "props": [
+      {
+        "name": "at",
+        "type": "number",
+        "required": true,
+        "units": "ms",
+        "doc": "When the ripple starts, in ms of local scene time."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]",
+        "doc": "Centre of the ripple, on the surface it crosses."
+      },
+      {
+        "name": "rotation",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]",
+        "units": "radians",
+        "doc": "Rotation in radians; the ripple spreads in its own XY plane and faces +z."
+      },
+      {
+        "name": "radius",
+        "type": "number",
+        "required": false,
+        "default": "0.4",
+        "units": "world units",
+        "doc": "World-unit radius the ring reaches."
+      },
+      {
+        "name": "width",
+        "type": "number",
+        "required": false,
+        "default": "0.6",
+        "doc": "The ring's width as a fraction of its radius."
+      },
+      {
+        "name": "height",
+        "type": "number",
+        "required": false,
+        "default": "0.2",
+        "doc": "How tall the wave stands against its width: the strength of the bend."
+      },
+      {
+        "name": "crests",
+        "type": "number",
+        "required": false,
+        "default": "2",
+        "doc": "Crests across the ring's width: 1 is a single swell, 2 a wave with a trailing ring."
+      },
+      {
+        "name": "ior",
+        "type": "number",
+        "required": false,
+        "default": "1.4",
+        "doc": "Index of refraction: 1.33 is water, 1.5 glass."
+      },
+      {
+        "name": "durationMs",
+        "type": "number",
+        "required": false,
+        "default": "600",
+        "units": "ms"
+      }
+    ],
+    "example": "<Ripple at={1} />"
+  },
+  "RippleProps": {
+    "kind": "type",
+    "signature": "interface RippleProps { at: number; position?: V3; rotation?: V3; radius?: number; width?: number; height?: number; crests?: number; ior?: number; durationMs?: number; }"
+  },
   "Room": {
     "kind": "component",
     "summary": "Camera-locked room: colour fills the frame behind all content, flood? grows over it. The sidecar room block draws its own.",
@@ -2669,6 +2958,14 @@
         "type": "number",
         "required": false,
         "default": "1"
+      },
+      {
+        "name": "fillOpacity",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "units": "0..1",
+        "doc": "How solid the fill is under the border, 0..1 (default 1): 0 with a `strokeWidth` leaves an outline. Flat fills only."
       },
       {
         "name": "strokeWidth",
@@ -3081,6 +3378,101 @@
     "kind": "type",
     "signature": "interface SharedTransform { position: [number, number, number]; rotation: [number, number, number]; scale: number; opacity: number; }",
     "doc": "A fully-resolved morph transform for one frame."
+  },
+  "Slab": {
+    "kind": "component",
+    "summary": "A thick, glossy plate with rounded edges (a chip, badge or key) that carries a label or icon on its face.",
+    "signature": "function Slab(props: SlabProps): ReactElement;",
+    "doc": "A thick, lit plate with rounded edges: a chip, a badge or a key standing in a scene, with whatever it carries (a label, an icon) drawn on its front face. It reflects in a satin floor and can cast a shadow.",
+    "props": [
+      {
+        "name": "width",
+        "type": "number",
+        "required": false,
+        "default": "1",
+        "units": "world units",
+        "doc": "World-unit width and height of the face."
+      },
+      {
+        "name": "height",
+        "type": "number",
+        "required": false,
+        "default": "0.4"
+      },
+      {
+        "name": "depth",
+        "type": "number",
+        "required": false,
+        "default": "half the smaller side",
+        "units": "world units",
+        "doc": "World-unit thickness. Defaults to half the smaller side."
+      },
+      {
+        "name": "radius",
+        "type": "number",
+        "required": false,
+        "default": "0.5",
+        "doc": "Corner radius as a fraction of the smaller side: 0.5 (the default) makes a capsule."
+      },
+      {
+        "name": "bevel",
+        "type": "number",
+        "required": false,
+        "default": "0.12",
+        "doc": "Edge rounding as a fraction of the smaller side (0.12); towards 0.45 with a depth near the height it becomes a fully round pill."
+      },
+      {
+        "name": "color",
+        "type": "string",
+        "required": false,
+        "default": "\"text\"",
+        "doc": "A theme colour token (`text`, `muted`, `accent`) or a hex colour."
+      },
+      {
+        "name": "finish",
+        "type": "ExtrudedFinish",
+        "required": false,
+        "doc": "The surface (clearcoated by default, so it takes gloss from lights and the environment)."
+      },
+      {
+        "name": "shadow",
+        "type": "boolean",
+        "required": false,
+        "default": "false",
+        "doc": "Cast and take the stage's shadows."
+      },
+      {
+        "name": "position",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]"
+      },
+      {
+        "name": "rotation",
+        "type": "V3",
+        "required": false,
+        "default": "[0, 0, 0]",
+        "units": "radians",
+        "doc": "Rotation in radians."
+      },
+      {
+        "name": "scale",
+        "type": "number",
+        "required": false,
+        "default": "1"
+      },
+      {
+        "name": "children",
+        "type": "ReactNode",
+        "required": false,
+        "doc": "Drawn on the front face: a label, an icon."
+      }
+    ],
+    "example": "<Slab />"
+  },
+  "SlabProps": {
+    "kind": "type",
+    "signature": "interface SlabProps { width?: number; height?: number; depth?: number; radius?: number; bevel?: number; color?: string; finish?: ExtrudedFinish; shadow?: boolean; position?: V3; rotation?: V3; scale?: number; children?: ReactNode; }"
   },
   "SplitField": {
     "kind": "component",

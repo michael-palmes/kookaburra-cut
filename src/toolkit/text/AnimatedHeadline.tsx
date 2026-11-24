@@ -105,6 +105,7 @@ import {
   type ScatterSampleContext,
   type StaggerUnits,
   sampleTextUnit,
+  staggerKeyAt,
   type TextAnimTiming,
   type TextDelivery,
   type TextDirection,
@@ -1285,6 +1286,7 @@ function StaggeredHeadline(
   const lookOffsetPrint = lookName === "offset-print";
   const lookHighlight = lookName === "highlight-block";
   const axis = granularity === "paragraph" || granularity === "paragraph-group" ? "-y" : "x";
+  const lines = axis === "x" && !blockUnit && (props.maxWidth !== undefined || text.includes("\n"));
   // frosted rides the pack fields (weight/soft re-threshold), so it forces the pack sandwich.
   const pack =
     presetNeedsShaderPath(anim.preset) || presetNeedsShaderPath(anim.outPreset) || lookFrosted;
@@ -1314,6 +1316,7 @@ function StaggeredHeadline(
         shine: shining,
         shineTint: glinting || lookFrosted,
         axis,
+        lines,
         twist: twisting,
         scatter: scattering,
         pack,
@@ -1327,6 +1330,7 @@ function StaggeredHeadline(
       shining,
       glinting,
       axis,
+      lines,
       twisting,
       scattering,
       pack,
@@ -1345,6 +1349,7 @@ function StaggeredHeadline(
         ? ([
             createStaggerTextMaterial({
               axis,
+              lines,
               echo: 1,
               gradient: lookGradient,
               arc: lookArc,
@@ -1354,6 +1359,7 @@ function StaggeredHeadline(
             }),
             createStaggerTextMaterial({
               axis,
+              lines,
               echo: -1,
               gradient: lookGradient,
               arc: lookArc,
@@ -1363,7 +1369,7 @@ function StaggeredHeadline(
             }),
           ] as const)
         : null,
-    [chroming, axis, lookGradient, lookArc, exact, emph, typing],
+    [chroming, axis, lines, lookGradient, lookArc, exact, emph, typing],
   );
   useEffect(() => {
     if (!echoHolders) return;
@@ -1377,6 +1383,7 @@ function StaggeredHeadline(
       lookOffsetPrint
         ? createStaggerTextMaterial({
             axis,
+            lines,
             twist: twisting,
             scatter: scattering,
             pack,
@@ -1385,7 +1392,7 @@ function StaggeredHeadline(
             typeMask: typing,
           })
         : null,
-    [lookOffsetPrint, axis, twisting, scattering, pack, exact, emph, typing],
+    [lookOffsetPrint, axis, lines, twisting, scattering, pack, exact, emph, typing],
   );
   useEffect(() => () => offsetHolder?.dispose(), [offsetHolder]);
   const accent = theme.colors.accent;
@@ -1599,10 +1606,11 @@ function StaggeredHeadline(
   if (lookHighlight && lookWordUnits) {
     lookHighlightSamples = [];
     for (let i = 0; i < lookWordUnits.count; i++) {
-      const key =
-        axis === "-y"
-          ? -lookWordUnits.centerY[i]
-          : (lookWordUnits.startX[i] + lookWordUnits.endX[i]) / 2;
+      const key = staggerKeyAt(
+        units,
+        (lookWordUnits.startX[i] + lookWordUnits.endX[i]) / 2,
+        lookWordUnits.centerY[i],
+      );
       const unit = unitIndexForKey(units, key);
       const base = samples[Math.min(unit, samples.length - 1)];
       lookHighlightSamples.push({ ...base, highlight: [0, 1] });
@@ -1616,7 +1624,7 @@ function StaggeredHeadline(
     for (const cluster of prepared.clusters) {
       const q = caretQuad(carets, cluster.codeUnitIndex);
       if (!q) continue;
-      const unit = unitIndexForKey(units, axis === "-y" ? -q.y : q.x);
+      const unit = unitIndexForKey(units, staggerKeyAt(units, q.x, q.y));
       const sample = samples[Math.min(unit, samples.length - 1)];
       let coverage = 1;
       if (units && unit < units.count && (sample.sweep[0] > 0 || sample.sweep[1] < 1)) {
@@ -1756,12 +1764,12 @@ function StaggeredHeadline(
               setUnitBoxes(new Float32Array([b[1], b[3]]));
             }
           } else if (caretPositions) {
-            const next = computeStaggerUnits(text, granularity, caretPositions);
+            const next = computeStaggerUnits(text, granularity, caretPositions, lines);
             setUnits(next);
             if (pack) setUnitBoxes(computeUnitYExtents(next, text, caretPositions));
           }
           if (lookHighlight && caretPositions) {
-            const words = computeStaggerUnits(text, "word", caretPositions);
+            const words = computeStaggerUnits(text, "word", caretPositions, lines);
             setLookWordUnits(words);
             setLookWordBoxes(computeUnitYExtents(words, text, caretPositions));
           }

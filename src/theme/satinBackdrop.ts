@@ -70,10 +70,27 @@ export function parseSatinBackdrop(
       blur: [0, 200],
       heightBlur: [0.01, 20],
       contact: [0, 1],
+      stretch: [1, 8],
+      scatter: [0, 40],
+      reach: [0.05, 40],
     });
     out.reflection = reflection;
   } else if (v.reflection !== undefined) {
     parseWarn(`[theme] ${source}: satin "reflection" must be false or an object, dropped`);
+  }
+  if (isRecord(v.shadow)) {
+    const shadow: NonNullable<SatinBackdropSpec["shadow"]> = {};
+    numbers(shadow, v.shadow, {
+      spread: [0, 1],
+      lighten: [0, 1],
+      reach: [0.1, 40],
+      contact: [0, 1],
+      occlusion: [0, 1],
+      occlusionReach: [0.01, 4],
+    });
+    out.shadow = shadow;
+  } else if (v.shadow !== undefined) {
+    parseWarn(`[theme] ${source}: satin "shadow" isn't an object, dropped`);
   }
   if (isRecord(v.glitter)) {
     const glitter: NonNullable<SatinBackdropSpec["glitter"]> = {};

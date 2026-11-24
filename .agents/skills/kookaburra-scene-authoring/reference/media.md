@@ -203,6 +203,11 @@ See reference/backgrounds.md.
 
 ## TSX media primitives
 
+- `<IconTile src="assets/app-icon.png" size={0.9} depth position rotation radius bevel finish shadow />`:
+  the icon as a thick, glossy, lit tile for a staged scene. Its rim and sides take the image's
+  edge colour, it shows in a `satin` floor's reflection and `shadow` lets it cast one. Stand
+  it on the floor with `position` y at the floor plus half its `size`. Use `ImageCard` for a
+  flat, colour-exact icon.
 - `<ImageCard src="assets/logo.png" width={1.2} maxHeight position from to opacity outAt outDurationMs tint />`:
   flat, colour-exact plane; PNG alpha shapes it; optional linear fade window. `opacity`
   multiplies in, `outAt` fades it out over `outDurationMs` (default the fade-in's length,

@@ -129,6 +129,11 @@ line, on a line that holds still while the pill draws.
     scale each pops by (default 0.08 over 180 ms; 0 turns it off).
 - `ExtrudedText`: lit 3D text, bundled families only, one weight each (Inter Tight's is
   800), no emoji. For 3D-looking type in any font, use `depth` on `AnimatedHeadline`.
+  For soft, glossy letters that stand on a stage floor:
+  `bevel={{ size: 0.05, thickness: 0.06, segments: 10, corner: 0.07 }}` (em; `corner` rounds
+  each glyph's own sharp corners), `finish={{ roughness: 0.14, clearcoat: 1 }}`, `shadow`,
+  and `anchorY="bottom"` so its lowest point sits on `position`. Gloss needs something
+  to reflect: `area` lights beside and above it (reference/lighting.md).
 - `ManagedTextStack`: the generic managed renderer the host mounts; rarely mounted by hand.
 - `PromptBar text textKey from to position width height fontSize face send caret`: a
   chat prompt bar (theme tokens only). The text types in one keystroke at a time from
@@ -237,7 +242,12 @@ across a `\n` or a wrap; `single` comes apart (`rise-mask`, `word-cycle`,
 `underline-draw`, `build`). `fade-up` is two-line as a block and `wordStaggerLines:
 "single"` with `stagger="word"`: a rise by word catches a wrapped line's words at
 different heights. `kb check` warns when a single-line motion meets copy with a `\n`, or
-a `maxWidth` that can wrap it (`fit="width"` removes the wrap).
+a `maxWidth` that can wrap it (`fit="width"` removes the wrap). A word or char stagger
+runs in reading order across a wrap: line one's words, then line two's.
+
+For a sentence, `slam` and the other big-scale motions pile up: every word is in the
+air at once. Use `dolly` with a word stagger near a sixteenth note and an in window of
+about four of them (`to`), so each word settles as the next arrives.
 
 ### Landing on a moment
 

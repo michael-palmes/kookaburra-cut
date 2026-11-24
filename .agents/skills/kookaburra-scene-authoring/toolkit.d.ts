@@ -854,6 +854,35 @@ declare module "@kookaburra/toolkit" {
     ripple?: number;
   }
 
+  /** Dust thrown up where something lands hard on a floor: soft puffs that burst outwards from the footprint's edge, rise a little and clear. Every puff is drawn from `createSeededRandom(seed)` and placed as a pure function of `useTimeline()`, so it exports byte for byte the same. Unlit and camera-facing; it shows in a satin floor's reflection. */
+  export function DustBurst(props: DustBurstProps): ReactElement;
+
+  export interface DustBurstProps {
+    /** The impact, in ms of local scene time. */
+    at: number;
+    /** Centre of what lands, on the floor. */
+    position?: V3;
+    /** Width and depth of what lands: the puffs start along its edge. */
+    footprint?: [number, number];
+    /** Puff count. */
+    count?: number;
+    /** RNG seed; same seed, same burst, every run. */
+    seed?: number;
+    /** How far the puffs travel outwards, in world units. */
+    reach?: number;
+    /** How far they rise. */
+    lift?: number;
+    /** A puff's radius at its largest. */
+    size?: number;
+    /** A puff's height against its width: under 1 keeps the burst low, a skirt along the floor. */
+    flatten?: number;
+    /** How long the burst takes to clear. */
+    durationMs?: number;
+    opacity?: number;
+    /** Theme colour token (unlit). */
+    tone?: "text" | "accent" | "muted";
+  }
+
   /** Every valid ease name (stable order: linear, jump, then in/out/inOut per family). */
   export const EASE_NAMES: readonly EaseName[];
 
@@ -863,6 +892,22 @@ declare module "@kookaburra/toolkit" {
   export interface EaseOptions {
     /** Back-family overshoot (Penner's `s`, default 1.70158); inOutBack scales it by 1.525. Other eases ignore it. */
     overshoot?: number;
+  }
+
+  export interface ExtrudedBevel {
+    size?: number;
+    thickness?: number;
+    segments?: number;
+    corner?: number;
+  }
+
+  export interface ExtrudedFinish {
+    roughness?: number;
+    metalness?: number;
+    clearcoat?: number;
+    clearcoatRoughness?: number;
+    /** How strongly the surface reflects the scene's environment (1). */
+    envIntensity?: number;
   }
 
   /** Extruded 3D text: real depth + bevels via FontLoader/TextGeometry, unlike the flat troika SDF of `AnimatedHeadline`; geometry is a pure function of props + the bundled typeface (parsed synchronously from JSON, see `fonts.ts`), and the reveal (rise + tilt settle) is a pure function of `useTimeline()`, never the wall clock. It animates transforms only, no transparency, so mid-reveal frames never show internal faces. With a `textKey` it joins the managed-text lifecycle, so it stands down under a generic takeover like every scene-owned text primitive. */
@@ -880,8 +925,14 @@ declare module "@kookaburra/toolkit" {
     fontSize?: number;
     /** Extrusion depth in world units. Defaults to `fontSize * 0.25`. */
     depth?: number;
-    /** Bevelled edges (on by default; bevels are what sell the extrusion under light). */
-    bevel?: boolean;
+    /** Bevelled edges (on by default; bevels are what sell the extrusion under light). An object rounds them: `size` and `thickness` in em (0.015 and 0.02 by default), `segments` (3), and `corner`, an em radius that also rounds each glyph's own sharp corners. */
+    bevel?: boolean | ExtrudedBevel;
+    /** The surface. Absent keeps the satin default; any field switches to a clearcoated finish whose gloss shows under area lights and the environment. */
+    finish?: ExtrudedFinish;
+    /** Cast and take the stage's shadows. */
+    shadow?: boolean;
+    /** `"bottom"` stands the text on its position (its lowest point at y 0) instead of centring it. */
+    anchorY?: "middle" | "bottom";
     /** Theme colour token for the material. */
     tone?: "text" | "accent" | "muted";
     /** Bundle a self-contained light rig (DeviceMockup pattern). Turn off when the scene lights itself or stacks several lit primitives (rigs add up). */
@@ -1024,6 +1075,29 @@ declare module "@kookaburra/toolkit" {
     lit?: boolean;
   }
 
+  /** An app icon as a thick, lit tile that stands on a stage: unlike the flat `ImageCard` it has depth, rounded edges and a glossy surface, shows in a floor's reflection and can cast a shadow. */
+  export function IconTile(props: IconTileProps): ReactElement | null;
+
+  export interface IconTileProps {
+    /** Project-relative image path (e.g. `assets/app-icon.png`). */
+    src: string;
+    position?: V3;
+    /** Rotation in radians. */
+    rotation?: V3;
+    /** World-unit width and height of the tile's face. */
+    size?: number;
+    /** World-unit thickness. Defaults to `size * 0.28`. */
+    depth?: number;
+    /** Corner radius as a fraction of `size` (0.225, an app icon's corner). */
+    radius?: number;
+    /** Edge rounding as a fraction of `size` (0.035). */
+    bevel?: number;
+    /** The surface (clearcoated by default, so it takes gloss from area lights and the environment). */
+    finish?: ExtrudedFinish;
+    /** Cast and take the stage's shadows. */
+    shadow?: boolean;
+  }
+
   /** A flat image plane for icons, logos and stills: renders UNLIT with `toneMapped: false` so the asset's pixels land exactly (the device-screen/backdrop precedent), respecting PNG alpha so rounded/irregular shapes come from the asset itself; the suspense texture load is settled by the export preamble before frame 0. */
   export function ImageCard(props: ImageCardProps): ReactElement | null;
 
@@ -1155,6 +1229,8 @@ declare module "@kookaburra/toolkit" {
     /** Fill colour (a theme token hex); defaults to the theme accent. */
     color?: string;
     opacity?: number;
+    /** How solid the fill is under the border, 0..1 (default 1): 0 with a `strokeWidth` leaves an outline. Flat fills only. */
+    fillOpacity?: number;
     /** Border ring width in world units, drawn just inside the edge; 0 or absent draws none. */
     strokeWidth?: number;
     /** Border colour; defaults to the theme text colour. */
@@ -1271,6 +1347,29 @@ declare module "@kookaburra/toolkit" {
     glow?: number;
     position?: V3;
     rotation?: V3;
+  }
+
+  /** A ripple crossing a surface: a ring of clear, glossy wave that opens from a point and bends what is behind it, like a drop landing on water or a pulse through glass. Place it just off the surface (a screen, a floor, a card) and turn it to face out of it. It refracts what the frame has already drawn, so it reads over a picture or a screen and shows nothing over a flat colour. Pure function of `useTimeline()`. */
+  export function Ripple(props: RippleProps): ReactElement;
+
+  export interface RippleProps {
+    /** When the ripple starts, in ms of local scene time. */
+    at: number;
+    /** Centre of the ripple, on the surface it crosses. */
+    position?: V3;
+    /** Rotation in radians; the ripple spreads in its own XY plane and faces +z. */
+    rotation?: V3;
+    /** World-unit radius the ring reaches. */
+    radius?: number;
+    /** The ring's width as a fraction of its radius. */
+    width?: number;
+    /** How tall the wave stands against its width: the strength of the bend. */
+    height?: number;
+    /** Crests across the ring's width: 1 is a single swell, 2 a wave with a trailing ring. */
+    crests?: number;
+    /** Index of refraction: 1.33 is water, 1.5 glass. */
+    ior?: number;
+    durationMs?: number;
   }
 
   /** A camera-locked room: a frame-filling colour behind all content plus an optional flood. Both meshes stay mounted, so a room changing never mounts or compiles anything mid-run. */
@@ -1608,6 +1707,33 @@ declare module "@kookaburra/toolkit" {
     rotation: [number, number, number];
     scale: number;
     opacity: number;
+  }
+
+  /** A thick, lit plate with rounded edges: a chip, a badge or a key standing in a scene, with whatever it carries (a label, an icon) drawn on its front face. It reflects in a satin floor and can cast a shadow. */
+  export function Slab(props: SlabProps): ReactElement;
+
+  export interface SlabProps {
+    /** World-unit width and height of the face. */
+    width?: number;
+    height?: number;
+    /** World-unit thickness. Defaults to half the smaller side. */
+    depth?: number;
+    /** Corner radius as a fraction of the smaller side: 0.5 (the default) makes a capsule. */
+    radius?: number;
+    /** Edge rounding as a fraction of the smaller side (0.12); towards 0.45 with a depth near the height it becomes a fully round pill. */
+    bevel?: number;
+    /** A theme colour token (`text`, `muted`, `accent`) or a hex colour. */
+    color?: string;
+    /** The surface (clearcoated by default, so it takes gloss from lights and the environment). */
+    finish?: ExtrudedFinish;
+    /** Cast and take the stage's shadows. */
+    shadow?: boolean;
+    position?: V3;
+    /** Rotation in radians. */
+    rotation?: V3;
+    scale?: number;
+    /** Drawn on the front face: a label, an icon. */
+    children?: ReactNode;
   }
 
   /** A frame split into tiles (project images, videos or theme colours) with a staggered reveal; the grid reflows per aspect unless `columns` fixes it. Without `tiles` it draws the sidecar `mosaic` block, and mounting it stands the host fallback down. */
@@ -2534,6 +2660,15 @@ declare module "@kookaburra/toolkit" {
     tints: Float32Array;
   }
 
+  interface DustShape {
+    footprint: [number, number];
+    reach: number;
+    lift: number;
+    size: number;
+    flatten: number;
+    durationMs: number;
+  }
+
   /** The easing families exposed to the UI/scene documents (each as in / out / inOut). */
   const EASE_FAMILIES: readonly ["Sine", "Quad", "Cubic", "Quart", "Quint", "Expo", "Circ", "Back"];
 
@@ -2797,6 +2932,8 @@ declare module "@kookaburra/toolkit" {
   interface GradientSpec {
     type: "linear" | "radial";
     angleDeg: number;
+    /** Radial only: where it starts, [x, y] from the bottom left, 0..1; it then runs to the farthest corner. Absent is the middle. */
+    centre?: [number, number];
     /** Ordered [sRGB hex, position 0..1] pairs. */
     stops: [string, number][];
     space?: "oklch";
@@ -3277,7 +3414,29 @@ declare module "@kookaburra/toolkit" {
     /** The floor dissolves into the layers behind it between these radii. */
     fade?: [number, number];
     /** `false` turns the reflection off. `blur` is in pixels of a 1080p frame; `heightBlur` is the height over which a reflection goes from sharp to fully blurred; `contact` is the blur kept even at the contact. */
-    reflection?: false | { strength?: number; blur?: number; heightBlur?: number; contact?: number };
+    reflection?:
+      | false
+      | {
+          strength?: number;
+          blur?: number;
+          heightBlur?: number;
+          contact?: number;
+          /** How much longer the blur runs down the frame than across it. */
+          stretch?: number;
+          /** The grain breaks the reflection up by this many pixels of a 1080p frame. */
+          scatter?: number;
+          /** Height at which a reflection has faded out. */
+          reach?: number;
+        };
+    /** A directional light's shadow on the floor: `spread` widens its edge with distance from the caster, `lighten` is the share lost by `reach`, `contact` darkens where something meets the floor, and `occlusion` is the share of the reflection lost there, fading over `occlusionReach` of what is reflected (both need the reflection). */
+    shadow?: {
+      spread?: number;
+      lighten?: number;
+      reach?: number;
+      contact?: number;
+      occlusion?: number;
+      occlusionReach?: number;
+    };
     /** Glossy flakes: `scale` flakes per unit, `density` the share that is flake, `grain` how much the sheen varies grain to grain. */
     glitter?: {
       scale?: number;

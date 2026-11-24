@@ -29,6 +29,8 @@ export interface PillProps {
   /** Fill colour (a theme token hex); defaults to the theme accent. */
   color?: string;
   opacity?: number;
+  /** How solid the fill is under the border, 0..1 (default 1): 0 with a `strokeWidth` leaves an outline. Flat fills only. */
+  fillOpacity?: number;
   /** Border ring width in world units, drawn just inside the edge; 0 or absent draws none. */
   strokeWidth?: number;
   /** Border colour; defaults to the theme text colour. */
@@ -57,6 +59,7 @@ interface RectUniforms {
   uOpacity: { value: number };
   uStrokeColor: { value: Color };
   uStrokeWidth: { value: number };
+  uFillOpacity: { value: number };
 }
 
 const VERTEX = /* glsl */ `
@@ -76,6 +79,7 @@ uniform vec3 uColor;
 uniform float uOpacity;
 uniform vec3 uStrokeColor;
 uniform float uStrokeWidth;
+uniform float uFillOpacity;
 varying vec2 vRectPos;
 void main() {
   vec2 q = abs(vRectPos) - 0.5 * uSize + uRadius;
@@ -83,10 +87,13 @@ void main() {
   float aa = max(fwidth(d), 1e-6);
   float coverage = 1.0 - smoothstep(-aa, aa, d);
   vec3 rgb = uColor;
+  float ring = 0.0;
   if (uStrokeWidth > 0.0) {
-    rgb = mix(uColor, uStrokeColor, smoothstep(-aa, aa, d + uStrokeWidth));
+    ring = smoothstep(-aa, aa, d + uStrokeWidth);
+    rgb = mix(uColor, uStrokeColor, ring);
   }
-  gl_FragColor = vec4(rgb, coverage * uOpacity);
+  float fill = uFillOpacity < 1.0 ? mix(uFillOpacity, 1.0, ring) : 1.0;
+  gl_FragColor = vec4(rgb, coverage * uOpacity * fill);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -100,6 +107,7 @@ function rectMaterial(): { material: ShaderMaterial; uniforms: RectUniforms } {
     uOpacity: { value: 1 },
     uStrokeColor: { value: new Color(1, 1, 1) },
     uStrokeWidth: { value: 0 },
+    uFillOpacity: { value: 1 },
   };
   const material = new ShaderMaterial({
     uniforms,
@@ -124,6 +132,7 @@ function FlatRoundedRect(props: RoundedRectProps) {
     radius = 0,
     color,
     opacity = 1,
+    fillOpacity = 1,
     strokeWidth = 0,
     strokeColor,
     position = [0, 0, 0],
@@ -147,6 +156,7 @@ function FlatRoundedRect(props: RoundedRectProps) {
   uniforms.uOpacity.value = opacity * (group?.alpha ?? 1);
   uniforms.uStrokeWidth.value = Math.min(Math.max(0, strokeWidth), half);
   uniforms.uStrokeColor.value.set(strokeColor ?? theme.colors.text);
+  uniforms.uFillOpacity.value = Math.min(1, Math.max(0, fillOpacity));
 
   return (
     <group position={position} rotation={rotation} scale={scale}>

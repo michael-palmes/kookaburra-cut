@@ -776,6 +776,7 @@ export const TOOLKIT_SUMMARIES: Record<
   ExtrudedText: { summary: "Lit 3D extruded text (ASCII, bundled face)." },
   FALLBACK_DEVICE_ID: { summary: "android: what unknown or unavailable models render as." },
   HeroObject: { summary: "Bundled hero glTF with idle spin and float." },
+  IconTile: { summary: "An app icon as a thick, glossy, lit tile that stands on a stage." },
   ImageCard: { summary: "Flat, colour-exact image plane; PNG alpha shapes it." },
   LayeredScreenshot: { summary: "Renders the sidecar layeredScreenshot stack." },
   LightRig: { summary: "Shared three-light rig; mount once, pass lit={false} to lit primitives." },
@@ -788,7 +789,19 @@ export const TOOLKIT_SUMMARIES: Record<
     summary: "Host-mounted 3D objects for scenes without StagedObject.",
     internal: true,
   },
+  DustBurst: {
+    summary:
+      "Dust thrown up where something lands hard on a floor: seeded soft puffs that burst out and clear.",
+  },
   ParticleField: { summary: "Seeded instanced particles drifting on the clock." },
+  Ripple: {
+    summary:
+      "A clear ring of wave that opens across a surface and bends what is behind it, like a drop on water.",
+  },
+  Slab: {
+    summary:
+      "A thick, glossy plate with rounded edges (a chip, badge or key) that carries a label or icon on its face.",
+  },
   DotField: {
     summary:
       "Grid or waffle of dots in one draw: reveal, wave, window, count, funnel, gather, merge, fill.",

@@ -25701,6 +25701,11 @@
         "summary": "Grid or waffle of dots in one draw: reveal, wave, window, count, funnel, gather, merge, fill."
       },
       {
+        "id": "DustBurst",
+        "kind": "component",
+        "summary": "Dust thrown up where something lands hard on a floor: seeded soft puffs that burst out and clear."
+      },
+      {
         "id": "EASE_NAMES",
         "kind": "constant",
         "summary": "Every ease name (see kb catalog eases)."
@@ -25724,6 +25729,11 @@
         "id": "HeroObject",
         "kind": "component",
         "summary": "Bundled hero glTF with idle spin and float."
+      },
+      {
+        "id": "IconTile",
+        "kind": "component",
+        "summary": "An app icon as a thick, glossy, lit tile that stands on a stage."
       },
       {
         "id": "ImageCard",
@@ -25783,6 +25793,11 @@
         "summary": "Seeded tube that grows along a curve."
       },
       {
+        "id": "Ripple",
+        "kind": "component",
+        "summary": "A clear ring of wave that opens across a surface and bends what is behind it, like a drop on water."
+      },
+      {
         "id": "Room",
         "kind": "component",
         "summary": "Camera-locked room: colour fills the frame behind all content, flood? grows over it. The sidecar room block draws its own."
@@ -25821,6 +25836,11 @@
         "id": "Scrim",
         "kind": "component",
         "summary": "Clear to a colour, linear or radial, for text to sit on; inside a ScreenLayer."
+      },
+      {
+        "id": "Slab",
+        "kind": "component",
+        "summary": "A thick, glossy plate with rounded edges (a chip, badge or key) that carries a label or icon on its face."
       },
       {
         "id": "SplitField",
@@ -26418,10 +26438,19 @@
         "id": "DotWindow"
       },
       {
+        "id": "DustBurstProps"
+      },
+      {
         "id": "EaseName"
       },
       {
         "id": "EaseOptions"
+      },
+      {
+        "id": "ExtrudedBevel"
+      },
+      {
+        "id": "ExtrudedFinish"
       },
       {
         "id": "ExtrudedTextProps"
@@ -26452,6 +26481,9 @@
       },
       {
         "id": "HeroObjectProps"
+      },
+      {
+        "id": "IconTileProps"
       },
       {
         "id": "ImageCardProps"
@@ -26506,6 +26538,9 @@
       },
       {
         "id": "RibbonProps"
+      },
+      {
+        "id": "RippleProps"
       },
       {
         "id": "RoomFloodProps"
@@ -26581,6 +26616,9 @@
       },
       {
         "id": "SharedTransform"
+      },
+      {
+        "id": "SlabProps"
       },
       {
         "id": "SplitFieldProps"
@@ -28292,6 +28330,254 @@
           "blocks": ["backdrop", "background", "text", "textAnimation", "themeId"]
         }
       ]
+    },
+    {
+      "id": "release-reel",
+      "label": "Release Reel",
+      "summary": "Every release, cut to the beat: one colour, one word and one screen per new thing.",
+      "category": "update",
+      "tags": ["release", "what's new", "update", "version", "changelog", "music"],
+      "personas": ["pm", "marketer", "developer"],
+      "level": "standard",
+      "tier": "bold",
+      "uses": ["audio", "background", "camera-rig", "device", "multi-device"],
+      "highlights": [
+        "The app icon opens the film and the version number lands beside it on bar 2",
+        "Each feature floods its own colour room on the downbeat",
+        "Six chips cover everything else and fly into the phone, then the call to action on the final hit"
+      ],
+      "bring": [
+        "App icon",
+        "Version number",
+        "Three features: a punch word and a line each",
+        "A recording per feature",
+        "Up to six small changes for And more",
+        "Product name",
+        "A call to action"
+      ],
+      "song": {
+        "title": "Headline",
+        "bpm": 128
+      },
+      "looks": ["kookaburra-colour-studio"],
+      "sceneCount": 14,
+      "durationMs": 45015,
+      "aspects": ["16:9"],
+      "themeId": "kookaburra-colour-studio",
+      "scenes": [
+        {
+          "file": "scenes/01-version.tsx",
+          "durationMs": 4703,
+          "transition": "crossfade",
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "lighting",
+            "motionBlur",
+            "text",
+            "textStyle"
+          ]
+        },
+        {
+          "file": "scenes/02-whats-new.tsx",
+          "durationMs": 3752,
+          "transition": "luma",
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "lighting",
+            "motionBlur",
+            "text",
+            "textStyle"
+          ]
+        },
+        {
+          "file": "scenes/03-word-1.tsx",
+          "durationMs": 2435,
+          "transition": null,
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "motionBlur",
+            "text"
+          ]
+        },
+        {
+          "file": "scenes/04-proof-1.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "taps",
+            "text"
+          ]
+        },
+        {
+          "file": "scenes/05-detail-1.tsx",
+          "durationMs": 1875,
+          "transition": "whip",
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "motionBlur"
+          ]
+        },
+        {
+          "file": "scenes/06-word-2.tsx",
+          "durationMs": 2275,
+          "transition": null,
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "motionBlur",
+            "text"
+          ]
+        },
+        {
+          "file": "scenes/07-proof-2.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "taps",
+            "text"
+          ]
+        },
+        {
+          "file": "scenes/08-detail-2.tsx",
+          "durationMs": 1875,
+          "transition": "whip",
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "motionBlur",
+            "taps"
+          ]
+        },
+        {
+          "file": "scenes/09-word-3.tsx",
+          "durationMs": 2275,
+          "transition": null,
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "motionBlur",
+            "text",
+            "textStyle"
+          ]
+        },
+        {
+          "file": "scenes/10-proof-3.tsx",
+          "durationMs": 3750,
+          "transition": null,
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "taps",
+            "text",
+            "textStyle"
+          ]
+        },
+        {
+          "file": "scenes/11-detail-3.tsx",
+          "durationMs": 1875,
+          "transition": "whip",
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "motionBlur"
+          ]
+        },
+        {
+          "file": "scenes/12-and-more.tsx",
+          "durationMs": 7900,
+          "transition": "crossfade",
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "motionBlur",
+            "text",
+            "textStyle"
+          ]
+        },
+        {
+          "file": "scenes/13-all-three.tsx",
+          "durationMs": 4689,
+          "transition": "crossfade",
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "devices",
+            "lighting",
+            "motionBlur",
+            "text",
+            "textStyle"
+          ]
+        },
+        {
+          "file": "scenes/14-lockup.tsx",
+          "durationMs": 3981,
+          "transition": null,
+          "blocks": [
+            "backdrop",
+            "background",
+            "cameraMode",
+            "cameraRig",
+            "lighting",
+            "motionBlur",
+            "text",
+            "textStyle"
+          ]
+        }
+      ]
     }
   ],
   "exportPresets": [
@@ -28547,6 +28833,9 @@
       "id": "fairywren-quickadd-dark-phone.mp4"
     },
     {
+      "id": "fairywren-quickadd-phone.mp4"
+    },
+    {
       "id": "fairywren-reschedule-dark-phone.mp4"
     },
     {
@@ -28556,7 +28845,13 @@
       "id": "fairywren-share-dark-phone.mp4"
     },
     {
+      "id": "fairywren-share-phone.mp4"
+    },
+    {
       "id": "fairywren-sorted-dark-phone.mp4"
+    },
+    {
+      "id": "fairywren-sorted-phone.mp4"
     },
     {
       "id": "fairywren-today-dark-phone.jpg"

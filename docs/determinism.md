@@ -1190,7 +1190,21 @@ camera exactly:
   asks for the mirror twice, since three draws the opaque floor in its glass
   (transmission) pass and again in its main pass; the second ask takes the first's
   mirror (`toolkit/stage/renderOnce.ts`: no render has run since), the same bytes for
-  one mirror less a frame.
+  one mirror less a frame. A floor
+  with a `shadow` block, or `reflection.scatter` or `reach`, compiles a second program
+  (cache key `-soft`), so a floor without them keeps its bytes: the first
+  shadow-casting directional light's VSM map is read through a 16-tap blocker search
+  and a 40-tap filter on a Vogel disc, turned per pixel by interleaved gradient noise
+  offset by the supersample seed, each tap tested against the floor's own depth there
+  (three's VSM map holds receivers too; the slope comes from the light's shadow
+  matrix). A `reach` fade is read from the mirror's depth at 8 taps on the same turned
+  disc, spread over 0.6 of the blur's footprint, so a blurred reflection keeps its soft
+  edge past the caster's outline. The soft program reads every height (the blur's
+  `heightBlur`, `reach`, `shadow.contact` and the occlusion seam) from the mirror's own
+  depth, which is height over view distance because the mirror clips at the floor; the
+  first program keeps its older read. The tap counts, the search gap, the contact reach, the
+  reach spread, the occlusion seam's spread and the scatter's grain multiple in
+  `SatinFloor.tsx` are contract.
 
 ### The fixed background
 
@@ -1497,6 +1511,11 @@ of which can move pixels for text that uses neither (proven EQUAL on
   Emphasis weight rewrites troika 0.53's own edge-offset sites per glyph (the quad
   grow and the edge alpha, the outline mechanism); the rewrite is pinned to troika's
   exact bytes and warns if they move, so re-check it on any troika upgrade.
+- **Wrapped staggers.** A char or word stagger with a `maxWidth` or a line break mounts
+  the `lines` walk (`uGanLine`), keying each unit by `x + span × line` so a wrapped
+  headline reveals in reading order. One line keeps its plain X keys (`uGanLine` is
+  zero), so its pixels cannot move. A standing project whose stagger wraps does move,
+  deliberately: its second line used to join the first line's units by X.
 - **Barriers.** Emphasis rects and the type head come from the first typeset's carets,
   so both report text-derived pending (`textDerivedState.ts`) until the carets land: no
   capture draws the pre-measure frame.

@@ -80,6 +80,12 @@ export function parseGradient(
   if (stops.length < 2) return drop("needs at least two stops");
   const gradient: GradientSpec = { type: v.type, angleDeg, stops };
   if (v.space === "oklch") gradient.space = "oklch";
+  if (v.type === "radial" && Array.isArray(v.centre) && v.centre.length === 2) {
+    const [x, y] = v.centre;
+    if (isNum(x) && isNum(y)) {
+      gradient.centre = [Math.min(1, Math.max(0, x)), Math.min(1, Math.max(0, y))];
+    }
+  }
   return gradient;
 }
 
