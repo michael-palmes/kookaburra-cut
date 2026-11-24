@@ -12,7 +12,7 @@ const MANAGED = read("src-tauri/src/managed.rs");
 const DOMAIN = MANAGED.match(/pub const DOMAIN: &str = "([^"]+)";/)[1];
 const KEY_COUNT = Number(MANAGED.match(/pub const ALL: \[Key; (\d+)\]/)[1]);
 const KEYS = [...new Set([...MANAGED.matchAll(/Key::(\w+) => "(\w+)",/g)].map((m) => m[2]))];
-// Read by 0.23.0 and earlier only; the profiles keep them while those versions are deployed.
+// Read by 0.24.0 and earlier only; the profiles keep them while those versions are deployed.
 const RETIRED = { DisableLiveWebsites: "boolean", AllowedWebsiteOrigins: "origins" };
 const SHAPES = {
   "an array of strings": "keyIds",

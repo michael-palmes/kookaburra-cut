@@ -188,8 +188,8 @@ fingerprint and an imported project has neither. There is a test asserting an
 imported project comes out untrusted. Templates and presets carry scene code the
 same way, and the project a user creates from one is a new project at a new path,
 so it is untrusted for the same reason. A project, template or preset a pack
-lands over (added or replaced) loses every stored grant, session allow and
-website origin grant held for its folder, matched on disk so a slug in another
+lands over (added or replaced) loses every stored grant and session allow
+held for its folder, matched on disk so a slug in another
 case counts (`workspace::forget_trust_at`, called from `apply_import` before the
 first move and again once everything has landed): the folder now holds a
 publisher's content, so the next open asks again rather than re-stamping, even
@@ -241,15 +241,9 @@ touches them, they do not count towards `contentHash` (so the project still
 reads `identical` to its own pack), and a `replace` moves them to the backup
 with the rest of the old film.
 
-Website scene content gets its review before Continue, on the trust screen:
-`read_pack_scene_docs` reads every scene sidecar beside a staged scene source
-straight from the pack, checks each against its signed hash (one mismatch refuses
-the pack) and hands the parsed documents to `src/packs/packReview.ts`, which lists
-every Website origin requested under a lower-case `scenes/` folder
-(`websiteReview.ts`; a `Scenes/` one is not listed but still loads on APFS). Never the author's manifest,
-which is self-declared, and never after the files land. No origin is approved by
-an import (`docs/scene-website.md`). Terminal scene content needs no review: it is
-text and a PNG, and nothing runs (`docs/scene-terminal.md`).
+Terminal scene content needs no review: it is text and a PNG, and nothing runs
+(`docs/scene-terminal.md`). A `website` block in a sidecar from before live
+websites were removed is ignored, so it asks for nothing.
 
 ## Extraction checklist
 
@@ -291,7 +285,7 @@ test per item in `pack::tests`. Limits live in `pack::limits`.
    names and any malformed path.
 9. Skip `__MACOSX/`, `.DS_Store`, `._*` rather than refusing.
 10. Anything read from the pack before staging (a scene source for the code
-    viewer, a scene sidecar for the Website review) goes through
+    viewer) goes through
     `read_verified_entry`: listed in `files`, capped, and refused when its bytes
     do not hash to the signed value.
 11. Sum the signed sizes in `files` (agent config excluded). Each entry streams
@@ -335,8 +329,8 @@ the path checks above.
 
 Templates, presets and brands take the table unchanged: they are folder items
 keyed by slug, exactly like projects. For a project, template or preset,
-`import` and `replace` both drop the folder's F-001 grants, this session's
-allow and its website origin grants, so the next open asks (`keep both` lands under a fresh slug no grant
+`import` and `replace` both drop the folder's F-001 grants and this session's
+allow, so the next open asks (`keep both` lands under a fresh slug no grant
 names, and `skip` leaves the incumbent and its grant alone).
 
 Two per-kind overrides:
