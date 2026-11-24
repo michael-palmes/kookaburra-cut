@@ -618,6 +618,7 @@ export function SettingsApp() {
   const kitOff = managed?.disableAgentKit ?? false;
   const claude = useClaudeConsent();
   const claudeOn = claude.consent === "on";
+  const claudeNeedsOrgPolicy = !claudeOff && claude.orgPolicy === "missing";
   const toggleClaudeConsent = useCallback(
     (on: boolean) => {
       claude.set(on).catch((e) => setError(plainError(e)));
@@ -807,11 +808,15 @@ export function SettingsApp() {
             <span className="muted settings-row-detail">
               {claudeOff
                 ? "Turned off by your organisation."
-                : "Sends the project you open in Claude to Anthropic, under your own account."}
+                : claudeNeedsOrgPolicy
+                  ? "Needs your organisation's Claude settings on this Mac. Ask IT."
+                  : "Sends the project you open in Claude to Anthropic, under your own account."}
             </span>
           </div>
           {claudeOff ? (
             <ManagedLock detail={claudeLockDetail} />
+          ) : claudeNeedsOrgPolicy ? (
+            <ManagedLock detail="A configuration profile lets Claude on only where your organisation's Claude Code settings are installed (RequireManagedClaude)." />
           ) : (
             <input
               type="checkbox"

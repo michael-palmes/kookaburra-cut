@@ -237,6 +237,7 @@ domain `com.mpalmes.kookaburracut` (`DOMAIN` in `managed.rs`).
 | `UpdateEndpoint` | 0.22.3 | your mirror | your mirror | not forced |
 | `AuditLogPath` | 0.23.0 | `/Library/Logs/Kookaburra Cut` | not forced | not forced |
 | `AllowedWebsiteOrigins` | 0.23.0 | `[]`: no live websites | not forced | not forced |
+| `RequireManagedClaude` | 0.24.0 | `true` | `true` | not forced |
 
 The files: [`kookaburra-cut-locked-down.mobileconfig`](../packaging/mdm/kookaburra-cut-locked-down.mobileconfig),
 [`kookaburra-cut-agents-mirrored.mobileconfig`](../packaging/mdm/kookaburra-cut-agents-mirrored.mobileconfig)
@@ -244,7 +245,8 @@ and [`kookaburra-cut-open.mobileconfig`](../packaging/mdm/kookaburra-cut-open.mo
 The From column is the first release whose `Key::ALL` in `managed.rs` holds the
 key, and an older build ignores it: deploy 0.22.3 or later, since on 0.22.2 the
 open profile changes nothing and the mirrored one leaves checks on GitHub.
-`AuditLogPath` needs 0.23.0.
+`AuditLogPath` needs 0.23.0, and `RequireManagedClaude` the release after it:
+0.23.0 ignores the key, and there Claude is on from the first launch.
 
 `DisableLiveWebsites` and `AllowedWebsiteOrigins` are retired. Live website
 scenes were removed after 0.24.0, so a later build reads neither key and locks
@@ -252,7 +254,7 @@ nothing for them ([mdm.md, "Retired keys"](./mdm.md#retired-keys)). The
 profiles keep both for Macs still on 0.24.0 or earlier, where they turn live
 websites off; drop them once no Mac runs those versions.
 
-- **Locked down** forces all nine keys the app reads, and the two retired ones. Its `AuditLogPath` copies the app log for
+- **Locked down** forces all ten keys the app reads, and the two retired ones. Its `AuditLogPath` copies the app log for
   your collector; on a Mac with more than one account, create the folder first
   ([mdm.md, "A copy for your collector"](./mdm.md#a-copy-for-your-collector)).
   `UpdateEndpoint` does nothing while
@@ -260,8 +262,9 @@ websites off; drop them once no Mac runs those versions.
   there so that lifting `DisableUpdateCheck` later sends checks to your server,
   never GitHub.
 - **Agents allowed, updates mirrored** follows [fleet.md](./fleet.md#force-the-keys)
-  where Claude Code is approved: Claude and the agent kit stay on, so deploy
-  Claude Code's own managed settings beside it
+  where Claude Code is approved: a person can turn Claude on, but only on a Mac
+  that carries Claude Code's own managed settings with your organisation's
+  login pinned (`RequireManagedClaude`), so deploy those beside it
   ([fleet.md](./fleet.md#claude-codes-own-managed-settings-on-top)), and update
   checks go to your mirror ([Updates](#4-updates)). Replace
   `a1b2c3d4e5f60718`, the sample id [mdm.md](./mdm.md) uses, with your approved
@@ -339,6 +342,8 @@ The locked-down profile in full:
                 <string>https://updates.example.com/kookaburra-cut/latest.json</string>
                 <key>AuditLogPath</key>
                 <string>/Library/Logs/Kookaburra Cut</string>
+                <key>RequireManagedClaude</key>
+                <true/>
               </dict>
             </dict>
           </array>

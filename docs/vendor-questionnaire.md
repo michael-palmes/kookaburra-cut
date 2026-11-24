@@ -263,7 +263,7 @@ SIG: Endpoint security. CAIQ: UEM.
 
 | Question | Answer | Evidence | Notes |
 | --- | --- | --- | --- |
-| Can an MDM configure the app? | Yes | [mdm.md](./mdm.md), [managed.rs](../src-tauri/src/managed.rs) | Nine keys in `com.mpalmes.kookaburracut`, honoured only while macOS reports them forced by a profile; a user's own `defaults write` grants nothing. |
+| Can an MDM configure the app? | Yes | [mdm.md](./mdm.md), [managed.rs](../src-tauri/src/managed.rs) | Ten keys in `com.mpalmes.kookaburracut`, honoured only while macOS reports them forced by a profile; a user's own `defaults write` grants nothing. |
 | Does a malformed setting fail closed? | Yes | [managed.rs](../src-tauri/src/managed.rs) | A wrong type reads as the most restrictive value; an unusable `UpdateEndpoint` means no update check, never GitHub. |
 | Can Claude entry points be turned off? | Yes | [mdm.md](./mdm.md#keys) | `DisableClaude`. |
 | Can everything the app lays out for an agent be turned off? | Yes | [mdm.md](./mdm.md#keys) | `DisableAgentKit`: no kit, no bridge folder, no handoff. |

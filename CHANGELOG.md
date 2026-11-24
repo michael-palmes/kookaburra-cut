@@ -14,6 +14,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   works at once, with no relaunch. After updating, turn it on again to keep
   using Edit with Claude.
 
+### Added
+
+- `RequireManagedClaude`, a managed preference for fleets: Claude can be
+  turned on only on a Mac that carries your organisation's own Claude Code
+  settings, with its login pinned. See `docs/mdm.md`.
+
 ### Removed
 
 - Live websites in a scene. The app no longer opens any web page, so the

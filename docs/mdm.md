@@ -68,6 +68,7 @@ package") lists the commands to check a download yourself. The receipt is
 | `ExportsInProject` | boolean | `true` keeps every video and stills export started in the app in the project's `exports/` folder: a request for Downloads is routed there rather than refused (`export_dir_kind` in `lib.rs`), `set_export_to_downloads` records off whatever it is asked, and Settings ▸ Video locks Save exports to Downloads. `.kbpack` files keep their Save dialog; terminal and bridge runs already use the project |
 | `UpdateEndpoint` | string | An `https` URL of the update manifest your organisation serves, with no query, fragment, login or `{{…}}` template. A release build's `check_for_update` asks it instead of GitHub (`updater.rs`). The archive's signature is still checked against the key pinned in the app (`plugins.updater.pubkey` in `tauri.conf.json`), so a mirror can serve only builds this project signed; the manifest's `platforms.darwin-aarch64.url` must point at the mirror's copy of the archive. A malformed value means no check at all, never a fallback to GitHub: Check for Updates is gone and Settings ▸ Updates shows the lock with the reason. `DisableUpdateCheck` still wins |
 | `AuditLogPath` | string | An absolute folder outside every home folder, such as `/Library/Logs/Kookaburra Cut`. The app also appends every line of its log to `<folder>/<login>.log`, the login name read from the password database (`audit::mirror_at_launch`), so a collector running as root (Jamf, Kandji, Intune, a SIEM forwarder) can pick it up. The copy is 0600, owned by the person, and rotates like `app.log` at 1 MiB with two older files kept (`audit_mirror.rs`). A missing folder is made 0700, which suits a Mac with one account; see "A copy for your collector" for shared Macs. A relative, `~`, `.` or `..` path, a home-folder path, a folder the account can't write or list, or a file there that is a link, a hard link or another account's means no copy and one `[managed]` line, never a failed launch, and the local log carries on either way. Settings ▸ About ▸ Export log tells the person their organisation's profile asks for a copy |
+| `RequireManagedClaude` | boolean | `true` lets Claude be turned on only where Claude Code's own managed policy pins sign-in to an organisation: `forceLoginOrgUUID`, a non-empty string or a non-empty list of strings, in `/Library/Application Support/ClaudeCode/managed-settings.json`, in any `*.json` under `managed-settings.d/` beside it, or forced in the `com.anthropic.claudecode` preference domain (`claude_policy.rs`). Where none of them holds it the agent gate stays shut whatever the person answers (`agent_gate.rs`, `deny_in`): no kit, no `_bridge`, no handoff, and Settings ▸ Claude shows the Use Claude row locked with "Needs your organisation's Claude settings on this Mac"; `set_claude_consent` records off. A file that is unreadable, over 1 MiB or not JSON counts as missing. The answer is re-read at most once a minute, and at once before a handoff and when the switch is used, so a policy installed while the app runs counts without a relaunch. It does not turn Claude on: the person still chooses. Settings an organisation delivers only from the claude.ai admin console are not visible to another app, so deploy the file or the profile as well |
 
 No pack imports at all is `AllowedPublisherKeyIds` forced to an empty array;
 there is no separate switch (`deny_publisher_in` in `managed.rs`).
@@ -100,6 +101,7 @@ with `managed:` and names the key, for example:
 
 ```
 managed: Claude is turned off by your organisation (DisableClaude).
+managed: Claude needs your organisation's Claude settings on this Mac (RequireManagedClaude).
 ```
 
 Two keys change where things land rather than removing them: under
@@ -288,7 +290,15 @@ never hold what is in a file (`SECURITY.md`, "On the Mac"). With
    match the end of `app.log`, and Settings ▸ About ▸ Export log carries the
    note. A malformed or unusable value leaves one `[managed] AuditLogPath ...
    keeping no copy of the app log` line instead (`audit::log_mirror_at_boot`).
-9. The negative check: without a profile,
+9. Under `RequireManagedClaude`, on a Mac without Claude Code's managed
+   settings, `app.log` shows `[claude] off: the organisation's Claude Code
+   policy is not on this Mac (RequireManagedClaude)` at boot and Settings ▸
+   Claude shows Use Claude locked. Install the settings file with
+   `forceLoginOrgUUID` and use the row again within a minute: the lock gives
+   way to the switch, with no relaunch. From a checkout,
+   `cargo test --manifest-path src-tauri/Cargo.toml this_mac_pins -- --ignored --nocapture`
+   prints what the app reads (`claude_policy.rs`).
+10. The negative check: without a profile,
    `defaults write com.mpalmes.kookaburracut DisableClaude -bool true` changes
    nothing, because the key is set but not forced. `defaults delete` it
    afterwards.

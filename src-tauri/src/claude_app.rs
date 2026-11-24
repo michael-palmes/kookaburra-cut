@@ -89,6 +89,7 @@ pub async fn open_in_claude(
     prompt: Option<String>,
 ) -> Result<(), String> {
     crate::managed::deny_claude()?;
+    crate::managed::deny_unmanaged_claude()?;
     crate::agent_gate::deny()?;
     let dir = workspace::project_dir_mut(&app, &state, &slug)?;
     if !dir.join(workspace::MANIFEST_FILENAME).is_file() {
@@ -126,7 +127,7 @@ pub async fn open_in_claude(
     Ok(())
 }
 
-/// Record the answer to "use Claude here?" and bring the bridge in line at once: on serves without a relaunch, off stops it and removes this instance's heartbeat and key. A profile that turns Claude or the agent kit off pins it off whatever the switch asked for. Answers what was stored.
+/// Record the answer to "use Claude here?" and bring the bridge in line at once: on serves without a relaunch, off stops it and removes this instance's heartbeat and key. A profile that turns Claude or the agent kit off, or asks for an organisation's Claude Code policy this Mac lacks, pins it off whatever the switch asked for. Answers what was stored.
 #[tauri::command]
 pub fn set_claude_consent(
     app: AppHandle,
@@ -135,7 +136,8 @@ pub fn set_claude_consent(
 ) -> Result<bool, String> {
     let granted = consent
         && crate::managed::deny_claude().is_ok()
-        && crate::managed::deny_agent_kit().is_ok();
+        && crate::managed::deny_agent_kit().is_ok()
+        && crate::managed::deny_unmanaged_claude().is_ok();
     workspace::update_settings(&app, &state, |settings| {
         settings.claude_consent = Some(granted)
     })?;

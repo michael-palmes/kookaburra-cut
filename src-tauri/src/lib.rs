@@ -15,6 +15,7 @@ mod bridge_health;
 mod bridge_range;
 mod capture_service;
 mod claude_app;
+mod claude_policy;
 mod clean_text;
 pub mod cli;
 pub mod cli_check;

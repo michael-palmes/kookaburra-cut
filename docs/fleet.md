@@ -19,9 +19,11 @@ checked against Anthropic's documentation on 6 November 2026.
    updater and point it at your own server with `UpdateEndpoint`
    ([Updates](#updates-in-app-or-mdm-delivery)).
 2. Force `AllowedPublisherKeyIds` (empty until you approve a publisher) and
-   `ExportsInProject`. Leave `DisableClaude` and
-   `DisableAgentKit` unset where Claude Code is approved for this work; force
-   both where it is not ([Force the keys](#force-the-keys)).
+   `ExportsInProject`. Where Claude Code is approved for this work, leave
+   `DisableClaude` and `DisableAgentKit` unset and force
+   `RequireManagedClaude`, so Claude turns on only on Macs that carry your
+   organisation's Claude Code policy; force both Disable keys where it is not
+   approved ([Force the keys](#force-the-keys)).
 3. Put the credential deny rules, `disableBypassPermissionsMode` and an
    organisation login pin in Claude Code's own managed settings. The app's
    rules cover only projects it has opened
@@ -118,6 +120,7 @@ later before relying on them. `AuditLogPath` needs 0.23.0.
 | `WorkspaceRoot` | Only to standardise; a local, unsynced path | Projects hold unreleased footage, so keep them out of synced folders. The agent bridge stays in `~/Kookaburra Cut/_bridge` either way (`bridge.rs`). |
 | `DisableAgentKit` | `true` where Claude Code is not approved for this work | Stops everything the app lays out for an agent: no kit stamped into a project, no `_bridge` folder, no handoff, and the Claude entry points go with it (`workspace.rs`, `bridge.rs`). Where Claude Code is approved, leave it unset: the kit is what gives the agent its rules. |
 | `DisableClaude` | Unset where Claude Code is approved; `true` beside `DisableAgentKit` where it is not | Removes the Edit with Claude buttons, the Claude download link and the switch that turns Claude on, so Claude can't be turned on from then; a Mac where it was already on keeps its kit and bridge (`claude_app.rs`). |
+| `RequireManagedClaude` | `true` where Claude Code is approved | Claude can be turned on only on a Mac where Claude Code's own managed settings pin your organisation's login (`forceLoginOrgUUID` in `/Library/Application Support/ClaudeCode/managed-settings.json`, a drop-in beside it, or the `com.anthropic.claudecode` profile); anywhere else the kit, the bridge and the handoff stay off (`claude_policy.rs`, `agent_gate.rs`). It ties this app's AI path to the agreement your organisation has with Anthropic. |
 | `AuditLogPath` | `/Library/Logs/Kookaburra Cut`, where your collector reads logs | Copies every log line to `<folder>/<login>.log`, 0600 and owned by the person; an unusable folder means no copy and one `[managed]` line, never a failed launch. On a Mac with several accounts, create the folder first ([mdm.md, "A copy for your collector"](./mdm.md#a-copy-for-your-collector)) (`audit_mirror.rs`). |
 
 With no profile at all, Claude is off until the person turns it on, on the
@@ -166,7 +169,12 @@ before rolling out:
   action. The app sets no permission mode, and Claude Code ignores `auto` and
   `bypassPermissions` from project files.
 - `forceLoginMethod` and `forceLoginOrgUUID`, so project content goes under your
-  organisation's account and its retention settings.
+  organisation's account and its retention settings. `forceLoginOrgUUID` is
+  also what `RequireManagedClaude` looks for. The app can read the settings
+  file, its drop-ins and the profile; it cannot see settings your organisation
+  delivers only from the claude.ai admin console, so an organisation that uses
+  those alone deploys the file or the profile as well, or Claude stays off
+  here.
 - `permissions.deny` mirroring the kit's credential list: `Read(~/.ssh/**)`,
   `Read(~/.aws/**)`, `Read(~/.config/**)`, `Read(~/.gnupg/**)`,
   `Read(~/Library/Keychains/**)`, `Read(**/.env)`, `Read(**/.env.*)`,

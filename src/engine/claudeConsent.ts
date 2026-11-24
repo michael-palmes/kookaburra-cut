@@ -6,6 +6,9 @@ import { useCallback, useEffect, useState } from "react";
 
 export type ClaudeConsent = "loading" | "undecided" | "on" | "off";
 
+/** Where `RequireManagedClaude` stands: no profile asks for the organisation's own Claude Code policy, it is on this Mac, or it is asked for and missing (Claude stays off). */
+export type ClaudeOrgPolicy = "notRequired" | "found" | "missing";
+
 export interface ClaudeStatus {
   /** The stored answer; null until a person gives one. */
   consent: boolean | null;
@@ -13,13 +16,19 @@ export interface ClaudeStatus {
   allowed: boolean;
   /** Why not, when it is closed. */
   reason: string | null;
+  orgPolicy: ClaudeOrgPolicy;
 }
 
 /** Rust emits this to every window when the answer changes, Clear all app data included. */
 export const CLAUDE_CONSENT_CHANGED = "kookaburra://claude-consent-changed";
 
 /** What a window shows before the first read lands, and when the read fails: off. */
-export const CLAUDE_OFF: ClaudeStatus = { consent: null, allowed: false, reason: null };
+export const CLAUDE_OFF: ClaudeStatus = {
+  consent: null,
+  allowed: false,
+  reason: null,
+  orgPolicy: "notRequired",
+};
 
 let known: ClaudeStatus | null = null;
 
@@ -52,6 +61,8 @@ export interface ClaudeConsentApi {
   allowed: boolean;
   /** Why the gate is shut, when it is. */
   reason: string | null;
+  /** Whether a profile asks for the organisation's own Claude Code policy, and whether it is on this Mac. */
+  orgPolicy: ClaudeOrgPolicy;
   /** No answer is stored yet: the first-launch ask is still owed. */
   askOwed: boolean;
   /** Store the answer; resolves to what was stored. */
@@ -88,6 +99,7 @@ export function useClaudeConsent(): ClaudeConsentApi {
     consent: status === null ? "loading" : claudeConsentFrom(status.consent),
     allowed: status?.allowed ?? false,
     reason: status?.reason ?? null,
+    orgPolicy: status?.orgPolicy ?? "notRequired",
     askOwed: status !== null && status.consent === null,
     set,
   };

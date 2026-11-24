@@ -14,9 +14,11 @@ Two things here are ahead of 0.24.0. Live scene websites are removed and gone
 from the next release, so this file lists nothing they brought. 0.24.0 itself
 can still open a website a person allows in a scene, with `DisableLiveWebsites`
 and `AllowedWebsiteOrigins` as its locks; that version's copy of this file
-describes it. And Claude is off until a person turns it on ("What reaches your
-agent"); on 0.24.0 the kit is stamped and the bridge serves from the first
-launch, and `DisableAgentKit` is what stops them.
+describes it. And Claude is off until a person turns it on, with
+`RequireManagedClaude` to tie that to an organisation's own Claude Code policy
+("What reaches your agent"); on 0.24.0 the kit is stamped and the bridge
+serves from the first launch, the key is ignored, and `DisableAgentKit` is
+what stops them.
 Each release from 0.22.0 on carries its own copy of this file in its assets.
 
 On a managed Mac, a configuration profile can pin the posture an organisation
@@ -467,7 +469,18 @@ bridge key and starts the heartbeat without a relaunch, and turning it off
 removes this instance's heartbeat and key within one refresh (`bridge.rs`,
 `apply_gate`). `set_claude_consent` records off whatever it is asked while a
 profile forces `DisableClaude` or `DisableAgentKit`, and each change is one
-`[claude]` line in the log. Settings ▸ Clear all app data forgets the answer,
+`[claude]` line in the log. A profile forcing `RequireManagedClaude` adds one
+condition between the two: the gate also stays shut unless Claude Code's own
+managed policy pins sign-in to an organisation on this Mac, read from
+`forceLoginOrgUUID` (a non-empty string or list) in
+`/Library/Application Support/ClaudeCode/managed-settings.json`, any `*.json`
+in `managed-settings.d/` beside it, or the key forced in the
+`com.anthropic.claudecode` preference domain (`claude_policy.rs`,
+`org_pinned_in`). A file that is unreadable, over 1 MiB or not JSON counts as
+missing; the answer is cached for a minute and read afresh before each handoff
+and each use of the switch. It proves the policy is installed, not that a
+session obeys it, and it cannot see settings an organisation delivers only
+from the claude.ai admin console. Settings ▸ Clear all app data forgets the answer,
 so Claude is off until it is asked for again. A kit stamped before Claude was
 turned off, or before a profile, stays in its folder, and its kb still runs:
 the gate governs what the app lays out, not a Claude Code session a person
@@ -477,7 +490,11 @@ for throwaway-home test runs; a release build never reads it.
 - **The `claude://` handoff** (`claude_app.rs`): `open claude://code/new?folder=<project>&q=<prompt>`,
   the prompt capped at the Claude app's limit, opened only when LaunchServices
   reports a handler; the prompt is typed into the app, not sent, until the
-  person presses Enter there. The kit is stamped first, and if the stamp moved
+  person presses Enter there. The `folder` and `q` parameters of that link are
+  not in Claude's public documentation (it documents `ssh_folder` only), so
+  the handoff rests on behaviour Anthropic could change without notice; if it
+  did, the link would open the Claude app without the folder or the prompt,
+  and nothing would be sent. The kit is stamped first, and if the stamp moved
   files aside a native sheet lists them before the handoff
   (`review_agent_files_for`); then the project's git history is checked too
   (`review_committed_agent_files`, below). The launcher's copy says "Claude Code sends this
@@ -807,11 +824,12 @@ printed by the app or written to its logs.
 
 ## Managed preferences
 
-Nine keys in the domain `com.mpalmes.kookaburracut`, honoured only when a
+Ten keys in the domain `com.mpalmes.kookaburracut`, honoured only when a
 configuration profile forces them (`src-tauri/src/managed.rs`): `DisableClaude`,
 `AllowedPublisherKeyIds`,
 `DisableUpdateCheck`, `WorkspaceRoot`, `DisableAgentKit`, `DisablePackExport`,
-`ExportsInProject`, `UpdateEndpoint` and `AuditLogPath`.
+`ExportsInProject`, `UpdateEndpoint`, `AuditLogPath` and
+`RequireManagedClaude`.
 `DisableLiveWebsites` and `AllowedWebsiteOrigins` are retired with live
 websites: a profile that still forces either locks nothing, its value is never
 read, and one `[managed]` line at boot says so (`RETIRED_KEYS`). A malformed key fails closed: a boolean of

@@ -4,8 +4,9 @@ Describes version 0.24.0. Two changes since: live website scenes are removed
 and gone from the next release, so this page lists nothing they brought; on
 0.24.0 itself `DisableLiveWebsites` turns them off
 ([mdm.md, "Retired keys"](./mdm.md#retired-keys)). And Claude is off until a
-person turns it on; on 0.24.0 it is on from the first launch, and
-`DisableAgentKit` turns it off. For the team deciding
+person turns it on, with `RequireManagedClaude` to tie it to an organisation's
+own Claude Code policy; on 0.24.0 it is on from the first launch, the key is
+ignored, and `DisableAgentKit` turns it off. For the team deciding
 whether Kookaburra Cut can run on managed Macs: the security lead, CTO or
 engineering manager. Every line
 links to the file, command or release asset behind it, and anything not done
@@ -282,13 +283,15 @@ packaged-parity gate proves that each release
 
 A configuration profile forces keys in the domain `com.mpalmes.kookaburracut`;
 the app honours a key only while macOS reports it forced, a user's own
-`defaults write` grants nothing, and a malformed key fails closed. The nine
+`defaults write` grants nothing, and a malformed key fails closed. The ten
 keys, each with a row, a guard and a test in [mdm.md](./mdm.md):
 
 - `DisableClaude`: removes every Edit with Claude entry point and the Claude
   download link.
 - `DisableAgentKit`: stops everything the app lays out for an agent: no kit
   stamped into a project, no bridge folder, no handoff.
+- `RequireManagedClaude`: Claude can be turned on only where Claude Code's own
+  managed settings pin your organisation's login on that Mac.
 - `AllowedPublisherKeyIds`: pack imports limited to these publishers' keys; an
   empty list means no imports at all.
 - `DisablePackExport`: no Share as pack, and no signing key is ever minted.
@@ -301,7 +304,8 @@ keys, each with a row, a guard and a test in [mdm.md](./mdm.md):
 
 `DisableAgentKit`, `DisablePackExport`, `ExportsInProject` and `UpdateEndpoint`
 are honoured from 0.22.3; an older build ignores them, so deploy 0.22.3 or
-later before relying on them. `AuditLogPath` needs 0.23.0.
+later before relying on them. `AuditLogPath` needs 0.23.0, and
+`RequireManagedClaude` the release after it.
 `DisableLiveWebsites` and `AllowedWebsiteOrigins` are retired with live
 websites: a profile that still forces them locks nothing, and only 0.24.0 and
 earlier read them ([mdm.md, "Retired keys"](./mdm.md#retired-keys)).
@@ -358,7 +362,7 @@ place to check.
 | Business continuity | One maintainer, no named successor. Installed apps keep working offline if the project stops; the code is MIT or Apache-2.0 and every dependency, tool and source is pinned and recorded, so a fork can build and ship it ([release-cadence.md, "If the project stops"](./release-cadence.md#if-the-project-stops)). |
 | Licence | MIT OR Apache-2.0 for the code; bundled assets keep their own terms; the ffmpeg sidecar is a GPL build run as a separate process, its exact source archives attached to each release; every licence text and a third-party notices file ship inside the app (Settings ▸ About ▸ Acknowledgements) ([NOTICE.md](../NOTICE.md)). |
 | Egress hosts | `github.com` and `release-assets.githubusercontent.com` (updates, or your `UpdateEndpoint` instead); `claude.ai`, a fixed page a person opens in their browser. Nothing else ([What leaves the Mac](#what-leaves-the-mac)). |
-| Fleet controls | Nine managed keys through a configuration profile ([mdm.md](./mdm.md)); verified builds delivered by MDM; Claude Code's own managed settings ([fleet.md](./fleet.md)). |
+| Fleet controls | Ten managed keys through a configuration profile ([mdm.md](./mdm.md)); verified builds delivered by MDM; Claude Code's own managed settings ([fleet.md](./fleet.md)). |
 
 ## Not yet
 

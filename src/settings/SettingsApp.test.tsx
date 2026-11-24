@@ -3,7 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClaudeStatus } from "../engine/claudeConsent";
 import type { ManagedPolicy } from "../engine/managed";
 
-const CLAUDE_ON: ClaudeStatus = { consent: true, allowed: true, reason: null };
+const CLAUDE_ON: ClaudeStatus = {
+  consent: true,
+  allowed: true,
+  reason: null,
+  orgPolicy: "notRequired",
+};
 
 let policy: Partial<ManagedPolicy> = {};
 let claude: ClaudeStatus = CLAUDE_ON;
@@ -60,7 +65,12 @@ describe("Settings rows a profile governs", () => {
   it("keeps Claude and the agent kit off until the switch is on", async () => {
     const unanswered = await render(
       { managed: false },
-      { consent: null, allowed: false, reason: "Claude is off. Turn it on in Settings ▸ Claude" },
+      {
+        consent: null,
+        allowed: false,
+        reason: "Claude is off. Turn it on in Settings ▸ Claude",
+        orgPolicy: "notRequired",
+      },
     );
     const use = row(unanswered, "Use Claude");
     expect(use).toContain('type="checkbox"');
@@ -71,6 +81,28 @@ describe("Settings rows a profile governs", () => {
 
     const on = row(await render({ managed: false }), "Use Claude");
     expect(on).toContain("checked");
+  });
+
+  it("locks Use Claude where the organisation's Claude settings are required and missing", async () => {
+    const forced = { requireManagedClaude: true, forcedKeys: ["RequireManagedClaude"] };
+    const missing = row(
+      await render(forced, {
+        consent: null,
+        allowed: false,
+        reason:
+          "managed: Claude needs your organisation's Claude settings on this Mac (RequireManagedClaude).",
+        orgPolicy: "missing",
+      }),
+      "Use Claude",
+    );
+    expect(missing).toContain(LOCK);
+    expect(missing).toContain("(RequireManagedClaude)");
+    expect(missing).toContain("Ask IT");
+    expect(missing).not.toContain('type="checkbox"');
+
+    const found = row(await render(forced, { ...CLAUDE_ON, orgPolicy: "found" }), "Use Claude");
+    expect(found).not.toContain(LOCK);
+    expect(found).toContain('type="checkbox"');
   });
 
   it("locks the Agent kit row and every Claude row under DisableAgentKit", async () => {
