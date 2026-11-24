@@ -2411,7 +2411,7 @@ mod tests {
     }
 
     #[test]
-    fn website_capture_travels_as_a_referenced_project_asset() {
+    fn a_retired_website_blocks_capture_still_travels_as_a_referenced_asset() {
         let root = fixture("website-capture");
         write(&root, "acme/assets/website/01-hero.png", "website-png");
         write(

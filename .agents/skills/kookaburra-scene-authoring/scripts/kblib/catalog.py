@@ -30,7 +30,7 @@ FALLBACK_SCENE_DOC_KEYS = [
     "devices", "media", "images", "deviceLayout", "deviceTrack", "objects", "camera", "cameraMode",
     "cameraRig", "cameraKicks", "themeId", "backdrop", "background", "textAnimation", "textAnimationForce",
     "textAnimationOverrides", "textLook", "textLookForce", "textLookOverrides", "lighting", "frame",
-    "layeredScreenshot", "videoWindow", "compare", "chart", "terminal", "website", "animatedTrack",
+    "layeredScreenshot", "videoWindow", "compare", "chart", "terminal", "animatedTrack",
     "stills", "motionBlur", "room", "taps", "mosaic",
 ]
 FALLBACK_MANIFEST_KEYS = [

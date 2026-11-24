@@ -161,9 +161,7 @@ export function PresentStageTree({ project }: { project: LoadedProject | null })
                 )}
                 {project.scenes.map((_, i) => {
                   const frame = project.sceneFrames[i];
-                  if (!frame && !project.sceneDocs[i]?.terminal && !project.sceneDocs[i]?.website) {
-                    return null;
-                  }
+                  if (!frame && !project.sceneDocs[i]?.terminal) return null;
                   const slot = project.slots[i];
                   const active = mode === "slideshow" && deck.sceneIndex === i;
                   return (

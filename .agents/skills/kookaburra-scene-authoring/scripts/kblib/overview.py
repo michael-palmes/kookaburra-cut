@@ -246,7 +246,7 @@ def overrides(doc: Dict[str, Any]) -> List[str]:
     if isinstance(bg, dict):
         detail = bg.get("look") or bg.get("shader") or bg.get("src") or bg.get("color") or ""
         out.append(f"background={bg.get('type', '?')}" + (f":{detail}" if detail else ""))
-    for key in ("backdrop", "lighting", "textAnimation", "textLook", "frame", "layeredScreenshot", "compare", "chart", "terminal", "website"):
+    for key in ("backdrop", "lighting", "textAnimation", "textLook", "frame", "layeredScreenshot", "compare", "chart", "terminal"):
         if doc.get(key):
             out.append(key)
     style = doc.get("textStyle")

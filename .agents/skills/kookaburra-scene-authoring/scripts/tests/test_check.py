@@ -233,6 +233,15 @@ class CheckTests(KbTestCase):
         self.assertFalse(any("text.tag" in w and "build is single line" in w for w in warnings))
         self.assertTrue(any("offsetOpacity" in w for w in warnings))
 
+    def test_a_retired_website_block_warns_once_and_never_errors(self) -> None:
+        doc = {"version": 1, "website": {"url": "https://example.invalid/", "capture": {"src": "assets/website/02-hero.png"}}}
+        write_json(self.root / "scenes" / "02-hero.json", doc)
+        report = self.run_check(["scenes/02-hero.json"])
+        warnings = [w for w in messages(report, "warning") if "website" in w]
+        self.assertEqual(len(warnings), 1, "\n".join(warnings))
+        self.assertIn("live websites were removed", warnings[0])
+        self.assertFalse(any("website" in e for e in messages(report)))
+
     def test_sidecar_motion_blur(self) -> None:
         doc = {"version": 1, "motionBlur": {"enabled": "yes", "shutterDeg": 720, "samples": 16}}
         write_json(self.root / "scenes" / "02-hero.json", doc)

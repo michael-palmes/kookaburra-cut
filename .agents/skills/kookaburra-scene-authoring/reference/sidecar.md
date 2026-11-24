@@ -55,7 +55,7 @@ drops alone with a warning.
 | `layeredScreenshot` | 3D stack of app screens | media.md |
 | `mosaic` | The frame split into image, video or colour tiles with a staggered reveal | media.md |
 | `taps` | Tap pulses in world space or on a device's screen | media.md |
-| `terminal`, `website` | Terminal and website panels | media.md |
+| `terminal` | Terminal panel | media.md |
 | `chart` | One data chart | charts.md |
 | `frame` | Overlay panel with a cutout | below |
 | `stills` | Stills export marks | below |

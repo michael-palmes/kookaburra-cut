@@ -34,11 +34,7 @@ import {
   type VideoExportSelection,
 } from "../export/selection";
 import { useEditorStore } from "../store/editorStore";
-import {
-  openingPosterFrameEnabled,
-  terminalSnapshotWarning,
-  websiteCaptureWarning,
-} from "./exportOptions";
+import { openingPosterFrameEnabled, terminalSnapshotWarning } from "./exportOptions";
 import { noteExportFlashes } from "./FlashWarning";
 
 /** What App lends the bridge export: its state, its reload signals and the Export button's own run. */
@@ -217,10 +213,9 @@ async function runRequest(
   });
   // The same persistent flash warning as the button's export, naming Claude.
   void noteExportFlashes(run.path, "claude");
-  const warnings = [
-    terminalSnapshotWarning(project.sceneDocs, project.sceneFiles),
-    websiteCaptureWarning(project.sceneDocs, project.sceneFiles),
-  ].filter((w): w is string => !!w);
+  const warnings = [terminalSnapshotWarning(project.sceneDocs, project.sceneFiles)].filter(
+    (w): w is string => !!w,
+  );
   return bridgeExportFacts(project, resolved.sel, run.options, run.verify ?? null, warnings);
 }
 

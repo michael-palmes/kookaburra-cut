@@ -15,8 +15,6 @@ interface PresentStore {
   videoPaused: boolean;
   /** True once the Suspense scene tree has committed (all scene assets resolved and mounted). */
   scenesCommitted: boolean;
-  /** True while a live Website child view owns input. */
-  websiteFocused: boolean;
   setMode: (mode: "slideshow" | "video") => void;
   setSceneCount: (n: number) => void;
   dispatch: (e: DeckEvent) => void;
@@ -24,7 +22,6 @@ interface PresentStore {
   setEndFade: (opacity: number) => void;
   setVideoPaused: (paused: boolean) => void;
   setScenesCommitted: (committed: boolean) => void;
-  setWebsiteFocused: (focused: boolean) => void;
   reset: () => void;
 }
 
@@ -36,7 +33,6 @@ export const usePresentStore = create<PresentStore>((set, get) => ({
   endFade: 0,
   videoPaused: false,
   scenesCommitted: false,
-  websiteFocused: false,
   setMode: (mode) => set({ mode }),
   setSceneCount: (n) => set({ sceneCount: n }),
   dispatch: (e) => set({ deck: stepDeck(get().deck, e, get().sceneCount) }),
@@ -47,7 +43,6 @@ export const usePresentStore = create<PresentStore>((set, get) => ({
   },
   setVideoPaused: (paused) => set({ videoPaused: paused }),
   setScenesCommitted: (committed) => set({ scenesCommitted: committed }),
-  setWebsiteFocused: (focused) => set({ websiteFocused: focused }),
   reset: () =>
     set({
       deck: initialDeckState(),
@@ -55,6 +50,5 @@ export const usePresentStore = create<PresentStore>((set, get) => ({
       endFade: 0,
       videoPaused: false,
       scenesCommitted: false,
-      websiteFocused: false,
     }),
 }));

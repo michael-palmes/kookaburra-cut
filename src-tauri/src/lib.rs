@@ -60,6 +60,7 @@ mod preset_posters;
 mod privacy;
 mod real_dir;
 mod render_win;
+mod retired_websites;
 mod scene_doc;
 mod settings_win;
 mod song;
@@ -72,7 +73,6 @@ mod theme_editor_win;
 mod theme_move;
 mod tools;
 mod updater;
-mod website;
 mod workspace;
 
 use std::io::Read;
@@ -1436,10 +1436,10 @@ fn park_background_window(window: &tauri::WebviewWindow) {
     ));
 }
 
-// Release builds omit repo-write commands; every build guards Website webviews.
+// Release builds omit repo-write commands; every build refuses a webview that is not an app window.
 macro_rules! kookaburra_handler {
     ($($dev:path,)*) => {
-        website::guard_invoke(tauri::generate_handler![
+        asset_reach::guard_invoke(tauri::generate_handler![
             show_character_palette,
             sample_screen_colour,
             start_export,
@@ -1692,28 +1692,11 @@ macro_rules! kookaburra_handler {
             pack::commands::reveal_pack,
             pack::commands::inspect_pack,
             pack::commands::read_pack_scene_source,
-            pack::commands::read_pack_scene_docs,
             pack::commands::stage_pack,
             pack::commands::apply_import,
             pack::commands::discard_staged_pack,
             pack::commands::workspace_root_path,
             pack::commands::open_imported_project,
-            website::website_open,
-            website::website_grant_origin,
-            website::website_revoke_origin,
-            website::website_list_grants,
-            website::website_resume_pending,
-            website::website_set_bounds,
-            website::website_set_zoom,
-            website::website_show,
-            website::website_action,
-            website::website_capture,
-            website::website_import_image,
-            website::website_list_data,
-            website::website_clear_data,
-            website::website_clear_project_data,
-            website::website_hide,
-            website::website_close,
             $($dev,)*
         ])
     };
@@ -1764,7 +1747,6 @@ pub fn run() {
         .manage(packs_win::PacksState::default())
         .manage(theme_editor_win::ThemeEditorState::default())
         .manage(pack::commands::PackState::default())
-        .manage(website::WebsiteState::default())
         .register_asynchronous_uri_scheme_protocol("asset", asset_reach::handler)
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
@@ -1817,7 +1799,7 @@ pub fn run() {
             }
             managed::log_at_boot();
             audit::log_mirror_at_boot(&mirror);
-            website::retire_shared_store(app.handle());
+            retired_websites::clear_at_launch(app.handle());
             asset_reach::init(app.handle());
             bridge::init(app.handle());
             bridge::spawn_heartbeat(app.handle().clone());

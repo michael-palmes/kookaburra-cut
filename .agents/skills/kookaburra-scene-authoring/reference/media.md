@@ -1,4 +1,4 @@
-# Assets, screen recordings, images, video, split fields, taps, screenshot stacks, terminal, website
+# Assets, screen recordings, images, video, split fields, taps, screenshot stacks, terminal
 
 ## Assets
 
@@ -354,17 +354,8 @@ was captured in an older version: leave it, or replace it by writing a `transcri
 Themes: `match-theme`, `graphite`, `abyss`, `phosphor`, `amber`, `paper`. `chrome.style`
 `mac` or `bare`. `position` -1..1 frame-relative; `size` a fraction of frame width.
 
-## Website panel
+## Web pages
 
-```json
-"website": { "url": "https://example.com", "viewport": { "preset": "desktop" },
-  "frame": { "appearance": "match-theme", "cornerRadius": 14, "shadow": "soft" },
-  "position": [0, 0], "size": 0.72 }
-```
-
-`viewport.preset`: `desktop` 1440 x 900, `tablet` 1024 x 768, `mobile` 390 x 844, or
-`custom` with `width`, `height`, `orientation`; `zoom` 0.5..2. Use only a `url` the user
-gives you: never guess one from a product name. `frame.appearance`
-`match-theme`, `light`, `dark`; `shadow` `none`, `soft`, `strong`. Exports render the
-captured PNG (`capture`), which the app records after the user allows the site; ask the
-user to capture after changing the URL.
+Live website panels were removed. A `website` block in an older sidecar is ignored, and
+`./kb check` says so. Show a page as a screenshot instead: in `media`, or on a device's
+screen.

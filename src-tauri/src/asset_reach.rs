@@ -1,4 +1,4 @@
-//! What an `asset://` URL may serve, per app window: the app's caches, the shared libraries and the one project that window loaded, with the workspace's browsable folders for the main window alone. A child webview is served nothing, since Tauri attaches the scheme to every webview it builds. The app registers the scheme itself (Tauri then skips its own handler) because Tauri's scope can allow a folder but never take it back, and a closed project must stop being readable.
+//! What an `asset://` URL may serve, per app window: the app's caches, the shared libraries and the one project that window loaded, with the workspace's browsable folders for the main window alone. Any other webview is served nothing, since Tauri attaches the scheme to every webview it builds. The app registers the scheme itself (Tauri then skips its own handler) because Tauri's scope can allow a folder but never take it back, and a closed project must stop being readable.
 
 use std::collections::{HashMap, HashSet};
 use std::io::SeekFrom;
@@ -51,9 +51,34 @@ fn canonical_or_lexical(path: &Path) -> PathBuf {
     path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
 }
 
-/// Refuses every webview but the app's own windows; a `website-<hex>` child holds remote content. One list with the IPC guard, so a window the app adds cannot read on one and not the other.
+/// The app's own windows, by label: the one list the IPC guard and the asset server both read.
+pub fn trusted_invoke_label(label: &str) -> bool {
+    matches!(
+        label,
+        "main" | "present" | "settings" | "render" | "editor" | "packs" | "theme-editor"
+    )
+}
+
+/// Rejects a command from any webview that isn't one of the app's own windows, before its handler runs.
+pub fn guard_invoke<F>(handler: F) -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static
+where
+    F: Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static,
+{
+    move |invoke| {
+        if trusted_invoke_label(invoke.message.webview_ref().label()) {
+            handler(invoke)
+        } else {
+            invoke
+                .resolver
+                .reject("native commands are only for the app's own windows");
+            true
+        }
+    }
+}
+
+/// Refuses every webview but the app's own windows. One list with the IPC guard, so a window the app adds cannot read on one and not the other.
 fn app_window_only(label: &str, shown: &Path) -> Result<(), String> {
-    if crate::website::trusted_invoke_label(label) {
+    if trusted_invoke_label(label) {
         Ok(())
     } else {
         Err(format!("not an app window: {}", shown.display()))
@@ -233,7 +258,7 @@ pub(crate) fn handler(
     let label = ctx.webview_label().to_owned();
     tauri::async_runtime::spawn(async move {
         let origin = window_origin(&app);
-        // The realpath syscall runs before the lock, so concurrent requests never queue behind disk latency; a child webview never reaches it, so its timing says nothing about what exists.
+        // The realpath syscall runs before the lock, so concurrent requests never queue behind disk latency; another webview never reaches it, so its timing says nothing about what exists.
         let allow = |path: &Path| {
             app_window_only(&label, path)?;
             let real = canonical(path)?;
@@ -277,7 +302,7 @@ async fn get_response(
     let file_path = match allow(Path::new(path.as_ref())) {
         Ok(path) => path,
         Err(reason) => {
-            // Escaped: a child webview's page chooses this path, so it must not forge log lines.
+            // Escaped: the page chooses this path, so it must not forge log lines.
             log::warn!("[assets] refused {label}: {}", reason.escape_debug());
             return resp
                 .status(StatusCode::FORBIDDEN)
@@ -498,7 +523,7 @@ mod tests {
         reach.files.insert(allowed.clone());
         reach
             .projects
-            .insert("website-deadbeef".into(), root.join("alpha"));
+            .insert("child-deadbeef".into(), root.join("alpha"));
         for path in [
             base.join("cache/media/abc/poster.jpg"),
             root.join(".kookaburra/snapshots/alpha.png"),
@@ -506,7 +531,7 @@ mod tests {
             allowed,
             root.join("alpha/assets/hero.png"),
         ] {
-            let err = reach.resolve("website-deadbeef", &path).unwrap_err();
+            let err = reach.resolve("child-deadbeef", &path).unwrap_err();
             assert!(err.contains("not an app window"), "{err}");
         }
         let _ = std::fs::remove_dir_all(&base);
@@ -565,11 +590,17 @@ mod tests {
             "packs",
             "theme-editor",
         ] {
-            assert!(crate::website::trusted_invoke_label(label), "{label}");
+            assert!(trusted_invoke_label(label), "{label}");
             assert!(reach.resolve(label, &font).is_ok(), "{label}");
         }
-        for label in ["", "Main", "website-deadbeef", "library"] {
-            assert!(!crate::website::trusted_invoke_label(label), "{label}");
+        for label in [
+            "",
+            "Main",
+            "child-deadbeef",
+            "theme-editor-child",
+            "library",
+        ] {
+            assert!(!trusted_invoke_label(label), "{label}");
             assert!(reach.resolve(label, &font).is_err(), "{label}");
         }
         let _ = std::fs::remove_dir_all(&base);

@@ -13,7 +13,6 @@ import { revealApp } from "../engine/reveal";
 import { StageView } from "../stage/StageView";
 import type { StageClient } from "../stage/stageClient";
 import { useEditorStore } from "../store/editorStore";
-import { PresentWebsiteOverlay } from "./PresentWebsiteOverlay";
 import { startPresentAmbience, stopPresentAmbience } from "./presentAmbience";
 import { usePresentStore } from "./presentStore";
 
@@ -59,7 +58,6 @@ export function PresentApp() {
   const endFade = usePresentStore((s) => s.endFade);
   const videoPaused = usePresentStore((s) => s.videoPaused);
   const committed = usePresentStore((s) => s.scenesCommitted);
-  const websiteFocused = usePresentStore((s) => s.websiteFocused);
   const [stageReady, setStageReady] = useState(false);
   const [stage, setStage] = useState<StageClient | null>(null);
   const mode = target?.mode ?? "slideshow";
@@ -216,8 +214,6 @@ export function PresentApp() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // A focused slide website owns the keyboard.
-      if (usePresentStore.getState().websiteFocused) return;
       if (e.key === "Escape") {
         const win = getCurrentWindow();
         void win.isFullscreen().then((fs) => (fs ? win.setFullscreen(false) : win.close()));
@@ -233,15 +229,9 @@ export function PresentApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, [advance, back]);
 
-  // Cursor hides after a short idle so it never sits over shared content; a focused website keeps it, the pointer is in use.
+  // Cursor hides after a short idle so it never sits over shared content.
   useEffect(() => {
     if (!project) return;
-    if (websiteFocused) {
-      void getCurrentWindow()
-        .setCursorVisible(true)
-        .catch(() => {});
-      return;
-    }
     let timer = 0;
     const hide = () =>
       void getCurrentWindow()
@@ -263,7 +253,7 @@ export function PresentApp() {
         .setCursorVisible(true)
         .catch(() => {});
     };
-  }, [project, websiteFocused]);
+  }, [project]);
 
   const spec = FORMATS[(target?.aspect as AspectName) ?? "16:9"] ?? FORMATS["16:9"];
   const aspect = spec.width / spec.height;
@@ -306,9 +296,6 @@ export function PresentApp() {
             dpr={target.quality === "smooth" ? 1.5 : [1, 2]}
             onClient={setStage}
           />
-          {project && mode === "slideshow" && stageReady && (
-            <PresentWebsiteOverlay project={project} aspect={aspect} />
-          )}
         </div>
       )}
       {mode === "slideshow" && endFade > 0 && (

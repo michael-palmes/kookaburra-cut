@@ -773,7 +773,7 @@ fn refuses_an_oversized_signature() {
     );
 }
 
-/// A pre-staging read (the code viewer, the sidecar review) hands back only bytes that match the signed hash.
+/// A pre-staging read (the code viewer) hands back only bytes that match the signed hash.
 #[test]
 fn a_pre_staging_read_refuses_tampered_bytes() {
     let source = TempDir::new("verified-read");
@@ -806,10 +806,6 @@ fn a_pre_staging_read_refuses_tampered_bytes() {
     )
     .expect("matching bytes read");
     assert_eq!(clean, b"{}");
-    assert_eq!(
-        inspection.scene_sources[0].sidecar_path().as_deref(),
-        Some("payload/projects/acme/scenes/01-hero.json")
-    );
     assert_eq!(
         inspection.scene_sources[0].archive_path(),
         "payload/projects/acme/scenes/01-hero.tsx"

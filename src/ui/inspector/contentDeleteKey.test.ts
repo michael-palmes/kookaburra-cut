@@ -62,7 +62,6 @@ describe("contentDeleteRoute", () => {
       ["chart.edit"],
       ["text"],
       ["terminal.edit"],
-      ["website.edit"],
       ["layeredScreenshot.edit"],
     ]) {
       expect(

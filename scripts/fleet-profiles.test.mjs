@@ -12,14 +12,16 @@ const MANAGED = read("src-tauri/src/managed.rs");
 const DOMAIN = MANAGED.match(/pub const DOMAIN: &str = "([^"]+)";/)[1];
 const KEY_COUNT = Number(MANAGED.match(/pub const ALL: \[Key; (\d+)\]/)[1]);
 const KEYS = [...new Set([...MANAGED.matchAll(/Key::(\w+) => "(\w+)",/g)].map((m) => m[2]))];
+// Read by 0.23.0 and earlier only; the profiles keep them while those versions are deployed.
+const RETIRED = { DisableLiveWebsites: "boolean", AllowedWebsiteOrigins: "origins" };
 const SHAPES = {
   "an array of strings": "keyIds",
   "an absolute path": "path",
   "an absolute folder path": "folder",
   "an https URL": "url",
-  "an array of origins": "origins",
 };
 const shapeOf = (key) => {
+  if (key in RETIRED) return RETIRED[key];
   const found = MANAGED.match(new RegExp(`Key::${key} => "(${Object.keys(SHAPES).join("|")})"`));
   return found ? SHAPES[found[1]] : "boolean";
 };
@@ -96,6 +98,15 @@ test("managed.rs names every key once", () => {
   assert.equal(KEYS.length, KEY_COUNT);
 });
 
+test("the retired keys are the ones managed.rs lists and no longer reads", () => {
+  const listed = MANAGED.match(/pub const RETIRED_KEYS: \[&str; \d+\] = \[([^\]]+)\];/)[1];
+  assert.deepEqual(
+    [...listed.matchAll(/"(\w+)"/g)].map((m) => m[1]).sort(),
+    Object.keys(RETIRED).sort(),
+  );
+  for (const key of Object.keys(RETIRED)) assert.ok(!KEYS.includes(key), `${key} is still read`);
+});
+
 test("every profile forces only real keys, in the shape managed.rs reads", () => {
   assert.ok(PROFILES.length >= 3);
   for (const file of PROFILES) {
@@ -106,7 +117,10 @@ test("every profile forces only real keys, in the shape managed.rs reads", () =>
       `${file} is not System scope`,
     );
     for (const [key, raw] of Object.entries(forced(xml, file))) {
-      assert.ok(KEYS.includes(key), `${file} forces ${key}, which managed.rs does not read`);
+      assert.ok(
+        KEYS.includes(key) || key in RETIRED,
+        `${file} forces ${key}, which managed.rs does not read`,
+      );
       assertShape(key, raw, file);
     }
   }
@@ -114,7 +128,7 @@ test("every profile forces only real keys, in the shape managed.rs reads", () =>
 
 test("the locked-down profile forces every key", () => {
   const values = forced(read(`${MDM}/kookaburra-cut-locked-down.mobileconfig`), "locked-down");
-  assert.deepEqual(Object.keys(values).sort(), [...KEYS].sort());
+  assert.deepEqual(Object.keys(values).sort(), [...KEYS, ...Object.keys(RETIRED)].sort());
 });
 
 test("payload UUIDs are well formed and never shared between profiles", () => {
@@ -132,7 +146,7 @@ test("the posture table matches the profiles", () => {
     m[1],
     m[2].split(" | "),
   ]);
-  assert.deepEqual(rows.map(([key]) => key).sort(), [...KEYS].sort());
+  assert.deepEqual(rows.map(([key]) => key).sort(), [...KEYS, ...Object.keys(RETIRED)].sort());
   const columns = ["locked-down", "agents-mirrored", "open"];
   columns.forEach((posture, i) => {
     const file = `kookaburra-cut-${posture}.mobileconfig`;
