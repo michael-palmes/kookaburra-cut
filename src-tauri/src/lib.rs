@@ -55,6 +55,7 @@ mod objects;
 #[cfg(target_os = "macos")]
 mod ocr;
 mod pack;
+mod package_install;
 mod png_decode;
 mod packs_win;
 mod present;
@@ -1662,6 +1663,7 @@ macro_rules! kookaburra_handler {
             settings_win::reveal_licences,
             updater::check_for_update,
             updater::set_update_consent,
+            package_install::updates_left_to_installer,
             updater::install_update_and_relaunch,
             edit::open_edit,
             edit::open_edit_named,
@@ -1913,10 +1915,11 @@ pub fn run() {
                             pred.set_text(format!("Quit {APP_NAME}"))?;
                         }
                     }
-                    // Default macOS app submenu: About(0), ─(1), Services…; per the HIG the order becomes About, Check for Updates, ─, Settings, ─, Services. Check for Updates is left out where a profile turns update checks off or names a server the app can't use.
+                    // Default macOS app submenu: About(0), ─(1), Services…; per the HIG the order becomes About, Check for Updates, ─, Settings, ─, Services. Check for Updates is left out where a profile turns update checks off or names a server the app can't use, and on a package install, whose updates come from its installer.
                     let mut at = 1;
                     let update_checks = !managed.disable_update_check
-                        && managed::managed_update_endpoint_in(managed).is_ok();
+                        && managed::managed_update_endpoint_in(managed).is_ok()
+                        && package_install::deny_update(app.handle()).is_ok();
                     if update_checks {
                         app_menu.insert(&check_updates_item, at)?;
                         at += 1;

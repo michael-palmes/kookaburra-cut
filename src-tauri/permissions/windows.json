@@ -49,7 +49,12 @@
       "identifier": "updater",
       "description": "The consent-gated update check and install.",
       "commands": {
-        "allow": ["check_for_update", "set_update_consent", "install_update_and_relaunch"]
+        "allow": [
+          "check_for_update",
+          "set_update_consent",
+          "install_update_and_relaunch",
+          "updates_left_to_installer"
+        ]
       }
     }
   ]

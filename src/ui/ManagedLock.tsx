@@ -20,12 +20,18 @@ export function LockGlyph({ size = 14 }: { size?: number }) {
   );
 }
 
-/** Stands in for a control a configuration profile has taken over: the lock and the one-line reason, nothing to press. */
-export function ManagedLock({ detail }: { detail?: string }) {
+/** Stands in for a control a configuration profile has taken over: the lock and the one-line reason, nothing to press. `label` names another owner where no profile is involved. */
+export function ManagedLock({
+  detail,
+  label = MANAGED_BY_ORGANISATION,
+}: {
+  detail?: string;
+  label?: string;
+}) {
   return (
     <span className="managed-lock" title={detail}>
       <LockGlyph />
-      {MANAGED_BY_ORGANISATION}
+      {label}
     </span>
   );
 }

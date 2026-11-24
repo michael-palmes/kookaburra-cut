@@ -10,7 +10,7 @@ the Keychain for the pack key whenever Settings or Export opens, and its Later
 stops the launch check offering that version again; 0.22.0 is 0.22.1 built
 before the pinned toolchain and the whole-bundle record ("Release integrity");
 and "Version 0.21.1" below lists what that version lacks.
-Two things here are ahead of 0.24.0. Live scene websites are removed and gone
+Three things here are ahead of 0.24.0. Live scene websites are removed and gone
 from the next release, so this file lists nothing they brought. 0.24.0 itself
 can still open a website a person allows in a scene, with `DisableLiveWebsites`
 and `AllowedWebsiteOrigins` as its locks; that version's copy of this file
@@ -18,7 +18,9 @@ describes it. And Claude is off until a person turns it on, with
 `RequireManagedClaude` to tie that to an organisation's own Claude Code policy
 ("What reaches your agent"); on 0.24.0 the kit is stamped and the bridge
 serves from the first launch, the key is ignored, and `DisableAgentKit` is
-what stops them.
+what stops them. And a copy installed from the pkg leaves updates to its
+installer ("What leaves the Mac"); on 0.23.0 it checks GitHub like any other
+copy unless `DisableUpdateCheck` is forced.
 Each release from 0.22.0 on carries its own copy of this file in its assets.
 
 On a managed Mac, a configuration profile can pin the posture an organisation
@@ -160,10 +162,24 @@ checkout only (`vite.config.ts`, `server.fs.allow`), never the home folder.
 
 | Path | Trigger | Destination | Data | Consent and off switch | Control |
 | --- | --- | --- | --- | --- | --- |
-| Update check | At launch and hourly while the main window is open, at most every 20 h, only with the consent on and never during an export; or Check for Updates (menu, ⌘K, Settings), which runs without consent and stores nothing | `github.com/michael-palmes/kookaburra-cut/releases/latest/download/latest.json`, or the https URL a profile forces as `UpdateEndpoint` | One GET; no identifiers, no version in the URL; the plugin's user agent only | First-run welcome switch (on by default, Escape saves off); Settings ▸ Updates. `update_check_consent` in `$APPDATA/settings.json` | `src-tauri/src/updater.rs`, `src/engine/updates.ts`; `KOOKABURRA_UPDATE_ENDPOINT` is honoured only in debug builds; `managed::usable_endpoint` refuses an `UpdateEndpoint` with a query, fragment, login or `{{…}}` template, and an unusable one means no check, never GitHub |
-| Update install | Install and relaunch on the update dialog | The release asset `latest.json` names | The signed updater archive | Later hides the offer until the next check | `updater.rs` (`download_and_install`); the ed25519 signature is checked against `plugins.updater.pubkey` before anything is written |
+| Update check | Never on a copy installed from the release pkg, unless a profile turns it on (below). Otherwise at launch and hourly while the main window is open, at most every 20 h, only with the consent on and never during an export; or Check for Updates (menu, ⌘K, Settings), which runs without consent and stores nothing | `github.com/michael-palmes/kookaburra-cut/releases/latest/download/latest.json`, or the https URL a profile forces as `UpdateEndpoint` | One GET; no identifiers, no version in the URL; the plugin's user agent only | First-run welcome switch (on by default, Escape saves off); Settings ▸ Updates. `update_check_consent` in `$APPDATA/settings.json` | `src-tauri/src/updater.rs`, `src/engine/updates.ts`; `KOOKABURRA_UPDATE_ENDPOINT` is honoured only in debug builds; `managed::usable_endpoint` refuses an `UpdateEndpoint` with a query, fragment, login or `{{…}}` template, and an unusable one means no check, never GitHub |
+| Update install | Install and relaunch on the update dialog; never on a copy installed from the release pkg, unless a profile turns it on | The release asset `latest.json` names | The signed updater archive | Later hides the offer until the next check | `updater.rs` (`download_and_install`); the ed25519 signature is checked against `plugins.updater.pubkey` before anything is written |
 | Edit with Claude (`claude://` handoff) | Edit with Claude, once Claude is turned on and with the Claude desktop app installed | The Claude desktop app on this Mac, which talks to Anthropic under the user's account | The project folder path and a starter prompt, typed in, never sent | Leaving Claude off, or not pressing it; `DisableClaude` turns it off for a fleet | `src-tauri/src/claude_app.rs` (`code_session_link`, `open_in_claude`) |
 | Fixed pages in the browser | Get Claude, or What leaves your Mac | `claude.ai/download`; `github.com/.../docs/privacy.md` at the installed version's tag (`main` in a dev build) | The constant URL, nothing appended | Not pressing it | `claude_app.rs` (`open_claude_download`, `open_privacy_page`, `privacy_url`) |
+
+A copy installed from the release pkg leaves updates to its installer
+(`package_install.rs`): `check_for_update`, `install_update_and_relaunch` and
+`set_update_consent` refuse or record off, the Check for Updates menu item is
+left out and Settings ▸ Updates shows one line in place of its switch and
+Check now. The sign is the installer's receipt for the bundle id
+(`/var/db/receipts/com.mpalmes.kookaburracut.plist`) naming the running
+version, with the app running from `/Applications`; a receipt an older pkg
+left under a newer copy from the DMG does not count, and a debug build never
+does. A profile turns the in-app updater back on for such a copy by forcing
+`UpdateEndpoint` (its own server) or `DisableUpdateCheck` to false (GitHub).
+The receipt is root-owned and world-readable, and a person who can replace the
+app with a DMG copy gets that copy's updater, which is the DMG's behaviour;
+`DisableUpdateCheck` forced true is the control that holds either way.
 
 Dev-time only, never in the app: `pnpm setup:models` downloads the beat model
 from a pinned commit and checks its SHA-256 (`scripts/setup-models.sh`);

@@ -3526,7 +3526,7 @@ export default function App() {
       {settings?.workspaceRoot && updates.welcomeOwed && !isAutoRun && (
         <WelcomeDialog
           onAnswer={(on) => void updates.answerConsent(on)}
-          updatesManaged={updates.managed}
+          updatesManaged={updates.managed || updates.byInstaller}
           organisationServer={Boolean(managed?.updateEndpoint)}
         />
       )}

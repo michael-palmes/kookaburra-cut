@@ -13,6 +13,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   projects, keeps no bridge folder and shows no Claude buttons. Turning it on
   works at once, with no relaunch. After updating, turn it on again to keep
   using Edit with Claude.
+- A copy installed from the `.pkg` no longer checks for updates or installs
+  them itself: whoever installed it delivers the next one. Settings ▸ Updates
+  says so. A configuration profile can turn the in-app updater back on. Copies
+  from the DMG update as before.
 
 ### Added
 

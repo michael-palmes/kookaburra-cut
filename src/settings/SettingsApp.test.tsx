@@ -12,11 +12,13 @@ const CLAUDE_ON: ClaudeStatus = {
 
 let policy: Partial<ManagedPolicy> = {};
 let claude: ClaudeStatus = CLAUDE_ON;
+let leftToInstaller = false;
 
 vi.mock("@tauri-apps/api/core", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tauri-apps/api/core")>()),
   invoke: vi.fn(async (cmd: string) => {
     if (cmd === "claude_status") return claude;
+    if (cmd === "updates_left_to_installer") return leftToInstaller;
     if (cmd !== "managed_policy") throw new Error(`unexpected command ${cmd}`);
     const { UNMANAGED } = await import("../engine/managed");
     return { ...UNMANAGED, ...policy };
@@ -32,6 +34,8 @@ async function render(forced: Partial<ManagedPolicy>, answer = CLAUDE_ON): Promi
   await managed.managedPolicy();
   const consent = await import("../engine/claudeConsent");
   await consent.claudeStatus();
+  const updates = await import("../engine/updates");
+  await updates.updatesLeftToInstaller();
   const { SettingsApp } = await import("./SettingsApp");
   return renderToStaticMarkup(<SettingsApp />);
 }
@@ -49,6 +53,7 @@ const LOCK = "Managed by your organisation";
 beforeEach(() => {
   policy = {};
   claude = CLAUDE_ON;
+  leftToInstaller = false;
 });
 
 describe("Settings rows a profile governs", () => {
@@ -146,6 +151,19 @@ describe("Settings rows a profile governs", () => {
     const html = await render({ updateEndpointLocked: true, forcedKeys: ["UpdateEndpoint"] });
     expect(row(html, "Check for updates automatically")).toContain("(UpdateEndpoint)");
     expect(row(html, "Status")).toContain("update server address can&#x27;t be used");
+  });
+
+  it("leaves updates to the installer on a package install, without blaming a profile", async () => {
+    leftToInstaller = true;
+    const html = await render({ managed: false });
+    const updates = row(html, "Check for updates automatically");
+    expect(updates).toContain("Updated by its installer");
+    expect(updates).toContain("never checks for updates itself");
+    expect(updates).not.toContain(LOCK);
+    expect(updates).not.toContain('type="checkbox"');
+    const status = row(html, ">Status<");
+    expect(status).toContain("updates arrive from the installer");
+    expect(status).not.toContain("Check now");
   });
 
   it("locks the Publisher rows under DisablePackExport", async () => {

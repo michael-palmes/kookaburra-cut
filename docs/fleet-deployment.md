@@ -271,7 +271,9 @@ websites off; drop them once no Mac runs those versions.
   publishers' key ids, or leave the array empty for no imports.
 - **Open** leaves every feature to the person and forces only
   `ExportsInProject`, the one key all three share. fleet.md recommends more for
-  unreleased work.
+  unreleased work. Installed from the pkg, a Mac on this profile still gets
+  its updates from you: force `DisableUpdateCheck` to `false` if you want the
+  in-app updater there.
 - **`WorkspaceRoot` `~/Kookaburra Cut`** fixes the default, a local folder, so
   nobody moves projects into a synced one. Someone who already moved their
   workspace finds an empty one at the fixed path, and Settings cannot move it,
@@ -408,9 +410,12 @@ Settings row a key governs shows a lock and "Managed by your organisation"
 
 ### Through your MDM
 
-Recommended in [fleet.md](./fleet.md#updates-in-app-or-mdm-delivery): force
-`DisableUpdateCheck`, verify each release, and push it with the same recipe:
-the next pkg, or the install script with a new version and hash. A Homebrew cask is staged in
+Recommended in [fleet.md](./fleet.md#updates-in-app-or-mdm-delivery): verify
+each release and push it with the same recipe: the next pkg, or the install
+script with a new version and hash. A copy installed from the pkg never
+updates itself, so nothing else is needed for it (`package_install.rs`); force
+`DisableUpdateCheck` too where Macs still run 0.23.0 or a copy from the DMG,
+whose updater is on. A Homebrew cask is staged in
 [`packaging/homebrew/`](../packaging/homebrew/README.md) for fleets that
 install with Homebrew; it is not published until its tap exists
 ([Not yet](#not-yet)).
@@ -419,7 +424,8 @@ install with Homebrew; it is not published until its tap exists
 
 `UpdateEndpoint` (0.22.3) points the in-app updater at a manifest you host, so
 the app asks your server instead of GitHub and your server decides when a
-version reaches the fleet (`updater.rs`). The archive must still carry this
+version reaches the fleet (`updater.rs`). Forcing it also turns the updater
+back on for a copy installed from the pkg, which is otherwise off. The archive must still carry this
 project's updater signature, so a mirror can serve only builds this project
 signed ([mdm.md](./mdm.md), `UpdateEndpoint`).
 

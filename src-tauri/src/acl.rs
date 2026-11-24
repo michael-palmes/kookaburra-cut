@@ -596,6 +596,7 @@ fn the_settings_window_owns_caches_the_workspace_location_updates_and_the_publis
             "set_publisher_profile",
             "set_update_consent",
             "sidecar_versions",
+            "updates_left_to_installer",
             "user_home_dir",
         ])
     );

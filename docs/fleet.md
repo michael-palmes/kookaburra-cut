@@ -1,10 +1,11 @@
 # Kookaburra Cut on managed Macs
 
-Describes version 0.24.0. Two changes since: live website scenes are removed
+Describes version 0.24.0. Three changes since: live website scenes are removed
 and gone from the next release, so nothing here covers them
 ([mdm.md, "Retired keys"](./mdm.md#retired-keys) for Macs still on 0.24.0).
 And Claude is off until a person turns it on, where on 0.24.0 only
-`DisableAgentKit` keeps it off.
+`DisableAgentKit` keeps it off; and a copy installed from the pkg no longer
+updates itself, where on 0.24.0 only `DisableUpdateCheck` stops it.
 For the IT and security team deploying Kookaburra Cut to a fleet. The keys themselves, their types and a sample profile are in
 [mdm.md](./mdm.md); the decision-maker's summary is
 [security-overview.md](./security-overview.md); the engineering record with the
@@ -15,9 +16,11 @@ checked against Anthropic's documentation on 6 November 2026.
 ## In short
 
 1. Deploy only builds you have verified ([Verify a release](#verify-a-release)),
-   through your MDM, with `DisableUpdateCheck` forced on; or keep the in-app
-   updater and point it at your own server with `UpdateEndpoint`
-   ([Updates](#updates-in-app-or-mdm-delivery)).
+   through your MDM, as the pkg: a copy installed from it never updates itself,
+   so your push is the only way a new version arrives. Force
+   `DisableUpdateCheck` as well while any Mac runs 0.23.0 or a copy from the
+   DMG; or keep the in-app updater and point it at your own server with
+   `UpdateEndpoint` ([Updates](#updates-in-app-or-mdm-delivery)).
 2. Force `AllowedPublisherKeyIds` (empty until you approve a publisher) and
    `ExportsInProject`. Where Claude Code is approved for this work, leave
    `DisableClaude` and `DisableAgentKit` unset and force
@@ -113,7 +116,7 @@ later before relying on them. `AuditLogPath` needs 0.23.0.
 | Key | Recommend | Why |
 | --- | --- | --- |
 | `AllowedPublisherKeyIds` | `[]`, then approved publishers' key ids | Empty means no pack imports at all; there is no separate switch. The id is recomputed from the pack's own key, so a manifest cannot claim one (`pack/commands.rs`). |
-| `DisableUpdateCheck` | `true` with MDM delivery | Stops the GitHub request and the in-app install, which a standard user cannot finish anyway, since it asks for an administrator password (`updater.rs`). |
+| `DisableUpdateCheck` | `true` with MDM delivery | Stops the GitHub request and the in-app install, which a standard user cannot finish anyway, since it asks for an administrator password (`updater.rs`). A copy installed from the pkg already makes neither (`package_install.rs`); the key holds for a copy from the DMG and for 0.23.0. |
 | `UpdateEndpoint` | Your mirror's `https://` manifest URL, if you keep the in-app updater | The app then asks only that host. The archive must still carry this project's updater signature, bound to the version, so a mirror can serve only builds this project signed; a malformed value means no check at all, never a fallback to GitHub (`updater.rs`). |
 | `ExportsInProject` | `true` | Renders land in the project's `exports/` folder instead of `~/Downloads`, where they outlive the project and ride whatever syncs that folder (`resolve_export_output` in `lib.rs`). |
 | `DisablePackExport` | `true` where nothing should leave as a pack | Removes Share as pack, and the signing key is never minted in the Keychain. Imports are governed by `AllowedPublisherKeyIds` (`pack/commands.rs`, `pack/key.rs`). |
@@ -344,7 +347,14 @@ download; it cannot catch a harmful change pushed through that account, since
 the signature, the notarisation and the attestation all come from it. Your
 delay and your review are the real control.
 
-**Recommendation:** MDM delivery with `DisableUpdateCheck` forced on, a short
+A copy installed from the pkg takes the MDM path by default: it never checks
+GitHub and never installs an update itself, with no key forced
+(`package_install.rs`: the installer's receipt names the running version and
+the app runs from `/Applications`). `UpdateEndpoint`, or `DisableUpdateCheck`
+forced to `false`, turns the in-app updater back on for it.
+
+**Recommendation:** MDM delivery of the pkg, with `DisableUpdateCheck` forced
+on so a copy from the DMG or an older version behaves the same, a short
 soak for ordinary releases and a fast lane for security ones; revisit once the
 `release` environment's rules sit beyond the admin's reach
 ([SECURITY.md, "Not yet"](../SECURITY.md#not-yet)).

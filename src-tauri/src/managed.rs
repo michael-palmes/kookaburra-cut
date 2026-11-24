@@ -1109,6 +1109,21 @@ mod tests {
                 "deny_update_check",
             ),
             (
+                include_str!("updater.rs"),
+                "check_for_update",
+                "package_install::deny_update",
+            ),
+            (
+                include_str!("updater.rs"),
+                "set_update_consent",
+                "package_install::deny_update",
+            ),
+            (
+                include_str!("updater.rs"),
+                "install_update_and_relaunch",
+                "package_install::deny_update",
+            ),
+            (
                 include_str!("workspace.rs"),
                 "init_workspace",
                 "deny_workspace_change",

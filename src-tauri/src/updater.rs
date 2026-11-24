@@ -33,6 +33,8 @@ pub async fn check_for_update(
     pending: State<'_, PendingUpdate>,
 ) -> Result<UpdateCheck, String> {
     crate::managed::deny_update_check()?;
+    // A copy installed from the package leaves updates to its installer.
+    crate::package_install::deny_update(&app)?;
     // A forced but unusable server refuses here, so the check never falls back to the default.
     let managed_endpoint = crate::managed::managed_update_endpoint()?;
     // The local test manifest is a dev-only affordance: a release build never reads the variable, so no environment can repoint a shipped app's updater (the pinned pubkey bounds it either way).
@@ -108,10 +110,11 @@ pub fn set_update_consent(
     settings: State<'_, SettingsState>,
     consent: bool,
 ) -> Result<(), String> {
-    // A profile that turns update checks off, or names a server it can't use, pins consent off whatever the switch asked for.
+    // A profile that turns update checks off, or names a server it can't use, pins consent off whatever the switch asked for; so does a package install, whose updates come from its installer.
     let consent = consent
         && crate::managed::deny_update_check().is_ok()
-        && crate::managed::managed_update_endpoint().is_ok();
+        && crate::managed::managed_update_endpoint().is_ok()
+        && crate::package_install::deny_update(&app).is_ok();
     workspace::update_settings(&app, &settings, |s| {
         s.update_check_consent = Some(consent);
         if !consent {
@@ -127,6 +130,7 @@ pub async fn install_update_and_relaunch(
     pending: State<'_, PendingUpdate>,
 ) -> Result<(), String> {
     crate::managed::deny_update_check()?;
+    crate::package_install::deny_update(&app)?;
     let update = pending
         .0
         .lock()
