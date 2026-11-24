@@ -311,7 +311,7 @@ superseded by the built layout below.)*
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ ●●●  ⌂ name / path   [Find ⌘K] │ [✳ Claude] [▶] [⤓]   │ ← custom titlebar (46px)
+│ ●●●  ⌂ name / path     [Find ⌘K] │ [✳ Claude] [▶] [⤓]   │ ← custom titlebar (46px)
 ├────────────────────────────────────────────┬────────────┤
 │   Preview stage                             │ Inspector  │
 │   (letterboxed canvas)                      │ (342px,    │

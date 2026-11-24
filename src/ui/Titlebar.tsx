@@ -62,7 +62,7 @@ export function TitlebarIdentity({
             type="button"
             className="titlebar-path copyable"
             title={`${path}\nClick to copy the folder path`}
-            aria-label={`Copy folder path, ${path}`}
+            aria-label={`${path}, copy folder path`}
             onClick={onCopyPath}
           >
             {path}
