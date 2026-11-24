@@ -53,10 +53,10 @@ package") lists the commands to check a download yourself. The receipt is
   falls back to an authorised move); a standard user cannot finish it, and an
   update that does finish leaves the bundle owned by the user who ran it until
   the next pkg, while the receipt still names the version the pkg installed,
-  so from then the copy reads as a DMG install and keeps its updater. 0.23.0
-  does not have this: there the updater runs on a pkg install unless
+  so from then the copy reads as a DMG install and keeps its updater. 0.24.0
+  and earlier do not have this: there the updater runs on a pkg install unless
   `DisableUpdateCheck` is forced, so keep forcing it while any Mac runs
-  0.23.0.
+  0.24.0 or earlier.
 - **Removing it.** Delete `/Applications/Kookaburra Cut.app`, then
   `sudo pkgutil --forget com.mpalmes.kookaburracut`; the two folders above
   stay until someone deletes them. `packaging/mdm/uninstall-kookaburra-cut.sh`,

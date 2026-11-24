@@ -19,7 +19,7 @@ describes it. And Claude is off until a person turns it on, with
 ("What reaches your agent"); on 0.24.0 the kit is stamped and the bridge
 serves from the first launch, the key is ignored, and `DisableAgentKit` is
 what stops them. And a copy installed from the pkg leaves updates to its
-installer ("What leaves the Mac"); on 0.23.0 it checks GitHub like any other
+installer ("What leaves the Mac"); on 0.24.0 it checks GitHub like any other
 copy unless `DisableUpdateCheck` is forced.
 Each release from 0.22.0 on carries its own copy of this file in its assets.
 

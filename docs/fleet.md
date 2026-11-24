@@ -18,7 +18,7 @@ checked against Anthropic's documentation on 6 November 2026.
 1. Deploy only builds you have verified ([Verify a release](#verify-a-release)),
    through your MDM, as the pkg: a copy installed from it never updates itself,
    so your push is the only way a new version arrives. Force
-   `DisableUpdateCheck` as well while any Mac runs 0.23.0 or a copy from the
+   `DisableUpdateCheck` as well while any Mac runs 0.24.0 or earlier, or a copy from the
    DMG; or keep the in-app updater and point it at your own server with
    `UpdateEndpoint` ([Updates](#updates-in-app-or-mdm-delivery)).
 2. Force `AllowedPublisherKeyIds` (empty until you approve a publisher) and
@@ -116,7 +116,7 @@ later before relying on them. `AuditLogPath` needs 0.23.0.
 | Key | Recommend | Why |
 | --- | --- | --- |
 | `AllowedPublisherKeyIds` | `[]`, then approved publishers' key ids | Empty means no pack imports at all; there is no separate switch. The id is recomputed from the pack's own key, so a manifest cannot claim one (`pack/commands.rs`). |
-| `DisableUpdateCheck` | `true` with MDM delivery | Stops the GitHub request and the in-app install, which a standard user cannot finish anyway, since it asks for an administrator password (`updater.rs`). A copy installed from the pkg already makes neither (`package_install.rs`); the key holds for a copy from the DMG and for 0.23.0. |
+| `DisableUpdateCheck` | `true` with MDM delivery | Stops the GitHub request and the in-app install, which a standard user cannot finish anyway, since it asks for an administrator password (`updater.rs`). A copy installed from the pkg already makes neither (`package_install.rs`); the key holds for a copy from the DMG and for 0.24.0 and earlier. |
 | `UpdateEndpoint` | Your mirror's `https://` manifest URL, if you keep the in-app updater | The app then asks only that host. The archive must still carry this project's updater signature, bound to the version, so a mirror can serve only builds this project signed; a malformed value means no check at all, never a fallback to GitHub (`updater.rs`). |
 | `ExportsInProject` | `true` | Renders land in the project's `exports/` folder instead of `~/Downloads`, where they outlive the project and ride whatever syncs that folder (`resolve_export_output` in `lib.rs`). |
 | `DisablePackExport` | `true` where nothing should leave as a pack | Removes Share as pack, and the signing key is never minted in the Keychain. Imports are governed by `AllowedPublisherKeyIds` (`pack/commands.rs`, `pack/key.rs`). |

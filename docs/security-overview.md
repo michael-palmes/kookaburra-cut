@@ -309,7 +309,7 @@ keys, each with a row, a guard and a test in [mdm.md](./mdm.md):
 `DisableAgentKit`, `DisablePackExport`, `ExportsInProject` and `UpdateEndpoint`
 are honoured from 0.22.3; an older build ignores them, so deploy 0.22.3 or
 later before relying on them. `AuditLogPath` needs 0.23.0, and
-`RequireManagedClaude` the release after it.
+`RequireManagedClaude` the release after 0.24.0.
 `DisableLiveWebsites` and `AllowedWebsiteOrigins` are retired with live
 websites: a profile that still forces them locks nothing, and only 0.24.0 and
 earlier read them ([mdm.md, "Retired keys"](./mdm.md#retired-keys)).
