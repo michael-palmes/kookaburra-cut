@@ -1,5 +1,6 @@
 //! Whether Claude Code's own managed policy pins sign-in to an organisation on this Mac: `forceLoginOrgUUID` in its managed settings file, a drop-in beside it, or forced in its preference domain. `RequireManagedClaude` (docs/mdm.md) keeps Claude off unless one of them holds it. Settings an organisation delivers only from the claude.ai admin console are not visible to another app, so they do not count here. Anything unreadable, oversized or malformed reads as missing.
 
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -27,6 +28,13 @@ pub struct Sources<'a> {
     pub drop_ins: &'a Path,
     /// A forced key in Claude Code's preference domain.
     pub forced: &'a dyn Fn(&str) -> Option<PrefValue>,
+    /// Count a file only when root owns it and nobody else can write it; off in tests, which can't make one.
+    pub root_owned_only: bool,
+}
+
+/// What an installer or an MDM leaves, and what nobody makes without the administrator password: `/Library/Application Support` itself is writable by the admin group.
+fn root_owned(uid: u32, mode: u32) -> bool {
+    uid == 0 && mode & 0o022 == 0
 }
 
 /// A non-empty string, or a non-empty array of non-empty strings.
@@ -57,11 +65,14 @@ fn pins_pref(value: Option<PrefValue>) -> bool {
 }
 
 /// One settings file: a regular file (links followed, as Claude Code follows them) within the size cap that parses as a JSON object holding the key.
-fn file_pins(path: &Path) -> bool {
+fn file_pins(path: &Path, root_owned_only: bool) -> bool {
     let Ok(meta) = std::fs::metadata(path) else {
         return false;
     };
     if !meta.is_file() || meta.len() > MAX_FILE_BYTES {
+        return false;
+    }
+    if root_owned_only && !root_owned(meta.uid(), meta.mode()) {
         return false;
     }
     let Ok(text) = std::fs::read_to_string(path) else {
@@ -88,10 +99,10 @@ fn drop_in_files(dir: &Path) -> Vec<PathBuf> {
 /// Whether any source pins an organisation.
 pub fn org_pinned_in(sources: &Sources) -> bool {
     pins_pref((sources.forced)(ORG_KEY))
-        || file_pins(sources.file)
+        || file_pins(sources.file, sources.root_owned_only)
         || drop_in_files(sources.drop_ins)
             .iter()
-            .any(|path| file_pins(path))
+            .any(|path| file_pins(path, sources.root_owned_only))
 }
 
 fn read_system() -> bool {
@@ -99,6 +110,7 @@ fn read_system() -> bool {
         file: Path::new(MANAGED_SETTINGS_FILE),
         drop_ins: Path::new(MANAGED_SETTINGS_DROP_INS),
         forced: &|key| crate::managed::forced_in(CLAUDE_CODE_DOMAIN, key),
+        root_owned_only: true,
     })
 }
 
@@ -141,10 +153,36 @@ mod tests {
             file: &dir.join("managed-settings.json"),
             drop_ins: &dir.join("managed-settings.d"),
             forced: &|key| (key == ORG_KEY).then(|| forced.clone()).flatten(),
+            root_owned_only: false,
         })
     }
 
     const ORG: &str = "0f1e2d3c-4b5a-6978-8695-a4b3c2d1e0f9";
+
+    #[test]
+    fn a_file_counts_only_when_root_owns_it_and_nobody_else_can_write_it() {
+        assert!(root_owned(0, 0o100644));
+        assert!(root_owned(0, 0o100600));
+        assert!(!root_owned(501, 0o100644));
+        assert!(!root_owned(0, 0o100664));
+        assert!(!root_owned(0, 0o100646));
+
+        let dir = scratch("owner");
+        std::fs::write(
+            dir.join("managed-settings.json"),
+            format!(r#"{{"forceLoginOrgUUID":"{ORG}"}}"#),
+        )
+        .unwrap();
+        let strict = org_pinned_in(&Sources {
+            file: &dir.join("managed-settings.json"),
+            drop_ins: &dir.join("managed-settings.d"),
+            forced: &|_| None,
+            root_owned_only: true,
+        });
+        assert!(!strict, "a file this test wrote is not root's");
+        assert!(pinned(&dir, None));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn nothing_installed_reads_as_missing() {
@@ -161,7 +199,9 @@ mod tests {
             (format!(r#"{{"forceLoginOrgUUID":"{ORG}"}}"#), true),
             (format!(r#"{{"forceLoginOrgUUID":["{ORG}"]}}"#), true),
             (
-                format!(r#"{{"forceLoginMethod":"claudeai","forceLoginOrgUUID":["{ORG}","{ORG}"]}}"#),
+                format!(
+                    r#"{{"forceLoginMethod":"claudeai","forceLoginOrgUUID":["{ORG}","{ORG}"]}}"#
+                ),
                 true,
             ),
             (r#"{"forceLoginOrgUUID":""}"#.to_owned(), false),
@@ -186,7 +226,11 @@ mod tests {
         let dir = scratch("odd");
         let file = dir.join("managed-settings.json");
         let padding = " ".repeat(MAX_FILE_BYTES as usize);
-        std::fs::write(&file, format!(r#"{{"forceLoginOrgUUID":"{ORG}"}}{padding}"#)).unwrap();
+        std::fs::write(
+            &file,
+            format!(r#"{{"forceLoginOrgUUID":"{ORG}"}}{padding}"#),
+        )
+        .unwrap();
         assert!(!pinned(&dir, None));
         std::fs::remove_file(&file).unwrap();
         std::fs::create_dir_all(&file).unwrap();

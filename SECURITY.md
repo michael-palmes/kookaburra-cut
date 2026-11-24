@@ -492,7 +492,10 @@ managed policy pins sign-in to an organisation on this Mac, read from
 `/Library/Application Support/ClaudeCode/managed-settings.json`, any `*.json`
 in `managed-settings.d/` beside it, or the key forced in the
 `com.anthropic.claudecode` preference domain (`claude_policy.rs`,
-`org_pinned_in`). A file that is unreadable, over 1 MiB or not JSON counts as
+`org_pinned_in`). A file counts only when root owns it and neither group nor
+others can write it (`root_owned`), since the admin group can write
+`/Library/Application Support`; the key checks that sign-in is pinned, not to
+which organisation. A file that is unreadable, over 1 MiB or not JSON counts as
 missing; the answer is cached for a minute and read afresh before each handoff
 and each use of the switch. It proves the policy is installed, not that a
 session obeys it, and it cannot see settings an organisation delivers only
