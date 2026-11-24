@@ -11,7 +11,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Live websites in a scene. The app no longer opens any web page, so the
   website panel, its Allow sheet, Settings ▸ Website data and the website
   review on pack import are gone. An older scene's website block is ignored
-  and its captured image stays in `assets/`: show a page as an image or on a
+  and its captured image stays in `assets/` as an unused file you can delete
+  from the Library: show a page as an image or on a
   device's screen instead. Sign-ins the app kept for websites you allowed are
   deleted the next time it starts.
 - The managed preferences `DisableLiveWebsites` and `AllowedWebsiteOrigins`.
