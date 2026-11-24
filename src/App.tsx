@@ -496,6 +496,8 @@ export default function App() {
   const [claudeSetupOpen, setClaudeSetupOpen] = useState(false);
   const claudeOffReasonRef = useRef<string | null>(null);
   claudeOffReasonRef.current = claudeAllowed ? null : claude.reason;
+  const claudeChoiceOpenRef = useRef(false);
+  claudeChoiceOpenRef.current = claudeChoosable && claude.consent !== "on";
   const claudeAllowedRef = useRef(false);
   claudeAllowedRef.current = claudeAllowed;
   // Read by the load-time greeting without re-running it.
@@ -625,7 +627,9 @@ export default function App() {
     if (isAutoRun) return;
     const unlisten = listen("kookaburra://edit-in-claude", () => {
       // ⌥⌘E only means something with an editable project open; say so elsewhere instead of silently doing nothing.
-      if (claudeOffReasonRef.current) {
+      if (claudeChoiceOpenRef.current) {
+        setClaudeSetupOpen(true);
+      } else if (claudeOffReasonRef.current) {
         setToast({ kind: "error", message: plainError(claudeOffReasonRef.current) });
       } else if (view === "editor" && isEditableProjectId(useEditorStore.getState().projectId)) {
         toggleClaude();
@@ -3545,6 +3549,7 @@ export default function App() {
         !isAutoRun &&
         managed !== null &&
         claude.consent !== "loading" &&
+        updates.consent !== "loading" &&
         (updates.welcomeOwed || (claude.askOwed && claudeChoosable) || claudeSetupOpen) && (
           <SetupDialog
             askClaude={claudeSetupOpen || claude.askOwed}
