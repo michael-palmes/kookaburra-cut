@@ -240,7 +240,7 @@ import { CameraToolOverlay } from "./ui/CameraToolOverlay";
 import { ChartAnimationLane } from "./ui/ChartAnimationLane";
 import { ChartDataModal } from "./ui/ChartDataModal";
 import { ChartHeroGizmo } from "./ui/ChartHeroGizmo";
-import { ClaudeLauncher, EditWithClaudeButton } from "./ui/ClaudeLauncher";
+import { ClaudeLauncher, EditWithClaudeButton, SetUpClaudeButton } from "./ui/ClaudeLauncher";
 import { CommandPalette } from "./ui/CommandPalette";
 import { CompareAnimationLane } from "./ui/CompareAnimationLane";
 import { openChartDataModal } from "./ui/chartDataModalStore";
@@ -276,6 +276,7 @@ import { writeCutCaches, writeCutsForMusic } from "./ui/pinnedCuts";
 import { ALL_PROJECTS } from "./ui/projectLibrary";
 import { renderBlockFor } from "./ui/renderBlock";
 import { SceneWizardHost } from "./ui/SceneWizardHost";
+import { SetupDialog } from "./ui/SetupDialog";
 import { ShortcutsSheet } from "./ui/ShortcutsSheet";
 import { stageRegionLabel } from "./ui/stageRegion";
 import { playheadStillMs, stillAtFrame } from "./ui/stillsModel";
@@ -301,7 +302,7 @@ import {
 import { duplicateThemeDoc } from "./ui/theme-editor/themeDraft";
 import { onThemeSaved, readThemeSourceDoc } from "./ui/theme-editor/themeEditorIo";
 import { onThemeMoved } from "./ui/theme-editor/themeMove";
-import { UpdateAvailableDialog, WelcomeDialog } from "./ui/updateDialogs";
+import { UpdateAvailableDialog } from "./ui/updateDialogs";
 import { useBridgeExport } from "./ui/useBridgeExport";
 import { commitSceneDuration, resolveDocPatchIndex, writeMusicCaches } from "./ui/useSceneDocPatch";
 import { Welcome } from "./ui/Welcome";
@@ -483,6 +484,16 @@ export default function App() {
   const claudeAllowed = managed !== null && !claudeLocked(managed) && claude.allowed;
   // Copy and the start card only: an unread policy reads as not yet turned off, so an unmanaged welcome never flashes the managed wording.
   const claudeOffered = (managed === null || !claudeLocked(managed)) && claude.allowed;
+  // The Claude choice is a person's to make only where no profile owns it; a missing organisation policy keeps it owed until IT installs one.
+  const claudeChoiceLock =
+    managed !== null && claudeLocked(managed)
+      ? ("managed" as const)
+      : claude.orgPolicy === "missing"
+        ? ("orgMissing" as const)
+        : null;
+  const claudeChoosable =
+    managed !== null && claudeChoiceLock === null && claude.consent !== "loading";
+  const [claudeSetupOpen, setClaudeSetupOpen] = useState(false);
   const claudeOffReasonRef = useRef<string | null>(null);
   claudeOffReasonRef.current = claudeAllowed ? null : claude.reason;
   const claudeAllowedRef = useRef(false);
@@ -2923,6 +2934,13 @@ export default function App() {
               name={project?.name ?? projectId.replace(WORKSPACE_PROJECT_PREFIX, "")}
               path={projectDisplayPath}
             />
+            {project &&
+              isEditableProjectId(project.id) &&
+              !claudeAllowed &&
+              claudeChoosable &&
+              claude.consent !== "on" && (
+                <SetUpClaudeButton onClick={() => setClaudeSetupOpen(true)} />
+              )}
             {project && isEditableProjectId(project.id) && claudeAllowed && (
               <EditWithClaudeButton
                 buttonRef={claudeButtonRef}
@@ -3523,13 +3541,26 @@ export default function App() {
         />
       )}
       {/* The welcome (and its consent ask) waits for a workspace so it never stacks on the setup-failure dialog. */}
-      {settings?.workspaceRoot && updates.welcomeOwed && !isAutoRun && (
-        <WelcomeDialog
-          onAnswer={(on) => void updates.answerConsent(on)}
-          updatesManaged={updates.managed || updates.byInstaller}
-          organisationServer={Boolean(managed?.updateEndpoint)}
-        />
-      )}
+      {settings?.workspaceRoot &&
+        !isAutoRun &&
+        managed !== null &&
+        claude.consent !== "loading" &&
+        (updates.welcomeOwed || (claude.askOwed && claudeChoosable) || claudeSetupOpen) && (
+          <SetupDialog
+            askClaude={claudeSetupOpen || claude.askOwed}
+            askUpdates={updates.welcomeOwed && !claudeSetupOpen}
+            claudeLock={claudeChoiceLock}
+            claudeCovered={claude.orgPolicy === "found"}
+            updatesLock={updates.managed ? "managed" : updates.byInstaller ? "installer" : null}
+            organisationServer={Boolean(managed.updateEndpoint)}
+            onCancel={claudeSetupOpen ? () => setClaudeSetupOpen(false) : undefined}
+            onAnswer={(answer) => {
+              setClaudeSetupOpen(false);
+              if (answer.claude !== null) void claude.set(answer.claude);
+              if (updates.welcomeOwed) void updates.answerConsent(answer.updates ?? false);
+            }}
+          />
+        )}
       {updates.offerVisible && updates.available && !isAutoRun && !exporting && (
         <UpdateAvailableDialog
           version={updates.available.version}

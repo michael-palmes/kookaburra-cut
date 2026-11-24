@@ -435,6 +435,20 @@ body {
   color: var(--claude-clay);
 }
 
+.titlebar-claude.quiet {
+  color: var(--text-secondary);
+  border-color: var(--border-strong);
+}
+
+.titlebar-claude.quiet:hover {
+  color: var(--text-primary);
+  border-color: var(--border-control);
+}
+
+.titlebar-claude.quiet .titlebar-claude-mark {
+  color: var(--text-tertiary);
+}
+
 .titlebar-claude-anchor {
   position: relative;
   display: inline-flex;
@@ -2466,7 +2480,7 @@ button.beat-status {
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
-/* First-launch welcome: a greeting and the one recommended setting, then Get started. */
+/* First-launch setup: a greeting, the Claude choice and the update switch, then Get started. */
 .welcome-modal-intro {
   display: flex;
   flex-direction: column;
@@ -2480,30 +2494,113 @@ button.beat-status {
   font-weight: 620;
 }
 
-.welcome-modal-update {
-  justify-content: flex-start;
+.setup-choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.setup-choice {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-5);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard);
+}
+
+.setup-choice:hover {
+  border-color: var(--border-strong);
+}
+
+.setup-choice input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
   cursor: pointer;
 }
 
-.welcome-modal-update .settings-row-text {
-  flex: 1;
+.setup-choice:has(input:checked) {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
 }
 
-.welcome-modal-update-title {
+.setup-choice:has(input:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.setup-choice-title {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: 590;
 }
 
-.welcome-modal-update .toggle-switch {
-  margin-left: 0;
+.setup-choice-mark {
+  display: inline-flex;
+  flex: none;
+  color: var(--claude-clay);
 }
 
-.welcome-modal-update-icon {
+.setup-choice-mark-off {
+  color: var(--text-tertiary);
+}
+
+.setup-choice-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+  color: var(--text-secondary);
+}
+
+.setup-choice-note .setup-icon {
+  margin-top: 1px;
+  color: var(--success);
+}
+
+.setup-icon {
   flex: none;
   width: 16px;
   height: 16px;
   color: var(--text-secondary);
+}
+
+.setup-row {
+  justify-content: flex-start;
+}
+
+.setup-row .settings-row-text {
+  flex: 1;
+}
+
+.setup-row-switch {
+  cursor: pointer;
+}
+
+.setup-row .toggle-switch {
+  margin-left: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .setup-choice {
+    transition: none;
+  }
 }
 
 .welcome-modal-privacy {
