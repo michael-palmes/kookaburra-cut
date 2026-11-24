@@ -192,7 +192,11 @@ export function SetupDialog({
           </div>
         )}
         <p className="muted welcome-modal-privacy">
-          {chooseClaude || chooseUpdates ? "Change either in Settings. " : ""}
+          {chooseClaude && chooseUpdates
+            ? "Change either in Settings. "
+            : chooseClaude || chooseUpdates
+              ? "Change this in Settings. "
+              : ""}
           <button
             type="button"
             className="text-link"

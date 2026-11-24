@@ -104,6 +104,7 @@ describe("SetupDialog", () => {
       <SetupDialog onAnswer={onAnswer} onCancel={onCancel} askClaude askUpdates={false} />,
     );
     expect(html).toContain("Set up Claude");
+    expect(html).toContain("Change this in Settings.");
     expect(html).toContain("Cancel");
     expect(html).not.toContain('role="switch"');
     escapeLayer.close?.();
