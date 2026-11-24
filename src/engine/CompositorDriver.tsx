@@ -47,7 +47,7 @@ import {
 } from "./sceneCamera";
 import { compareSpecOf, resolveCompareFrame } from "./sceneCompare";
 import type { SceneDoc } from "./sceneDocSchema";
-import { getSceneHosts, subscribeSceneHosts } from "./sceneHostRegistry";
+import { getSceneHosts, sceneHostsCommitted, subscribeSceneHosts } from "./sceneHostRegistry";
 import { buildCompareBLightingTracks, buildLightingTracks } from "./sceneLighting";
 import { buildRoomTracks } from "./sceneRoom";
 import { buildSceneRenderStates, resolveFramePlans } from "./sceneState";
@@ -71,12 +71,6 @@ import { beginSupersample, endSupersample } from "./supersample";
 
 const SETTLE_MS = 150;
 
-/** Every slot has a primary host still in the scene graph; a previous project's hosts unregister an effect after leaving it. */
-function sceneHostsCommitted(slotCount: number): boolean {
-  let live = 0;
-  for (const host of getSceneHosts()) if (host.side === undefined && host.group.parent) live++;
-  return live >= slotCount;
-}
 const bufferSize = new Vector2();
 
 /** A paused object-blur pass in flight: which frame it serves, its samples, and the running sum. */

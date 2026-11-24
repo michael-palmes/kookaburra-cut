@@ -38,6 +38,13 @@ export function getSceneHosts(): SceneHostHandle[] {
   );
 }
 
+/** Every slot has a primary host still in the scene graph; a previous project's hosts unregister an effect after leaving it. */
+export function sceneHostsCommitted(slotCount: number): boolean {
+  let live = 0;
+  for (const host of hosts.values()) if (host.side === undefined && host.group.parent) live++;
+  return live >= slotCount;
+}
+
 /** A window rendering through the stage holds the worker's hosts as summaries (no group to gate); readers that only need index and side see them through `getSceneHosts`. */
 export function setMirroredSceneHosts(
   entries: { index: number; id: string; startMs: number; durationMs: number; side?: "b" }[],

@@ -23,7 +23,11 @@ import {
   sceneCameraEndMs,
   sceneCameraTiming,
 } from "../engine/sceneCamera";
-import { getSceneHosts } from "../engine/sceneHostRegistry";
+import {
+  getSceneHosts,
+  sceneHostsCommitted,
+  subscribeSceneHosts,
+} from "../engine/sceneHostRegistry";
 import { buildLightingTracks } from "../engine/sceneLighting";
 import { buildRoomTracks } from "../engine/sceneRoom";
 import { buildSceneRenderStates, resolveFramePlans } from "../engine/sceneState";
@@ -133,6 +137,7 @@ export function PresentCompositorDriver({
 
   // Redraw on deck changes that land while the clock is parked (e.g. back nav in video pause).
   useEffect(() => usePresentStore.subscribe(() => invalidate()), [invalidate]);
+  useEffect(() => subscribeSceneHosts(() => invalidate()), [invalidate]);
 
   const leaveRef = useRef<LeaveState | null>(null);
   const holdsRef = useRef<Record<number, DerivedHold>>({});
@@ -141,6 +146,8 @@ export function PresentCompositorDriver({
   const settleProbeRef = useRef({ holdMs: -1, sinceRawMs: 0 });
 
   useFrame((s) => {
+    // A frame before the hosts register draws every scene at once, and their satin floors mirror each other without end.
+    if (!sceneHostsCommitted(project.slots.length)) return;
     const clockMs = useClockStore.getState().currentMs;
     const store = usePresentStore.getState();
     const { deck, anchors } = store;
