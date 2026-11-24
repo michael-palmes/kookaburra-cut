@@ -41,6 +41,8 @@ project, and the deliberate deferrals are public under
 Nothing leaves the Mac unless a person starts it
 ([SECURITY.md, "What leaves the Mac"](../SECURITY.md#what-leaves-the-mac)).
 
+![Your Mac as a walled box holding projects, render and export. Three switched doors lead to GitHub for updates, your own Claude app and a website you allow, each with the key a fleet forces to lock it. There is no other way out.](./assets/security-doors.png)
+
 | Path | Trigger | Destination host | What goes | Off switch and control |
 | --- | --- | --- | --- | --- |
 | Update check | At launch and then hourly while the app is open, at most once every 20 hours, only with the first-run consent on; or Check for Updates by hand | `github.com`, which redirects to `release-assets.githubusercontent.com` | One GET for `latest.json`; no identifiers, no version in the URL | The first-run switch or Settings ▸ Updates; `DisableUpdateCheck` for a fleet, or `UpdateEndpoint` to point it at your own server. `src-tauri/src/updater.rs`, `src/engine/updates.ts` |
@@ -223,6 +225,8 @@ that tag on GitHub's own runners.
 
 Each line is one job or control in
 [SECURITY.md, "Release integrity"](../SECURITY.md#release-integrity).
+
+![Six steps on a timeline: a signed tag, a build with no signing secret in reach, signing behind a second reviewer, verification on a fresh runner, publishing with attestations and an SBOM, then your Mac, where three commands check it.](./assets/security-release.png)
 
 1. **A signed tag.** A release is a `v*` tag on `main`, signed with a Touch ID
    key held in a Mac's Secure Enclave; the build job refuses a tag whose key is
