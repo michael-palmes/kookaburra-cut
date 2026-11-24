@@ -35,6 +35,7 @@ import {
 import { createSeededRandom } from "../../engine/rng";
 import { useSceneRelease } from "../../engine/sceneRelease";
 import { createFrameShare, supersampleSeed } from "../../engine/supersample";
+import { createMirrorNest } from "./mirrorNest";
 import { createRenderOnce } from "./renderOnce";
 import { SHADOW_FAR, SHADOW_FRUSTUM_EXTENT, SHADOW_NEAR } from "./shadowRig";
 
@@ -430,7 +431,7 @@ function mustReplace(source: string, anchor: string, replacement: string): strin
 
 // Mirror cameras shared by every floor, one per nesting depth and set whole before each pass: three keeps a transmission target per camera for the renderer's life, so a camera per floor kept ~0.5 GB at 4K per stage scene.
 const mirrorEyes: PerspectiveCamera[] = [];
-let mirrorDepth = 0;
+const mirrors = createMirrorNest();
 
 /** How the first shadow-casting directional light's depth changes across its map along a level floor, so a tap beside a point is tested against the floor there. */
 function floorShadowSlope(scene: Scene, out: Vector2): void {
@@ -700,11 +701,11 @@ export function SatinFloor({
     const mirror = (v: Vector3, floor: number) => v.setY(2 * floor - v.y);
     const clearColor = new Color();
     return (renderer: WebGLRenderer, scene: Scene, camera: Camera) => {
-      if (soft && mirrorDepth === 0) floorShadowSlope(scene, uniforms.kbShadowSlope.value);
+      if (soft && mirrors.depth === 0) floorShadowSlope(scene, uniforms.kbShadowSlope.value);
       const strength = uniforms.kbReflOn.value;
-      if (busy || strength < 0.5 || scene.overrideMaterial) return;
+      if (busy || strength < 0.5 || scene.overrideMaterial || mirrors.full()) return;
       // A supersampled frame mirrors once: its draws differ by a fraction of a pixel, under the mirror's blur. A mirror made for another floor's reflection is never kept.
-      if (mirrorDepth > 0) once.reset();
+      if (mirrors.depth > 0) once.reset();
       else if (once.reuse()) return;
       const self = meshRef.current;
       const cam = camera as PerspectiveCamera;
@@ -716,7 +717,7 @@ export function SatinFloor({
       const h = Math.max(1, Math.round(size.y * scale));
       const sized = passes.sharp.width === w && passes.sharp.height === h;
       // One render asks twice, in its glass pass and its main pass: the second takes the first's mirror.
-      if (mirrorDepth === 0 && sized && thisRender.fresh(renderer, camera)) return;
+      if (mirrors.depth === 0 && sized && thisRender.fresh(renderer, camera)) return;
       if (!sized) passes.sharp.setSize(w, h);
       // The blur runs at half size: smoother for the same taps, and a quarter of the work.
       const bw = Math.max(1, Math.round(w / 2));
@@ -724,8 +725,8 @@ export function SatinFloor({
       for (const t of [passes.across, passes.blurred]) {
         if (t.width !== bw || t.height !== bh) t.setSize(bw, bh);
       }
-      mirrorEyes[mirrorDepth] ??= new PerspectiveCamera();
-      const eye = mirrorEyes[mirrorDepth];
+      mirrorEyes[mirrors.depth] ??= new PerspectiveCamera();
+      const eye = mirrorEyes[mirrors.depth];
       cam.getWorldPosition(eyePos);
       cam.getWorldDirection(look);
       up.set(0, 1, 0).applyQuaternion(cam.getWorldQuaternion(eye.quaternion));
@@ -771,12 +772,7 @@ export function SatinFloor({
       renderer.setClearColor(0x000000, 1);
       renderer.setRenderTarget(passes.sharp);
       renderer.clear();
-      mirrorDepth += 1;
-      try {
-        renderer.render(scene, eye);
-      } finally {
-        mirrorDepth -= 1;
-      }
+      mirrors.within(() => renderer.render(scene, eye));
       renderer.setClearColor(clearColor, clearAlpha);
       if (self) self.visible = true;
       const px = (Math.max(0, reflect?.blur ?? 24) * h) / 1080;
@@ -801,7 +797,7 @@ export function SatinFloor({
       renderer.render(passes.quad, passes.quadCamera);
       renderer.setRenderTarget(outer);
       renderer.shadowMap.autoUpdate = shadows;
-      if (mirrorDepth === 0) thisRender.made(renderer, camera);
+      if (mirrors.depth === 0) thisRender.made(renderer, camera);
       else thisRender.reset();
       busy = false;
     };
