@@ -2411,7 +2411,7 @@ mod tests {
     }
 
     #[test]
-    fn website_capture_travels_as_a_referenced_project_asset() {
+    fn a_retired_website_blocks_capture_is_reviewed_as_unreferenced() {
         let root = fixture("website-capture");
         write(&root, "acme/assets/website/01-hero.png", "website-png");
         write(
@@ -2422,13 +2422,16 @@ mod tests {
         let mut selected = selection(&["acme"]);
         selected.include_unreferenced_assets = false;
         let closure = resolve_closure(&root, &selected).unwrap();
-        assert!(archive_paths(&closure)
+        assert!(!archive_paths(&closure)
             .iter()
             .any(|path| path.ends_with("assets/website/01-hero.png")));
-        assert!(!closure
+        let listed = closure
             .reviewed_assets
             .iter()
-            .any(|asset| asset.rel == "assets/website/01-hero.png"));
+            .find(|asset| asset.rel == "assets/website/01-hero.png")
+            .expect("the capture is listed for review");
+        assert_eq!(listed.group, AssetGroup::Unreferenced);
+        assert!(!listed.included);
         let _ = std::fs::remove_dir_all(&root);
     }
 

@@ -1,13 +1,14 @@
 # Subprocessors and third parties
 
-**Version:** 0.24.0.
+**Version:** 0.25.0, pending.
 
 Kookaburra Cut runs on the Mac, and nothing it does sends data to the vendor.
 There is no account, no server and no hosted data, so there is no subprocessor:
 nobody handles customer data on the vendor's behalf. This page names every
 third party a Mac running the app can reach, what each can receive and how to
 turn it off. Each one is reached only after a person acts. What differs from
-0.22.4 is listed in [vendor-questionnaire.md](./vendor-questionnaire.md#version).
+0.24.0, which could also open a website a person allowed in a scene, is listed
+in [vendor-questionnaire.md](./vendor-questionnaire.md#version).
 
 ## At a glance
 
@@ -15,7 +16,6 @@ turn it off. Each one is reached only after a person acts. What differs from
 | --- | --- | --- | --- | --- | --- |
 | GitHub | The update check, with consent or on Check for Updates; the download, on Install and relaunch | One GET for `latest.json`; then the signed archive comes down | None added by the app | Settings ▸ Updates; `DisableUpdateCheck`; `UpdateEndpoint` | [updater.rs](../src-tauri/src/updater.rs), [tauri.conf.json](../src-tauri/tauri.conf.json) |
 | Anthropic, through the person's own Claude Code | Only after Edit with Claude, or Claude Code started in the folder by the person | Nothing from the app. Claude Code sends project files as the person works | None from the app; Claude Code uses the person's own login | `DisableClaude`; `DisableAgentKit` | [claude_app.rs](../src-tauri/src/claude_app.rs) |
-| Websites a person approves | After Allow for that origin, in the editor or a Present hold | The page loads like a browser tab | None added by the app; the site's own cookies | Revoke in the inspector; `DisableLiveWebsites`, or `AllowedWebsiteOrigins` for your own sites only | [website.rs](../src-tauri/src/website.rs) |
 
 Apple is not on this list: it notarises each release at build time and
 receives nothing from the app at run time ([below](#apple-build-time-only)).
@@ -69,21 +69,6 @@ by the browser, not the app ([claude_app.rs](../src-tauri/src/claude_app.rs)).
 Anthropic serves the person or their organisation under their own agreement
 with Anthropic; it is not a subprocessor of this vendor. Get Claude opens
 `claude.ai/download` in the default browser, a fixed URL with nothing added.
-
-## Websites a person approves for a live scene
-
-- **When.** After a person presses Allow for that origin on a native sheet in
-  the paused editor, once per origin per project. Present reloads an allowed
-  origin on each hold without asking again.
-- **What is sent.** The page loads like a browser tab, with its subresources
-  and scripts. It must be HTTPS, or HTTP on loopback with an explicit port.
-- **Identifiers.** None added by the app. Cookies and storage the site sets
-  live in one WebKit profile separate from Safari, shared by every approved
-  project, and never travel in a pack.
-- **Off switch.** Revoke the origin in the scene's inspector; Settings ▸
-  Website data clears one site or all; `DisableLiveWebsites` or `AllowedWebsiteOrigins` for a fleet.
-- **Behind it.** [website.rs](../src-tauri/src/website.rs),
-  [scene-website.md](./scene-website.md#accepted-residual-risk).
 
 ## Apple: build time only
 

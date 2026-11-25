@@ -245,15 +245,15 @@ def doors():
     outside = [
         ("GitHub", "update check and install", "DisableUpdateCheck"),
         ("Your Claude app", "your account, your settings", "DisableClaude"),
-        ("A website you allow", "live inside a scene", "DisableLiveWebsites"),
     ]
-    for i, (stays, (name, what, key)) in enumerate(zip(inside, outside)):
+    for i, stays in enumerate(inside):
         y = 112 + i * 136
-        cy = y + 44
         d.frame(SLATE, 72, y, 500, y + 88, 3)
         d.block(96, y + 40, CREAM, *stays)
         if i:
             d.arrow(286, y - 46, 286, y - 2)
+    for i, (name, what, key) in enumerate(outside):
+        cy = 156 + i * 136
         d.fill(CREAM, 534, cy - 18, 586, cy + 18)
         d.fill(RUST, 537, cy - 15, 583, cy + 15)
         d.fill(BUFF, 541, cy - 11, 559, cy + 11)

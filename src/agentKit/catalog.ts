@@ -272,11 +272,6 @@ export const SCENE_DOC_KEYS: Record<
     type: "object",
     ref: "media",
   },
-  website: {
-    summary: "Website panel; exports its captured PNG.",
-    type: "object",
-    ref: "media",
-  },
   animatedTrack: {
     summary: "Which keyed track the scene timeline lane edits; absent is camera.",
     type: "string",

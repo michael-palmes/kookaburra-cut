@@ -49,42 +49,6 @@
       "commands": {
         "allow": ["check_for_update", "set_update_consent", "install_update_and_relaunch"]
       }
-    },
-    {
-      "identifier": "website-editor",
-      "description": "Scene websites in the paused editor: approvals, the live child view and its capture.",
-      "commands": {
-        "allow": [
-          "website_open",
-          "website_grant_origin",
-          "website_revoke_origin",
-          "website_list_grants",
-          "website_clear_project_data",
-          "website_resume_pending",
-          "website_set_bounds",
-          "website_set_zoom",
-          "website_show",
-          "website_action",
-          "website_capture",
-          "website_import_image",
-          "website_hide",
-          "website_close"
-        ]
-      }
-    },
-    {
-      "identifier": "website-present",
-      "description": "Scene websites during a Present hold: show, hide and drive an already approved origin.",
-      "commands": {
-        "allow": [
-          "website_open",
-          "website_show",
-          "website_hide",
-          "website_set_bounds",
-          "website_action",
-          "website_close"
-        ]
-      }
     }
   ]
 }

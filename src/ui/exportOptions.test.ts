@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { resolveSceneWebsite } from "../engine/sceneWebsite";
 import { BUNDLED_EXPORT_PRESETS, findBundledPreset } from "../export/presetRegistry";
 import {
   audioKbpsOf,
@@ -22,7 +21,6 @@ import {
   stillsSummaryText,
   stillsWarnings,
   terminalSnapshotWarning,
-  websiteCaptureWarning,
   withPosterFrame,
 } from "./exportOptions";
 
@@ -294,50 +292,6 @@ describe("terminal snapshot pre-flight", () => {
     );
     expect(both).toContain('"Intro", "Demo"');
     expect(both).toContain("empty prompts");
-  });
-});
-
-describe("Website capture pre-flight", () => {
-  const files = ["scenes/01-intro.tsx", "scenes/02-demo.tsx"];
-
-  it("stays quiet without Websites and for a current capture", () => {
-    expect(websiteCaptureWarning([undefined, { name: "Demo" }], files)).toBeNull();
-    const current = resolveSceneWebsite({ website: { url: "https://example.com" } });
-    if (!current) throw new Error("unresolved");
-    expect(
-      websiteCaptureWarning(
-        [
-          {
-            website: {
-              url: "https://example.com",
-              capture: {
-                src: "assets/website/01-intro.png",
-                fingerprint: current.fingerprint,
-              },
-            },
-          },
-        ],
-        files,
-      ),
-    ).toBeNull();
-  });
-
-  it("distinguishes missing and stale captures and names each scene", () => {
-    const warning = websiteCaptureWarning(
-      [
-        { name: "Intro", website: { url: "https://example.com" } },
-        {
-          website: {
-            url: "https://example.com/new",
-            capture: { src: "assets/website/02-demo.png", fingerprint: "v1:old" },
-          },
-        },
-      ],
-      files,
-    );
-    expect(warning).toContain('"Intro" has no Website capture');
-    expect(warning).toContain('"02-demo" has a stale Website capture');
-    expect(warning).toContain("empty browser frame");
   });
 });
 

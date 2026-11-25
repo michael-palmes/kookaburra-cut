@@ -47,13 +47,13 @@ Source: [privacy.md, "Nothing leaves your Mac unless you start it"](../privacy.m
 3.1 The app stores your work and its own data on your Mac only: your
 workspace (`~/Kookaburra Cut` by default) with your projects, themes, brands,
 fonts and exports; caches of decoded frames and previews; your settings; the
-key that signs your packs, in your login Keychain and never synchronised;
-cookies and storage for websites you allowed; and the agent files written into
-each project.
+key that signs your packs, in your login Keychain and never synchronised; and
+the agent files written into each project. The app opens no website; cookies
+and storage that 0.24.0 or earlier kept for websites you allowed in a scene
+are deleted the next time it starts.
 
 3.2 None of it is sent to me. You control it: Settings ▸ Storage clears the
-caches, Settings ▸ Website data clears website storage, and deleting a project
-moves it to the Trash.
+caches, and deleting a project moves it to the Trash.
 
 3.3 The app's own caches, settings and agent folders are readable by your
 macOS account alone and skipped by Spotlight. Your projects are as readable to
@@ -84,8 +84,8 @@ networking switched off (`src-tauri/Cargo.toml`;
 tag, and its build provenance attestation ties the app you download to that
 source (`.github/workflows/release.yml`).
 
-4.5 An organisation can force the update check, the Claude launchers and live
-websites off with a configuration profile ([mdm.md](../mdm.md)), and any
+4.5 An organisation can force the update check and the Claude launchers off
+with a configuration profile ([mdm.md](../mdm.md)), and any
 outbound firewall or network log on the Mac shows the same: no connection
 unless a person starts one of the paths in section 5.
 
@@ -95,7 +95,7 @@ Sources: [SECURITY.md, "What leaves the Mac"](../../SECURITY.md#what-leaves-the-
 
 ## 5. When the app connects to others
 
-Four things can reach the internet. Each one starts with you, and none of them
+Three things can reach the internet. Each one starts with you, and none of them
 reaches me.
 
 | What | Who receives it | What they receive | How to stop it |
@@ -103,9 +103,8 @@ reaches me.
 | Update check | GitHub, or your organisation's own server | One request for the latest release file, at launch and then about once a day while the app is open if you left the first-run switch on, or when you choose Check for Updates. No identifiers and nothing about your use or your Mac; like any website, GitHub sees the request's IP address | The first-run switch, Settings ▸ Updates, or a configuration profile |
 | Update install | GitHub, or your organisation's own server | A download request for the signed update, only when you press Install and relaunch | Press Later; a profile can turn update checks off |
 | Edit with Claude | The Claude desktop app on your Mac, then Anthropic under your own account | The project folder's path and a starter prompt, sent only when you press Enter in that app; Claude Code then sends project files to Anthropic as you work | Don't press it; a profile can turn it off |
-| A website in a scene | The website you allowed | What any browser tab sends, cookies included, in a profile separate from Safari | Revoke the website; Settings ▸ Website data; a profile can turn websites off |
 
-5.1 GitHub, Anthropic and each website handle that data under their own
+5.1 GitHub and Anthropic handle that data under their own
 privacy terms, as their own controllers. GitHub names GitHub, Inc. or GitHub
 B.V. as controller of what it collects from visitors, IP addresses included
 [S6].

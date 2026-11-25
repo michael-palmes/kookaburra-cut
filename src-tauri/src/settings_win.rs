@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
-use crate::{bridge, clip_cache, media, native_alert, privacy, website, workspace};
+use crate::{bridge, clip_cache, media, native_alert, privacy, workspace};
 
 const LOG_DIR: &str = "logs";
 /// `cache/` entries the files half of a clear leaves: the Spotlight marker, and the two caches whose own clears tell the windows.
@@ -124,14 +124,13 @@ pub fn set_clip_cache_cap(
     Ok(())
 }
 
-/// Settings ▸ Allowed projects: forget one Allow (a workspace slug, `ws-template:` or `ws-preset:` id), stored and session alike, with its website grants and sign-ins, so the next open asks again. It only narrows what runs, so no sheet confirms it.
+/// Settings ▸ Allowed projects: forget one Allow (a workspace slug, `ws-template:` or `ws-preset:` id), stored and session alike, so the next open asks again. It only narrows what runs, so no sheet confirms it.
 #[tauri::command]
-pub async fn forget_allowed_project(
+pub fn forget_allowed_project(
     app: AppHandle,
     window: tauri::Window,
     state: State<'_, workspace::SettingsState>,
     trust: State<'_, workspace::TrustState>,
-    websites: State<'_, website::WebsiteState>,
     slug: String,
 ) -> Result<(), String> {
     workspace::require_window(&window, "settings")?;
@@ -139,14 +138,12 @@ pub async fn forget_allowed_project(
     if open.as_deref() == Some(main_window_id(&slug).as_str()) {
         return Err("that project is open: close it in Kookaburra Cut first".into());
     }
-    let website_keys = workspace::forget_project_trust(&app, &state, &trust, &slug)?;
+    workspace::forget_project_trust(&app, &state, &trust, &slug)?;
     log::info!(
         "[trust] {}: forgotten in Settings",
         crate::audit::field(&slug)
     );
-    website::clear_project_stores(&app, &websites, &website_keys)
-        .await
-        .map_err(|e| format!("Forgotten, but its websites are still signed in: {e}"))
+    Ok(())
 }
 
 /// A grant's key as the main window names the project: workspace slugs carry `ws:`, library ids already have their scope.
@@ -173,14 +170,13 @@ fn clear_blocked(app: &AppHandle) -> Option<&'static str> {
     }
 }
 
-/// Settings ▸ Storage ▸ Clear all app data, behind a native sheet whose Return is Cancel (a webview can ask, only a person can confirm). Every cache, the Website data store, the bridge's queues, terminal run folders, window positions, every grant and every preference but the workspace location and the update answer go; projects, the workspace, the pack signing key and the log stay. False when the person cancels.
+/// Settings ▸ Storage ▸ Clear all app data, behind a native sheet whose Return is Cancel (a webview can ask, only a person can confirm). Every cache, the bridge's queues, terminal run folders, window positions, every grant and every preference but the workspace location and the update answer go; projects, the workspace, the pack signing key and the log stay. False when the person cancels.
 #[tauri::command]
 pub async fn clear_app_data(
     app: AppHandle,
     window: tauri::Window,
     state: State<'_, workspace::SettingsState>,
     trust: State<'_, workspace::TrustState>,
-    websites: State<'_, website::WebsiteState>,
 ) -> Result<bool, String> {
     workspace::require_window(&window, "settings")?;
     if let Some(why) = clear_blocked(&app) {
@@ -191,7 +187,7 @@ pub async fn clear_app_data(
         "settings",
         native_alert::Prompt {
             title: "Clear all app data?",
-            body: "Kookaburra Cut forgets every project and website you allowed, your recent projects and preferences, and empties its caches and Website data. Each project asks again before it runs.\n\nYour projects, workspace and pack signing key stay.",
+            body: "Kookaburra Cut forgets every project you allowed, your recent projects and preferences, and empties its caches. Each project asks again before it runs.\n\nYour projects, workspace and pack signing key stay.",
             default_button: "Cancel",
             other_button: "Clear All Data",
         },
@@ -208,7 +204,6 @@ pub async fn clear_app_data(
     let mut failed = Vec::new();
     workspace::forget_session_trust(&trust);
     bridge::forget_session_grants(&app);
-    website::forget_session_grants(&websites);
     if let Err(e) = workspace::reset_settings(&app, &state) {
         failed.push(format!("settings: {e}"));
     }
@@ -229,10 +224,6 @@ pub async fn clear_app_data(
         autorun.as_deref(),
     ));
     privacy::seal_cache_roots(&app_data);
-    // Last, so no await sits between the recheck and the files an export would read.
-    if let Err(e) = website::clear_stored_data(&app, &websites, None).await {
-        failed.push(format!("Website data: {e}"));
-    }
     log::info!(
         "[settings] cleared all app data; {} part(s) could not be cleared",
         failed.len()

@@ -40,12 +40,6 @@ impl SceneSource {
     pub fn archive_path(&self) -> String {
         format!("{}/{}", self.root, self.file)
     }
-
-    /// The sidecar beside this source, which the pack may or may not carry.
-    pub fn sidecar_path(&self) -> Option<String> {
-        let (stem, _) = self.file.rsplit_once('.')?;
-        Some(format!("{}/{stem}.json", self.root))
-    }
 }
 
 /// Owns its staging tree: dropping it removes the tree, so a panic or an early return cannot leak an extracted pack.
@@ -340,7 +334,7 @@ pub fn version_lt(a: &str, b: &str) -> bool {
     false
 }
 
-/// Inflate one payload entry before staging, for the code and sidecar reviews. Refuses anything the manifest does not
+/// Inflate one payload entry before staging, for the code review. Refuses anything the manifest does not
 /// list, and anything whose bytes differ from the signed hash: what is reviewed is what staging would verify.
 pub fn read_verified_entry(
     archive: &Path,
@@ -350,20 +344,6 @@ pub fn read_verified_entry(
 ) -> Result<Vec<u8>, PackError> {
     let (mut zip, _) = open(archive)?;
     read_verified_from(&mut zip, manifest, archive_path, cap)
-}
-
-/// Several entries through one open archive, each verified as `read_verified_entry` does.
-pub fn read_verified_entries(
-    archive: &Path,
-    manifest: &PackManifest,
-    archive_paths: &[String],
-    cap: u64,
-) -> Result<Vec<Vec<u8>>, PackError> {
-    let (mut zip, _) = open(archive)?;
-    archive_paths
-        .iter()
-        .map(|path| read_verified_from(&mut zip, manifest, path, cap))
-        .collect()
 }
 
 fn read_verified_from(

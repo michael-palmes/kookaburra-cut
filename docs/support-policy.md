@@ -51,8 +51,7 @@ anything large.
   each project guide Claude Code through that.
 - Claude Code, the Claude desktop app and Anthropic accounts: those are
   Anthropic's ([SECURITY.md, "Scope and threat model"](../SECURITY.md#scope-and-threat-model)).
-- Websites you allow inside a scene, your MDM product, and the purchased
-  device models outside the app.
+- Your MDM product, and the purchased device models outside the app.
 
 ## What to send
 

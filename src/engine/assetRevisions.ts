@@ -148,7 +148,7 @@ function bumpLocal(projectId: string, rel: string): void {
   notify(projectId, [{ rel: cleanRel(rel), before }]);
 }
 
-/** An in-place writer (app icon, terminal bake, website capture) landed `rel`: re-read the stamps so every reader moves to the new URL. Without a listing, a local bump still forces one. */
+/** An in-place writer (app icon, terminal bake) landed `rel`: re-read the stamps so every reader moves to the new URL. Without a listing, a local bump still forces one. */
 export async function noteAssetWritten(projectId: string, rel: string): Promise<void> {
   await refreshWorkspaceAssets(projectId);
   if (!inventories.has(projectId)) bumpLocal(projectId, rel);

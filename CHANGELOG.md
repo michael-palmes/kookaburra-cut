@@ -6,6 +6,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Removed
+
+- Live websites in a scene. The app no longer opens any web page, so the
+  website panel, its Allow sheet, Settings ▸ Website data and the website
+  review on pack import are gone. An older scene's website block is ignored
+  and its captured image stays in `assets/` as an unused file you can delete
+  from the Library: show a page as an image or on a
+  device's screen instead. Sign-ins the app kept for websites you allowed are
+  deleted the next time it starts.
+- The managed preferences `DisableLiveWebsites` and `AllowedWebsiteOrigins`.
+  A profile that still forces them changes nothing. Keep them while any Mac
+  runs 0.24.0 or earlier. See `docs/mdm.md`, "Retired keys".
+
+### Security
+
+- With live websites gone, nothing loads remote content inside the app. What
+  leaves your Mac is the update check, its install and Edit with Claude, each
+  only when you choose.
+
 ## [0.24.0] - 2026-11-24
 
 ### Added

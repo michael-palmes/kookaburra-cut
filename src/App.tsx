@@ -269,7 +269,6 @@ import { PresentModal } from "./ui/PresentModal";
 import { writeCutCaches, writeCutsForMusic } from "./ui/pinnedCuts";
 import { ALL_PROJECTS } from "./ui/projectLibrary";
 import { renderBlockFor } from "./ui/renderBlock";
-import { SceneWebsiteOverlay } from "./ui/SceneWebsiteOverlay";
 import { SceneWizardHost } from "./ui/SceneWizardHost";
 import { ShortcutsSheet } from "./ui/ShortcutsSheet";
 import { stageRegionLabel } from "./ui/stageRegion";
@@ -299,7 +298,6 @@ import { onThemeMoved } from "./ui/theme-editor/themeMove";
 import { UpdateAvailableDialog, WelcomeDialog } from "./ui/updateDialogs";
 import { useBridgeExport } from "./ui/useBridgeExport";
 import { commitSceneDuration, resolveDocPatchIndex, writeMusicCaches } from "./ui/useSceneDocPatch";
-import { WebsiteGizmo } from "./ui/WebsiteGizmo";
 import { Welcome } from "./ui/Welcome";
 
 /** A recessed matte over the letterboxed stage while a freshly-opened project settles, with an honest step-based progress bar (no fabricated animation); never rendered in autorun. */
@@ -2088,7 +2086,6 @@ export default function App() {
   const textSectionOpen = useGizmoSectionOpen("text");
   const chartSectionOpen = useGizmoSectionOpen("chart");
   const terminalSectionOpen = useGizmoSectionOpen("terminal");
-  const websiteSectionOpen = useGizmoSectionOpen("website");
   const screenshotStackSectionOpen = useGizmoSectionOpen("layeredScreenshot");
   const lsLaneOpen = useLayeredScreenshotEditStore((s) => s.laneOpen);
   const lsEditOpen = useLayeredScreenshotEditStore((s) => s.laneOpen || s.open);
@@ -3057,15 +3054,6 @@ export default function App() {
                   }
                   cutout={sceneCutout}
                 />
-                {project && isEditableProjectId(project.id) && !isAutoRun && (
-                  <SceneWebsiteOverlay
-                    project={project}
-                    sceneIndex={camSceneIndex}
-                    aspect={format.width / format.height}
-                    suspended={exporting}
-                    onDocChanged={handleDocChanged}
-                  />
-                )}
                 {/* Armed move tool drag surface (camera or screenshot stack, per the active scene's animated track): DOM above the canvas, exactly the letterboxed frame, so drags map 1:1 to rendered pixels. The ghost path rides the same guard, above the tool surface but click-through except on its key dots. */}
                 {project &&
                   isEditableProjectId(project.id) &&
@@ -3153,18 +3141,6 @@ export default function App() {
                   !isAutoRun &&
                   terminalSectionOpen && (
                     <TerminalGizmo
-                      project={project}
-                      sceneIndex={camSceneIndex}
-                      aspect={format.width / format.height}
-                      onDocChanged={handleDocChanged}
-                    />
-                  )}
-                {project &&
-                  isEditableProjectId(project.id) &&
-                  !exporting &&
-                  !isAutoRun &&
-                  websiteSectionOpen && (
-                    <WebsiteGizmo
                       project={project}
                       sceneIndex={camSceneIndex}
                       aspect={format.width / format.height}

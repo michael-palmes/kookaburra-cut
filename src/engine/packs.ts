@@ -8,7 +8,6 @@ import type {
   PackInspection,
   PackPlan,
   PackProgress,
-  PackSceneDoc,
   Resolution,
   SceneSource,
 } from "../packs/types";
@@ -126,11 +125,6 @@ export function inspectPack(path: string): Promise<PackInspection> {
 export function readPackSceneSource(path: string, source: SceneSource): Promise<string> {
   const { kind, slug, file } = source;
   return invoke<string>("read_pack_scene_source", { path, kind, slug, sceneFile: file });
-}
-
-/** Every scene sidecar beside a staged scene source, hash-checked, for the trust screen's review. */
-export function readPackSceneDocs(path: string): Promise<PackSceneDoc[]> {
-  return invoke<PackSceneDoc[]>("read_pack_scene_docs", { path });
 }
 
 /** Stage and plan in one call: extraction happens only after the user has seen what is inside. */

@@ -59,7 +59,6 @@ import {
 } from "./sceneMedia";
 import { type RoomTransition, validateRoomKeys } from "./sceneRoom";
 import { parseSceneTerminal, type SceneDocTerminal } from "./sceneTerminal";
-import { parseSceneWebsite, type SceneDocWebsite } from "./sceneWebsite";
 
 export type { SceneDocDof } from "./dof";
 
@@ -679,8 +678,6 @@ export interface SceneDoc {
   chart?: SceneDocChart;
   /** The terminal block (one per scene): screen-locked panel content, rendering its baked snapshot everywhere. Defaults and layout live in `sceneTerminal.ts`. */
   terminal?: SceneDocTerminal;
-  /** The Website block (one per scene): a consent-gated native page while paused or presenting, with a captured PNG as deterministic render truth. */
-  website?: SceneDocWebsite;
   /** Which animated track drives this scene; absent = "camera" (null-for-legacy). Switching never deletes the other tracks' keys. */
   animatedTrack?: "camera" | "layeredScreenshot" | "compare" | "chart" | "lighting";
   /** Stills export settings (see engine/stills.ts); absent = included with one automatic still. */
@@ -2760,10 +2757,6 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
   if (doc.terminal !== undefined) {
     const terminal = parseSceneTerminal(doc.terminal, source);
     if (terminal) out.terminal = terminal;
-  }
-  if (doc.website !== undefined) {
-    const website = parseSceneWebsite(doc.website, source);
-    if (website) out.website = website;
   }
   if (doc.stills !== undefined) {
     const stills = parseStills(doc.stills, source);

@@ -826,7 +826,15 @@ pub(crate) fn project_texts(project: &Path) -> Vec<ProjectText> {
             let ext = path.extension().and_then(|s| s.to_str());
             if path.is_file() && matches!(ext, Some("json") | Some("tsx")) {
                 if let Ok(rel) = path.strip_prefix(&scenes) {
-                    read(&mut texts, &path, rel.to_string_lossy().into_owned());
+                    let display = rel.to_string_lossy().into_owned();
+                    if ext != Some("json") {
+                        read(&mut texts, &path, display);
+                    } else if let Ok(text) = std::fs::read_to_string(&path) {
+                        texts.push(ProjectText {
+                            display,
+                            text: without_retired_blocks(text),
+                        });
+                    }
                 }
             }
         }
@@ -850,6 +858,20 @@ pub(crate) fn project_texts(project: &Path) -> Vec<ProjectText> {
         }
     }
     texts
+}
+
+/// A sidecar's text without the `website` block an earlier version wrote: nothing renders it, so what it names is not in use.
+fn without_retired_blocks(text: String) -> String {
+    if !text.contains("\"website\"") {
+        return text;
+    }
+    let Ok(serde_json::Value::Object(mut doc)) = serde_json::from_str(&text) else {
+        return text;
+    };
+    if doc.remove("website").is_none() {
+        return text;
+    }
+    serde_json::Value::Object(doc).to_string()
 }
 
 /// The workspace's themes folder beside a project (`<root>/<slug>`) or a library item (`<root>/templates/<slug>`); None for the bundled trees, whose themes ship with the app.
@@ -3302,6 +3324,32 @@ mod tests {
             ["themes/brand/theme.json"]
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_retired_website_block_holds_nothing_in_use() {
+        let project = scratch("retired-website");
+        std::fs::create_dir_all(project.join("scenes")).unwrap();
+        std::fs::write(
+            project.join("scenes/01-intro.json"),
+            r#"{"version":1,"website":{"url":"https://example.com","capture":{"src":"assets/website/01-intro.png"}},"images":[{"src":"assets/hero.png"}]}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            project.join("scenes/02-next.json"),
+            r#"{"version":1,"images":[{"src":"assets/website/kept.png"}]}"#,
+        )
+        .unwrap();
+        assert!(media_references(&project, "assets/website/01-intro.png").is_empty());
+        assert_eq!(
+            media_references(&project, "assets/hero.png"),
+            ["01-intro.json"]
+        );
+        assert_eq!(
+            media_references(&project, "assets/website/kept.png"),
+            ["02-next.json"]
+        );
+        let _ = std::fs::remove_dir_all(&project);
     }
 
     #[test]

@@ -46,8 +46,7 @@ App and scene code changes retain normal Vite hot reload. Restart the dev comman
 once after changing the Vite configuration.
 
 Templates and presets use the same project loader, media editor and scene
-inspector as ordinary projects. Website content retains its live-preview, capture
-and export boundaries, and a terminal bakes only in a workspace project. Imported scene code needs
+inspector as ordinary projects. A terminal bakes only in a workspace project. Imported scene code needs
 the same trust consent as an imported project.
 
 ## Preset contract
@@ -76,8 +75,8 @@ that scene, and native mutations enforce the invariant. Inserting a preset
 writes the scene at its final position in one manifest update.
 
 Scene content, overrides, effects and referenced media travel together. Asset
-collisions are renamed and references updated, including LUTs, environment maps
-and Website captures. Bundled sample media is materialised when making an
+collisions are renamed and references updated, including LUTs and environment
+maps. Bundled sample media is materialised when making an
 editable copy. Template copies also retain saved video edits.
 
 Reuse adopts the destination project's theme and project settings. A source
@@ -309,7 +308,7 @@ The branch review corrected the following failures:
 - New scene (now Add a scene) generated separate defaults instead of inserting the editable preset.
 - JSON saves reloaded the frontend, and delayed updates could restore older data.
 - Removing or filtering the selected preset silently selected a different scene.
-- Pack import reviews omitted Website origins and terminal commands in library items.
+- Pack import reviews omitted terminal commands in library items.
 
 Tests exercise save-to-insert behaviour, scoped paths, native scene invariants,
 collision handling, raw theme preservation, release library actions and capture

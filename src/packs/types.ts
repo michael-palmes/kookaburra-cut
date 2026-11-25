@@ -174,11 +174,6 @@ export interface SceneSource {
   file: string;
 }
 
-/** A scene sidecar read from the pack before staging and checked against its signed hash (`PackSceneDoc`). */
-export interface PackSceneDoc extends SceneSource {
-  doc: unknown;
-}
-
 export interface PackInspection {
   manifest: PackManifest;
   signature: SignatureVerdict;

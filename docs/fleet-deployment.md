@@ -244,9 +244,15 @@ and [`kookaburra-cut-open.mobileconfig`](../packaging/mdm/kookaburra-cut-open.mo
 The From column is the first release whose `Key::ALL` in `managed.rs` holds the
 key, and an older build ignores it: deploy 0.22.3 or later, since on 0.22.2 the
 open profile changes nothing and the mirrored one leaves checks on GitHub.
-`AuditLogPath` and `AllowedWebsiteOrigins` need 0.23.0.
+`AuditLogPath` needs 0.23.0.
 
-- **Locked down** forces all eleven. Its `AuditLogPath` copies the app log for
+`DisableLiveWebsites` and `AllowedWebsiteOrigins` are retired. Live website
+scenes were removed after 0.24.0, so a later build reads neither key and locks
+nothing for them ([mdm.md, "Retired keys"](./mdm.md#retired-keys)). The
+profiles keep both for Macs still on 0.24.0 or earlier, where they turn live
+websites off; drop them once no Mac runs those versions.
+
+- **Locked down** forces all nine keys the app reads, and the two retired ones. Its `AuditLogPath` copies the app log for
   your collector; on a Mac with more than one account, create the folder first
   ([mdm.md, "A copy for your collector"](./mdm.md#a-copy-for-your-collector)).
   `UpdateEndpoint` does nothing while
@@ -259,9 +265,7 @@ open profile changes nothing and the mirrored one leaves checks on GitHub.
   ([fleet.md](./fleet.md#claude-codes-own-managed-settings-on-top)), and update
   checks go to your mirror ([Updates](#4-updates)). Replace
   `a1b2c3d4e5f60718`, the sample id [mdm.md](./mdm.md) uses, with your approved
-  publishers' key ids, or leave the array empty for no imports. To let a team
-  open your own site live, replace `DisableLiveWebsites` with
-  `AllowedWebsiteOrigins` and its exact origins ([mdm.md](./mdm.md)).
+  publishers' key ids, or leave the array empty for no imports.
 - **Open** leaves every feature to the person and forces only
   `ExportsInProject`, the one key all three share. fleet.md recommends more for
   unreleased work.
@@ -511,7 +515,8 @@ echo "kookaburra-cut: removed"
 ```
 
 That covers settings, caches, the app log (0.23.0), the pack key's fallback
-file, the live website store and the agent bridge. What it leaves:
+file, WebKit's data for the app's own windows (with any website store an
+earlier version left) and the agent bridge. What it leaves:
 
 - **Projects.** Each workspace (`~/Kookaburra Cut`, or the `WorkspaceRoot` you
   forced) holds the person's projects; keep, archive or delete them under your
