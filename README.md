@@ -56,7 +56,7 @@ Nothing leaves your Mac unless you choose.
 | [Text in a project tries to instruct the AI](SECURITY.md#what-reaches-your-agent) | Text that Claude reads from a project is escaped, capped and marked as data. Agent settings in a shared folder are set aside, and you see the list before Claude starts. |
 | [A release or update is tampered with](SECURITY.md#release-integrity) | GitHub Actions builds each release from a signed tag, with no signing secret in reach. Signing needs a second reviewer. Apple notarises the app, and each release comes with an attestation and an SBOM. An update installs only if it's signed with the key built into the app. |
 | [Confidential files sit on the Mac](SECURITY.md#on-the-mac) | Projects stay in your home folder. Nothing is uploaded or synced. Only your account can read the app's data, and Spotlight skips it. The app adds no encryption of its own, so use FileVault. |
-| [Your organisation needs to set limits](docs/mdm.md) | A configuration profile can lock nine settings. People can't override them with `defaults write`. If a key is malformed, the app takes the safe option. |
+| [Your organisation needs to set limits](docs/mdm.md) | A configuration profile can lock ten settings. People can't override them with `defaults write`. If a key is malformed, the app takes the safe option. |
 
 **Not done yet.** There's one maintainer, who can change the release rules. There's been no third-party penetration test. There's no SOC 2 or ISO 27001, and no App Sandbox. The AI is limited by rules and prompts, not by a sandbox. [The full list](SECURITY.md#not-yet).
 

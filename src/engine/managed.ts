@@ -25,6 +25,8 @@ export interface ManagedPolicy {
   updateEndpointLocked: boolean;
   /** The folder a copy of the app log goes to (AuditLogPath), when the profile's value was usable; the local log stays either way. */
   auditLogPath: string | null;
+  /** Claude turns on only where Claude Code's own managed policy pins an organisation's sign-in; whether it does is `ClaudeStatus.orgPolicy`. */
+  requireManagedClaude: boolean;
   forcedKeys: string[];
 }
 
@@ -41,6 +43,7 @@ export const UNMANAGED: ManagedPolicy = {
   updateEndpoint: null,
   updateEndpointLocked: false,
   auditLogPath: null,
+  requireManagedClaude: false,
   forcedKeys: [],
 };
 
@@ -58,6 +61,7 @@ export const LOCKED_DOWN: ManagedPolicy = {
   updateEndpoint: null,
   updateEndpointLocked: true,
   auditLogPath: null,
+  requireManagedClaude: true,
   forcedKeys: [],
 };
 

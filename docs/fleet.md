@@ -1,8 +1,11 @@
 # Kookaburra Cut on managed Macs
 
-Describes version 0.24.0. One change since: live website scenes are removed
+Describes version 0.24.0. Three changes since: live website scenes are removed
 and gone from the next release, so nothing here covers them
 ([mdm.md, "Retired keys"](./mdm.md#retired-keys) for Macs still on 0.24.0).
+And Claude is off until a person turns it on, where on 0.24.0 only
+`DisableAgentKit` keeps it off; and a copy installed from the pkg no longer
+updates itself, where on 0.24.0 only `DisableUpdateCheck` stops it.
 For the IT and security team deploying Kookaburra Cut to a fleet. The keys themselves, their types and a sample profile are in
 [mdm.md](./mdm.md); the decision-maker's summary is
 [security-overview.md](./security-overview.md); the engineering record with the
@@ -13,13 +16,17 @@ checked against Anthropic's documentation on 6 November 2026.
 ## In short
 
 1. Deploy only builds you have verified ([Verify a release](#verify-a-release)),
-   through your MDM, with `DisableUpdateCheck` forced on; or keep the in-app
-   updater and point it at your own server with `UpdateEndpoint`
-   ([Updates](#updates-in-app-or-mdm-delivery)).
+   through your MDM, as the pkg: a copy installed from it never updates itself,
+   so your push is the only way a new version arrives. Force
+   `DisableUpdateCheck` as well while any Mac runs 0.24.0 or earlier, or a copy from the
+   DMG; or keep the in-app updater and point it at your own server with
+   `UpdateEndpoint` ([Updates](#updates-in-app-or-mdm-delivery)).
 2. Force `AllowedPublisherKeyIds` (empty until you approve a publisher) and
-   `ExportsInProject`. Leave `DisableClaude` and
-   `DisableAgentKit` unset where Claude Code is approved for this work; force
-   both where it is not ([Force the keys](#force-the-keys)).
+   `ExportsInProject`. Where Claude Code is approved for this work, leave
+   `DisableClaude` and `DisableAgentKit` unset and force
+   `RequireManagedClaude`, so Claude turns on only on Macs that carry your
+   organisation's Claude Code policy; force both Disable keys where it is not
+   approved ([Force the keys](#force-the-keys)).
 3. Put the credential deny rules, `disableBypassPermissionsMode` and an
    organisation login pin in Claude Code's own managed settings. The app's
    rules cover only projects it has opened
@@ -109,19 +116,26 @@ later before relying on them. `AuditLogPath` needs 0.23.0.
 | Key | Recommend | Why |
 | --- | --- | --- |
 | `AllowedPublisherKeyIds` | `[]`, then approved publishers' key ids | Empty means no pack imports at all; there is no separate switch. The id is recomputed from the pack's own key, so a manifest cannot claim one (`pack/commands.rs`). |
-| `DisableUpdateCheck` | `true` with MDM delivery | Stops the GitHub request and the in-app install, which a standard user cannot finish anyway, since it asks for an administrator password (`updater.rs`). |
+| `DisableUpdateCheck` | `true` with MDM delivery | Stops the GitHub request and the in-app install, which a standard user cannot finish anyway, since it asks for an administrator password (`updater.rs`). A copy installed from the pkg already makes neither (`package_install.rs`); the key holds for a copy from the DMG and for 0.24.0 and earlier. |
 | `UpdateEndpoint` | Your mirror's `https://` manifest URL, if you keep the in-app updater | The app then asks only that host. The archive must still carry this project's updater signature, bound to the version, so a mirror can serve only builds this project signed; a malformed value means no check at all, never a fallback to GitHub (`updater.rs`). |
 | `ExportsInProject` | `true` | Renders land in the project's `exports/` folder instead of `~/Downloads`, where they outlive the project and ride whatever syncs that folder (`resolve_export_output` in `lib.rs`). |
 | `DisablePackExport` | `true` where nothing should leave as a pack | Removes Share as pack, and the signing key is never minted in the Keychain. Imports are governed by `AllowedPublisherKeyIds` (`pack/commands.rs`, `pack/key.rs`). |
 | `WorkspaceRoot` | Only to standardise; a local, unsynced path | Projects hold unreleased footage, so keep them out of synced folders. The agent bridge stays in `~/Kookaburra Cut/_bridge` either way (`bridge.rs`). |
 | `DisableAgentKit` | `true` where Claude Code is not approved for this work | Stops everything the app lays out for an agent: no kit stamped into a project, no `_bridge` folder, no handoff, and the Claude entry points go with it (`workspace.rs`, `bridge.rs`). Where Claude Code is approved, leave it unset: the kit is what gives the agent its rules. |
-| `DisableClaude` | Unset where Claude Code is approved; `true` beside `DisableAgentKit` where it is not | Removes the Edit with Claude buttons and the Claude download link, nothing more (`claude_app.rs`). |
+| `DisableClaude` | Unset where Claude Code is approved; `true` beside `DisableAgentKit` where it is not | Removes the Edit with Claude buttons, the Claude download link and the switch that turns Claude on, so Claude can't be turned on from then; a Mac where it was already on keeps its kit and bridge (`claude_app.rs`). |
+| `RequireManagedClaude` | `true` where Claude Code is approved | Claude can be turned on only on a Mac where Claude Code's own managed settings pin your organisation's login (`forceLoginOrgUUID` in `/Library/Application Support/ClaudeCode/managed-settings.json`, a drop-in beside it, or the `com.anthropic.claudecode` profile); anywhere else the kit, the bridge and the handoff stay off (`claude_policy.rs`, `agent_gate.rs`). It ties this app's AI path to the agreement your organisation has with Anthropic. |
 | `AuditLogPath` | `/Library/Logs/Kookaburra Cut`, where your collector reads logs | Copies every log line to `<folder>/<login>.log`, 0600 and owned by the person; an unusable folder means no copy and one `[managed]` line, never a failed launch. On a Mac with several accounts, create the folder first ([mdm.md, "A copy for your collector"](./mdm.md#a-copy-for-your-collector)) (`audit_mirror.rs`). |
+
+With no profile at all, Claude is off until the person turns it on, on the
+first-launch ask or in Settings ▸ Claude: until then the app stamps no kit,
+keeps no `_bridge` folder and shows no Claude button (`agent_gate.rs`). That is
+a default a person can change, not a control, so force a key where the answer
+is the organisation's to give.
 
 `DisableClaude` on its own is not recommended, because it removes a button, not
 a capability: anyone can still open the folder in Claude Code from a terminal,
-which skips the app's review sheet, and the kit is still stamped and the
-bridge still runs. Where the decision is "not for this data", force
+which skips the app's review sheet, and on a Mac where Claude was already
+turned on the kit is still stamped and the bridge still runs. Where the decision is "not for this data", force
 `DisableAgentKit` with it and enforce the decision through Claude Code's own
 policy or your application control. Where Claude Code is approved, the kit is
 the control you want in place, and `DisableClaude` would only push people to
@@ -158,7 +172,12 @@ before rolling out:
   action. The app sets no permission mode, and Claude Code ignores `auto` and
   `bypassPermissions` from project files.
 - `forceLoginMethod` and `forceLoginOrgUUID`, so project content goes under your
-  organisation's account and its retention settings.
+  organisation's account and its retention settings. `forceLoginOrgUUID` is
+  also what `RequireManagedClaude` looks for. The app can read the settings
+  file, its drop-ins and the profile; it cannot see settings your organisation
+  delivers only from the claude.ai admin console, so an organisation that uses
+  those alone deploys the file or the profile as well, or Claude stays off
+  here.
 - `permissions.deny` mirroring the kit's credential list: `Read(~/.ssh/**)`,
   `Read(~/.aws/**)`, `Read(~/.config/**)`, `Read(~/.gnupg/**)`,
   `Read(~/Library/Keychains/**)`, `Read(**/.env)`, `Read(**/.env.*)`,
@@ -328,7 +347,14 @@ download; it cannot catch a harmful change pushed through that account, since
 the signature, the notarisation and the attestation all come from it. Your
 delay and your review are the real control.
 
-**Recommendation:** MDM delivery with `DisableUpdateCheck` forced on, a short
+A copy installed from the pkg takes the MDM path by default: it never checks
+GitHub and never installs an update itself, with no key forced
+(`package_install.rs`: the installer's receipt names the running version and
+the app runs from `/Applications`). `UpdateEndpoint`, or `DisableUpdateCheck`
+forced to `false`, turns the in-app updater back on for it.
+
+**Recommendation:** MDM delivery of the pkg, with `DisableUpdateCheck` forced
+on so a copy from the DMG or an older version behaves the same, a short
 soak for ordinary releases and a fast lane for security ones; revisit once the
 `release` environment's rules sit beyond the admin's reach
 ([SECURITY.md, "Not yet"](../SECURITY.md#not-yet)).

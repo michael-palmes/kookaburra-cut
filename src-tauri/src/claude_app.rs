@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::process::Command;
 
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 
 use crate::workspace::{self, SettingsState};
 
@@ -89,7 +89,8 @@ pub async fn open_in_claude(
     prompt: Option<String>,
 ) -> Result<(), String> {
     crate::managed::deny_claude()?;
-    crate::managed::deny_agent_kit()?;
+    crate::managed::deny_unmanaged_claude()?;
+    crate::agent_gate::deny()?;
     let dir = workspace::project_dir_mut(&app, &state, &slug)?;
     if !dir.join(workspace::MANIFEST_FILENAME).is_file() {
         return Err(format!("\"{slug}\" is not a project folder"));
@@ -126,6 +127,27 @@ pub async fn open_in_claude(
     Ok(())
 }
 
+/// Record the answer to "use Claude here?" and bring the bridge in line at once: on serves without a relaunch, off stops it and removes this instance's heartbeat and key. A profile that turns Claude or the agent kit off, or asks for an organisation's Claude Code policy this Mac lacks, pins it off whatever the switch asked for. Answers what was stored.
+#[tauri::command]
+pub fn set_claude_consent(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    consent: bool,
+) -> Result<bool, String> {
+    let granted = consent
+        && crate::managed::deny_claude().is_ok()
+        && crate::managed::deny_agent_kit().is_ok()
+        && crate::managed::deny_unmanaged_claude().is_ok();
+    workspace::update_settings(&app, &state, |settings| {
+        settings.claude_consent = Some(granted)
+    })?;
+    crate::agent_gate::note(Some(granted));
+    log::info!("{}", crate::audit::claude_consent_line(consent, granted));
+    crate::bridge::apply_gate(&app);
+    let _ = app.emit(crate::agent_gate::CHANGED_EVENT, ());
+    Ok(granted)
+}
+
 /// `open_target` off the main thread, which sync commands would otherwise hold while `open` runs.
 async fn open_in_background(target: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || open_target(&target))
@@ -151,7 +173,7 @@ pub async fn open_project_folder(
 #[tauri::command]
 pub async fn open_claude_download() -> Result<(), String> {
     crate::managed::deny_claude()?;
-    crate::managed::deny_agent_kit()?;
+    crate::agent_gate::deny()?;
     open_in_background(DOWNLOAD_URL.to_string()).await
 }
 

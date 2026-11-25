@@ -12,7 +12,12 @@ import {
   useSyncExternalStore,
 } from "react";
 import { formatBytes } from "./engine/appCache";
-import { lastLoadReport, reportLastLoad, stampProjectKit } from "./engine/appHeartbeat";
+import {
+  forgetStampedKits,
+  lastLoadReport,
+  reportLastLoad,
+  stampProjectKit,
+} from "./engine/appHeartbeat";
 import {
   noteAssetWritten,
   observeAssetStamp,
@@ -46,6 +51,7 @@ import {
   queueClaudeLauncherGreeting,
   rearmClaudeLauncherGreeting,
 } from "./engine/claudeApp";
+import { useClaudeConsent } from "./engine/claudeConsent";
 import {
   clipExtractionCount,
   clipExtractionProgress,
@@ -234,7 +240,7 @@ import { CameraToolOverlay } from "./ui/CameraToolOverlay";
 import { ChartAnimationLane } from "./ui/ChartAnimationLane";
 import { ChartDataModal } from "./ui/ChartDataModal";
 import { ChartHeroGizmo } from "./ui/ChartHeroGizmo";
-import { ClaudeLauncher, EditWithClaudeButton } from "./ui/ClaudeLauncher";
+import { ClaudeLauncher, EditWithClaudeButton, SetUpClaudeButton } from "./ui/ClaudeLauncher";
 import { CommandPalette } from "./ui/CommandPalette";
 import { CompareAnimationLane } from "./ui/CompareAnimationLane";
 import { openChartDataModal } from "./ui/chartDataModalStore";
@@ -270,6 +276,7 @@ import { writeCutCaches, writeCutsForMusic } from "./ui/pinnedCuts";
 import { ALL_PROJECTS } from "./ui/projectLibrary";
 import { renderBlockFor } from "./ui/renderBlock";
 import { SceneWizardHost } from "./ui/SceneWizardHost";
+import { SetupDialog } from "./ui/SetupDialog";
 import { ShortcutsSheet } from "./ui/ShortcutsSheet";
 import { stageRegionLabel } from "./ui/stageRegion";
 import { playheadStillMs, stillAtFrame } from "./ui/stillsModel";
@@ -295,7 +302,7 @@ import {
 import { duplicateThemeDoc } from "./ui/theme-editor/themeDraft";
 import { onThemeSaved, readThemeSourceDoc } from "./ui/theme-editor/themeEditorIo";
 import { onThemeMoved } from "./ui/theme-editor/themeMove";
-import { UpdateAvailableDialog, WelcomeDialog } from "./ui/updateDialogs";
+import { UpdateAvailableDialog } from "./ui/updateDialogs";
 import { useBridgeExport } from "./ui/useBridgeExport";
 import { commitSceneDuration, resolveDocPatchIndex, writeMusicCaches } from "./ui/useSceneDocPatch";
 import { Welcome } from "./ui/Welcome";
@@ -472,9 +479,25 @@ export default function App() {
   const closeClaudeLauncher = useCallback(() => setClaudeLauncher(null), []);
   // What a configuration profile forces; null until read, and every Claude entry point waits for it so nothing managed flashes open.
   const managed = useManagedPolicy();
-  const claudeAllowed = managed !== null && !claudeLocked(managed);
-  // Copy and the start card only: unknown reads as not yet turned off, so an unmanaged welcome never flashes the managed wording.
-  const claudeOffered = managed === null || !claudeLocked(managed);
+  // Claude is off until a person turns it on (agent_gate.rs); every entry point that starts or prepares a session waits for that too.
+  const claude = useClaudeConsent();
+  const claudeAllowed = managed !== null && !claudeLocked(managed) && claude.allowed;
+  // Copy and the start card only: an unread policy reads as not yet turned off, so an unmanaged welcome never flashes the managed wording.
+  const claudeOffered = (managed === null || !claudeLocked(managed)) && claude.allowed;
+  // The Claude choice is a person's to make only where no profile owns it; a missing organisation policy keeps it owed until IT installs one.
+  const claudeChoiceLock =
+    managed !== null && claudeLocked(managed)
+      ? ("managed" as const)
+      : claude.orgPolicy === "missing"
+        ? ("orgMissing" as const)
+        : null;
+  const claudeChoosable =
+    managed !== null && claudeChoiceLock === null && claude.consent !== "loading";
+  const [claudeSetupOpen, setClaudeSetupOpen] = useState(false);
+  const claudeOffReasonRef = useRef<string | null>(null);
+  claudeOffReasonRef.current = claudeAllowed ? null : claude.reason;
+  const claudeChoiceOpenRef = useRef(false);
+  claudeChoiceOpenRef.current = claudeChoosable && claude.consent !== "on";
   const claudeAllowedRef = useRef(false);
   claudeAllowedRef.current = claudeAllowed;
   // Read by the load-time greeting without re-running it.
@@ -604,7 +627,11 @@ export default function App() {
     if (isAutoRun) return;
     const unlisten = listen("kookaburra://edit-in-claude", () => {
       // ⌥⌘E only means something with an editable project open; say so elsewhere instead of silently doing nothing.
-      if (view === "editor" && isEditableProjectId(useEditorStore.getState().projectId)) {
+      if (claudeChoiceOpenRef.current) {
+        setClaudeSetupOpen(true);
+      } else if (claudeOffReasonRef.current) {
+        setToast({ kind: "error", message: plainError(claudeOffReasonRef.current) });
+      } else if (view === "editor" && isEditableProjectId(useEditorStore.getState().projectId)) {
         toggleClaude();
       } else {
         setToast({ kind: "error", message: "Open an editable project to edit with Claude." });
@@ -2053,10 +2080,21 @@ export default function App() {
   // Greet a new project's first open with the Claude launcher, and close it where it can't work. Keyed on the id: in-memory doc patches swap the project object per edit and must not reopen what the user closed.
   useEffect(() => {
     if (!loadedProjectId || isAutoRun || !managed) return;
-    const editable = isEditableProjectId(loadedProjectId) && !claudeLocked(managed);
+    const editable = isEditableProjectId(loadedProjectId) && claudeAllowed;
     const greet = editable && claimClaudeLauncherGreeting(loadedProjectId);
     setClaudeLauncher(greet && claudeFirstOpenRef.current ? { firstRun: true } : null);
-  }, [loadedProjectId, isAutoRun, managed]);
+  }, [loadedProjectId, isAutoRun, managed, claudeAllowed]);
+
+  // Claude turned on while a project is open: its kit is written now, as a load would have, so a session started from a terminal finds it too.
+  const claudeWasAllowedRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (claude.consent === "loading" || isAutoRun) return;
+    const was = claudeWasAllowedRef.current;
+    claudeWasAllowedRef.current = claude.allowed;
+    if (was !== false || !claude.allowed) return;
+    forgetStampedKits();
+    if (loadedProjectId) stampProjectKit(loadedProjectId);
+  }, [claude.allowed, claude.consent, isAutoRun, loadedProjectId]);
 
   // Terminal scenes bake here, at author time; never during an export or an autorun.
   useEffect(() => {
@@ -2900,6 +2938,13 @@ export default function App() {
               name={project?.name ?? projectId.replace(WORKSPACE_PROJECT_PREFIX, "")}
               path={projectDisplayPath}
             />
+            {project &&
+              isEditableProjectId(project.id) &&
+              !claudeAllowed &&
+              claudeChoosable &&
+              claude.consent !== "on" && (
+                <SetUpClaudeButton onClick={() => setClaudeSetupOpen(true)} />
+              )}
             {project && isEditableProjectId(project.id) && claudeAllowed && (
               <EditWithClaudeButton
                 buttonRef={claudeButtonRef}
@@ -3500,13 +3545,27 @@ export default function App() {
         />
       )}
       {/* The welcome (and its consent ask) waits for a workspace so it never stacks on the setup-failure dialog. */}
-      {settings?.workspaceRoot && updates.welcomeOwed && !isAutoRun && (
-        <WelcomeDialog
-          onAnswer={(on) => void updates.answerConsent(on)}
-          updatesManaged={updates.managed}
-          organisationServer={Boolean(managed?.updateEndpoint)}
-        />
-      )}
+      {settings?.workspaceRoot &&
+        !isAutoRun &&
+        managed !== null &&
+        claude.consent !== "loading" &&
+        updates.consent !== "loading" &&
+        (updates.welcomeOwed || (claude.askOwed && claudeChoosable) || claudeSetupOpen) && (
+          <SetupDialog
+            askClaude={claudeSetupOpen || claude.askOwed}
+            askUpdates={updates.welcomeOwed && !claudeSetupOpen}
+            claudeLock={claudeChoiceLock}
+            claudeCovered={claude.orgPolicy === "found"}
+            updatesLock={updates.managed ? "managed" : updates.byInstaller ? "installer" : null}
+            organisationServer={Boolean(managed.updateEndpoint)}
+            onCancel={claudeSetupOpen ? () => setClaudeSetupOpen(false) : undefined}
+            onAnswer={(answer) => {
+              setClaudeSetupOpen(false);
+              if (answer.claude !== null) void claude.set(answer.claude);
+              if (updates.welcomeOwed) void updates.answerConsent(answer.updates ?? false);
+            }}
+          />
+        )}
       {updates.offerVisible && updates.available && !isAutoRun && !exporting && (
         <UpdateAvailableDialog
           version={updates.available.version}

@@ -5,9 +5,10 @@ plain words, what can leave the Mac, what the app keeps, how to clear it, and
 how an organisation can lock it down. The engineering version, with the file or
 command behind every sentence, is [SECURITY.md](../SECURITY.md).
 
-This page describes version 0.24.0. One change since: scenes can no longer open
-a live website, and the next release has none of it; 0.24.0 still can, after
-you press Allow for the site. On 0.21.1, pressing Allow on a shared project
+This page describes version 0.24.0. Three changes since: scenes can no longer
+open a live website, and the next release has none of it (0.24.0 still can,
+after you press Allow for the site); Claude is off until you turn it on; and a
+copy installed from the package no longer checks for updates itself. On 0.21.1, pressing Allow on a shared project
 runs its code with your account, and the app's own data is not private to your
 account. Update once a newer release is out, and until then open only projects
 you'd trust as a program.
@@ -26,9 +27,9 @@ Three things can reach the internet, and each one starts with you:
 
 | What | When | Where it goes | What goes | Off switch |
 | --- | --- | --- | --- | --- |
-| Update check | At launch and about once a day while the app is open, if you left the first-run switch on, or when you choose Check for Updates | GitHub, the app's release page | One request for the latest release file. No identifiers, nothing about your usage or your Mac | The switch on the first-run welcome, or Settings ▸ Updates |
+| Update check | At launch and about once a day while the app is open, if you left the first-run switch on, or when you choose Check for Updates. Never on a copy your organisation installed from the package: it delivers updates itself | GitHub, the app's release page | One request for the latest release file. No identifiers, nothing about your usage or your Mac | The switch on the first-run welcome, or Settings ▸ Updates |
 | Update install | Only when you press Install and relaunch | GitHub, the release download | Nothing; the new build comes down, is checked against a key built into the app, and replaces itself | Press Later |
-| Edit with Claude | Only when you press Edit with Claude and the Claude desktop app is installed | The Claude desktop app on this Mac, which then talks to Anthropic under your account | The project folder's path and a starter prompt, typed in for you, never sent until you press Enter there | Do not press it; a configuration profile can turn it off |
+| Edit with Claude | Only once you have turned Claude on, when you press Edit with Claude and the Claude desktop app is installed | The Claude desktop app on this Mac, which then talks to Anthropic under your account | The project folder's path and a starter prompt, typed in for you, never sent until you press Enter there | Leave Claude off, or do not press it; a configuration profile can turn it off |
 
 Two buttons open a web page in your browser: Get Claude (the Claude download
 page) and What leaves your Mac (this page). The address is fixed inside the
@@ -36,8 +37,12 @@ app; nothing about you is added to it.
 
 ## What the Claude integration sends
 
-Claude uses your own Claude Code install and your own Anthropic account. The app
-never holds a key for you, and it never starts Claude Code, or a shell for Claude.
+Claude is off until you turn it on, when the app first asks or in Settings ▸
+Claude, and you can turn it off there again. While it is off the app writes no
+agent files into your projects, keeps no bridge folder and shows no Claude
+buttons. Claude uses your own Claude Code install and your own Anthropic
+account. The app never holds a key for you, and it never starts Claude Code,
+or a shell for Claude.
 
 - **Edit with Claude** hands the project to the Claude desktop app and types a
   starter prompt in. Nothing is sent until you press Enter in that app. From

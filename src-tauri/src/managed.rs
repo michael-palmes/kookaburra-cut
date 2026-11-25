@@ -57,13 +57,14 @@ pub enum Key {
     ExportsInProject,
     UpdateEndpoint,
     AuditLogPath,
+    RequireManagedClaude,
 }
 
 /// Keys an earlier version honoured. Live websites are gone, so a profile that still forces one locks nothing, and its value is never read.
 pub const RETIRED_KEYS: [&str; 2] = ["DisableLiveWebsites", "AllowedWebsiteOrigins"];
 
 impl Key {
-    pub const ALL: [Key; 9] = [
+    pub const ALL: [Key; 10] = [
         Key::DisableClaude,
         Key::AllowedPublisherKeyIds,
         Key::DisableUpdateCheck,
@@ -73,6 +74,7 @@ impl Key {
         Key::ExportsInProject,
         Key::UpdateEndpoint,
         Key::AuditLogPath,
+        Key::RequireManagedClaude,
     ];
 
     pub fn name(self) -> &'static str {
@@ -86,6 +88,7 @@ impl Key {
             Key::ExportsInProject => "ExportsInProject",
             Key::UpdateEndpoint => "UpdateEndpoint",
             Key::AuditLogPath => "AuditLogPath",
+            Key::RequireManagedClaude => "RequireManagedClaude",
         }
     }
 
@@ -103,6 +106,9 @@ impl Key {
             Key::ExportsInProject => "Your organisation keeps exports in the project folder",
             Key::UpdateEndpoint => "Your organisation's update server address can't be used",
             Key::AuditLogPath => "Your organisation keeps a copy of the app log",
+            Key::RequireManagedClaude => {
+                "Claude needs your organisation's Claude settings on this Mac"
+            }
         }
     }
 
@@ -141,6 +147,8 @@ pub struct ManagedPolicy {
     pub update_endpoint_locked: bool,
     /// The folder a copy of the app log goes to when the forced value was usable; the local log stays either way.
     pub audit_log_path: Option<String>,
+    /// Claude turns on only where Claude Code's own managed policy pins an organisation's sign-in (claude_policy.rs).
+    pub require_managed_claude: bool,
     /// The forced keys by name, for the lock rows and the log.
     pub forced_keys: Vec<String>,
     /// Retired keys a profile still forces; logged at boot, never honoured.
@@ -188,6 +196,9 @@ impl ManagedPolicy {
                 }
                 Key::AuditLogPath => {
                     policy.audit_log_path = policy.audit_dir_or_none(&value, &homes());
+                }
+                Key::RequireManagedClaude => {
+                    policy.require_managed_claude = policy.bool_or_closed(key, &value)
                 }
             }
         }
@@ -396,7 +407,20 @@ pub fn policy() -> &'static ManagedPolicy {
 
 #[cfg(target_os = "macos")]
 fn system_source() -> impl PreferenceSource {
-    cf::CfSource
+    cf::CfSource(DOMAIN)
+}
+
+/// A key a configuration profile forces in another app's preference domain: how the app sees Claude Code's managed policy. `None` when it is unset, set only by the user, or off macOS.
+pub fn forced_in(domain: &'static str, key: &str) -> Option<PrefValue> {
+    #[cfg(target_os = "macos")]
+    {
+        cf::CfSource(domain).forced(key)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (domain, key);
+        None
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -445,6 +469,14 @@ fn log_refusal_once(key: Key) {
 pub fn deny_claude_in(policy: &ManagedPolicy) -> Result<(), String> {
     if policy.disable_claude {
         return Err(refusal(Key::DisableClaude));
+    }
+    Ok(())
+}
+
+/// `org_pinned` is whether Claude Code's own managed policy pins an organisation's sign-in on this Mac (`claude_policy::org_pinned`).
+pub fn deny_unmanaged_claude_in(policy: &ManagedPolicy, org_pinned: bool) -> Result<(), String> {
+    if policy.require_managed_claude && !org_pinned {
+        return Err(refusal(Key::RequireManagedClaude));
     }
     Ok(())
 }
@@ -507,6 +539,13 @@ pub fn deny_claude() -> Result<(), String> {
     deny_claude_in(policy())
 }
 
+/// Reads Claude Code's managed policy afresh, so one IT installed a moment ago counts: for the handoff and the Use Claude switch.
+pub fn deny_unmanaged_claude() -> Result<(), String> {
+    let policy = policy();
+    let org_pinned = !policy.require_managed_claude || crate::claude_policy::refresh();
+    deny_unmanaged_claude_in(policy, org_pinned)
+}
+
 pub fn deny_update_check() -> Result<(), String> {
     deny_update_check_in(policy())
 }
@@ -555,18 +594,19 @@ pub fn managed_policy() -> ManagedPolicy {
 
 #[cfg(target_os = "macos")]
 mod cf {
-    use super::{PrefValue, PreferenceSource, DOMAIN};
+    use super::{PrefValue, PreferenceSource};
     use objc2_core_foundation::{
         CFArray, CFBoolean, CFNumber, CFPreferencesAppValueIsForced, CFPreferencesCopyAppValue,
         CFRetained, CFString, CFType, Type,
     };
 
-    pub struct CfSource;
+    /// The preference domain it reads.
+    pub struct CfSource(pub &'static str);
 
     impl PreferenceSource for CfSource {
         fn forced(&self, key: &str) -> Option<PrefValue> {
             let key = CFString::from_str(key);
-            let domain = CFString::from_str(DOMAIN);
+            let domain = CFString::from_str(self.0);
             if !CFPreferencesAppValueIsForced(&key, &domain) {
                 return None;
             }
@@ -653,10 +693,12 @@ mod tests {
             ("DisableAgentKit", PrefValue::Bool(true)),
             ("DisablePackExport", PrefValue::Bool(true)),
             ("ExportsInProject", PrefValue::Bool(true)),
+            ("RequireManagedClaude", PrefValue::Bool(true)),
         ]);
         assert!(on.managed);
         assert!(on.disable_claude && on.disable_update_check);
         assert!(on.disable_agent_kit && on.disable_pack_export && on.exports_in_project);
+        assert!(on.require_managed_claude);
         assert_eq!(
             on.forced_keys,
             vec![
@@ -664,7 +706,8 @@ mod tests {
                 "DisableUpdateCheck",
                 "DisableAgentKit",
                 "DisablePackExport",
-                "ExportsInProject"
+                "ExportsInProject",
+                "RequireManagedClaude"
             ]
         );
         assert!(on.issues.is_empty());
@@ -675,16 +718,41 @@ mod tests {
             ("DisableAgentKit", PrefValue::Bool(false)),
             ("DisablePackExport", PrefValue::Bool(false)),
             ("ExportsInProject", PrefValue::Bool(false)),
+            ("RequireManagedClaude", PrefValue::Bool(false)),
         ]);
         assert!(
             off.managed,
             "a forced false still marks the install as managed"
         );
+        assert!(!off.require_managed_claude);
+        assert!(deny_unmanaged_claude_in(&off, false).is_ok());
         assert!(!off.disable_claude && !off.disable_update_check);
         assert!(!off.disable_agent_kit && !off.disable_pack_export && !off.exports_in_project);
         assert!(deny_claude_in(&off).is_ok());
         assert!(deny_agent_kit_in(&off).is_ok());
         assert!(deny_pack_export_in(&off).is_ok());
+    }
+
+    #[test]
+    fn claude_needs_the_organisations_own_policy_where_the_key_asks() {
+        let required = forced(&[("RequireManagedClaude", PrefValue::Bool(true))]);
+        assert!(deny_unmanaged_claude_in(&required, true).is_ok());
+        let refusal = deny_unmanaged_claude_in(&required, false).unwrap_err();
+        assert!(refusal.starts_with(REASON_PREFIX), "{refusal}");
+        assert!(
+            refusal.contains("Claude needs your organisation's Claude settings on this Mac"),
+            "{refusal}"
+        );
+        assert!(refusal.contains("RequireManagedClaude"), "{refusal}");
+        assert!(deny_claude_in(&required).is_ok());
+        assert!(deny_agent_kit_in(&required).is_ok());
+
+        let malformed = forced(&[("RequireManagedClaude", PrefValue::String("yes".into()))]);
+        assert!(malformed.require_managed_claude, "a wrong type fails closed");
+        assert_eq!(malformed.issues.len(), 1);
+        assert!(deny_unmanaged_claude_in(&malformed, false).is_err());
+
+        assert!(deny_unmanaged_claude_in(&ManagedPolicy::default(), false).is_ok());
     }
 
     #[test]
@@ -960,8 +1028,13 @@ mod tests {
             ("DisableAgentKit", PrefValue::Bool(true)),
             ("DisablePackExport", PrefValue::Bool(true)),
             ("UpdateEndpoint", PrefValue::String("http://example.com".into())),
+            ("RequireManagedClaude", PrefValue::Bool(true)),
         ]);
         let refusals = [
+            (
+                deny_unmanaged_claude_in(&policy, false),
+                "RequireManagedClaude",
+            ),
             (deny_claude_in(&policy), "DisableClaude"),
             (deny_update_check_in(&policy), "DisableUpdateCheck"),
             (deny_workspace_change_in(&policy), "WorkspaceRoot"),
@@ -1036,6 +1109,21 @@ mod tests {
                 "deny_update_check",
             ),
             (
+                include_str!("updater.rs"),
+                "check_for_update",
+                "package_install::deny_update",
+            ),
+            (
+                include_str!("updater.rs"),
+                "set_update_consent",
+                "package_install::deny_update",
+            ),
+            (
+                include_str!("updater.rs"),
+                "install_update_and_relaunch",
+                "package_install::deny_update",
+            ),
+            (
                 include_str!("workspace.rs"),
                 "init_workspace",
                 "deny_workspace_change",
@@ -1056,43 +1144,95 @@ mod tests {
                 "deny_managed_publisher",
             ),
             (
+                include_str!("agent_gate.rs"),
+                "deny_in",
+                "deny_agent_kit_in",
+            ),
+            (include_str!("agent_gate.rs"), "deny", "deny_in"),
+            (
+                include_str!("agent_gate.rs"),
+                "managed_off",
+                "deny_agent_kit",
+            ),
+            (
                 include_str!("workspace.rs"),
                 "stamp_claude_provisioning",
-                "deny_agent_kit",
+                "agent_gate::deny",
             ),
             (
                 include_str!("workspace.rs"),
                 "heal_project_kit",
-                "deny_agent_kit",
+                "agent_gate::deny",
             ),
             (
                 include_str!("claude_app.rs"),
                 "open_in_claude",
-                "deny_agent_kit",
+                "agent_gate::deny",
             ),
             (
                 include_str!("claude_app.rs"),
                 "open_claude_download",
+                "agent_gate::deny",
+            ),
+            (
+                include_str!("claude_app.rs"),
+                "set_claude_consent",
+                "deny_claude",
+            ),
+            (
+                include_str!("claude_app.rs"),
+                "set_claude_consent",
                 "deny_agent_kit",
             ),
+            (
+                include_str!("claude_app.rs"),
+                "set_claude_consent",
+                "deny_unmanaged_claude",
+            ),
+            (
+                include_str!("claude_app.rs"),
+                "open_in_claude",
+                "deny_unmanaged_claude",
+            ),
+            (
+                include_str!("agent_gate.rs"),
+                "deny_in",
+                "deny_unmanaged_claude_in",
+            ),
+            (
+                include_str!("pack/commands.rs"),
+                "apply_import",
+                "agent_gate::deny",
+            ),
             (include_str!("bridge.rs"), "init", "deny_agent_kit"),
-            (include_str!("bridge.rs"), "spawn_heartbeat", "deny_agent_kit"),
-            (include_str!("bridge.rs"), "spawn_native_bridge", "deny_agent_kit"),
-            (include_str!("bridge.rs"), "bridge_root", "deny_agent_kit"),
+            (include_str!("bridge.rs"), "apply_gate", "agent_gate::deny"),
+            (
+                include_str!("bridge.rs"),
+                "spawn_heartbeat",
+                "agent_gate::managed_off",
+            ),
+            (
+                include_str!("bridge.rs"),
+                "spawn_native_bridge",
+                "agent_gate::managed_off",
+            ),
+            (include_str!("bridge.rs"), "write_heartbeat", "agent_gate::deny"),
+            (include_str!("bridge.rs"), "serving", "agent_gate::deny"),
+            (include_str!("bridge.rs"), "bridge_root", "agent_gate::deny"),
             (
                 include_str!("bridge.rs"),
                 "bridge_claim_request",
-                "deny_agent_kit",
+                "agent_gate::deny",
             ),
             (
                 include_str!("bridge.rs"),
                 "bridge_pending_count",
-                "deny_agent_kit",
+                "agent_gate::deny",
             ),
             (
                 include_str!("bridge.rs"),
                 "bridge_write_response",
-                "deny_agent_kit",
+                "agent_gate::deny",
             ),
             (
                 include_str!("pack/commands.rs"),
@@ -1175,6 +1315,7 @@ mod tests {
         assert_eq!(json["updateEndpoint"], serde_json::Value::Null);
         assert_eq!(json["updateEndpointLocked"], false);
         assert_eq!(json["auditLogPath"], serde_json::Value::Null);
+        assert_eq!(json["requireManagedClaude"], false);
         assert!(json.get("allowedWebsiteOrigins").is_none());
         assert!(json.get("retiredKeys").is_none());
         assert_eq!(

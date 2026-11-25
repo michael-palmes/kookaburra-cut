@@ -561,6 +561,7 @@ fn the_settings_window_owns_caches_the_workspace_location_updates_and_the_publis
             "cache_stats",
             "check_for_update",
             "claude_app_status",
+            "claude_status",
             "clear_app_data",
             "clear_clips_cache",
             "clear_media_cache",
@@ -585,6 +586,7 @@ fn the_settings_window_owns_caches_the_workspace_location_updates_and_the_publis
             "reveal_in_finder",
             "reveal_licences",
             "rotate_publisher_key",
+            "set_claude_consent",
             "set_claude_preferences",
             "set_clip_cache_cap",
             "set_conform_new_videos",
@@ -594,6 +596,7 @@ fn the_settings_window_owns_caches_the_workspace_location_updates_and_the_publis
             "set_publisher_profile",
             "set_update_consent",
             "sidecar_versions",
+            "updates_left_to_installer",
             "user_home_dir",
         ])
     );

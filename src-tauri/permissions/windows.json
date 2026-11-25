@@ -24,10 +24,12 @@
     },
     {
       "identifier": "claude-launcher",
-      "description": "The Claude desktop app handoff, its preferences and the two fixed pages the app opens in the browser (the Claude download and the privacy page).",
+      "description": "The Claude desktop app handoff, the answer to whether Claude is on, its preferences and the two fixed pages the app opens in the browser (the Claude download and the privacy page).",
       "commands": {
         "allow": [
           "claude_app_status",
+          "claude_status",
+          "set_claude_consent",
           "open_in_claude",
           "open_project_folder",
           "open_claude_download",
@@ -47,7 +49,12 @@
       "identifier": "updater",
       "description": "The consent-gated update check and install.",
       "commands": {
-        "allow": ["check_for_update", "set_update_consent", "install_update_and_relaunch"]
+        "allow": [
+          "check_for_update",
+          "set_update_consent",
+          "install_update_and_relaunch",
+          "updates_left_to_installer"
+        ]
       }
     }
   ]

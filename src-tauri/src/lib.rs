@@ -2,6 +2,7 @@
 
 #[cfg(test)]
 mod acl;
+mod agent_gate;
 mod asset_meta;
 mod asset_reach;
 mod audit;
@@ -14,6 +15,7 @@ mod bridge_health;
 mod bridge_range;
 mod capture_service;
 mod claude_app;
+mod claude_policy;
 mod clean_text;
 pub mod cli;
 pub mod cli_check;
@@ -53,6 +55,7 @@ mod objects;
 #[cfg(target_os = "macos")]
 mod ocr;
 mod pack;
+mod package_install;
 mod png_decode;
 mod packs_win;
 mod present;
@@ -1618,6 +1621,8 @@ macro_rules! kookaburra_handler {
             fonts::list_workspace_fonts,
             fonts::pin_system_font,
             claude_app::claude_app_status,
+            claude_app::set_claude_consent,
+            agent_gate::claude_status,
             claude_app::open_in_claude,
             claude_app::open_project_folder,
             claude_app::open_claude_download,
@@ -1658,6 +1663,7 @@ macro_rules! kookaburra_handler {
             settings_win::reveal_licences,
             updater::check_for_update,
             updater::set_update_consent,
+            package_install::updates_left_to_installer,
             updater::install_update_and_relaunch,
             edit::open_edit,
             edit::open_edit_named,
@@ -1801,6 +1807,7 @@ pub fn run() {
             audit::log_mirror_at_boot(&mirror);
             retired_websites::clear_at_launch(app.handle());
             asset_reach::init(app.handle());
+            agent_gate::load_at_boot(app.handle());
             bridge::init(app.handle());
             bridge::spawn_heartbeat(app.handle().clone());
             export_health::spawn_sampler(app.handle().clone());
@@ -1908,10 +1915,11 @@ pub fn run() {
                             pred.set_text(format!("Quit {APP_NAME}"))?;
                         }
                     }
-                    // Default macOS app submenu: About(0), ─(1), Services…; per the HIG the order becomes About, Check for Updates, ─, Settings, ─, Services. Check for Updates is left out where a profile turns update checks off or names a server the app can't use.
+                    // Default macOS app submenu: About(0), ─(1), Services…; per the HIG the order becomes About, Check for Updates, ─, Settings, ─, Services. Check for Updates is left out where a profile turns update checks off or names a server the app can't use, and on a package install, whose updates come from its installer.
                     let mut at = 1;
                     let update_checks = !managed.disable_update_check
-                        && managed::managed_update_endpoint_in(managed).is_ok();
+                        && managed::managed_update_endpoint_in(managed).is_ok()
+                        && package_install::deny_update(app.handle()).is_ok();
                     if update_checks {
                         app_menu.insert(&check_updates_item, at)?;
                         at += 1;

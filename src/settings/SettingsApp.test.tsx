@@ -1,24 +1,41 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ClaudeStatus } from "../engine/claudeConsent";
 import type { ManagedPolicy } from "../engine/managed";
 
+const CLAUDE_ON: ClaudeStatus = {
+  consent: true,
+  allowed: true,
+  reason: null,
+  orgPolicy: "notRequired",
+};
+
 let policy: Partial<ManagedPolicy> = {};
+let claude: ClaudeStatus = CLAUDE_ON;
+let leftToInstaller = false;
 
 vi.mock("@tauri-apps/api/core", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tauri-apps/api/core")>()),
   invoke: vi.fn(async (cmd: string) => {
+    if (cmd === "claude_status") return claude;
+    if (cmd === "updates_left_to_installer") return leftToInstaller;
     if (cmd !== "managed_policy") throw new Error(`unexpected command ${cmd}`);
     const { UNMANAGED } = await import("../engine/managed");
     return { ...UNMANAGED, ...policy };
   }),
 }));
 
-/** Settings as a managed Mac first paints it: the policy is read before the window renders. */
-async function render(forced: Partial<ManagedPolicy>): Promise<string> {
+/** Settings as a managed Mac first paints it: the policy and the Claude answer are read before the window renders. */
+async function render(forced: Partial<ManagedPolicy>, answer = CLAUDE_ON): Promise<string> {
   policy = { managed: true, ...forced };
+  claude = answer;
   vi.resetModules();
   const managed = await import("../engine/managed");
   await managed.managedPolicy();
+  const consent = await import("../engine/claudeConsent");
+  await consent.claudeStatus();
+  const updates = await import("../engine/updates");
+  await updates.updatesLeftToInstaller();
   const { SettingsApp } = await import("./SettingsApp");
   return renderToStaticMarkup(<SettingsApp />);
 }
@@ -35,6 +52,8 @@ const LOCK = "Managed by your organisation";
 
 beforeEach(() => {
   policy = {};
+  claude = CLAUDE_ON;
+  leftToInstaller = false;
 });
 
 describe("Settings rows a profile governs", () => {
@@ -48,18 +67,63 @@ describe("Settings rows a profile governs", () => {
     expect(html).not.toContain("Live websites");
   });
 
+  it("keeps Claude and the agent kit off until the switch is on", async () => {
+    const unanswered = await render(
+      { managed: false },
+      {
+        consent: null,
+        allowed: false,
+        reason: "Claude is off. Turn it on in Settings ▸ Claude",
+        orgPolicy: "notRequired",
+      },
+    );
+    const use = row(unanswered, "Use Claude");
+    expect(use).toContain('type="checkbox"');
+    expect(use).not.toContain("checked");
+    expect(use).toContain("to Anthropic, under your own account");
+    expect(row(unanswered, "Agent kit")).toContain(">Off<");
+    expect(row(unanswered, "Show on a new project&#x27;s first open")).toContain("disabled");
+
+    const on = row(await render({ managed: false }), "Use Claude");
+    expect(on).toContain("checked");
+  });
+
+  it("locks Use Claude where the organisation's Claude settings are required and missing", async () => {
+    const forced = { requireManagedClaude: true, forcedKeys: ["RequireManagedClaude"] };
+    const missing = row(
+      await render(forced, {
+        consent: null,
+        allowed: false,
+        reason:
+          "managed: Claude needs your organisation's Claude settings on this Mac (RequireManagedClaude).",
+        orgPolicy: "missing",
+      }),
+      "Use Claude",
+    );
+    expect(missing).toContain(LOCK);
+    expect(missing).toContain("(RequireManagedClaude)");
+    expect(missing).toContain("Ask IT");
+    expect(missing).not.toContain('type="checkbox"');
+
+    const found = row(await render(forced, { ...CLAUDE_ON, orgPolicy: "found" }), "Use Claude");
+    expect(found).not.toContain(LOCK);
+    expect(found).toContain('type="checkbox"');
+  });
+
   it("locks the Agent kit row and every Claude row under DisableAgentKit", async () => {
     const html = await render({ disableAgentKit: true, forcedKeys: ["DisableAgentKit"] });
     const kit = row(html, "Agent kit");
     expect(kit).toContain(LOCK);
     expect(kit).toContain("(DisableAgentKit)");
     expect(kit).toContain("<svg");
+    expect(row(html, "Use Claude")).toContain(LOCK);
     expect(row(html, "Claude app")).toContain(LOCK);
     expect(row(html, "Show on a new project&#x27;s first open")).toContain(LOCK);
   });
 
   it("locks the Claude rows but leaves the kit on under DisableClaude alone", async () => {
     const html = await render({ disableClaude: true, forcedKeys: ["DisableClaude"] });
+    expect(row(html, "Use Claude")).toContain("(DisableClaude)");
     expect(row(html, "Claude app")).toContain("(DisableClaude)");
     expect(row(html, "Agent kit")).toContain(">On<");
   });
@@ -87,6 +151,19 @@ describe("Settings rows a profile governs", () => {
     const html = await render({ updateEndpointLocked: true, forcedKeys: ["UpdateEndpoint"] });
     expect(row(html, "Check for updates automatically")).toContain("(UpdateEndpoint)");
     expect(row(html, "Status")).toContain("update server address can&#x27;t be used");
+  });
+
+  it("leaves updates to the installer on a package install, without blaming a profile", async () => {
+    leftToInstaller = true;
+    const html = await render({ managed: false });
+    const updates = row(html, "Check for updates automatically");
+    expect(updates).toContain("Updated by its installer");
+    expect(updates).toContain("never checks for updates itself");
+    expect(updates).not.toContain(LOCK);
+    expect(updates).not.toContain('type="checkbox"');
+    const status = row(html, ">Status<");
+    expect(status).toContain("updates arrive from the installer");
+    expect(status).not.toContain("Check now");
   });
 
   it("locks the Publisher rows under DisablePackExport", async () => {

@@ -97,6 +97,9 @@ pub struct AppSettings {
     /// Unix-ms of the last update check; only written while consent is on (launch-check throttle marker).
     #[serde(default)]
     pub last_update_check_ms: Option<u64>,
+    /// Tri-state answer to "use Claude here?": None = not asked yet, and that counts as off (agent_gate.rs); nothing is laid out for an agent until it is Some(true).
+    #[serde(default)]
+    pub claude_consent: Option<bool>,
     /// Inverted so the serde/Default false means the Claude launcher shows on a new project's first open.
     #[serde(default)]
     pub disable_claude_first_open: bool,
@@ -324,7 +327,7 @@ fn drop_website_grants_at(path: &Path, cache: &Mutex<Option<AppSettings>>) -> Re
     Ok(true)
 }
 
-/// What Settings ▸ Clear all app data keeps: where the workspace is and the answer to the update question. Every grant, record and preference goes.
+/// What Settings ▸ Clear all app data keeps: where the workspace is and the answer to the update question. Every grant, record and preference goes, the Claude answer with them, so Claude is off until it is asked for again.
 fn cleared_settings(settings: &AppSettings) -> AppSettings {
     AppSettings {
         workspace_root: settings.workspace_root.clone(),
@@ -1983,9 +1986,9 @@ pub fn create_project(
     })
 }
 
-/// Claude Code provisioning for a project folder (docs/agent-kit.md, "Stamping"; see `kit.rs`). `false` = a shipped skill is missing (a packaging defect); the skills that are there and the rest of the kit are still stamped. Under `DisableAgentKit` nothing is written, moved or healed, and a kit already there stays as it is.
+/// Claude Code provisioning for a project folder (docs/agent-kit.md, "Stamping"; see `kit.rs`). `false` = a shipped skill is missing (a packaging defect); the skills that are there and the rest of the kit are still stamped. While the agent gate is shut (`DisableAgentKit`, or Claude not turned on) nothing is written, moved or healed, and a kit already there stays as it is.
 pub(crate) fn stamp_claude_provisioning(app: &AppHandle, dir: &Path) -> Result<bool, String> {
-    if crate::managed::deny_agent_kit().is_err() {
+    if crate::agent_gate::deny().is_err() {
         return Ok(true);
     }
     let root = skills_root(app);
@@ -2419,7 +2422,7 @@ pub async fn heal_project_kit(
     if !dir.join(MANIFEST_FILENAME).is_file() {
         return Ok(false);
     }
-    if crate::managed::deny_agent_kit().is_err() {
+    if crate::agent_gate::deny().is_err() {
         return Ok(false);
     }
     tauri::async_runtime::spawn_blocking(move || {

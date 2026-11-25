@@ -10,11 +10,17 @@ the Keychain for the pack key whenever Settings or Export opens, and its Later
 stops the launch check offering that version again; 0.22.0 is 0.22.1 built
 before the pinned toolchain and the whole-bundle record ("Release integrity");
 and "Version 0.21.1" below lists what that version lacks.
-One thing here is ahead of 0.24.0: live scene websites are removed and gone
+Three things here are ahead of 0.24.0. Live scene websites are removed and gone
 from the next release, so this file lists nothing they brought. 0.24.0 itself
 can still open a website a person allows in a scene, with `DisableLiveWebsites`
 and `AllowedWebsiteOrigins` as its locks; that version's copy of this file
-describes it.
+describes it. And Claude is off until a person turns it on, with
+`RequireManagedClaude` to tie that to an organisation's own Claude Code policy
+("What reaches your agent"); on 0.24.0 the kit is stamped and the bridge
+serves from the first launch, the key is ignored, and `DisableAgentKit` is
+what stops them. And a copy installed from the pkg leaves updates to its
+installer ("What leaves the Mac"); on 0.24.0 it checks GitHub like any other
+copy unless `DisableUpdateCheck` is forced.
 Each release from 0.22.0 on carries its own copy of this file in its assets.
 
 On a managed Mac, a configuration profile can pin the posture an organisation
@@ -156,10 +162,24 @@ checkout only (`vite.config.ts`, `server.fs.allow`), never the home folder.
 
 | Path | Trigger | Destination | Data | Consent and off switch | Control |
 | --- | --- | --- | --- | --- | --- |
-| Update check | At launch and hourly while the main window is open, at most every 20 h, only with the consent on and never during an export; or Check for Updates (menu, ⌘K, Settings), which runs without consent and stores nothing | `github.com/michael-palmes/kookaburra-cut/releases/latest/download/latest.json`, or the https URL a profile forces as `UpdateEndpoint` | One GET; no identifiers, no version in the URL; the plugin's user agent only | First-run welcome switch (on by default, Escape saves off); Settings ▸ Updates. `update_check_consent` in `$APPDATA/settings.json` | `src-tauri/src/updater.rs`, `src/engine/updates.ts`; `KOOKABURRA_UPDATE_ENDPOINT` is honoured only in debug builds; `managed::usable_endpoint` refuses an `UpdateEndpoint` with a query, fragment, login or `{{…}}` template, and an unusable one means no check, never GitHub |
-| Update install | Install and relaunch on the update dialog | The release asset `latest.json` names | The signed updater archive | Later hides the offer until the next check | `updater.rs` (`download_and_install`); the ed25519 signature is checked against `plugins.updater.pubkey` before anything is written |
-| Edit with Claude (`claude://` handoff) | Edit with Claude, with the Claude desktop app installed | The Claude desktop app on this Mac, which talks to Anthropic under the user's account | The project folder path and a starter prompt, typed in, never sent | Not pressing it; `DisableClaude` turns it off for a fleet | `src-tauri/src/claude_app.rs` (`code_session_link`, `open_in_claude`) |
+| Update check | Never on a copy installed from the release pkg, unless a profile turns it on (below). Otherwise at launch and hourly while the main window is open, at most every 20 h, only with the consent on and never during an export; or Check for Updates (menu, ⌘K, Settings), which runs without consent and stores nothing | `github.com/michael-palmes/kookaburra-cut/releases/latest/download/latest.json`, or the https URL a profile forces as `UpdateEndpoint` | One GET; no identifiers, no version in the URL; the plugin's user agent only | First-run welcome switch (on by default, Escape saves off); Settings ▸ Updates. `update_check_consent` in `$APPDATA/settings.json` | `src-tauri/src/updater.rs`, `src/engine/updates.ts`; `KOOKABURRA_UPDATE_ENDPOINT` is honoured only in debug builds; `managed::usable_endpoint` refuses an `UpdateEndpoint` with a query, fragment, login or `{{…}}` template, and an unusable one means no check, never GitHub |
+| Update install | Install and relaunch on the update dialog; never on a copy installed from the release pkg, unless a profile turns it on | The release asset `latest.json` names | The signed updater archive | Later hides the offer until the next check | `updater.rs` (`download_and_install`); the ed25519 signature is checked against `plugins.updater.pubkey` before anything is written |
+| Edit with Claude (`claude://` handoff) | Edit with Claude, once Claude is turned on and with the Claude desktop app installed | The Claude desktop app on this Mac, which talks to Anthropic under the user's account | The project folder path and a starter prompt, typed in, never sent | Leaving Claude off, or not pressing it; `DisableClaude` turns it off for a fleet | `src-tauri/src/claude_app.rs` (`code_session_link`, `open_in_claude`) |
 | Fixed pages in the browser | Get Claude, or What leaves your Mac | `claude.ai/download`; `github.com/.../docs/privacy.md` at the installed version's tag (`main` in a dev build) | The constant URL, nothing appended | Not pressing it | `claude_app.rs` (`open_claude_download`, `open_privacy_page`, `privacy_url`) |
+
+A copy installed from the release pkg leaves updates to its installer
+(`package_install.rs`): `check_for_update`, `install_update_and_relaunch` and
+`set_update_consent` refuse or record off, the Check for Updates menu item is
+left out and Settings ▸ Updates shows one line in place of its switch and
+Check now. The sign is the installer's receipt for the bundle id
+(`/var/db/receipts/com.mpalmes.kookaburracut.plist`) naming the running
+version, with the app running from `/Applications`; a receipt an older pkg
+left under a newer copy from the DMG does not count, and a debug build never
+does. A profile turns the in-app updater back on for such a copy by forcing
+`UpdateEndpoint` (its own server) or `DisableUpdateCheck` to false (GitHub).
+The receipt is root-owned and world-readable, and a person who can replace the
+app with a DMG copy gets that copy's updater, which is the DMG's behaviour;
+`DisableUpdateCheck` forced true is the control that holds either way.
 
 Dev-time only, never in the app: `pnpm setup:models` downloads the beat model
 from a pinned commit and checks its SHA-256 (`scripts/setup-models.sh`);
@@ -447,16 +467,53 @@ Claude Code runs outside the app, in the Claude desktop app or the person's own
 terminal, under their own account, install and settings. The app holds no API
 key, sends nothing to Anthropic itself and starts no Claude Code, and no shell
 but the updater's administrator install, so no credential passes through it and
-no window can type into a session. A profile forcing `DisableAgentKit` turns off
-everything below: no kit is stamped or healed (`stamp_claude_provisioning` in
-`workspace.rs`), the bridge never serves and the app never creates `_bridge`
-(`bridge_role`, `bridge_root`), and the handoff refuses (`open_in_claude`). A kit
-stamped before the profile stays in its folder, and its kb still runs.
+no window can type into a session.
+
+Everything below is off until a person turns Claude on. One gate
+(`agent_gate.rs`, `deny`) stands in front of all of it: a profile forcing
+`DisableAgentKit` shuts it first, and after that it opens only on a stored
+answer of yes (`claudeConsent` in `settings.json`), given on the first-launch
+ask or in Settings ▸ Claude and changed there at any time. No answer counts as
+off, and so does a dismissed ask. While the gate is shut no kit is stamped or
+healed (`stamp_claude_provisioning` and `heal_project_kit` in `workspace.rs`),
+a pack import keeps no default `CLAUDE.md` (`pack/commands.rs`, `apply_import`),
+the bridge never serves and the app never creates `_bridge` (`bridge_root`,
+`serving`), no heartbeat is written, the handoff and the Claude download page
+refuse (`open_in_claude`, `open_claude_download`), and every Claude entry point
+is hidden. The gate is read live: turning Claude on in a running app draws the
+bridge key and starts the heartbeat without a relaunch, and turning it off
+removes this instance's heartbeat and key within one refresh (`bridge.rs`,
+`apply_gate`). `set_claude_consent` records off whatever it is asked while a
+profile forces `DisableClaude` or `DisableAgentKit`, and each change is one
+`[claude]` line in the log. A profile forcing `RequireManagedClaude` adds one
+condition between the two: the gate also stays shut unless Claude Code's own
+managed policy pins sign-in to an organisation on this Mac, read from
+`forceLoginOrgUUID` (a non-empty string or list) in
+`/Library/Application Support/ClaudeCode/managed-settings.json`, any `*.json`
+in `managed-settings.d/` beside it, or the key forced in the
+`com.anthropic.claudecode` preference domain (`claude_policy.rs`,
+`org_pinned_in`). A file counts only when root owns it and neither group nor
+others can write it (`root_owned`), since the admin group can write
+`/Library/Application Support`; the key checks that sign-in is pinned, not to
+which organisation. A file that is unreadable, over 1 MiB or not JSON counts as
+missing; the answer is cached for a minute and read afresh before each handoff
+and each use of the switch. It proves the policy is installed, not that a
+session obeys it, and it cannot see settings an organisation delivers only
+from the claude.ai admin console. Settings ▸ Clear all app data forgets the answer,
+so Claude is off until it is asked for again. A kit stamped before Claude was
+turned off, or before a profile, stays in its folder, and its kb still runs:
+the gate governs what the app lays out, not a Claude Code session a person
+starts in a terminal. A debug build takes `KOOKABURRA_CLAUDE=1` as the answer,
+for throwaway-home test runs; a release build never reads it.
 
 - **The `claude://` handoff** (`claude_app.rs`): `open claude://code/new?folder=<project>&q=<prompt>`,
   the prompt capped at the Claude app's limit, opened only when LaunchServices
   reports a handler; the prompt is typed into the app, not sent, until the
-  person presses Enter there. The kit is stamped first, and if the stamp moved
+  person presses Enter there. The `folder` and `q` parameters of that link are
+  not in Claude's public documentation (it documents `ssh_folder` only), so
+  the handoff rests on behaviour Anthropic could change without notice; if it
+  did, the link would open the Claude app without the folder or the prompt,
+  and nothing would be sent. The kit is stamped first, and if the stamp moved
   files aside a native sheet lists them before the handoff
   (`review_agent_files_for`); then the project's git history is checked too
   (`review_committed_agent_files`, below). The launcher's copy says "Claude Code sends this
@@ -786,11 +843,12 @@ printed by the app or written to its logs.
 
 ## Managed preferences
 
-Nine keys in the domain `com.mpalmes.kookaburracut`, honoured only when a
+Ten keys in the domain `com.mpalmes.kookaburracut`, honoured only when a
 configuration profile forces them (`src-tauri/src/managed.rs`): `DisableClaude`,
 `AllowedPublisherKeyIds`,
 `DisableUpdateCheck`, `WorkspaceRoot`, `DisableAgentKit`, `DisablePackExport`,
-`ExportsInProject`, `UpdateEndpoint` and `AuditLogPath`.
+`ExportsInProject`, `UpdateEndpoint`, `AuditLogPath` and
+`RequireManagedClaude`.
 `DisableLiveWebsites` and `AllowedWebsiteOrigins` are retired with live
 websites: a profile that still forces either locks nothing, its value is never
 read, and one `[managed]` line at boot says so (`RETIRED_KEYS`). A malformed key fails closed: a boolean of

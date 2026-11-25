@@ -1,9 +1,14 @@
 # Security overview
 
-Describes version 0.24.0. One change since: live website scenes are removed
+Describes version 0.24.0. Three changes since: live website scenes are removed
 and gone from the next release, so this page lists nothing they brought; on
 0.24.0 itself `DisableLiveWebsites` turns them off
-([mdm.md, "Retired keys"](./mdm.md#retired-keys)). For the team deciding
+([mdm.md, "Retired keys"](./mdm.md#retired-keys)). And Claude is off until a
+person turns it on, with `RequireManagedClaude` to tie it to an organisation's
+own Claude Code policy; on 0.24.0 it is on from the first launch, the key is
+ignored, and `DisableAgentKit` turns it off. And a copy installed from the pkg
+leaves updates to its installer; on 0.24.0 it checks GitHub unless
+`DisableUpdateCheck` is forced. For the team deciding
 whether Kookaburra Cut can run on managed Macs: the security lead, CTO or
 engineering manager. Every line
 links to the file, command or release asset behind it, and anything not done
@@ -48,9 +53,9 @@ Nothing leaves the Mac unless a person starts it
 
 | Path | Trigger | Destination host | What goes | Off switch and control |
 | --- | --- | --- | --- | --- |
-| Update check | At launch and then hourly while the app is open, at most once every 20 hours, only with the first-run consent on; or Check for Updates by hand | `github.com`, which redirects to `release-assets.githubusercontent.com` | One GET for `latest.json`; no identifiers, no version in the URL | The first-run switch or Settings ▸ Updates; `DisableUpdateCheck` for a fleet, or `UpdateEndpoint` to point it at your own server. `src-tauri/src/updater.rs`, `src/engine/updates.ts` |
+| Update check | At launch and then hourly while the app is open, at most once every 20 hours, only with the first-run consent on; or Check for Updates by hand. Never on a copy installed from the pkg, unless a profile turns it on | `github.com`, which redirects to `release-assets.githubusercontent.com` | One GET for `latest.json`; no identifiers, no version in the URL | The first-run switch or Settings ▸ Updates; `DisableUpdateCheck` for a fleet, or `UpdateEndpoint` to point it at your own server. `src-tauri/src/updater.rs`, `src/engine/updates.ts` |
 | Update install | Install and relaunch on the update dialog | The host `latest.json` names (GitHub's release assets, or your mirror) | The signed updater archive, checked against the ed25519 key built into the app and bound to the announced version before anything is written | Later; `DisableUpdateCheck`. `updater.rs` (`download_and_install`) |
-| Edit with Claude | Pressing Edit with Claude, with the Claude desktop app installed | The Claude desktop app on this Mac, which talks to Anthropic under the person's own account | The project folder's path and a starter prompt, typed into that app and never sent until the person presses Enter there | Not pressing it; `DisableClaude` removes the buttons, `DisableAgentKit` removes everything the app lays out for an agent. `src-tauri/src/claude_app.rs` |
+| Edit with Claude | Pressing Edit with Claude, once Claude is turned on and with the Claude desktop app installed | The Claude desktop app on this Mac, which talks to Anthropic under the person's own account | The project folder's path and a starter prompt, typed into that app and never sent until the person presses Enter there | Leaving Claude off (it is off until a person turns it on), or not pressing it; `DisableClaude` removes the buttons, `DisableAgentKit` removes everything the app lays out for an agent. `src-tauri/src/agent_gate.rs`, `src-tauri/src/claude_app.rs` |
 
 Two buttons open a fixed page in the default browser: Get Claude
 (`claude.ai/download`) and What leaves your Mac (this repository's
@@ -204,6 +209,9 @@ that tag on GitHub's own runners.
 - **Never starts Claude Code, and never holds an API key.** A session begins in
   the Claude desktop app or the person's own terminal, under their own account
   ([SECURITY.md, "What reaches your agent"](../SECURITY.md#what-reaches-your-agent)).
+- **Nothing for an agent until asked.** Claude is off until a person turns it
+  on: no agent files in a project, no bridge folder and no Claude button
+  before that (`src-tauri/src/agent_gate.rs`).
 - **No shell**, except the updater's administrator install when the app's
   folder is not writable, behind macOS's own password prompt;
   `DisableUpdateCheck` removes it
@@ -277,17 +285,21 @@ packaged-parity gate proves that each release
 
 A configuration profile forces keys in the domain `com.mpalmes.kookaburracut`;
 the app honours a key only while macOS reports it forced, a user's own
-`defaults write` grants nothing, and a malformed key fails closed. The nine
+`defaults write` grants nothing, and a malformed key fails closed. The ten
 keys, each with a row, a guard and a test in [mdm.md](./mdm.md):
 
 - `DisableClaude`: removes every Edit with Claude entry point and the Claude
   download link.
 - `DisableAgentKit`: stops everything the app lays out for an agent: no kit
   stamped into a project, no bridge folder, no handoff.
+- `RequireManagedClaude`: Claude can be turned on only where Claude Code's own
+  managed settings pin your organisation's login on that Mac.
 - `AllowedPublisherKeyIds`: pack imports limited to these publishers' keys; an
   empty list means no imports at all.
 - `DisablePackExport`: no Share as pack, and no signing key is ever minted.
-- `DisableUpdateCheck`: no update check and no in-app install.
+- `DisableUpdateCheck`: no update check and no in-app install. A copy
+  installed from the pkg has neither to begin with; forcing this key to false,
+  or `UpdateEndpoint`, turns them on there.
 - `UpdateEndpoint`: the in-app check asks your server instead of GitHub; the
   archive must still carry this project's signature.
 - `ExportsInProject`: renders land beside their project, never in `~/Downloads`.
@@ -296,7 +308,8 @@ keys, each with a row, a guard and a test in [mdm.md](./mdm.md):
 
 `DisableAgentKit`, `DisablePackExport`, `ExportsInProject` and `UpdateEndpoint`
 are honoured from 0.22.3; an older build ignores them, so deploy 0.22.3 or
-later before relying on them. `AuditLogPath` needs 0.23.0.
+later before relying on them. `AuditLogPath` needs 0.23.0, and
+`RequireManagedClaude` the release after 0.24.0.
 `DisableLiveWebsites` and `AllowedWebsiteOrigins` are retired with live
 websites: a profile that still forces them locks nothing, and only 0.24.0 and
 earlier read them ([mdm.md, "Retired keys"](./mdm.md#retired-keys)).
@@ -353,7 +366,7 @@ place to check.
 | Business continuity | One maintainer, no named successor. Installed apps keep working offline if the project stops; the code is MIT or Apache-2.0 and every dependency, tool and source is pinned and recorded, so a fork can build and ship it ([release-cadence.md, "If the project stops"](./release-cadence.md#if-the-project-stops)). |
 | Licence | MIT OR Apache-2.0 for the code; bundled assets keep their own terms; the ffmpeg sidecar is a GPL build run as a separate process, its exact source archives attached to each release; every licence text and a third-party notices file ship inside the app (Settings ▸ About ▸ Acknowledgements) ([NOTICE.md](../NOTICE.md)). |
 | Egress hosts | `github.com` and `release-assets.githubusercontent.com` (updates, or your `UpdateEndpoint` instead); `claude.ai`, a fixed page a person opens in their browser. Nothing else ([What leaves the Mac](#what-leaves-the-mac)). |
-| Fleet controls | Nine managed keys through a configuration profile ([mdm.md](./mdm.md)); verified builds delivered by MDM; Claude Code's own managed settings ([fleet.md](./fleet.md)). |
+| Fleet controls | Ten managed keys through a configuration profile ([mdm.md](./mdm.md)); verified builds delivered by MDM; Claude Code's own managed settings ([fleet.md](./fleet.md)). |
 
 ## Not yet
 

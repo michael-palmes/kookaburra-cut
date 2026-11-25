@@ -31,8 +31,10 @@ import {
   openPrivacyPage,
   setClaudePreferences,
 } from "../engine/claudeApp";
+import { useClaudeConsent } from "../engine/claudeConsent";
 import {
   claudeLocked,
+  plainError,
   updateChecksLocked,
   updateEndpointUnusable,
   updateServerHost,
@@ -614,16 +616,30 @@ export function SettingsApp() {
   const workspaceLocked = managed?.workspaceRootLocked ?? false;
   const claudeOff = managed !== null && claudeLocked(managed);
   const kitOff = managed?.disableAgentKit ?? false;
+  const claude = useClaudeConsent();
+  const claudeOn = claude.consent === "on";
+  const claudeNeedsOrgPolicy = !claudeOff && claude.orgPolicy === "missing";
+  const toggleClaudeConsent = useCallback(
+    (on: boolean) => {
+      claude.set(on).catch((e) => setError(plainError(e)));
+    },
+    [claude.set],
+  );
   const claudeLockDetail = managed?.disableClaude
     ? "A configuration profile turns Claude off (DisableClaude)."
     : "A configuration profile turns the agent kit off, and Claude with it (DisableAgentKit).";
   const exportsPinned = managed?.exportsInProject ?? false;
-  const updatesLocked = updates.managed || (managed !== null && updateChecksLocked(managed));
+  const updatesByProfile = updates.managed || (managed !== null && updateChecksLocked(managed));
+  const updatesByInstaller = updates.byInstaller && !updatesByProfile;
+  const updatesLocked = updatesByProfile || updatesByInstaller;
   const updateServerBroken = managed !== null && updateEndpointUnusable(managed);
   const updateServer = managed ? updateServerHost(managed) : null;
-  const updatesLockDetail = updateServerBroken
-    ? "A configuration profile names an update server this app can't use, so it never checks (UpdateEndpoint)."
-    : "A configuration profile turns update checks off (DisableUpdateCheck).";
+  const updatesLockDetail = updatesByInstaller
+    ? "This copy was installed by a package, so updates arrive the same way. A configuration profile can turn update checks back on."
+    : updateServerBroken
+      ? "A configuration profile names an update server this app can't use, so it never checks (UpdateEndpoint)."
+      : "A configuration profile turns update checks off (DisableUpdateCheck).";
+  const updatesLockLabel = updatesByInstaller ? "Updated by its installer" : undefined;
 
   return (
     <div className="settings-window">
@@ -785,6 +801,39 @@ export function SettingsApp() {
         <h2>Claude</h2>
         <div className="settings-row">
           <div className="settings-row-text">
+            <span
+              className="settings-row-title"
+              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+            >
+              <span className="titlebar-claude-mark">
+                <ClaudeSpark size={13} />
+              </span>
+              Use Claude
+            </span>
+            <span className="muted settings-row-detail">
+              {claudeOff
+                ? "Turned off by your organisation."
+                : claudeNeedsOrgPolicy
+                  ? "Needs your organisation's Claude settings on this Mac. Ask IT."
+                  : "Sends the project you open in Claude to Anthropic, under your own account."}
+            </span>
+          </div>
+          {claudeOff ? (
+            <ManagedLock detail={claudeLockDetail} />
+          ) : claudeNeedsOrgPolicy ? (
+            <ManagedLock detail="A configuration profile lets Claude on only where your organisation's Claude Code settings are installed (RequireManagedClaude)." />
+          ) : (
+            <input
+              type="checkbox"
+              aria-label="Use Claude"
+              checked={claudeOn}
+              disabled={claude.consent === "loading"}
+              onChange={(e) => toggleClaudeConsent(e.target.checked)}
+            />
+          )}
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-text">
             <span className="settings-row-title">Claude app</span>
             <span className="muted settings-row-detail">
               {claudeOff
@@ -834,7 +883,7 @@ export function SettingsApp() {
               type="checkbox"
               aria-label="Show on a new project's first open"
               checked={claudeFirstOpen ?? true}
-              disabled={claudeFirstOpen === null}
+              disabled={claudeFirstOpen === null || !claudeOn}
               onChange={(e) => toggleClaudeFirstOpen(e.target.checked)}
             />
           )}
@@ -851,13 +900,15 @@ export function SettingsApp() {
             <span className="muted settings-row-detail">
               {kitOff
                 ? "Turned off by your organisation: projects get no agent files and the agent bridge stays closed."
-                : "The rules, skills and kb tool each project carries for Claude Code."}
+                : claude.allowed
+                  ? "The rules, skills and kb tool each project carries for Claude Code."
+                  : "Off while Claude is off: projects get no agent files and the agent bridge stays closed."}
             </span>
           </div>
           {kitOff ? (
             <ManagedLock detail="A configuration profile turns the agent kit off (DisableAgentKit)." />
           ) : (
-            <span className="muted">On</span>
+            <span className="muted">{claude.allowed ? "On" : "Off"}</span>
           )}
         </div>
       </section>
@@ -1060,11 +1111,13 @@ export function SettingsApp() {
               Check for updates automatically
             </span>
             <span className="muted settings-row-detail" title={updateServer ?? undefined}>
-              {`Asks ${updateServer ? "your organisation's update server" : "GitHub"} about once a day whether a newer release exists. No identifiers, nothing about your usage.`}
+              {updatesByInstaller
+                ? "This copy never checks for updates itself. Whoever installed it delivers them."
+                : `Asks ${updateServer ? "your organisation's update server" : "GitHub"} about once a day whether a newer release exists. No identifiers, nothing about your usage.`}
             </span>
           </div>
           {updatesLocked ? (
-            <ManagedLock detail={updatesLockDetail} />
+            <ManagedLock detail={updatesLockDetail} label={updatesLockLabel} />
           ) : (
             <input
               type="checkbox"
@@ -1079,22 +1132,24 @@ export function SettingsApp() {
           <div className="settings-row-text">
             <span className="settings-row-title">Status</span>
             <span className="muted settings-row-detail">
-              {updatesLocked
-                ? updateServerBroken && !managed?.disableUpdateCheck
-                  ? "Off: your organisation's update server address can't be used."
-                  : "Turned off by your organisation."
-                : formatUpdateStatus({
-                    phase: updates.phase,
-                    devBuild: updates.devBuild,
-                    error: updates.error,
-                    availableVersion: updates.available?.version ?? null,
-                    lastCheckedMs: updates.lastCheckedMs,
-                    nowMs: Date.now(),
-                  })}
+              {updatesByInstaller
+                ? "Off: updates arrive from the installer."
+                : updatesLocked
+                  ? updateServerBroken && !managed?.disableUpdateCheck
+                    ? "Off: your organisation's update server address can't be used."
+                    : "Turned off by your organisation."
+                  : formatUpdateStatus({
+                      phase: updates.phase,
+                      devBuild: updates.devBuild,
+                      error: updates.error,
+                      availableVersion: updates.available?.version ?? null,
+                      lastCheckedMs: updates.lastCheckedMs,
+                      nowMs: Date.now(),
+                    })}
             </span>
           </div>
           {updatesLocked ? (
-            <ManagedLock detail={updatesLockDetail} />
+            <ManagedLock detail={updatesLockDetail} label={updatesLockLabel} />
           ) : (
             <button
               type="button"

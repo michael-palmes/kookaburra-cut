@@ -953,16 +953,23 @@ pub async fn apply_import(
             "Couldn't clear the old Allow before importing: {e}"
         ));
     }
-    let applied = super::apply::apply_import(&root, staged, &resolutions, |done, total, label| {
-        let _ = on_progress.send(PackProgress {
-            file: done,
-            total,
-            bytes: 0,
-            total_bytes: 0,
-            stage: "applying",
-        });
-        let _ = label;
-    });
+    let agent_kit = crate::agent_gate::deny().is_ok();
+    let applied = super::apply::apply_import_as(
+        &root,
+        staged,
+        &resolutions,
+        agent_kit,
+        |done, total, label| {
+            let _ = on_progress.send(PackProgress {
+                file: done,
+                total,
+                bytes: 0,
+                total_bytes: 0,
+                stage: "applying",
+            });
+            let _ = label;
+        },
+    );
     let outcome = match applied {
         Ok(outcome) => outcome,
         Err(e) => {

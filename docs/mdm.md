@@ -40,15 +40,23 @@ package") lists the commands to check a download yourself. The receipt is
   `~/Library/Application Support/com.mpalmes.kookaburracut`), so they stay. The
   package is version checked (`bundle-version` in its `PackageInfo`), so a pkg
   older than the installed app leaves the app alone.
-- **The in-app updater** still runs on a pkg install, but it cannot replace a
-  root-owned bundle as the user, so it asks for an administrator's password
-  (`install_update_and_relaunch` in `src-tauri/src/updater.rs` hands the swap
-  to `tauri-plugin-updater`, which falls back to an authorised move). A
-  standard user cannot finish it, and an update that does finish leaves the
-  bundle owned by the user who ran it until the next pkg, while the receipt
-  still names the version the pkg installed. On a fleet, push each release's
-  pkg and force `DisableUpdateCheck`, or `UpdateEndpoint` to keep in-app
-  updates from your own mirror.
+- **The in-app updater is off on a pkg install.** A copy whose receipt names
+  the running version, running from `/Applications`, never checks for an
+  update or installs one: updates arrive as the next pkg, from whoever
+  installed this one (`src-tauri/src/package_install.rs`). Settings ▸ Updates
+  says so in place of its switch, and the Check for Updates menu item is left
+  out. To keep in-app updates on such a copy, force `UpdateEndpoint` (your own
+  mirror) or `DisableUpdateCheck` to `false` (GitHub). With the updater on, it
+  cannot replace a root-owned bundle as the user, so it asks for an
+  administrator's password (`install_update_and_relaunch` in
+  `src-tauri/src/updater.rs` hands the swap to `tauri-plugin-updater`, which
+  falls back to an authorised move); a standard user cannot finish it, and an
+  update that does finish leaves the bundle owned by the user who ran it until
+  the next pkg, while the receipt still names the version the pkg installed,
+  so from then the copy reads as a DMG install and keeps its updater. 0.24.0
+  and earlier do not have this: there the updater runs on a pkg install unless
+  `DisableUpdateCheck` is forced, so keep forcing it while any Mac runs
+  0.24.0 or earlier.
 - **Removing it.** Delete `/Applications/Kookaburra Cut.app`, then
   `sudo pkgutil --forget com.mpalmes.kookaburracut`; the two folders above
   stay until someone deletes them. `packaging/mdm/uninstall-kookaburra-cut.sh`,
@@ -59,21 +67,24 @@ package") lists the commands to check a download yourself. The receipt is
 
 | Key | Type | When forced |
 | --- | --- | --- |
-| `DisableClaude` | boolean | `true` removes every Claude entry point: the launcher that greets a new project, the Edit with Claude titlebar button and palette command, the Project menu item, the Create with Claude start card and the theme card's Edit with Claude. The `claude://` handoff (`open_in_claude`) and the Claude download page refuse with the managed reason and touch no network. Settings ▸ Claude shows locked rows |
+| `DisableClaude` | boolean | `true` removes every Claude entry point: the launcher that greets a new project, the Edit with Claude titlebar button and palette command, the Project menu item, the Create with Claude start card and the theme card's Edit with Claude. The `claude://` handoff (`open_in_claude`) and the Claude download page refuse with the managed reason and touch no network. Settings ▸ Claude shows locked rows, the Use Claude switch among them, and `set_claude_consent` records off whatever it is asked, so Claude can't be turned on while the key is forced |
 | `AllowedPublisherKeyIds` | array of strings | Pack imports are limited to packs signed by these publisher key ids (the 16 hex characters a publisher shows under Settings ▸ Publisher, with or without the spaces). `inspect_pack` and `stage_pack` refuse any other pack before anything is written, naming the policy. An empty forced array means no pack imports at all. The id is recomputed from the pack's public key, never read from its manifest |
-| `DisableUpdateCheck` | boolean | `true` pins update consent off: no automatic checks, the first-run welcome shows the reason in place of its switch, Settings ▸ Updates locks the switch and Check now, the Check for Updates menu item is gone, and `check_for_update` and `install_update_and_relaunch` refuse. The Rust side records consent as off whatever a switch asks for |
+| `DisableUpdateCheck` | boolean | `true` pins update consent off: no automatic checks, the first-run welcome shows the reason in place of its switch, Settings ▸ Updates locks the switch and Check now, the Check for Updates menu item is gone, and `check_for_update` and `install_update_and_relaunch` refuse. The Rust side records consent as off whatever a switch asks for. Forced to `false` it does one thing: on a copy installed from the pkg, where the updater is off by default, it turns the in-app updater back on against GitHub (`package_install.rs`, `profile_keeps_updater_in`) |
 | `WorkspaceRoot` | string | An absolute path (a leading `~/` expands to the user's home). The app keeps projects, themes, fonts and brands there, creating the folder on first launch; `init_workspace` and `move_workspace` refuse, and Settings ▸ Workspace shows the fixed path with a lock in place of Change location. A relative or malformed path locks relocation without moving anything |
-| `DisableAgentKit` | boolean | `true` stops everything the app does for an agent. `stamp_claude_provisioning` and `heal_project_kit` write, move and heal nothing, so a project gets no `./kb`, `.kb/`, `.claude/`, `CLAUDE.md` or skills (a kit already in a folder is left as it is), and a pack import keeps no default `CLAUDE.md` (`pack/apply.rs`). The bridge never serves, whatever `KOOKABURRA_BRIDGE` says, and `bridge_root` refuses, so the app never creates `~/Kookaburra Cut/_bridge` (`bridge.rs`); kb in a kit stamped before the profile can still write requests there, and nothing answers them. Every Claude entry point closes as it does under `DisableClaude`, since Claude Code without the kit would run without its rules, and Settings ▸ Claude locks the Agent kit row. `DisableClaude` alone leaves the kit on for people who run Claude Code themselves |
+| `DisableAgentKit` | boolean | `true` stops everything the app does for an agent. `stamp_claude_provisioning` and `heal_project_kit` write, move and heal nothing, so a project gets no `./kb`, `.kb/`, `.claude/`, `CLAUDE.md` or skills (a kit already in a folder is left as it is), and a pack import keeps no default `CLAUDE.md` (`pack/apply.rs`). The bridge never serves, whatever `KOOKABURRA_BRIDGE` says, and `bridge_root` refuses, so the app never creates `~/Kookaburra Cut/_bridge` (`bridge.rs`); kb in a kit stamped before the profile can still write requests there, and nothing answers them. Every Claude entry point closes as it does under `DisableClaude`, since Claude Code without the kit would run without its rules, and Settings ▸ Claude locks the Agent kit row. `DisableClaude` alone leaves the kit on where the person had already turned Claude on, for people who run Claude Code themselves. With neither key forced, the same gate stays shut until a person turns Claude on (`agent_gate.rs`) |
 | `DisablePackExport` | boolean | `true` removes File ▸ Export Pack…, and `open_pack_export`, `build_pack` and `rotate_publisher_key` refuse before any dialog, so the app never creates a pack signing key in the Keychain (`pack/commands.rs`, `pack/publisher.rs`). Settings ▸ Publisher shows locked rows. Imports stay with `AllowedPublisherKeyIds` |
 | `ExportsInProject` | boolean | `true` keeps every video and stills export started in the app in the project's `exports/` folder: a request for Downloads is routed there rather than refused (`export_dir_kind` in `lib.rs`), `set_export_to_downloads` records off whatever it is asked, and Settings ▸ Video locks Save exports to Downloads. `.kbpack` files keep their Save dialog; terminal and bridge runs already use the project |
 | `UpdateEndpoint` | string | An `https` URL of the update manifest your organisation serves, with no query, fragment, login or `{{…}}` template. A release build's `check_for_update` asks it instead of GitHub (`updater.rs`). The archive's signature is still checked against the key pinned in the app (`plugins.updater.pubkey` in `tauri.conf.json`), so a mirror can serve only builds this project signed; the manifest's `platforms.darwin-aarch64.url` must point at the mirror's copy of the archive. A malformed value means no check at all, never a fallback to GitHub: Check for Updates is gone and Settings ▸ Updates shows the lock with the reason. `DisableUpdateCheck` still wins |
 | `AuditLogPath` | string | An absolute folder outside every home folder, such as `/Library/Logs/Kookaburra Cut`. The app also appends every line of its log to `<folder>/<login>.log`, the login name read from the password database (`audit::mirror_at_launch`), so a collector running as root (Jamf, Kandji, Intune, a SIEM forwarder) can pick it up. The copy is 0600, owned by the person, and rotates like `app.log` at 1 MiB with two older files kept (`audit_mirror.rs`). A missing folder is made 0700, which suits a Mac with one account; see "A copy for your collector" for shared Macs. A relative, `~`, `.` or `..` path, a home-folder path, a folder the account can't write or list, or a file there that is a link, a hard link or another account's means no copy and one `[managed]` line, never a failed launch, and the local log carries on either way. Settings ▸ About ▸ Export log tells the person their organisation's profile asks for a copy |
+| `RequireManagedClaude` | boolean | `true` lets Claude be turned on only where Claude Code's own managed policy pins sign-in to an organisation: `forceLoginOrgUUID`, a non-empty string or a non-empty list of strings, in `/Library/Application Support/ClaudeCode/managed-settings.json`, in any `*.json` under `managed-settings.d/` beside it, or forced in the `com.anthropic.claudecode` preference domain (`claude_policy.rs`). Where none of them holds it the agent gate stays shut whatever the person answers (`agent_gate.rs`, `deny_in`): no kit, no `_bridge`, no handoff, and Settings ▸ Claude shows the Use Claude row locked with "Needs your organisation's Claude settings on this Mac"; `set_claude_consent` records off. A file counts only when root owns it and neither group nor others can write it (what an installer or an MDM leaves; `/Library/Application Support` is writable by the admin group, so a file a person made there does not count), and one that is unreadable, over 1 MiB or not JSON counts as missing. The key checks that sign-in is pinned, not to which organisation. The answer is re-read at most once a minute, and at once before a handoff and when the switch is used, so a policy installed while the app runs counts without a relaunch. It does not turn Claude on: the person still chooses. Settings an organisation delivers only from the claude.ai admin console are not visible to another app, so deploy the file or the profile as well |
 
 No pack imports at all is `AllowedPublisherKeyIds` forced to an empty array;
 there is no separate switch (`deny_publisher_in` in `managed.rs`).
 
 A key that is forced to `false` (or an empty `WorkspaceRoot`) still marks the
-install as managed, which only matters for the boot log line. Under
+install as managed, which only matters for the boot log line, with one
+exception: `DisableUpdateCheck` forced to `false` turns the updater on for a
+copy installed from the pkg. Under
 `DisableUpdateCheck` the first-run welcome's Get started records the consent
 it showed (off), so lifting the profile later leaves automatic checks off until
 the person turns the Settings switch on; the welcome is not asked twice.
@@ -100,6 +111,7 @@ with `managed:` and names the key, for example:
 
 ```
 managed: Claude is turned off by your organisation (DisableClaude).
+managed: Claude needs your organisation's Claude settings on this Mac (RequireManagedClaude).
 ```
 
 Two keys change where things land rather than removing them: under
@@ -288,7 +300,15 @@ never hold what is in a file (`SECURITY.md`, "On the Mac"). With
    match the end of `app.log`, and Settings ▸ About ▸ Export log carries the
    note. A malformed or unusable value leaves one `[managed] AuditLogPath ...
    keeping no copy of the app log` line instead (`audit::log_mirror_at_boot`).
-9. The negative check: without a profile,
+9. Under `RequireManagedClaude`, on a Mac without Claude Code's managed
+   settings, `app.log` shows `[claude] off: the organisation's Claude Code
+   policy is not on this Mac (RequireManagedClaude)` at boot and Settings ▸
+   Claude shows Use Claude locked. Install the settings file with
+   `forceLoginOrgUUID` and use the row again within a minute: the lock gives
+   way to the switch, with no relaunch. From a checkout,
+   `cargo test --manifest-path src-tauri/Cargo.toml this_mac_pins -- --ignored --nocapture`
+   prints what the app reads (`claude_policy.rs`).
+10. The negative check: without a profile,
    `defaults write com.mpalmes.kookaburracut DisableClaude -bool true` changes
    nothing, because the key is set but not forced. `defaults delete` it
    afterwards.
