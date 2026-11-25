@@ -40,8 +40,9 @@ Claude Code and links no HTTP client of its own
 ([SECURITY.md, "What reaches your agent"](../SECURITY.md#what-reaches-your-agent)).
 
 **While Claude is off,** which is how the app starts, it writes no agent files
-into a project, keeps no bridge folder and shows no Claude entry point. One
-gate stands in front of all of it (`src-tauri/src/agent_gate.rs`).
+into a project, keeps no bridge folder and shows no Edit with Claude: a grey
+Set up Claude button reopens the choice and starts nothing. One gate stands in
+front of all of it (`src-tauri/src/agent_gate.rs`).
 
 **Once a person turns Claude on,** the app does three things on the Mac: it
 writes the agent kit into each project it opens (`./kb`, `.kb/`, `.claude/`,
@@ -67,7 +68,7 @@ account and its organisation, not by this app.
 ```bash
 ls -a "<a project folder>"            # no kb, .kb, .claude or CLAUDE.md the app wrote
 ls "$HOME/Kookaburra Cut/_bridge"     # absent where Claude was never turned on
-grep '\[claude\]' "$HOME/Library/Application Support/com.mpalmes.kookaburracut/logs/app.log"   # one line per change of the choice
+grep '\[claude\]' "$HOME/Library/Application Support/com.mpalmes.kookaburracut/logs/app.log"   # the state at each launch, each change of the choice, each handoff
 ```
 
 Then watch the app with your own network monitor while you open, edit, export
@@ -94,14 +95,15 @@ can check without trusting it.
 | The build leaks or misuses the signing identity | The build job has no signing secret. Signing runs in a protected environment behind a reviewer who did not start the run | [SECURITY.md, "Release integrity"](../SECURITY.md#release-integrity) |
 | The published file is not what was built | A fresh runner verifies every file in the signed app against the build's record; build provenance attestations and `SHA256SUMS` cover each asset | [security-overview.md](./security-overview.md#how-releases-are-built) |
 | A dependency turns hostile | `cargo deny` and `pnpm audit` on every pull request and weekly, Dependabot, every action pinned to a commit, the sidecar's sources pinned by SHA-256, an SBOM with each release | [vendor-questionnaire.md](./vendor-questionnaire.md#supply-chain-and-release-integrity) |
-| An update replaces a vetted build | A copy installed from the pkg never updates itself. Any other copy accepts only an archive signed by the key built into the app | [fleet.md](./fleet.md#updates-in-app-or-mdm-delivery) |
+| An update replaces a vetted build | A copy installed from the pkg never updates itself unless your profile turns that on. Any other copy accepts only an archive signed by the key built into the app | [fleet.md](./fleet.md#updates-in-app-or-mdm-delivery) |
 | Hostile input crashes or escapes the parsers | Weekly fuzzing of the untrusted-input parsers, and bounded readers tested on hostile fixtures | [security-assessment-scope.md](./security-assessment-scope.md#fuzzing) |
 
 **Check it yourself.** `scripts/verify-install.sh` runs every check in
 [security-overview.md, "Verify it yourself"](./security-overview.md#verify-it-yourself):
-the signatures, notarisation, the attestation that ties each file to this
-repository's release workflow at that tag, and a diff of the controls since
-the previous release. Review that diff before each rollout, and hold the fleet
+the signatures, notarisation and the attestation that ties each file to this
+repository's release workflow at that tag. With `--previous <version>` it also
+prints how `SECURITY.md` differs from that release, which is the change in
+controls. Review that diff before each rollout, and hold the fleet
 on the version you reviewed
 ([release-cadence.md](./release-cadence.md#holding-a-fleet-on-a-version)).
 
@@ -121,7 +123,7 @@ Conditions a security team commonly sets, and what holds each one.
 | Updates arrive only from IT | A pkg install leaves updates to its installer | Deploy the pkg, and force `DisableUpdateCheck` as well to cover a copy from the DMG and 0.24.0 and earlier | Without that key, a copy a person takes from the DMG updates itself |
 | No AI egress unless under a corporate agreement | The first-launch choice, the two Disable keys, `RequireManagedClaude` | Not approved: force `DisableClaude` and `DisableAgentKit`. Approved: force `RequireManagedClaude` and deploy Claude Code's managed settings with your organisation pin | See [AI data flows](#ai-data-flows), Limits |
 | No external web content | The app loads no web page | Nothing. On 0.24.0 and earlier, force the two retired keys ([mdm.md](./mdm.md#retired-keys)) | None known |
-| Not on Macs that hold keys, wallets or production access | None in the app | Exclude those Macs in your MDM scope | The app runs with the person's rights and has no App Sandbox, so keeping it off those Macs is the control |
+| Not on Macs that hold signing keys, secrets or production access | None in the app | Exclude those Macs in your MDM scope | The app runs with the person's rights and has no App Sandbox, so keeping it off those Macs is the control |
 | No projects or packs from outside | `AllowedPublisherKeyIds` forced empty; a shared project's code runs only after Allow | Force the key, and treat a shared project like a script from its sender ([fleet.md](./fleet.md#shared-projects-and-packs)) | A person can still press Allow on a project they were sent |
 | Work stays where IT expects | `WorkspaceRoot`, `ExportsInProject`, `DisablePackExport` | Force them ([fleet.md](./fleet.md#force-the-keys)) | They bound the app, not Finder |
 | Activity is visible | The app log, mirrored for a collector with `AuditLogPath`; a short list of child processes | Collect the log and alert on other children ([fleet.md](./fleet.md#what-to-expect-in-edr)) | The log records the app's actions, not Claude Code's |

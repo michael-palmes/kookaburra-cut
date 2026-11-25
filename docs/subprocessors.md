@@ -14,7 +14,7 @@ in [vendor-questionnaire.md](./vendor-questionnaire.md#version).
 
 | Third party | When | What is sent | Identifiers | Off switch | Behind it |
 | --- | --- | --- | --- | --- | --- |
-| GitHub | The update check, with consent or on Check for Updates, never on a copy installed from the pkg; the download, on Install and relaunch | One GET for `latest.json`; then the signed archive comes down | None added by the app | Settings ▸ Updates; `DisableUpdateCheck`; `UpdateEndpoint` | [updater.rs](../src-tauri/src/updater.rs), [tauri.conf.json](../src-tauri/tauri.conf.json) |
+| GitHub | The update check, with consent or on Check for Updates, never on a copy installed from the pkg unless a profile turns it on; the download, on Install and relaunch | One GET for `latest.json`; then the signed archive comes down | None added by the app | Settings ▸ Updates; `DisableUpdateCheck`; `UpdateEndpoint` | [updater.rs](../src-tauri/src/updater.rs), [tauri.conf.json](../src-tauri/tauri.conf.json) |
 | Anthropic, through the person's own Claude Code | Only once a person turns Claude on and presses Edit with Claude, or starts Claude Code in the folder themselves | Nothing from the app. Claude Code sends project files as the person works | None from the app; Claude Code uses the person's own login | Off until turned on; `DisableClaude`; `DisableAgentKit`; `RequireManagedClaude` | [claude_app.rs](../src-tauri/src/claude_app.rs) |
 
 Apple is not on this list: it notarises each release at build time and
@@ -36,8 +36,9 @@ receives nothing from the app at run time ([below](#apple-build-time-only)).
 - **Identifiers.** None added by the app. GitHub sees the request's network
   address and time, as for any download.
 - **Off switch.** The first-run switch or Settings ▸ Updates; a copy installed
-  from the pkg never asks; for a fleet, `DisableUpdateCheck`, or `UpdateEndpoint` to ask your own server, after which
-  GitHub is not contacted for updates ([mdm.md](./mdm.md#keys)).
+  from the pkg never asks unless a profile turns it on; for a fleet,
+  `DisableUpdateCheck`, or `UpdateEndpoint` to ask your own server, after
+  which GitHub is not contacted for updates ([mdm.md](./mdm.md#keys)).
 - **Behind it.** `plugins.updater.endpoints` in
   [tauri.conf.json](../src-tauri/tauri.conf.json),
   [updater.rs](../src-tauri/src/updater.rs),
