@@ -14,8 +14,8 @@ in [vendor-questionnaire.md](./vendor-questionnaire.md#version).
 
 | Third party | When | What is sent | Identifiers | Off switch | Behind it |
 | --- | --- | --- | --- | --- | --- |
-| GitHub | The update check, with consent or on Check for Updates; the download, on Install and relaunch | One GET for `latest.json`; then the signed archive comes down | None added by the app | Settings ▸ Updates; `DisableUpdateCheck`; `UpdateEndpoint` | [updater.rs](../src-tauri/src/updater.rs), [tauri.conf.json](../src-tauri/tauri.conf.json) |
-| Anthropic, through the person's own Claude Code | Only after Edit with Claude, or Claude Code started in the folder by the person | Nothing from the app. Claude Code sends project files as the person works | None from the app; Claude Code uses the person's own login | `DisableClaude`; `DisableAgentKit` | [claude_app.rs](../src-tauri/src/claude_app.rs) |
+| GitHub | The update check, with consent or on Check for Updates, never on a copy installed from the pkg unless a profile turns it on; the download, on Install and relaunch | One GET for `latest.json`; then the signed archive comes down | None added by the app | Settings ▸ Updates; `DisableUpdateCheck`; `UpdateEndpoint` | [updater.rs](../src-tauri/src/updater.rs), [tauri.conf.json](../src-tauri/tauri.conf.json) |
+| Anthropic, through the person's own Claude Code | Only once a person turns Claude on and presses Edit with Claude, or starts Claude Code in the folder themselves | Nothing from the app. Claude Code sends project files as the person works | None from the app; Claude Code uses the person's own login | Off until turned on; `DisableClaude`; `DisableAgentKit`; `RequireManagedClaude` | [claude_app.rs](../src-tauri/src/claude_app.rs) |
 
 Apple is not on this list: it notarises each release at build time and
 receives nothing from the app at run time ([below](#apple-build-time-only)).
@@ -35,9 +35,10 @@ receives nothing from the app at run time ([below](#apple-build-time-only)).
   writing anything.
 - **Identifiers.** None added by the app. GitHub sees the request's network
   address and time, as for any download.
-- **Off switch.** The first-run switch or Settings ▸ Updates; for a fleet,
-  `DisableUpdateCheck`, or `UpdateEndpoint` to ask your own server, after which
-  GitHub is not contacted for updates ([mdm.md](./mdm.md#keys)).
+- **Off switch.** The first-run switch or Settings ▸ Updates; a copy installed
+  from the pkg never asks unless a profile turns it on; for a fleet,
+  `DisableUpdateCheck`, or `UpdateEndpoint` to ask your own server, after
+  which GitHub is not contacted for updates ([mdm.md](./mdm.md#keys)).
 - **Behind it.** `plugins.updater.endpoints` in
   [tauri.conf.json](../src-tauri/tauri.conf.json),
   [updater.rs](../src-tauri/src/updater.rs),
@@ -49,8 +50,9 @@ by the browser, not the app ([claude_app.rs](../src-tauri/src/claude_app.rs)).
 
 ## Anthropic, through the person's own Claude Code
 
-- **When.** Only after a person presses Edit with Claude, or starts Claude Code
-  in a project folder themselves. From then on, whenever Claude Code works.
+- **When.** Only after a person turns Claude on and presses Edit with Claude,
+  or starts Claude Code in a project folder themselves. From then on, whenever
+  Claude Code works.
 - **What the app sends.** Nothing to Anthropic. Edit with Claude opens
   `claude://code/new` with the project folder's path and a starter prompt for
   the Claude desktop app on the same Mac, typed in and never sent until the
@@ -60,9 +62,11 @@ by the browser, not the app ([claude_app.rs](../src-tauri/src/claude_app.rs)).
 - **Identifiers.** None from the app, which holds no API key and starts no
   Claude Code. Claude Code signs in with the person's own login, in
   `~/.claude`, which the app never reads or writes.
-- **Off switch.** `DisableClaude` removes every Claude entry point;
-  `DisableAgentKit` also stops the kit and the bridge; Claude Code's own
-  managed settings apply on top ([fleet.md](./fleet.md#claude-codes-own-managed-settings-on-top)).
+- **Off switch.** Claude is off until a person turns it on. `DisableClaude`
+  removes every Claude entry point; `DisableAgentKit` also stops the kit and
+  the bridge; `RequireManagedClaude` allows Claude only where Claude Code's
+  managed settings pin sign-in to your organisation; those settings apply on
+  top ([fleet.md](./fleet.md#claude-codes-own-managed-settings-on-top)).
 - **Behind it.** [claude_app.rs](../src-tauri/src/claude_app.rs),
   [SECURITY.md, "What reaches your agent"](../SECURITY.md#what-reaches-your-agent).
 
