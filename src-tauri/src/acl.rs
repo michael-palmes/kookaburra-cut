@@ -317,8 +317,6 @@ fn only_the_main_window_reaches_trust_and_the_rest_of_the_studio() {
             "trust_project",
             "start_export",
             "delete_project",
-            "website_grant_origin",
-            "website_clear_project_data",
             "init_default_workspace",
         ] {
             assert!(
@@ -422,7 +420,6 @@ fn the_main_window_keeps_the_studio() {
             "range_flash_begin",
             "range_flash_finish",
             "range_flash_push",
-            "read_pack_scene_docs",
             "read_pack_scene_source",
             "render_edit",
             "render_finish_preset_poster",
@@ -444,8 +441,6 @@ fn the_main_window_keeps_the_studio() {
             "set_publisher_profile",
             "sidecar_versions",
             "stage_pack",
-            "website_clear_data",
-            "website_list_data",
             "workspace_root_path",
             "write_preset_poster",
             "write_scene_thumb",
@@ -455,17 +450,9 @@ fn the_main_window_keeps_the_studio() {
 }
 
 #[test]
-fn the_present_window_reads_renders_and_shows_approved_websites() {
+fn the_present_window_reads_and_renders_only() {
     let mut expected = allowed_project_read_and_render();
-    expected.extend(names(&[
-        "get_present_target",
-        "website_open",
-        "website_show",
-        "website_hide",
-        "website_set_bounds",
-        "website_action",
-        "website_close",
-    ]));
+    expected.extend(names(&["get_present_target"]));
     assert_eq!(allowed("present"), expected);
 }
 
@@ -556,7 +543,6 @@ fn the_packs_window_handles_packs_and_nothing_else() {
             "open_pack_import",
             "pin_fonts_for_pack",
             "plan_pack",
-            "read_pack_scene_docs",
             "read_pack_scene_source",
             "read_scene_doc",
             "reveal_in_finder",
@@ -575,6 +561,7 @@ fn the_settings_window_owns_caches_the_workspace_location_updates_and_the_publis
             "cache_stats",
             "check_for_update",
             "claude_app_status",
+            "claude_status",
             "clear_app_data",
             "clear_clips_cache",
             "clear_media_cache",
@@ -599,6 +586,7 @@ fn the_settings_window_owns_caches_the_workspace_location_updates_and_the_publis
             "reveal_in_finder",
             "reveal_licences",
             "rotate_publisher_key",
+            "set_claude_consent",
             "set_claude_preferences",
             "set_clip_cache_cap",
             "set_conform_new_videos",
@@ -608,9 +596,8 @@ fn the_settings_window_owns_caches_the_workspace_location_updates_and_the_publis
             "set_publisher_profile",
             "set_update_consent",
             "sidecar_versions",
+            "updates_left_to_installer",
             "user_home_dir",
-            "website_clear_data",
-            "website_list_data",
         ])
     );
 }

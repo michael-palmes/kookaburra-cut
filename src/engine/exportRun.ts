@@ -73,7 +73,6 @@ import { useTerminalEditStore } from "./terminalEditStore";
 import { configureDeterministicEngine } from "./timeline";
 import { awaitTitleMeasuresSettled } from "./titleBlockMeasure";
 import { preloadTransitionMasks } from "./transitionMask";
-import { useWebsiteEditStore } from "./websiteEditStore";
 
 /** The export run as the stage worker executes it: the deterministic preamble, one frame at a time into a readback buffer, and the restore. The window owns every native effect (start, push, finish) and drives these through the stage protocol; this module never names a path and never invokes. The GL call sequence per frame is `renderFrameInto`, unchanged from the single-realm loop (docs/determinism.md). */
 
@@ -170,7 +169,6 @@ export async function exportPreamble(
   useDeviceEditStore.getState().select(null);
   useImageEditStore.getState().select(null);
   useTerminalEditStore.getState().select(null);
-  useWebsiteEditStore.getState().select(null);
   // With themes, preloads exactly the fonts the project renders (bundled and workspace-pinned system fonts, plus sidecar `<key>Font` overrides), comparison side-B themes included: a B-only face loaded at first typeset would land outside every barrier, the per-boot atlas lottery. The no-theme form preloads the bundled defaults.
   await preloadAppFonts(
     opts.theme

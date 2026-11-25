@@ -5,7 +5,10 @@ plain words, what can leave the Mac, what the app keeps, how to clear it, and
 how an organisation can lock it down. The engineering version, with the file or
 command behind every sentence, is [SECURITY.md](../SECURITY.md).
 
-This page describes version 0.24.0. On 0.21.1, pressing Allow on a shared project
+This page describes version 0.24.0. Three changes since: scenes can no longer
+open a live website, and the next release has none of it (0.24.0 still can,
+after you press Allow for the site); Claude is off until you turn it on; and a
+copy installed from the package no longer checks for updates itself. On 0.21.1, pressing Allow on a shared project
 runs its code with your account, and the app's own data is not private to your
 account. Update once a newer release is out, and until then open only projects
 you'd trust as a program.
@@ -20,14 +23,13 @@ allow runs under the same rules, shut off from the network and from the app's
 commands, though it can read its project and the fonts and 3D objects in your
 libraries.
 
-Four things can reach the internet, and each one starts with you:
+Three things can reach the internet, and each one starts with you:
 
 | What | When | Where it goes | What goes | Off switch |
 | --- | --- | --- | --- | --- |
-| Update check | At launch and about once a day while the app is open, if you left the first-run switch on, or when you choose Check for Updates | GitHub, the app's release page | One request for the latest release file. No identifiers, nothing about your usage or your Mac | The switch on the first-run welcome, or Settings ▸ Updates |
+| Update check | At launch and about once a day while the app is open, if you left the first-run switch on, or when you choose Check for Updates. Never on a copy your organisation installed from the package: it delivers updates itself | GitHub, the app's release page | One request for the latest release file. No identifiers, nothing about your usage or your Mac | The switch on the first-run welcome, or Settings ▸ Updates |
 | Update install | Only when you press Install and relaunch | GitHub, the release download | Nothing; the new build comes down, is checked against a key built into the app, and replaces itself | Press Later |
-| Edit with Claude | Only when you press Edit with Claude and the Claude desktop app is installed | The Claude desktop app on this Mac, which then talks to Anthropic under your account | The project folder's path and a starter prompt, typed in for you, never sent until you press Enter there | Do not press it; a configuration profile can turn it off |
-| Live websites in a scene | Only after you press Allow for that website in the editor; a presentation then loads it again on each hold | The website you approved | The page loads like a browser tab, cookies and all, in a profile separate from Safari | Revoke the website in the scene's inspector; Settings ▸ Website data clears what it stored |
+| Edit with Claude | Only once you have turned Claude on, when you press Edit with Claude and the Claude desktop app is installed | The Claude desktop app on this Mac, which then talks to Anthropic under your account | The project folder's path and a starter prompt, typed in for you, never sent until you press Enter there | Leave Claude off, or do not press it; a configuration profile can turn it off |
 
 Two buttons open a web page in your browser: Get Claude (the Claude download
 page) and What leaves your Mac (this page). The address is fixed inside the
@@ -35,8 +37,12 @@ app; nothing about you is added to it.
 
 ## What the Claude integration sends
 
-Claude uses your own Claude Code install and your own Anthropic account. The app
-never holds a key for you, and it never starts Claude Code, or a shell for Claude.
+Claude is off until you turn it on, when the app first asks or in Settings ▸
+Claude, and you can turn it off there again. While it is off the app writes no
+agent files into your projects, keeps no bridge folder and shows no Claude
+buttons. Claude uses your own Claude Code install and your own Anthropic
+account. The app never holds a key for you, and it never starts Claude Code,
+or a shell for Claude.
 
 - **Edit with Claude** hands the project to the Claude desktop app and types a
   starter prompt in. Nothing is sent until you press Enter in that app. From
@@ -70,7 +76,7 @@ it: importing only writes files, and the first open asks the question above.
 
 A pack is signed by the app that made it. On import the app checks that every
 file matches the signed list, tells you whether it has seen this publisher's
-key before, and shows the scene code and websites it carries. A publisher's name is never verified: only the key is. Agent settings
+key before, and shows the scene code it carries. A publisher's name is never verified: only the key is. Agent settings
 never travel in a pack, and an author's notes for Claude are saved beside the
 project as `NOTES.md` for you to read, not for the agent to obey. When you export
 a pack, your own notes stay out unless you tick them, and the names of files you
@@ -103,13 +109,14 @@ imported never travel.
   next open (`forget_allowed_project` in `src-tauri/src/settings_win.rs`).
 - **A log** of what the app did, in `logs/` under the same folder
   (`src-tauri/src/audit.rs`): which projects you allowed or declined, which
-  websites, packs and updates, what moved out of a shared folder, and what your
-  organisation's profile refused. It names folders, projects, websites and key
+  packs and updates, what moved out of a shared folder, and what your
+  organisation's profile refused. It names folders, projects and key
   ids, never what is in a file, and keeps at most three files of 1 MiB. The app
   never sends it anywhere; Settings ▸ About ▸ Export log saves a copy where you
   choose, for support or your IT team (`audit::export_app_log`).
-- **Website data**: cookies and site storage for websites you allowed, in a
-  profile separate from Safari. Settings ▸ Website data clears one site or all.
+- **No website data.** The app opens no website. Cookies and sign-ins that
+  0.24.0 or earlier kept for websites you allowed in a scene are deleted the
+  next time the app starts (`src-tauri/src/retired_websites.rs`).
 - **Agent files**: the Claude Code skills and settings the app writes inside
   each project's `.claude` folder, and a `_bridge` folder in the workspace that
   the agent and the app use to talk. Claude Code's own history and login live
@@ -122,19 +129,18 @@ your home folder is. The app's own caches, settings, log and the agent's `_bridg
 and `_autorun` folders are readable by your account alone, and Spotlight skips
 them. FileVault and your account password are the protection at rest.
 
-Settings ▸ Storage ▸ Clear all app data empties every cache and the Website
-data, the agent's queues in `_bridge` and the terminal runs in `_autorun`, and
-forgets the projects and websites you allowed, your recent projects and your
-preferences (`clear_app_data` in `src-tauri/src/settings_win.rs`). A macOS sheet
+Settings ▸ Storage ▸ Clear all app data empties every cache, the agent's
+queues in `_bridge` and the terminal runs in `_autorun`, and forgets the
+projects you allowed, your recent projects and your preferences (`clear_app_data` in `src-tauri/src/settings_win.rs`). A macOS sheet
 asks first, and Return cancels. It keeps your projects, the workspace location,
 your answer about update checks, the pack signing key and the log. Settings ▸
 About ▸ Activity log shows that log in Finder (`reveal_app_logs`).
 
 ## Uninstalling
 
-1. Open Settings ▸ Storage ▸ Clear all app data while the app is still
-   installed. It is the one step that empties the website profile through
-   WebKit itself (`website::clear_stored_data` in `src-tauri/src/website.rs`).
+1. Open the app once, then Settings ▸ Storage ▸ Clear all app data. Opening
+   it deletes the website sign-ins 0.24.0 or earlier kept, which only WebKit
+   itself can clear (`src-tauri/src/retired_websites.rs`).
 2. Quit Kookaburra Cut.
 3. In Keychain Access, delete "Kookaburra Cut pack signing key" (the item
    `src-tauri/src/pack/key.rs` creates). Packs you already signed stay valid,
@@ -142,7 +148,7 @@ About ▸ Activity log shows that log in Finder (`reveal_app_logs`).
    reinstall come from a new key.
 4. Delete `~/Library/Application Support/com.mpalmes.kookaburracut` (settings,
    caches, the log and any file key) and `~/Library/WebKit/com.mpalmes.kookaburracut`
-   (the app's own and the website profile's storage). Then run
+   (the storage of the app's own windows). Then run
    `find ~/Library -iname '*kookaburracut*'` and delete what it lists: macOS
    can add `Caches/com.mpalmes.kookaburracut` (WebKit's own cache) and
    `Preferences/com.mpalmes.kookaburracut.plist` (the open and save panels'
@@ -165,7 +171,7 @@ The app can be locked down with a configuration profile from your MDM, so staff
 run the same build with what you do not want switched off and locked in
 Settings with a note that the organisation manages it (`src-tauri/src/managed.rs`):
 Claude (Edit with Claude and Get Claude), the agent kit and the `_bridge`
-folder, live websites, pack export, the update check, the publishers whose
+folder, pack export, the update check, the publishers whose
 packs may be imported, and the workspace location. A profile can also keep
 exports in each project instead of Downloads, and point the update check at
 your own server instead of GitHub; a malformed server address means no check

@@ -6,6 +6,46 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Claude is off until you turn it on. The app asks once, and Settings ▸ Claude
+  has the switch. While it is off the app writes no agent files into your
+  projects, keeps no bridge folder and shows no Claude buttons. Turning it on
+  works at once, with no relaunch. After updating, turn it on again to keep
+  using Edit with Claude.
+- A copy installed from the `.pkg` no longer checks for updates or installs
+  them itself: whoever installed it delivers the next one. Settings ▸ Updates
+  says so. A configuration profile can turn the in-app updater back on. Copies
+  from the DMG update as before.
+
+### Added
+
+- `RequireManagedClaude`, a managed preference for fleets: Claude can be
+  turned on only on a Mac that carries your organisation's own Claude Code
+  settings, with its login pinned. See `docs/mdm.md`.
+
+### Removed
+
+- Live websites in a scene. The app no longer opens any web page, so the
+  website panel, its Allow sheet, Settings ▸ Website data and the website
+  review on pack import are gone. An older scene's website block is ignored
+  and its captured image stays in `assets/` as an unused file you can delete
+  from the Library: show a page as an image or on a
+  device's screen instead. Sign-ins the app kept for websites you allowed are
+  deleted the next time it starts.
+- The managed preferences `DisableLiveWebsites` and `AllowedWebsiteOrigins`.
+  A profile that still forces them changes nothing. Keep them while any Mac
+  runs 0.24.0 or earlier. See `docs/mdm.md`, "Retired keys".
+
+### Security
+
+- With live websites gone, nothing loads remote content inside the app. What
+  leaves your Mac is the update check, its install and Edit with Claude, each
+  only when you choose.
+- Nothing is prepared for an AI agent until you turn Claude on. Before this,
+  every project you opened got the agent kit and the app kept a bridge folder,
+  whether or not you used Claude.
+
 ## [0.24.0] - 2026-11-24
 
 ### Added

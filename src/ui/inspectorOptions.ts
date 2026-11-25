@@ -9,7 +9,6 @@ import type {
 } from "../engine/sceneDocSchema";
 import { resolveSceneDocMedia } from "../engine/sceneMedia";
 import { resolveSceneTerminal } from "../engine/sceneTerminal";
-import { resolveSceneWebsite } from "../engine/sceneWebsite";
 import type { ChartType } from "../toolkit/chart/types";
 import { DEVICE_CATALOG, isDeviceId, resolveAvailableDeviceSpec } from "../toolkit/device/catalog";
 import type { FrameSpec } from "../toolkit/frame/types";
@@ -135,8 +134,7 @@ export type SceneOverviewContentType =
   | "chart"
   | "screenshotStack"
   | "comparison"
-  | "terminal"
-  | "website";
+  | "terminal";
 
 export type SceneOverviewSettingType =
   | "overlay"
@@ -157,8 +155,7 @@ export type SceneOverviewSelectionTarget =
   | { kind: "chart" }
   | { kind: "screenshotStack" }
   | { kind: "comparison" }
-  | { kind: "terminal" }
-  | { kind: "website" };
+  | { kind: "terminal" };
 
 export interface SceneOverviewMediaHint {
   kind: "image" | "video";
@@ -369,14 +366,6 @@ function terminalOverviewValue(doc: SceneDoc): string {
   return terminal.snapshot?.src ? size : `${size} · No snapshot`;
 }
 
-function websiteOverviewValue(doc: SceneDoc): string {
-  const website = resolveSceneWebsite(doc);
-  if (!website) return "";
-  const preset = website.viewport.preset[0].toUpperCase() + website.viewport.preset.slice(1);
-  if (!website.capture) return `${preset} · No capture`;
-  return website.captureStale ? `${preset} · Stale capture` : preset;
-}
-
 function addOptions(doc: SceneDoc | undefined): SceneOverviewAddOptionModel[] {
   const definitions: Array<{
     id: SceneOverviewContentType;
@@ -398,7 +387,6 @@ function addOptions(doc: SceneDoc | undefined): SceneOverviewAddOptionModel[] {
     },
     { id: "comparison", label: "Comparison", singleton: true, present: !!doc?.compare },
     { id: "terminal", label: "Terminal", singleton: true, present: !!doc?.terminal },
-    { id: "website", label: "Website", singleton: true, present: !!doc?.website },
   ];
   return definitions.map(({ id, label, singleton, present }) => {
     const disabledReason = !doc
@@ -601,16 +589,6 @@ export function deriveSceneOverview(input: SceneOverviewInput): SceneOverviewMod
       value: terminalOverviewValue(doc),
       selectionTarget: { kind: "terminal" },
       openRoute: "terminal.edit",
-    });
-  }
-  if (doc?.website) {
-    standalone.push({
-      id: "website",
-      type: "website",
-      label: "Website",
-      value: websiteOverviewValue(doc),
-      selectionTarget: { kind: "website" },
-      openRoute: "website.edit",
     });
   }
 

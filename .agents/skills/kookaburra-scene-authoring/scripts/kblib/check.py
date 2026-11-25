@@ -66,6 +66,11 @@ def dig(value: Any, *keys: Any) -> Any:
     return value
 
 
+RETIRED_SCENE_KEYS = {
+    "website": "live websites were removed, so the app ignores this block; show the page as an image or on a device's screen instead",
+}
+
+
 def did_you_mean(value: str, options: Iterable[str]) -> str:
     close = difflib.get_close_matches(value, list(options), n=3, cutoff=0.5)
     return f" Did you mean {', '.join(repr(c) for c in close)}?" if close else ""
@@ -501,7 +506,9 @@ class Checker:
             rep.error(file, "version", f"{version} is newer than the app understands ({current}); the app ignores the whole sidecar")
         known = catmod.scene_doc_keys(self.cat)
         for key in doc:
-            if key not in known:
+            if key in RETIRED_SCENE_KEYS:
+                rep.warn(file, key, RETIRED_SCENE_KEYS[key])
+            elif key not in known:
                 rep.warn(file, key, f"unknown key (the app ignores it).{did_you_mean(key, known)}")
         self.terminal(file, doc)
         if "name" in doc and not isinstance(doc["name"], str):
@@ -589,7 +596,7 @@ class Checker:
             marks = stills["marksMs"]
             if not isinstance(marks, list) or not all(is_int(t) and t >= 0 for t in marks) or marks != sorted(set(marks)):
                 rep.error(file, "stills.marksMs", "must be ascending, unique, whole milliseconds >= 0")
-        self.assets_in(file, "", doc)
+        self.assets_in(file, "", {key: value for key, value in doc.items() if key not in RETIRED_SCENE_KEYS})
 
     # ── music: audio.grid, cues, sections and `at` positions ──────────────
 

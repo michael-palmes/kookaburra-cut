@@ -470,6 +470,20 @@ body {
   color: var(--claude-clay);
 }
 
+.titlebar-claude.quiet {
+  color: var(--text-secondary);
+  border-color: var(--border-strong);
+}
+
+.titlebar-claude.quiet:hover {
+  color: var(--text-primary);
+  border-color: var(--border-control);
+}
+
+.titlebar-claude.quiet .titlebar-claude-mark {
+  color: var(--text-tertiary);
+}
+
 .titlebar-claude-anchor {
   position: relative;
   display: inline-flex;
@@ -2502,7 +2516,7 @@ button.beat-status {
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
-/* First-launch welcome: a greeting and the one recommended setting, then Get started. */
+/* First-launch setup: a greeting, the Claude choice and the update switch, then Get started. */
 .welcome-modal-intro {
   display: flex;
   flex-direction: column;
@@ -2516,30 +2530,113 @@ button.beat-status {
   font-weight: 620;
 }
 
-.welcome-modal-update {
-  justify-content: flex-start;
+.setup-choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.setup-choice {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-5);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard);
+}
+
+.setup-choice:hover {
+  border-color: var(--border-strong);
+}
+
+.setup-choice input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
   cursor: pointer;
 }
 
-.welcome-modal-update .settings-row-text {
-  flex: 1;
+.setup-choice:has(input:checked) {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
 }
 
-.welcome-modal-update-title {
+.setup-choice:has(input:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.setup-choice-title {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: 590;
 }
 
-.welcome-modal-update .toggle-switch {
-  margin-left: 0;
+.setup-choice-mark {
+  display: inline-flex;
+  flex: none;
+  color: var(--claude-clay);
 }
 
-.welcome-modal-update-icon {
+.setup-choice-mark-off {
+  color: var(--text-tertiary);
+}
+
+.setup-choice-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+  color: var(--text-secondary);
+}
+
+.setup-choice-note .setup-icon {
+  margin-top: 1px;
+  color: var(--success);
+}
+
+.setup-icon {
   flex: none;
   width: 16px;
   height: 16px;
   color: var(--text-secondary);
+}
+
+.setup-row {
+  justify-content: flex-start;
+}
+
+.setup-row .settings-row-text {
+  flex: 1;
+}
+
+.setup-row-switch {
+  cursor: pointer;
+}
+
+.setup-row .toggle-switch {
+  margin-left: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .setup-choice {
+    transition: none;
+  }
 }
 
 .welcome-modal-privacy {
@@ -10209,19 +10306,6 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   justify-content: center;
 }
 
-.inspector-subtabs.website-viewport-presets {
-  align-self: stretch;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 2px;
-}
-
-.website-viewport-presets .inspector-subtab {
-  justify-content: center;
-  min-width: 0;
-  padding: 0 8px;
-}
-
 /* The object placement drill's rhythm: clear air above every labelled group (less for the first, which sits under the drill title), content hugging its own label, and the gizmo pills stripped of their stock margins so they align with the 8px label inset and their hint reads attached. */
 .object-drill .drill-group {
   margin-top: var(--space-7);
@@ -14490,178 +14574,6 @@ textarea.text-inspector-copy-input {
 
 .library-stale-badge svg {
   color: var(--warning);
-}
-
-/* ── Scene Website overlay ──────────────────────────────────────── */
-.scene-website-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 5;
-  pointer-events: none;
-}
-
-.scene-website-activate {
-  position: absolute;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  border: 0;
-  background: transparent;
-  color: var(--text-primary);
-  cursor: pointer;
-  pointer-events: auto;
-}
-
-.scene-website-activate::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 176px;
-  height: 32px;
-  transform: translate(-50%, -50%);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-full);
-  background: var(--surface-raised);
-  box-shadow: var(--elev-popover);
-  z-index: -1;
-}
-
-.scene-website-activate.quiet {
-  opacity: 0;
-  transition: opacity var(--dur-base) var(--ease-standard);
-}
-
-.scene-website-activate.quiet:hover,
-.scene-website-activate.quiet:focus-visible,
-.scene-website-activate:disabled {
-  opacity: 1;
-}
-
-.scene-website-activate:disabled {
-  cursor: default;
-}
-
-.scene-website-activate.locked::before {
-  width: 320px;
-}
-
-.scene-website-toolbar-targets {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.scene-website-nav-target {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  border: 0;
-  border-radius: var(--radius-full);
-  background: transparent;
-  color: transparent;
-  cursor: pointer;
-  pointer-events: auto;
-}
-
-.scene-website-nav-target:hover,
-.scene-website-nav-target:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.scene-website-poster-button {
-  position: absolute;
-  transform: translate(-100%, -50%);
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: calc(24px * var(--text-scale));
-  padding: 0 8px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-full);
-  background: var(--surface-raised);
-  color: var(--text-primary);
-  font-size: calc(11px * var(--text-scale));
-  cursor: pointer;
-  pointer-events: auto;
-}
-
-.scene-website-consent {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: min(420px, calc(100% - 32px));
-  transform: translate(-50%, -50%);
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 12px;
-  padding: 18px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-lg);
-  background: var(--surface-elevated);
-  box-shadow: var(--elev-dialog);
-  color: var(--text-primary);
-  pointer-events: auto;
-}
-
-.scene-website-consent-icon {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: var(--radius-md);
-  background: var(--accent-subtle);
-  color: var(--accent-text);
-}
-
-.scene-website-consent strong,
-.scene-website-consent code {
-  display: block;
-}
-
-.scene-website-consent code {
-  margin-top: 5px;
-  overflow-wrap: anywhere;
-  color: var(--text-primary);
-  font-size: calc(12px * var(--text-scale));
-}
-
-.scene-website-consent-actions {
-  grid-column: 1 / -1;
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.scene-website-consent-actions button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.scene-website-present-status {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 7px 12px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-full);
-  background: var(--surface-raised);
-  color: var(--text-primary);
-  font-size: calc(11px * var(--text-scale));
-}
-
-.scene-website-present-status span {
-  max-width: 280px;
-  overflow: hidden;
-  color: var(--text-secondary);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* ── Claude's bridge export and the flash warning ─────────────────────────── */

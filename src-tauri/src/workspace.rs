@@ -97,6 +97,9 @@ pub struct AppSettings {
     /// Unix-ms of the last update check; only written while consent is on (launch-check throttle marker).
     #[serde(default)]
     pub last_update_check_ms: Option<u64>,
+    /// Tri-state answer to "use Claude here?": None = not asked yet, and that counts as off (agent_gate.rs); nothing is laid out for an agent until it is Some(true).
+    #[serde(default)]
+    pub claude_consent: Option<bool>,
     /// Inverted so the serde/Default false means the Claude launcher shows on a new project's first open.
     #[serde(default)]
     pub disable_claude_first_open: bool,
@@ -112,9 +115,6 @@ pub struct AppSettings {
     /// Publishers whose packs have been imported before, keyed by manifest key id (trust on first use).
     #[serde(default)]
     pub known_publishers: HashMap<String, KnownPublisher>,
-    /// Approved Website origins keyed by canonical project path; loopback grants remain session-only.
-    #[serde(default)]
-    pub website_origin_grants: HashMap<String, Vec<String>>,
 }
 
 /// Self-declared pack publisher details. Never verified: the signing key is what identifies an install, this is only what it calls itself.
@@ -301,7 +301,33 @@ fn update_settings_at<T>(
     Ok(out)
 }
 
-/// What Settings ▸ Clear all app data keeps: where the workspace is and the answer to the update question. Every grant, record and preference goes.
+/// Live websites are gone: the origin grants an earlier version stored leave `settings.json` at launch. A file the app can't read as settings is left alone.
+pub(crate) fn drop_website_grants(app: &AppHandle) {
+    let Ok(path) = settings_path(app) else {
+        return;
+    };
+    let state = app.state::<SettingsState>();
+    match drop_website_grants_at(&path, &state.0) {
+        Ok(true) => log::info!("[website] removed the stored website grants from settings.json"),
+        Ok(false) => {}
+        Err(e) => log::warn!("[website] could not remove the stored website grants: {e}"),
+    }
+}
+
+fn drop_website_grants_at(path: &Path, cache: &Mutex<Option<AppSettings>>) -> Result<bool, String> {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Ok(false);
+    };
+    let held = serde_json::from_str::<serde_json::Value>(&text)
+        .is_ok_and(|json| json.get("websiteOriginGrants").is_some());
+    if !held || serde_json::from_str::<AppSettings>(&text).is_err() {
+        return Ok(false);
+    }
+    update_settings_at(path, cache, |_| ())?;
+    Ok(true)
+}
+
+/// What Settings ▸ Clear all app data keeps: where the workspace is and the answer to the update question. Every grant, record and preference goes, the Claude answer with them, so Claude is off until it is asked for again.
 fn cleared_settings(settings: &AppSettings) -> AppSettings {
     AppSettings {
         workspace_root: settings.workspace_root.clone(),
@@ -1434,7 +1460,6 @@ pub async fn delete_project(
     app: AppHandle,
     state: State<'_, SettingsState>,
     trust: State<'_, TrustState>,
-    websites: State<'_, crate::website::WebsiteState>,
     slug: String,
 ) -> Result<(), String> {
     validate_slug(&slug)?;
@@ -1451,12 +1476,7 @@ pub async fn delete_project(
             .await
             .map_err(|e| e.to_string())?
     };
-    let website_keys = forget_trust_at(&app, &state, &trust, std::slice::from_ref(&dir))?;
-    crate::website::clear_project_stores(&app, &websites, &website_keys)
-        .await
-        .map_err(|e| {
-            format!("couldn't sign its websites out, so it wasn't deleted; it asks for Allow again on its next open: {e}")
-        })?;
+    forget_trust_at(&app, &state, &trust, std::slice::from_ref(&dir))?;
     trash_path(&dir).map_err(|e| format!("couldn't move the project to the Trash: {e}"))?;
     log::info!(
         "[workspace] {slug}: moved to the Trash ({})",
@@ -1966,9 +1986,9 @@ pub fn create_project(
     })
 }
 
-/// Claude Code provisioning for a project folder (docs/agent-kit.md, "Stamping"; see `kit.rs`). `false` = a shipped skill is missing (a packaging defect); the skills that are there and the rest of the kit are still stamped. Under `DisableAgentKit` nothing is written, moved or healed, and a kit already there stays as it is.
+/// Claude Code provisioning for a project folder (docs/agent-kit.md, "Stamping"; see `kit.rs`). `false` = a shipped skill is missing (a packaging defect); the skills that are there and the rest of the kit are still stamped. While the agent gate is shut (`DisableAgentKit`, or Claude not turned on) nothing is written, moved or healed, and a kit already there stays as it is.
 pub(crate) fn stamp_claude_provisioning(app: &AppHandle, dir: &Path) -> Result<bool, String> {
-    if crate::managed::deny_agent_kit().is_err() {
+    if crate::agent_gate::deny().is_err() {
         return Ok(true);
     }
     let root = skills_root(app);
@@ -2402,7 +2422,7 @@ pub async fn heal_project_kit(
     if !dir.join(MANIFEST_FILENAME).is_file() {
         return Ok(false);
     }
-    if crate::managed::deny_agent_kit().is_err() {
+    if crate::agent_gate::deny().is_err() {
         return Ok(false);
     }
     tauri::async_runtime::spawn_blocking(move || {
@@ -2753,13 +2773,13 @@ fn copy_source_needs_grant(scope: &ProjectScope) -> bool {
     )
 }
 
-/// Forget one project's grant and its website origins, so it asks again on its next open: Settings ▸ Allowed projects ▸ Forget. Its folder now and the one its grant recorded are both forgotten, as a delete would. Returns the website keys its stores go by.
+/// Forget one project's grant, so it asks again on its next open: Settings ▸ Allowed projects ▸ Forget. Its folder now and the one its grant recorded are both forgotten, as a delete would.
 pub(crate) fn forget_project_trust(
     app: &AppHandle,
     state: &State<'_, SettingsState>,
     trust: &TrustState,
     id: &str,
-) -> Result<Vec<String>, String> {
+) -> Result<(), String> {
     parse_project_id(id)?;
     drop_session_then(&trust.session, id, || {
         let mut folders = vec![project_dir(app, state, id)?];
@@ -2767,45 +2787,26 @@ pub(crate) fn forget_project_trust(
             folders.push(PathBuf::from(&record.path));
         }
         let landing = Landing::new(&folders);
-        let loopback =
-            crate::website::forget_loopback_grants_at(app, |key| landing.holds(Path::new(key)));
-        let stored = update_settings(app, state, |settings| {
+        update_settings(app, state, |settings| {
             forget_one_stored(settings, id, &landing)
-        })?;
-        Ok(website_keys(&folders, loopback.into_iter().chain(stored)))
+        })
     })
 }
 
-fn forget_one_stored(settings: &mut AppSettings, id: &str, landing: &Landing) -> Vec<String> {
+fn forget_one_stored(settings: &mut AppSettings, id: &str, landing: &Landing) {
     settings.trusted_projects.remove(id);
     forget_stored_at(settings, landing)
 }
 
-/// The keys these folders' website stores go by: each folder as written and as it resolves on disk, and every grant key a forget matched, so a store keyed under another spelling still goes.
-fn website_keys(folders: &[PathBuf], matched: impl IntoIterator<Item = String>) -> Vec<String> {
-    let mut keys: Vec<String> = folders
-        .iter()
-        .flat_map(|folder| {
-            let resolved = folder.canonicalize().ok();
-            std::iter::once(folder.to_string_lossy().into_owned())
-                .chain(resolved.map(|dir| dir.to_string_lossy().into_owned()))
-        })
-        .chain(matched)
-        .collect();
-    keys.sort();
-    keys.dedup();
-    keys
-}
-
-/// Forget every grant held for these folders: a pack is landing in them, so the person meets the Allow sheet again on the next open. Keyed by the folder on disk, not the id, so a slug spelt in another case is forgotten too; website origins go with the grant. Returns the website keys their stores go by.
+/// Forget every grant held for these folders: a pack is landing in them, so the person meets the Allow sheet again on the next open. Keyed by the folder on disk, not the id, so a slug spelt in another case is forgotten too.
 pub(crate) fn forget_trust_at(
     app: &AppHandle,
     state: &State<'_, SettingsState>,
     trust: &TrustState,
     folders: &[PathBuf],
-) -> Result<Vec<String>, String> {
+) -> Result<(), String> {
     if folders.is_empty() {
-        return Ok(Vec::new());
+        return Ok(());
     }
     let landing = Landing::new(folders);
     let ids: Vec<String> = trust
@@ -2827,10 +2828,7 @@ pub(crate) fn forget_trust_at(
         &landing,
         |id| dirs.get(id).cloned(),
     );
-    let loopback =
-        crate::website::forget_loopback_grants_at(app, |key| landing.holds(Path::new(key)));
-    let stored = update_settings(app, state, |settings| forget_stored_at(settings, &landing))?;
-    Ok(website_keys(folders, loopback.into_iter().chain(stored)))
+    update_settings(app, state, |settings| forget_stored_at(settings, &landing))
 }
 
 /// Settings ▸ Clear all app data: every session allow and unredeemed Allow goes, so no project passes on this launch's word.
@@ -2868,22 +2866,13 @@ fn forget_session_at(
     session.retain(|id| dir_of(id).is_some_and(|dir| !landing.holds(&dir)));
 }
 
-fn forget_stored_at(settings: &mut AppSettings, landing: &Landing) -> Vec<String> {
+fn forget_stored_at(settings: &mut AppSettings, landing: &Landing) {
     settings
         .trusted_projects
         .retain(|_, record| !landing.holds(Path::new(&record.path)));
     settings
         .agent_files
         .retain(|key, _| !landing.holds(Path::new(key)));
-    let mut dropped = Vec::new();
-    settings.website_origin_grants.retain(|key, _| {
-        let gone = landing.holds(Path::new(key));
-        if gone {
-            dropped.push(key.clone());
-        }
-        !gone
-    });
-    dropped
 }
 
 /// The folders a pack or a delete is about to change, each read from disk once: by inode where it exists, else by its path in any case (the side that forgets more).
@@ -3118,15 +3107,6 @@ fn display_path(app: &AppHandle, path: &Path) -> String {
 }
 
 /// The manifest's display name, flattened and capped so a crafted name cannot forge the sheet's lines; the slug when there is none.
-/// The name a consent sheet shows for a project at `dir`, falling back to its folder name.
-pub(crate) fn consent_project_name_at(dir: &Path) -> String {
-    let slug = dir
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    consent_project_name(dir, &slug)
-}
-
 fn consent_project_name(dir: &Path, slug: &str) -> String {
     let name = std::fs::read_to_string(dir.join(MANIFEST_FILENAME))
         .ok()
@@ -3615,6 +3595,37 @@ mod tests {
     }
 
     #[test]
+    fn stored_website_grants_leave_settings_and_nothing_else_does() {
+        let dir = scratch_dir();
+        let path = dir.join("settings.json");
+        std::fs::write(
+            &path,
+            r#"{"lastProject":"ws:product-tour","updateCheckConsent":true,"websiteOriginGrants":{"/Users/x/Kookaburra Cut/product-tour":["https://example.com"]}}"#,
+        )
+        .unwrap();
+        let cache = Mutex::new(None);
+        assert_eq!(drop_website_grants_at(&path, &cache), Ok(true));
+        let json: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(json.get("websiteOriginGrants").is_none());
+        assert_eq!(json["lastProject"], "ws:product-tour");
+        assert_eq!(json["updateCheckConsent"], true);
+        assert_eq!(drop_website_grants_at(&path, &cache), Ok(false));
+
+        let torn = dir.join("torn.json");
+        std::fs::write(&torn, r#"{"websiteOriginGrants":{},"lastProject":7}"#).unwrap();
+        assert_eq!(drop_website_grants_at(&torn, &Mutex::new(None)), Ok(false));
+        assert!(std::fs::read_to_string(&torn)
+            .unwrap()
+            .contains("websiteOriginGrants"));
+        assert_eq!(
+            drop_website_grants_at(&dir.join("missing.json"), &Mutex::new(None)),
+            Ok(false)
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn a_reset_keeps_the_workspace_and_the_update_answer_only() {
         let mut settings = AppSettings {
             workspace_root: Some("/Users/x/Kookaburra Cut".into()),
@@ -3641,9 +3652,6 @@ mod tests {
         settings
             .agent_files
             .insert("/w/product-tour".into(), AgentFilesRecord::default());
-        settings
-            .website_origin_grants
-            .insert("/w/product-tour".into(), vec!["https://example.com".into()]);
         let fresh = serde_json::to_value(AppSettings {
             workspace_root: settings.workspace_root.clone(),
             update_check_consent: Some(false),
@@ -5042,11 +5050,11 @@ mod tests {
             .insert("other".into(), record(&other));
         let key = |dir: &Path| dir.canonicalize().unwrap().to_string_lossy().into_owned();
         settings
-            .website_origin_grants
-            .insert(key(&mine), vec!["https://example.com".into()]);
+            .agent_files
+            .insert(key(&mine), AgentFilesRecord::default());
         settings
-            .website_origin_grants
-            .insert(key(&other), vec!["https://example.com".into()]);
+            .agent_files
+            .insert(key(&other), AgentFilesRecord::default());
         let mut session = HashSet::from(["product-tour".to_owned(), "other".to_owned()]);
 
         let landing = Landing::new(&[root.join("Product-Tour")]);
@@ -5059,7 +5067,7 @@ mod tests {
             vec!["other"]
         );
         assert_eq!(
-            settings.website_origin_grants.keys().collect::<Vec<_>>(),
+            settings.agent_files.keys().collect::<Vec<_>>(),
             vec![&key(&other)]
         );
         let _ = std::fs::remove_dir_all(&root);
@@ -5090,7 +5098,7 @@ mod tests {
     }
 
     #[test]
-    fn forget_in_settings_drops_the_projects_website_grants_with_its_allow() {
+    fn forget_in_settings_drops_the_projects_records_with_its_allow() {
         let root = scratch_dir();
         let mine = root.join("product-tour");
         let moved = root.join("product-tour-old");
@@ -5108,21 +5116,18 @@ mod tests {
             },
         );
         let key = |dir: &Path| dir.canonicalize().unwrap().to_string_lossy().into_owned();
-        for grant in [key(&mine), moved.to_string_lossy().into_owned(), key(&other)] {
+        for folder in [key(&mine), moved.to_string_lossy().into_owned(), key(&other)] {
             settings
-                .website_origin_grants
-                .insert(grant, vec!["https://example.com".into()]);
+                .agent_files
+                .insert(folder, AgentFilesRecord::default());
         }
 
         let landing = Landing::new(&[mine.clone(), moved.clone()]);
-        let dropped = forget_one_stored(&mut settings, "product-tour", &landing);
-        let keys = website_keys(&[mine.clone(), moved.clone()], dropped);
+        forget_one_stored(&mut settings, "product-tour", &landing);
 
-        assert!(keys.contains(&key(&mine)) && keys.contains(&moved.to_string_lossy().into_owned()));
-        assert!(!keys.contains(&key(&other)));
         assert!(settings.trusted_projects.is_empty());
         assert_eq!(
-            settings.website_origin_grants.keys().collect::<Vec<_>>(),
+            settings.agent_files.keys().collect::<Vec<_>>(),
             vec![&key(&other)]
         );
         let _ = std::fs::remove_dir_all(&root);

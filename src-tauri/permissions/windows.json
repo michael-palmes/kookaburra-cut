@@ -24,10 +24,12 @@
     },
     {
       "identifier": "claude-launcher",
-      "description": "The Claude desktop app handoff, its preferences and the two fixed pages the app opens in the browser (the Claude download and the privacy page).",
+      "description": "The Claude desktop app handoff, the answer to whether Claude is on, its preferences and the two fixed pages the app opens in the browser (the Claude download and the privacy page).",
       "commands": {
         "allow": [
           "claude_app_status",
+          "claude_status",
+          "set_claude_consent",
           "open_in_claude",
           "open_project_folder",
           "open_claude_download",
@@ -47,42 +49,11 @@
       "identifier": "updater",
       "description": "The consent-gated update check and install.",
       "commands": {
-        "allow": ["check_for_update", "set_update_consent", "install_update_and_relaunch"]
-      }
-    },
-    {
-      "identifier": "website-editor",
-      "description": "Scene websites in the paused editor: approvals, the live child view and its capture.",
-      "commands": {
         "allow": [
-          "website_open",
-          "website_grant_origin",
-          "website_revoke_origin",
-          "website_list_grants",
-          "website_clear_project_data",
-          "website_resume_pending",
-          "website_set_bounds",
-          "website_set_zoom",
-          "website_show",
-          "website_action",
-          "website_capture",
-          "website_import_image",
-          "website_hide",
-          "website_close"
-        ]
-      }
-    },
-    {
-      "identifier": "website-present",
-      "description": "Scene websites during a Present hold: show, hide and drive an already approved origin.",
-      "commands": {
-        "allow": [
-          "website_open",
-          "website_show",
-          "website_hide",
-          "website_set_bounds",
-          "website_action",
-          "website_close"
+          "check_for_update",
+          "set_update_consent",
+          "install_update_and_relaunch",
+          "updates_left_to_installer"
         ]
       }
     }

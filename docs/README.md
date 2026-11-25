@@ -49,7 +49,6 @@ architecture → determinism → decisions.
 | [foldables.md](./foldables.md) | Folding devices: two displays, a hinge you can pose and keyframe, and the auto screen power that follows it |
 | [gizmos.md](./gizmos.md) | Direct manipulation over the preview: drag an item on the stage instead of typing numbers into the inspector |
 | [scene-terminal.md](./scene-terminal.md) | A terminal as scene content: a picture of a terminal baked from a written transcript, never a process |
-| [scene-website.md](./scene-website.md) | A website as scene content: a browser panel that is live only when the person activates it in the editor or a Present hold |
 | [stills.md](./stills.md) | Turning a project into stills: a PDF handout or a zip of PNGs, one page per still, through the export path |
 
 Scene-authoring rules and the toolkit reference live in the

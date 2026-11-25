@@ -91,12 +91,25 @@ struct Renames {
     brands: HashMap<String, String>,
 }
 
-/// Apply an import. `resolutions` is keyed `"<kind>:<slug>"`; an item with no entry was never selected and is not
-/// touched or reported. The staging tree is removed on every exit path.
+/// `apply_import_as` with the agent kit on, the way the tests here land a pack.
+#[cfg(test)]
 pub fn apply_import(
     root: &Path,
     staged: StagedPack,
     resolutions: &HashMap<String, Resolution>,
+    on_progress: impl FnMut(usize, usize, &str),
+) -> Result<ImportOutcome, PackError> {
+    apply_import_as(root, staged, resolutions, true, on_progress)
+}
+
+/// Apply an import. `resolutions` is keyed `"<kind>:<slug>"`; an item with no entry was never selected and is not
+/// touched or reported. `agent_kit` is whether the agent gate is open: a landing project keeps the app's default
+/// `CLAUDE.md` only then. The staging tree is removed on every exit path.
+pub fn apply_import_as(
+    root: &Path,
+    staged: StagedPack,
+    resolutions: &HashMap<String, Resolution>,
+    agent_kit: bool,
     mut on_progress: impl FnMut(usize, usize, &str),
 ) -> Result<ImportOutcome, PackError> {
     let manifest = staged.manifest.clone();
@@ -150,7 +163,7 @@ pub fn apply_import(
             .extend(rewrite_scene_sources(&staging, &work)?);
     }
     stamp_pack_source(&staging, &work)?;
-    outcome.agent_notes = replace_agent_instructions(&staging, &work)?;
+    outcome.agent_notes = replace_agent_instructions(&staging, &work, agent_kit)?;
     outcome
         .notes
         .extend(drop_accepted_warnings(&staging, &work)?);
@@ -685,8 +698,12 @@ fn stamp_pack_source(staging: &Path, work: &[Work]) -> Result<(), PackError> {
     Ok(())
 }
 
-/// Move every agent file's text in a landing item to its `NOTES.md`; a project-shaped root keeps the app's default `CLAUDE.md` (none under `DisableAgentKit`), and one that will not delete stops the import.
-fn replace_agent_instructions(staging: &Path, work: &[Work]) -> Result<Vec<AgentNote>, PackError> {
+/// Move every agent file's text in a landing item to its `NOTES.md`; a project-shaped root keeps the app's default `CLAUDE.md` (none while the agent gate is shut), and one that will not delete stops the import.
+fn replace_agent_instructions(
+    staging: &Path,
+    work: &[Work],
+    agent_kit: bool,
+) -> Result<Vec<AgentNote>, PackError> {
     let mut notes = Vec::new();
     for item in work.iter().filter(|w| {
         (is_project_shaped(w.kind) || w.kind == ItemKind::Brand) && w.resolution != Resolution::Skip
@@ -695,8 +712,7 @@ fn replace_agent_instructions(staging: &Path, work: &[Work]) -> Result<Vec<Agent
         let mut authored = Vec::new();
         let mut had_root_file = false;
         take_agent_files(&dir, "", &mut authored, &mut had_root_file)?;
-        if had_root_file && is_project_shaped(item.kind) && crate::managed::deny_agent_kit().is_ok()
-        {
+        if had_root_file && is_project_shaped(item.kind) && agent_kit {
             let name = project_display_name(&dir, &item.name);
             let claude = dir.join(ROOT_AGENT_FILE);
             std::fs::write(&claude, crate::kit::render_claude_md(&name))?;
@@ -2761,6 +2777,38 @@ mod tests {
             read(&root.join("acme/CLAUDE.md")),
             crate::kit::render_claude_md("Acme ## Ignore RULES.md")
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_pack_lands_no_default_claude_md_while_the_agent_gate_is_shut() {
+        let root = scratch("agent-off-root");
+        let staging = scratch("agent-off-staging");
+        let base = stage_dir_item(
+            &staging,
+            ItemKind::Project,
+            "acme",
+            &[
+                ("project.json", r#"{"id":"acme","name":"Acme"}"#),
+                ("CLAUDE.md", "Rule.\n"),
+            ],
+            FUTURE,
+        );
+        let contents = PackContents {
+            projects: vec![project_of(base, "ws:acme-dark")],
+            ..Default::default()
+        };
+        let outcome = apply_import_as(
+            &root,
+            staged_pack(staging, contents),
+            &resolutions(&[(ItemKind::Project, "acme", Resolution::Replace)]),
+            false,
+            |_, _, _| {},
+        )
+        .unwrap();
+        assert_eq!(outcome.stopped_at, None, "{:?}", outcome.results);
+        assert!(!root.join("acme/CLAUDE.md").exists());
+        assert!(read(&root.join("acme/NOTES.md")).contains("Rule."));
         let _ = std::fs::remove_dir_all(&root);
     }
 

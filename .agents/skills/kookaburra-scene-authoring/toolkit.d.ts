@@ -1519,8 +1519,6 @@ declare module "@kookaburra/toolkit" {
     chart?: SceneDocChart;
     /** The terminal block (one per scene): screen-locked panel content, rendering its baked snapshot everywhere. Defaults and layout live in `sceneTerminal.ts`. */
     terminal?: SceneDocTerminal;
-    /** The Website block (one per scene): a consent-gated native page while paused or presenting, with a captured PNG as deterministic render truth. */
-    website?: SceneDocWebsite;
     /** Which animated track drives this scene; absent = "camera" (null-for-legacy). Switching never deletes the other tracks' keys. */
     animatedTrack?: "camera" | "layeredScreenshot" | "compare" | "chart" | "lighting";
     /** Stills export settings (see engine/stills.ts); absent = included with one automatic still. */
@@ -3981,39 +3979,6 @@ declare module "@kookaburra/toolkit" {
     offset?: [number, number];
   }
 
-  interface SceneDocWebsite {
-    url?: string;
-    requestedOrigins?: string[];
-    viewport?: SceneDocWebsiteViewport;
-    frame?: SceneDocWebsiteFrame;
-    position?: [number, number];
-    size?: number;
-    capture?: SceneDocWebsiteCapture;
-  }
-
-  interface SceneDocWebsiteCapture {
-    src?: string;
-    width?: number;
-    height?: number;
-    source?: SceneWebsiteCaptureSource;
-    sourceOrigin?: string;
-    fingerprint?: string;
-  }
-
-  interface SceneDocWebsiteFrame {
-    appearance?: SceneWebsiteAppearance;
-    cornerRadius?: number;
-    shadow?: SceneWebsiteShadow;
-  }
-
-  interface SceneDocWebsiteViewport {
-    preset?: SceneWebsiteViewportPreset;
-    orientation?: SceneWebsiteOrientation;
-    width?: number;
-    height?: number;
-    zoom?: number;
-  }
-
   type SceneImageHost = "stage" | "overlay";
 
   type SceneImageMotionPreset = (typeof SCENE_IMAGE_MOTION_PRESETS)[number];
@@ -4177,17 +4142,6 @@ declare module "@kookaburra/toolkit" {
     bg?: SceneTerminalColour | null,
     flags?: number,
   ];
-
-  type SceneWebsiteAppearance = "match-theme" | "light" | "dark";
-
-  type SceneWebsiteCaptureSource = "snapshot" | "image";
-
-  type SceneWebsiteOrientation = "landscape" | "portrait";
-
-  type SceneWebsiteShadow = "none" | "soft" | "strong";
-
-  /** Website scene content: field-level parsing, secure URL normalisation, capture freshness and shared frame geometry. The live native view and deterministic WebGL poster both consume this pure contract. */
-  type SceneWebsiteViewportPreset = "desktop" | "tablet" | "mobile" | "custom";
 
   /** A line drawn as a light trail instead of a ribbon: its halo half width and depth travel in chart units, and the stage it glows (or inks) against. */
   interface Series3DTrail {

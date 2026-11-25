@@ -12,7 +12,7 @@ use tauri_plugin_dialog::DialogExt;
 
 use super::deps::{self, AssetGroup, ClosureFile, HashMode, PackSelection};
 use super::error::PackError;
-use super::limits::{MAX_SOURCE_VIEW_BYTES, MAX_TEXT_BYTES, PACK_EXTENSION};
+use super::limits::{MAX_SOURCE_VIEW_BYTES, PACK_EXTENSION};
 use super::model::*;
 use super::read::{self, StagedPack};
 use super::write::{self, PackEntry};
@@ -145,18 +145,6 @@ pub struct PackInspectionView {
     install_bytes: u64,
     /// The scene code the pack would stage, from `files`; the trust and code screens list this, never `contents`.
     scene_sources: Vec<read::SceneSource>,
-}
-
-/// One scene sidecar as the pack carries it, read before staging and checked against its signed hash, so the trust
-/// screen reviews website origins from the bytes that would land.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PackSceneDoc {
-    kind: ItemKind,
-    slug: String,
-    name: String,
-    file: String,
-    doc: serde_json::Value,
 }
 
 #[derive(Serialize)]
@@ -840,36 +828,6 @@ pub async fn read_pack_scene_source(
     )?)
 }
 
-/// Every scene sidecar the pack carries beside a staged scene source, parsed, for the trust screen's
-/// website review. Each is checked against its signed hash on the way in; one mismatch refuses the pack.
-#[tauri::command]
-pub async fn read_pack_scene_docs(path: String) -> Result<Vec<PackSceneDoc>, String> {
-    let archive = Path::new(&path);
-    crate::packs_win::validate_incoming(archive)?;
-    let inspection = read::inspect(archive)?;
-    let manifest = &inspection.manifest;
-    let carried: Vec<(&read::SceneSource, String)> = inspection
-        .scene_sources
-        .iter()
-        .filter_map(|source| source.sidecar_path().map(|sidecar| (source, sidecar)))
-        .filter(|(_, sidecar)| manifest.files.iter().any(|f| &f.path == sidecar))
-        .collect();
-    let paths: Vec<String> = carried.iter().map(|(_, sidecar)| sidecar.clone()).collect();
-    let bodies = read::read_verified_entries(archive, manifest, &paths, MAX_TEXT_BYTES)?;
-    Ok(carried
-        .iter()
-        .zip(bodies)
-        .map(|((source, _), bytes)| PackSceneDoc {
-            kind: source.kind,
-            slug: source.slug.clone(),
-            name: source.name.clone(),
-            file: source.file.clone(),
-            // A sidecar that is not JSON holds nothing the app would honour either; the review skips it.
-            doc: serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null),
-        })
-        .collect())
-}
-
 /// Extract and plan. Deliberately called from the CONTENTS screen, not earlier: nothing is written to disk until the
 /// user has seen what is inside.
 #[tauri::command]
@@ -972,7 +930,6 @@ pub async fn apply_import(
     settings: State<'_, SettingsState>,
     state: State<'_, PackState>,
     trust: State<'_, TrustState>,
-    websites: State<'_, crate::website::WebsiteState>,
     resolutions: std::collections::HashMap<String, Resolution>,
     on_progress: Channel<PackProgress>,
 ) -> Result<super::apply::ImportOutcome, String> {
@@ -990,31 +947,29 @@ pub async fn apply_import(
     let key_id = key::key_id_of(&publisher_block.public_key).unwrap_or_else(|| "unreadable".into());
     // Consent goes before the first move, so an open project's reload never meets the pack's code under the old grant.
     let landing = trust_landing_folders(&root, &staged.manifest, &resolutions);
-    let website_keys = match workspace::forget_trust_at(&app, &settings, &trust, &landing) {
-        Ok(keys) => keys,
-        Err(e) => {
-            log::warn!("[pack] key {key_id}: import refused: {e}");
-            return Err(format!(
-                "Couldn't clear the old Allow before importing: {e}"
-            ));
-        }
-    };
-    if let Err(e) = crate::website::clear_project_stores(&app, &websites, &website_keys).await {
+    if let Err(e) = workspace::forget_trust_at(&app, &settings, &trust, &landing) {
         log::warn!("[pack] key {key_id}: import refused: {e}");
         return Err(format!(
-            "Couldn't sign the old websites out before importing: {e}"
+            "Couldn't clear the old Allow before importing: {e}"
         ));
     }
-    let applied = super::apply::apply_import(&root, staged, &resolutions, |done, total, label| {
-        let _ = on_progress.send(PackProgress {
-            file: done,
-            total,
-            bytes: 0,
-            total_bytes: 0,
-            stage: "applying",
-        });
-        let _ = label;
-    });
+    let agent_kit = crate::agent_gate::deny().is_ok();
+    let applied = super::apply::apply_import_as(
+        &root,
+        staged,
+        &resolutions,
+        agent_kit,
+        |done, total, label| {
+            let _ = on_progress.send(PackProgress {
+                file: done,
+                total,
+                bytes: 0,
+                total_bytes: 0,
+                stage: "applying",
+            });
+            let _ = label;
+        },
+    );
     let outcome = match applied {
         Ok(outcome) => outcome,
         Err(e) => {
@@ -1049,13 +1004,8 @@ pub async fn apply_import(
                 .map(|target| target.path)
         })
         .collect();
-    match workspace::forget_trust_at(&app, &settings, &trust, &landed) {
-        Ok(keys) => {
-            if let Err(e) = crate::website::clear_project_stores(&app, &websites, &keys).await {
-                log::warn!("[pack] signing websites out after the import failed: {e}");
-            }
-        }
-        Err(e) => log::warn!("[pack] forgetting trust after the import failed: {e}"),
+    if let Err(e) = workspace::forget_trust_at(&app, &settings, &trust, &landed) {
+        log::warn!("[pack] forgetting trust after the import failed: {e}");
     }
 
     // Trust on first use is recorded only after something actually landed.

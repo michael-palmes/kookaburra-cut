@@ -1,7 +1,6 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { ask } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useState } from "react";
 import {
   type CacheStats,
@@ -32,8 +31,10 @@ import {
   openPrivacyPage,
   setClaudePreferences,
 } from "../engine/claudeApp";
+import { useClaudeConsent } from "../engine/claudeConsent";
 import {
   claudeLocked,
+  plainError,
   updateChecksLocked,
   updateEndpointUnusable,
   updateServerHost,
@@ -42,11 +43,6 @@ import {
 import { setConformNewVideosSetting } from "../engine/media";
 import { pickFolder } from "../engine/pickedFolders";
 import { revealApp } from "../engine/reveal";
-import {
-  clearWebsiteData,
-  listWebsiteData,
-  type WebsiteDataRecord,
-} from "../engine/sceneWebsiteNative";
 import { formatUpdateStatus, useUpdateCheck } from "../engine/updates";
 import {
   defaultWorkspaceRoot,
@@ -169,21 +165,6 @@ function AgentKitIcon() {
     <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
       <path
         d="M2.5 5.5h11v7.5h-11zM6 5.5V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M2.5 8.5h11M8 7.5v2"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.35"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function LiveWebsiteIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
-      <path
-        d="M8 2.5a5.5 5.5 0 1 0 0 11a5.5 5.5 0 1 0 0-11M2.5 8h11M8 2.5c-1.6 1.6-2.2 3.4-2.2 5.5s.6 3.9 2.2 5.5M8 2.5c1.6 1.6 2.2 3.4 2.2 5.5s-.6 3.9-2.2 5.5"
         fill="none"
         stroke="currentColor"
         strokeWidth="1.35"
@@ -402,8 +383,6 @@ export function SettingsApp() {
   const [conformNew, setConformNew] = useState<boolean | null>(null);
   const [claudeFirstOpen, setClaudeFirstOpen] = useState<boolean | null>(null);
   const [claudeInstalled, setClaudeInstalled] = useState<boolean | null>(null);
-  const [websiteData, setWebsiteData] = useState<WebsiteDataRecord[] | null>(null);
-  const [websiteDataBusy, setWebsiteDataBusy] = useState<string | null>(null);
   const [clipsClearDeferred, setClipsClearDeferred] = useState(false);
   const [allowed, setAllowed] = useState<AllowedProjectRow[] | null>(null);
   const [forgetting, setForgetting] = useState<string | null>(null);
@@ -416,15 +395,6 @@ export function SettingsApp() {
     cacheStats()
       .then(setStats)
       .catch((e) => setError(String(e)));
-  }, []);
-
-  const refreshWebsiteData = useCallback(() => {
-    listWebsiteData()
-      .then(setWebsiteData)
-      .catch((e) => {
-        setWebsiteData([]);
-        setError(String(e));
-      });
   }, []);
 
   const loadSettings = useCallback(() => {
@@ -457,7 +427,6 @@ export function SettingsApp() {
 
   useEffect(() => {
     refreshStats();
-    refreshWebsiteData();
     sidecarVersions()
       .then(setVersions)
       .catch(() => setVersions(null));
@@ -474,7 +443,7 @@ export function SettingsApp() {
     getVersion()
       .then(setAppVersion)
       .catch(() => setAppVersion(""));
-  }, [refreshStats, refreshWebsiteData, loadSettings]);
+  }, [refreshStats, loadSettings]);
 
   // Every window's localStorage is this one origin's, so one clear here covers them all.
   useEffect(() => {
@@ -485,14 +454,13 @@ export function SettingsApp() {
       loadSettings();
       refreshAllowed();
       refreshStats();
-      refreshWebsiteData();
       setClipsClearDeferred(false);
       setPublisherEpoch((n) => n + 1);
     });
     return () => {
       void unlisten.then((fn) => fn());
     };
-  }, [loadSettings, refreshAllowed, refreshStats, refreshWebsiteData]);
+  }, [loadSettings, refreshAllowed, refreshStats]);
 
   const forget = useCallback(
     (key: string) => {
@@ -503,10 +471,9 @@ export function SettingsApp() {
         .finally(() => {
           setForgetting(null);
           void refreshAllowed();
-          void refreshWebsiteData();
         });
     },
-    [refreshAllowed, refreshWebsiteData],
+    [refreshAllowed],
   );
 
   const clearAll = useCallback(() => {
@@ -642,34 +609,6 @@ export function SettingsApp() {
     }
   }, [relocate]);
 
-  const clearStoredWebsiteData = useCallback(
-    async (displayName?: string) => {
-      const target = displayName ? ` for ${displayName} in every project` : " for every project";
-      const accepted = await ask(
-        `Clear Website data${target}? This signs the affected sites out, but does not change project origin approvals.`,
-        {
-          title: "Clear Website data?",
-          kind: "warning",
-          okLabel: "Clear data",
-          cancelLabel: "Cancel",
-        },
-      );
-      if (!accepted) return;
-      const busyKey = displayName ?? "all";
-      setWebsiteDataBusy(busyKey);
-      setError(null);
-      try {
-        await clearWebsiteData(displayName);
-        refreshWebsiteData();
-      } catch (e) {
-        setError(String(e));
-      } finally {
-        setWebsiteDataBusy(null);
-      }
-    },
-    [refreshWebsiteData],
-  );
-
   // Manual checks only in this window; the launch check belongs to the main window.
   const updates = useUpdateCheck({ autoCheck: false });
   // Rows a configuration profile governs show the lock in place of their control (docs/mdm.md).
@@ -677,29 +616,30 @@ export function SettingsApp() {
   const workspaceLocked = managed?.workspaceRootLocked ?? false;
   const claudeOff = managed !== null && claudeLocked(managed);
   const kitOff = managed?.disableAgentKit ?? false;
+  const claude = useClaudeConsent();
+  const claudeOn = claude.consent === "on";
+  const claudeNeedsOrgPolicy = !claudeOff && claude.orgPolicy === "missing";
+  const toggleClaudeConsent = useCallback(
+    (on: boolean) => {
+      claude.set(on).catch((e) => setError(plainError(e)));
+    },
+    [claude.set],
+  );
   const claudeLockDetail = managed?.disableClaude
     ? "A configuration profile turns Claude off (DisableClaude)."
     : "A configuration profile turns the agent kit off, and Claude with it (DisableAgentKit).";
   const exportsPinned = managed?.exportsInProject ?? false;
-  const websitesOff = managed?.disableLiveWebsites ?? false;
-  const websiteList = managed?.allowedWebsiteOrigins ?? null;
-  const websitesLocked = websitesOff || websiteList !== null;
-  const websitesDetail = websitesOff
-    ? "Turned off by your organisation. Scenes show their captured image."
-    : websiteList === null
-      ? "Each project asks before a website opens live in its scenes."
-      : websiteList.length === 0
-        ? "Turned off by your organisation: its list allows no websites."
-        : `Your organisation allows only ${websiteList.join(", ")}.`;
-  const websitesLockDetail = websitesOff
-    ? "A configuration profile turns live websites off (DisableLiveWebsites)."
-    : "A configuration profile allows only the websites it lists (AllowedWebsiteOrigins).";
-  const updatesLocked = updates.managed || (managed !== null && updateChecksLocked(managed));
+  const updatesByProfile = updates.managed || (managed !== null && updateChecksLocked(managed));
+  const updatesByInstaller = updates.byInstaller && !updatesByProfile;
+  const updatesLocked = updatesByProfile || updatesByInstaller;
   const updateServerBroken = managed !== null && updateEndpointUnusable(managed);
   const updateServer = managed ? updateServerHost(managed) : null;
-  const updatesLockDetail = updateServerBroken
-    ? "A configuration profile names an update server this app can't use, so it never checks (UpdateEndpoint)."
-    : "A configuration profile turns update checks off (DisableUpdateCheck).";
+  const updatesLockDetail = updatesByInstaller
+    ? "This copy was installed by a package, so updates arrive the same way. A configuration profile can turn update checks back on."
+    : updateServerBroken
+      ? "A configuration profile names an update server this app can't use, so it never checks (UpdateEndpoint)."
+      : "A configuration profile turns update checks off (DisableUpdateCheck).";
+  const updatesLockLabel = updatesByInstaller ? "Updated by its installer" : undefined;
 
   return (
     <div className="settings-window">
@@ -767,8 +707,7 @@ export function SettingsApp() {
           <div className="settings-row">
             <div className="settings-row-text">
               <span className="muted settings-row-detail">
-                Projects you allow to run show here. Forget one and it asks again on its next open,
-                websites included, and its sign-ins go.
+                Projects you allow to run show here. Forget one and it asks again on its next open.
               </span>
             </div>
           </div>
@@ -795,7 +734,7 @@ export function SettingsApp() {
               title={
                 row.open
                   ? "Close it in Kookaburra Cut first, then forget it here"
-                  : "Asks again before its scenes or websites run next time"
+                  : "Asks again before its scenes run next time"
               }
             >
               {row.open ? <OpenNowIcon /> : <ForgetIcon />}
@@ -862,6 +801,39 @@ export function SettingsApp() {
         <h2>Claude</h2>
         <div className="settings-row">
           <div className="settings-row-text">
+            <span
+              className="settings-row-title"
+              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+            >
+              <span className="titlebar-claude-mark">
+                <ClaudeSpark size={13} />
+              </span>
+              Use Claude
+            </span>
+            <span className="muted settings-row-detail">
+              {claudeOff
+                ? "Turned off by your organisation."
+                : claudeNeedsOrgPolicy
+                  ? "Needs your organisation's Claude settings on this Mac. Ask IT."
+                  : "Sends the project you open in Claude to Anthropic, under your own account."}
+            </span>
+          </div>
+          {claudeOff ? (
+            <ManagedLock detail={claudeLockDetail} />
+          ) : claudeNeedsOrgPolicy ? (
+            <ManagedLock detail="A configuration profile lets Claude on only where your organisation's Claude Code settings are installed (RequireManagedClaude)." />
+          ) : (
+            <input
+              type="checkbox"
+              aria-label="Use Claude"
+              checked={claudeOn}
+              disabled={claude.consent === "loading"}
+              onChange={(e) => toggleClaudeConsent(e.target.checked)}
+            />
+          )}
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-text">
             <span className="settings-row-title">Claude app</span>
             <span className="muted settings-row-detail">
               {claudeOff
@@ -911,7 +883,7 @@ export function SettingsApp() {
               type="checkbox"
               aria-label="Show on a new project's first open"
               checked={claudeFirstOpen ?? true}
-              disabled={claudeFirstOpen === null}
+              disabled={claudeFirstOpen === null || !claudeOn}
               onChange={(e) => toggleClaudeFirstOpen(e.target.checked)}
             />
           )}
@@ -928,13 +900,15 @@ export function SettingsApp() {
             <span className="muted settings-row-detail">
               {kitOff
                 ? "Turned off by your organisation: projects get no agent files and the agent bridge stays closed."
-                : "The rules, skills and kb tool each project carries for Claude Code."}
+                : claude.allowed
+                  ? "The rules, skills and kb tool each project carries for Claude Code."
+                  : "Off while Claude is off: projects get no agent files and the agent bridge stays closed."}
             </span>
           </div>
           {kitOff ? (
             <ManagedLock detail="A configuration profile turns the agent kit off (DisableAgentKit)." />
           ) : (
-            <span className="muted">On</span>
+            <span className="muted">{claude.allowed ? "On" : "Off"}</span>
           )}
         </div>
       </section>
@@ -1020,8 +994,8 @@ export function SettingsApp() {
               Clear all app data
             </span>
             <span className="muted settings-row-detail">
-              Every cache, Website data, the projects and websites you allowed, recent projects and
-              preferences. Your projects, workspace and pack signing key stay.
+              Every cache, the projects you allowed, recent projects and preferences. Your projects,
+              workspace and pack signing key stay.
             </span>
           </div>
           <button
@@ -1034,68 +1008,6 @@ export function SettingsApp() {
             {clearingAll ? "Clearing…" : "Clear all…"}
           </button>
         </div>
-      </section>
-
-      <section className="settings-section">
-        <h2>Website data</h2>
-        <div className="settings-row">
-          <div className="settings-row-text">
-            <span
-              className="settings-row-title"
-              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
-            >
-              <LiveWebsiteIcon />
-              Live websites
-            </span>
-            <span className="muted settings-row-detail">{websitesDetail}</span>
-          </div>
-          {websitesLocked ? (
-            <ManagedLock detail={websitesLockDetail} />
-          ) : (
-            <span className="muted">On</span>
-          )}
-        </div>
-        <div className="settings-row">
-          <div className="settings-row-text">
-            <span className="settings-row-title">One browser profile per project</span>
-            <span className="muted settings-row-detail">
-              {websiteData === null
-                ? "Loading…"
-                : websiteData.length === 0
-                  ? "No stored site data"
-                  : `${websiteData.length} site${websiteData.length === 1 ? "" : "s"} with cookies or local data`}
-            </span>
-          </div>
-          <button
-            type="button"
-            className="btn"
-            disabled={websiteDataBusy !== null || !websiteData?.length}
-            onClick={() => void clearStoredWebsiteData()}
-          >
-            <ClearDataIcon />
-            {websiteDataBusy === "all" ? "Clearing…" : "Clear all"}
-          </button>
-        </div>
-        {websiteData?.map((record) => (
-          <div className="settings-row" key={record.displayName}>
-            <div className="settings-row-text">
-              <span className="settings-row-title">{record.displayName}</span>
-              <span className="muted settings-row-detail">
-                {record.dataTypes.length} stored data type
-                {record.dataTypes.length === 1 ? "" : "s"}
-              </span>
-            </div>
-            <button
-              type="button"
-              className="btn"
-              disabled={websiteDataBusy !== null}
-              onClick={() => void clearStoredWebsiteData(record.displayName)}
-            >
-              <ClearDataIcon />
-              {websiteDataBusy === record.displayName ? "Clearing…" : "Clear"}
-            </button>
-          </div>
-        ))}
       </section>
 
       <section className="settings-section">
@@ -1199,11 +1111,13 @@ export function SettingsApp() {
               Check for updates automatically
             </span>
             <span className="muted settings-row-detail" title={updateServer ?? undefined}>
-              {`Asks ${updateServer ? "your organisation's update server" : "GitHub"} about once a day whether a newer release exists. No identifiers, nothing about your usage.`}
+              {updatesByInstaller
+                ? "This copy never checks for updates itself. Whoever installed it delivers them."
+                : `Asks ${updateServer ? "your organisation's update server" : "GitHub"} about once a day whether a newer release exists. No identifiers, nothing about your usage.`}
             </span>
           </div>
           {updatesLocked ? (
-            <ManagedLock detail={updatesLockDetail} />
+            <ManagedLock detail={updatesLockDetail} label={updatesLockLabel} />
           ) : (
             <input
               type="checkbox"
@@ -1218,22 +1132,24 @@ export function SettingsApp() {
           <div className="settings-row-text">
             <span className="settings-row-title">Status</span>
             <span className="muted settings-row-detail">
-              {updatesLocked
-                ? updateServerBroken && !managed?.disableUpdateCheck
-                  ? "Off: your organisation's update server address can't be used."
-                  : "Turned off by your organisation."
-                : formatUpdateStatus({
-                    phase: updates.phase,
-                    devBuild: updates.devBuild,
-                    error: updates.error,
-                    availableVersion: updates.available?.version ?? null,
-                    lastCheckedMs: updates.lastCheckedMs,
-                    nowMs: Date.now(),
-                  })}
+              {updatesByInstaller
+                ? "Off: updates arrive from the installer."
+                : updatesLocked
+                  ? updateServerBroken && !managed?.disableUpdateCheck
+                    ? "Off: your organisation's update server address can't be used."
+                    : "Turned off by your organisation."
+                  : formatUpdateStatus({
+                      phase: updates.phase,
+                      devBuild: updates.devBuild,
+                      error: updates.error,
+                      availableVersion: updates.available?.version ?? null,
+                      lastCheckedMs: updates.lastCheckedMs,
+                      nowMs: Date.now(),
+                    })}
             </span>
           </div>
           {updatesLocked ? (
-            <ManagedLock detail={updatesLockDetail} />
+            <ManagedLock detail={updatesLockDetail} label={updatesLockLabel} />
           ) : (
             <button
               type="button"
@@ -1256,7 +1172,7 @@ export function SettingsApp() {
           <div className="settings-row-text">
             <span className="settings-row-title">Privacy</span>
             <span className="muted settings-row-detail">
-              Nothing leaves your Mac unless you start it: an update check, Claude, a live website.
+              Nothing leaves your Mac unless you choose: an update check or Claude.
             </span>
           </div>
           <button
@@ -1278,8 +1194,8 @@ export function SettingsApp() {
               Activity log
             </span>
             <span className="muted settings-row-detail">
-              What the app did: projects and websites you allowed, packs, updates. Names and
-              folders, never what is in your files, and the app never sends it anywhere.
+              What the app did: projects you allowed, packs, updates. Names and folders, never what
+              is in your files, and the app never sends it anywhere.
             </span>
           </div>
           <button

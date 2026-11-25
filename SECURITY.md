@@ -10,11 +10,22 @@ the Keychain for the pack key whenever Settings or Export opens, and its Later
 stops the launch check offering that version again; 0.22.0 is 0.22.1 built
 before the pinned toolchain and the whole-bundle record ("Release integrity");
 and "Version 0.21.1" below lists what that version lacks.
+Three things here are ahead of 0.24.0. Live scene websites are removed and gone
+from the next release, so this file lists nothing they brought. 0.24.0 itself
+can still open a website a person allows in a scene, with `DisableLiveWebsites`
+and `AllowedWebsiteOrigins` as its locks; that version's copy of this file
+describes it. And Claude is off until a person turns it on, with
+`RequireManagedClaude` to tie that to an organisation's own Claude Code policy
+("What reaches your agent"); on 0.24.0 the kit is stamped and the bridge
+serves from the first launch, the key is ignored, and `DisableAgentKit` is
+what stops them. And a copy installed from the pkg leaves updates to its
+installer ("What leaves the Mac"); on 0.24.0 it checks GitHub like any other
+copy unless `DisableUpdateCheck` is forced.
 Each release from 0.22.0 on carries its own copy of this file in its assets.
 
 On a managed Mac, a configuration profile can pin the posture an organisation
-needs: turn off the app's Claude launchers, its agent kit and bridge, live scene
-websites, pack export or update checks, point update checks at the
+needs: turn off the app's Claude launchers, its agent kit and bridge, pack
+export or update checks, point update checks at the
 organisation's own server, keep exports out of Downloads, limit pack imports to
 approved publishers, and fix where projects are kept (`src-tauri/src/managed.rs`).
 The app honours a key only while macOS reports it as forced by a profile, so a
@@ -86,8 +97,8 @@ It is built for these risks:
 
 - **A shared project or pack that carries code or agent configuration.** A
   project's scenes are TypeScript that the app compiles and runs; a pack or a
-  shared folder can also carry `CLAUDE.md`, `.claude/settings.json`, website
-  origins and a `.git` that names a program. Scene code runs only after a person presses
+  shared folder can also carry `CLAUDE.md`, `.claude/settings.json`
+  and a `.git` that names a program. Scene code runs only after a person presses
   Allow on a native sheet bound to the content's hash, and then on a stage shut
   off from the network and the app's commands; agent configuration is dropped on
   import and moved out of the folder at every open, and Claude won't start until
@@ -114,8 +125,9 @@ It is built for these risks:
   excluded from Spotlight; a deleted project's decoded frames leave the caches
   with it (below).
 - **Other local users and a compromised window.** Each app window holds only
-  the native commands it uses; remote website content gets none; the webview's
-  content security policy names no outside host.
+  the native commands it uses; a webview that is not one of the app's own
+  windows gets none; the webview's content security policy names no outside
+  host, and the app loads no web page.
 - **A tampered install or release.** Releases are Developer ID signed with the
   hardened runtime and notarised; updates install only with a valid ed25519
   signature from the key baked into the app.
@@ -150,18 +162,31 @@ checkout only (`vite.config.ts`, `server.fs.allow`), never the home folder.
 
 | Path | Trigger | Destination | Data | Consent and off switch | Control |
 | --- | --- | --- | --- | --- | --- |
-| Update check | At launch and hourly while the main window is open, at most every 20 h, only with the consent on and never during an export; or Check for Updates (menu, ⌘K, Settings), which runs without consent and stores nothing | `github.com/michael-palmes/kookaburra-cut/releases/latest/download/latest.json`, or the https URL a profile forces as `UpdateEndpoint` | One GET; no identifiers, no version in the URL; the plugin's user agent only | First-run welcome switch (on by default, Escape saves off); Settings ▸ Updates. `update_check_consent` in `$APPDATA/settings.json` | `src-tauri/src/updater.rs`, `src/engine/updates.ts`; `KOOKABURRA_UPDATE_ENDPOINT` is honoured only in debug builds; `managed::usable_endpoint` refuses an `UpdateEndpoint` with a query, fragment, login or `{{…}}` template, and an unusable one means no check, never GitHub |
-| Update install | Install and relaunch on the update dialog | The release asset `latest.json` names | The signed updater archive | Later hides the offer until the next check | `updater.rs` (`download_and_install`); the ed25519 signature is checked against `plugins.updater.pubkey` before anything is written |
-| Edit with Claude (`claude://` handoff) | Edit with Claude, with the Claude desktop app installed | The Claude desktop app on this Mac, which talks to Anthropic under the user's account | The project folder path and a starter prompt, typed in, never sent | Not pressing it; `DisableClaude` turns it off for a fleet | `src-tauri/src/claude_app.rs` (`code_session_link`, `open_in_claude`) |
-| Live scene websites | Open live website in the paused editor after Allow for that origin; Present reloads an allowed origin on each hold | The approved origin, with the reach of a browser tab (subresources, subframes and scripts are not filtered) | Whatever the page loads; cookies and storage in a profile separate from Safari | Allow per origin per project (main window only); revoke in the inspector; each project keeps its own store, cleared per project in the inspector or all at once in Settings ▸ Website data | `src-tauri/src/website.rs` (`website_open` refuses without a grant, HTTPS or loopback only, downloads and new windows denied, no Tauri capability for the child) |
+| Update check | Never on a copy installed from the release pkg, unless a profile turns it on (below). Otherwise at launch and hourly while the main window is open, at most every 20 h, only with the consent on and never during an export; or Check for Updates (menu, ⌘K, Settings), which runs without consent and stores nothing | `github.com/michael-palmes/kookaburra-cut/releases/latest/download/latest.json`, or the https URL a profile forces as `UpdateEndpoint` | One GET; no identifiers, no version in the URL; the plugin's user agent only | First-run welcome switch (on by default, Escape saves off); Settings ▸ Updates. `update_check_consent` in `$APPDATA/settings.json` | `src-tauri/src/updater.rs`, `src/engine/updates.ts`; `KOOKABURRA_UPDATE_ENDPOINT` is honoured only in debug builds; `managed::usable_endpoint` refuses an `UpdateEndpoint` with a query, fragment, login or `{{…}}` template, and an unusable one means no check, never GitHub |
+| Update install | Install and relaunch on the update dialog; never on a copy installed from the release pkg, unless a profile turns it on | The release asset `latest.json` names | The signed updater archive | Later hides the offer until the next check | `updater.rs` (`download_and_install`); the ed25519 signature is checked against `plugins.updater.pubkey` before anything is written |
+| Edit with Claude (`claude://` handoff) | Edit with Claude, once Claude is turned on and with the Claude desktop app installed | The Claude desktop app on this Mac, which talks to Anthropic under the user's account | The project folder path and a starter prompt, typed in, never sent | Leaving Claude off, or not pressing it; `DisableClaude` turns it off for a fleet | `src-tauri/src/claude_app.rs` (`code_session_link`, `open_in_claude`) |
 | Fixed pages in the browser | Get Claude, or What leaves your Mac | `claude.ai/download`; `github.com/.../docs/privacy.md` at the installed version's tag (`main` in a dev build) | The constant URL, nothing appended | Not pressing it | `claude_app.rs` (`open_claude_download`, `open_privacy_page`, `privacy_url`) |
+
+A copy installed from the release pkg leaves updates to its installer
+(`package_install.rs`): `check_for_update`, `install_update_and_relaunch` and
+`set_update_consent` refuse or record off, the Check for Updates menu item is
+left out and Settings ▸ Updates shows one line in place of its switch and
+Check now. The sign is the installer's receipt for the bundle id
+(`/var/db/receipts/com.mpalmes.kookaburracut.plist`) naming the running
+version, with the app running from `/Applications`; a receipt an older pkg
+left under a newer copy from the DMG does not count, and a debug build never
+does. A profile turns the in-app updater back on for such a copy by forcing
+`UpdateEndpoint` (its own server) or `DisableUpdateCheck` to false (GitHub).
+The receipt is root-owned and world-readable, and a person who can replace the
+app with a DMG copy gets that copy's updater, which is the DMG's behaviour;
+`DisableUpdateCheck` forced true is the control that holds either way.
 
 Dev-time only, never in the app: `pnpm setup:models` downloads the beat model
 from a pinned commit and checks its SHA-256 (`scripts/setup-models.sh`);
 `pnpm setup:ffmpeg:release` fetches the ffmpeg, x264 and x265 sources against their pins (`scripts/build-ffmpeg-sidecar.sh`).
 
-A configuration profile can force the update check, the Claude launchers, the
-agent kit and live websites off, point the update check at the
+A configuration profile can force the update check, the Claude launchers and
+the agent kit off, point the update check at the
 organisation's own server, and keep a copy of the app log in a folder on the
 Mac that the organisation's own collector reads (`AuditLogPath`; see "Managed
 preferences").
@@ -193,7 +218,7 @@ backup. Everything else is backed up like any document: projects with their own
   `move_workspace`, settings window only, behind a native sheet, refused during
   an export or import; `KOOKABURRA_WORKSPACE_ROOT` overrides it for one boot).
   One folder per project: `project.json`, `scenes/`, `assets/` (with
-  `.originals/` for conformed footage, `website/` captures, `_meta.json`
+  `.originals/` for conformed footage, `_meta.json`
   provenance holding bare file names only), `edits/`, `exports/`, a per-project
   git repository (`create_project` runs `git init` with `/assets/` and
   `/exports/` in `.git/info/exclude` before its one commit, so footage and
@@ -225,7 +250,7 @@ backup. Everything else is backed up like any document: projects with their own
   (`read_project_manifest`), which it loses on the welcome screen
   (`release_project`) or when the window closes; only the main window also reads
   `templates/`, `presets/`, `brands/`, `screenshots/` and the snapshots and scene
-  thumbs under `.kookaburra/`; a child webview (a live website) is served
+  thumbs under `.kookaburra/`; any other webview is served
   nothing. The stage worker's own guard (`realmGuard.ts`) narrows that list for
   code that leaves it alone, but code inside the worker can undo it, so the
   window's list is the bound (see "Not yet"). Paths are canonicalised before the
@@ -258,12 +283,12 @@ backup. Everything else is backed up like any document: projects with their own
   `autorun_result_dir` in `lib.rs`.
 - **`$APPDATA/settings.json`**: preferences, `updateCheckConsent` and the
   update bookkeeping, `trustedProjects` (slug, path, content hash, time),
-  `knownPublishers` (the TOFU store), `websiteOriginGrants` per project path,
+  `knownPublishers` (the TOFU store),
   `agentFiles` (per folder, what a stamp moved and whether a person has seen it),
   the publisher profile and the Claude preferences; per-project entries other
   than the trust grant and `agentFiles` outlive a project delete. Settings ▸ Allowed projects
-  lists `trustedProjects` and forgets one grant, stored and session alike,
-  with its website origin grants and Website data (`forget_allowed_project` in `settings_win.rs`,
+  lists `trustedProjects` and forgets one grant, stored and session alike
+  (`forget_allowed_project` in `settings_win.rs`,
   settings window only, through `forget_project_trust`). Written through a temporary file that is 0600 from its first byte, then
   a rename, under one lock. Control: `workspace.rs` (`AppSettings`,
   `settings_path`), `privacy::atomic_write_private`.
@@ -300,9 +325,9 @@ backup. Everything else is backed up like any document: projects with their own
   only) asks on a native sheet whose Return is Cancel and is refused while an
   export, a pack import, an editor render or another terminal run is going.
   It clears `clips/` and `media/` through their own clears, every other entry
-  of `cache/` but its Spotlight marker, the Website data store's records,
+  of `cache/` but its Spotlight marker,
   `_bridge/responses`, `requests` and `apps`, `_autorun/runs` and
-  `.window-state.json`; drops every session grant (Allow, loopback websites,
+  `.window-state.json`; drops every session grant (Allow,
   bridge projects); resets `settings.json` to the workspace location and
   `updateCheckConsent` (`reset_settings` in `workspace.rs`); and re-seals the
   cache roots (`privacy::seal_cache_roots`). `pack-key/`, `pack-key-dev/`, the
@@ -317,17 +342,17 @@ backup. Everything else is backed up like any document: projects with their own
 - **`$APPDATA/logs/`**: `app.log`, the app's own record, kept by release and
   dev builds alike (`src-tauri/src/audit.rs`, `audit::builder`): what a stamp
   moved or stripped and where the agent's git is off (`[kit]`), footage trims
-  (`[history]`), Allow given, declined, asked again and forgotten (`[trust]`), website
-  origins allowed, declined and removed (`[website]`), pack imports with the
+  (`[history]`), Allow given, declined, asked again and forgotten (`[trust]`),
+  the removal of what live websites left (`[website]`), pack imports with the
   publisher's key id, verdict, item counts and outcome, and each pack export
   with its item count, key id and file (`[pack]`), each Edit with Claude
   handoff with the project's folder (`[claude]`), each finished video or stills
   export with its kind, aspect, format and file (`[export]`), update checks
   and installs (`[update]`), workspace moves and project deletes
   (`[workspace]`), Clear all app data (`[settings]`), managed keys and each key's first refusal a launch (`[managed]`) and what the startup
-  seal corrected (`[privacy]`). Lines hold paths, slugs, origins, key ids,
+  seal corrected (`[privacy]`). Lines hold paths, slugs, key ids,
   versions and counts, never a file's contents or a secret, and a name a pack or
-  page chose is escaped onto one line (`audit::field`). Each line is
+  project chose is escaped onto one line (`audit::field`). Each line is
   `[<ISO 8601 UTC time>][<module>][<LEVEL>] <message>`, and the formatter
   escapes every control character in the whole message, so no file or folder
   name can start a line of its own (`audit::line`). Only the app's own lines
@@ -347,20 +372,15 @@ backup. Everything else is backed up like any document: projects with their own
   with one link, held 0600 and rotated like `app.log`, and anything wrong stops
   the copy, never the app or the local log. The headless CLI kb runs never
   starts it and writes to stderr (`src-tauri/src/main.rs`).
-- **The Website data stores**: one WebKit data store per project, its UUID
-  derived from the project's canonical path (the key its origin grants use), so
-  a sign-in made for one project never appears in another, and the editor and
-  Present open the same store; separate from Safari and from the app's own
-  store. Settings ▸ Website data lists every store's sites and clears one site or
-  all of them; the website drill-in's Sign this project out clears one project's
-  store, and so do deleting the project, Forget in Settings ▸ Allowed projects
-  and a pack landing in its folder. A folder renamed or moved in Finder opens a
-  new, empty store and leaves the old one, still listed and cleared in
-  Settings, for whatever folder next takes that path; a folder replaced in
-  Finder at the same path keeps the store, as it keeps its origin grants. The
-  store every project shared before 0.23 is deleted at launch. Control:
-  `website.rs` (`store_identifier`, `website_list_data`, `website_clear_data`,
-  `website_clear_project_data`, `clear_project_stores`, `retire_shared_store`).
+- **What live websites left**: 0.24.0 and earlier kept one WebKit data store
+  per project for the websites a scene could open, and their origin grants in
+  `settings.json`. The app opens no website now, and at each launch it lists
+  every data store it made (`WKWebsiteDataStore.fetchAllDataStoreIdentifiers`;
+  its own windows use WebKit's default store, which is not on that list),
+  removes each one and drops `websiteOriginGrants` from `settings.json`,
+  logged `[website]`. A settings file the app can't read is left alone.
+  Control: `retired_websites.rs` (`clear_at_launch`), `workspace.rs`
+  (`drop_website_grants`).
 - **Exports**: `~/Downloads/<project>-<aspect>.<ext>` by default, never
   overwriting, or the project's `exports/` folder (Settings ▸ Video, "Save
   exports to Downloads"; terminal and bridge runs always use the project
@@ -390,7 +410,7 @@ Deletions go to the Trash through `workspace::trash_path` (NSFileManager):
 projects, scene files, media and their originals, themes, gradients, export
 presets, screenshots, user templates and scene presets. Import backups after
 24 h (both import screens say so) and cache clears delete in place. A project
-delete removes its trust grant, its website origin grants, its Website data store's records and its clip and media cache entries (the media is hashed before
+delete removes its trust grant and its clip and media cache entries (the media is hashed before
 the folder moves, from the library's stamps where it has them), and nothing
 from the snapshots or thumbs.
 
@@ -447,16 +467,53 @@ Claude Code runs outside the app, in the Claude desktop app or the person's own
 terminal, under their own account, install and settings. The app holds no API
 key, sends nothing to Anthropic itself and starts no Claude Code, and no shell
 but the updater's administrator install, so no credential passes through it and
-no window can type into a session. A profile forcing `DisableAgentKit` turns off
-everything below: no kit is stamped or healed (`stamp_claude_provisioning` in
-`workspace.rs`), the bridge never serves and the app never creates `_bridge`
-(`bridge_role`, `bridge_root`), and the handoff refuses (`open_in_claude`). A kit
-stamped before the profile stays in its folder, and its kb still runs.
+no window can type into a session.
+
+Everything below is off until a person turns Claude on. One gate
+(`agent_gate.rs`, `deny`) stands in front of all of it: a profile forcing
+`DisableAgentKit` shuts it first, and after that it opens only on a stored
+answer of yes (`claudeConsent` in `settings.json`), given on the first-launch
+ask or in Settings ▸ Claude and changed there at any time. No answer counts as
+off, and so does a dismissed ask. While the gate is shut no kit is stamped or
+healed (`stamp_claude_provisioning` and `heal_project_kit` in `workspace.rs`),
+a pack import keeps no default `CLAUDE.md` (`pack/commands.rs`, `apply_import`),
+the bridge never serves and the app never creates `_bridge` (`bridge_root`,
+`serving`), no heartbeat is written, the handoff and the Claude download page
+refuse (`open_in_claude`, `open_claude_download`), and every Claude entry point
+is hidden. The gate is read live: turning Claude on in a running app draws the
+bridge key and starts the heartbeat without a relaunch, and turning it off
+removes this instance's heartbeat and key within one refresh (`bridge.rs`,
+`apply_gate`). `set_claude_consent` records off whatever it is asked while a
+profile forces `DisableClaude` or `DisableAgentKit`, and each change is one
+`[claude]` line in the log. A profile forcing `RequireManagedClaude` adds one
+condition between the two: the gate also stays shut unless Claude Code's own
+managed policy pins sign-in to an organisation on this Mac, read from
+`forceLoginOrgUUID` (a non-empty string or list) in
+`/Library/Application Support/ClaudeCode/managed-settings.json`, any `*.json`
+in `managed-settings.d/` beside it, or the key forced in the
+`com.anthropic.claudecode` preference domain (`claude_policy.rs`,
+`org_pinned_in`). A file counts only when root owns it and neither group nor
+others can write it (`root_owned`), since the admin group can write
+`/Library/Application Support`; the key checks that sign-in is pinned, not to
+which organisation. A file that is unreadable, over 1 MiB or not JSON counts as
+missing; the answer is cached for a minute and read afresh before each handoff
+and each use of the switch. It proves the policy is installed, not that a
+session obeys it, and it cannot see settings an organisation delivers only
+from the claude.ai admin console. Settings ▸ Clear all app data forgets the answer,
+so Claude is off until it is asked for again. A kit stamped before Claude was
+turned off, or before a profile, stays in its folder, and its kb still runs:
+the gate governs what the app lays out, not a Claude Code session a person
+starts in a terminal. A debug build takes `KOOKABURRA_CLAUDE=1` as the answer,
+for throwaway-home test runs; a release build never reads it.
 
 - **The `claude://` handoff** (`claude_app.rs`): `open claude://code/new?folder=<project>&q=<prompt>`,
   the prompt capped at the Claude app's limit, opened only when LaunchServices
   reports a handler; the prompt is typed into the app, not sent, until the
-  person presses Enter there. The kit is stamped first, and if the stamp moved
+  person presses Enter there. The `folder` and `q` parameters of that link are
+  not in Claude's public documentation (it documents `ssh_folder` only), so
+  the handoff rests on behaviour Anthropic could change without notice; if it
+  did, the link would open the Claude app without the folder or the prompt,
+  and nothing would be sent. The kit is stamped first, and if the stamp moved
   files aside a native sheet lists them before the handoff
   (`review_agent_files_for`); then the project's git history is checked too
   (`review_committed_agent_files`, below). The launcher's copy says "Claude Code sends this
@@ -632,7 +689,7 @@ stay unsigned: they only move a progress bar.
   build that grant lasts for the launch and never reaches `trustedProjects`. All three commands
   are in the `trust` set, main window only. Deleting a project removes its
   grant. Settings ▸ Allowed projects forgets one grant, stored and session
-  alike, with its website origin grants and Website data, and Clear all app data forgets every one (`forget_allowed_project`,
+  alike, and Clear all app data forgets every one (`forget_allowed_project`,
   `clear_app_data` in `settings_win.rs`, settings window only); either only
   narrows what runs, and the next open asks. Declining stamps nothing. `copy_scene_to_project` (main and render
   windows) refuses a workspace project, user template or user preset as its
@@ -640,24 +697,15 @@ stay unsigned: they only move a progress bar.
   allowed it (`require_source_allowed`); bundled templates and presets ship
   with the app and pass. The main window asks through the native sheet before
   calling, so a person meets the sheet, never the refusal.
-- **Website origin grants** (`website_grant_origin`, main window only): an
-  `NSAlert` sheet names the origin and the project; the default button, Return,
-  is Don't allow. Only a request `website_open` or a blocked navigation raised
-  this session can reach it, and any answer spends that request. A grant is once
-  per origin per project folder path; an origin already granted asks nothing. A
-  project's origin grants and its own Website data store go wherever its Allow
-  goes: deleting it, Forget in Settings ▸ Allowed projects, or a pack landing in
-  its folder, each matched on disk by folder; a folder renamed or replaced in
-  Finder leaves both at that path. The Allow
-  gate, moving the workspace, bridge confirmations and these grants are all
-  answered natively, so a compromised webview can show the question but never
-  press the button.
+- **Native answers.** The Allow gate, moving the workspace and bridge
+  confirmations are all answered on native sheets, so a compromised webview can
+  show the question but never press the button.
 - **Per-window ACL** (`src-tauri/permissions/*.json`, `src-tauri/capabilities/*.json`):
   every `#[tauri::command]` belongs to exactly one permission set, and each
   window gets only its sets. Main: project read, render and write, trust, media
   library, library, export, capture host, studio, Claude launcher, updater,
-  website editor, managed preferences. Present: project read, render, its own window and
-  website show. Render: project read, render, bridge serving. Settings: its
+  managed preferences. Present: project read, render and its own window.
+  Render: project read, render, bridge serving. Settings: its
   caches, the workspace location, Claude launcher, updater, managed preferences, publisher, forgetting an Allow,
   clearing all app data and showing the log folder. Packs: pack commands,
   managed preferences and the dialog. Editor and theme editor: theirs. Dev-only commands are
@@ -665,7 +713,7 @@ stay unsigned: they only move a progress bar.
   `build.rs` includes in debug builds alone. `src-tauri/src/acl.rs` lists each
   window's commands and fails on a new command until it is placed, on any
   window but main reaching the trust commands, `start_export`,
-  `delete_project`, `website_grant_origin` or `init_default_workspace`, and on
+  `delete_project` or `init_default_workspace`, and on
   any window but settings reaching `init_workspace`, `move_workspace`,
   `forget_allowed_project`, `clear_app_data` or `reveal_app_logs`.
   Tauri's own core permissions are named one by one, never `core:default`:
@@ -673,10 +721,9 @@ stay unsigned: they only move a progress bar.
   (emitting events, the app version, the resource folder, its own drag,
   title, close and fullscreen). No window holds the menu, tray, image or
   webview commands, and the same test fails if one does.
-  A live website's child webview carries Tauri's IPC runtime like any webview:
-  Tauri refuses its commands because no capability names its remote origin, and
-  `website::guard_invoke` refuses every app command from a label outside the
-  seven app windows.
+  The app builds no webview but its seven windows (Tauri's multi-webview
+  feature is off), and as a second layer `asset_reach::guard_invoke` refuses
+  every app command from a label outside them.
 - **Worker isolation** (`src/stage/`): every scene tree runs in a Web Worker on
   an OffscreenCanvas with no `window`, `document` or `__TAURI_INTERNALS__`, so
   scene code can't reach IPC even from the main window, and the network is shut
@@ -695,21 +742,11 @@ stay unsigned: they only move a progress bar.
   elements before it is rasterised. A project's app icon takes the same checks on a
   capped copy of a workspace file and always lands as a plain sRGB PNG the stage
   decodes (`import_app_icon` in `src-tauri/src/media.rs`, `check_icon`).
-- **Scene terminals and websites**: a scene's terminal block is text and a baked
+- **Scene terminals**: a scene's terminal block is text and a baked
   PNG; no process ever runs for it, and its transcript parser drops every escape
-  sequence but colours (`sceneTerminalTranscript.ts`). A scene's website block loads
-  nothing until the person grants its origin in the editor; the child
-  WKWebView has no Tauri capability, no file, media or sensor access, no
-  downloads and no new windows; an approved origin reloads in Present on each
-  hold without a further click (`src/present/PresentWebsiteOverlay.tsx`). Its
-  one way to the app is the `kookaburraWebsiteFocus` script message handler
-  (`website.rs`, `WebsiteMessageHandler`): a page, or the init script on
-  pointer down, focus and Shift-Escape, may post the string `acquire` or
-  `release`, and anything else is ignored. Either becomes a
-  `kookaburra://website-focus` event carrying the app's own view id and a
-  focused flag, broadcast to the app's windows, and `release` returns keyboard
-  focus to the window that owns the view; nothing from the page is read or
-  passed on.
+  sequence but colours (`sceneTerminalTranscript.ts`). A `website` block in a
+  sidecar from before live websites were removed is ignored: nothing parses its
+  URL and nothing loads (`sceneDocSchema.ts`).
 
 ## Packs
 
@@ -756,13 +793,10 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
   Continue is the primary button only for a publisher this Mac already knows
   under this key; a first-time, renamed or re-keyed publisher gets Cancel as
   the primary button.
-- **Review before Continue.** The trust screen lists every requested Website
-  origin a pack carries under a lower-case `scenes/` folder (a `Scenes/` one is not shown but
-  still loads on APFS), read from its scene sidecars and hash-checked (`read_pack_scene_docs`,
-  `src/packs/packReview.ts`), so nothing is reviewed after the files land. A
-  project, template or preset a pack adds or replaces loses every F-001 grant,
-  session allow and website origin grant held for its folder, whatever the slug's
-  case, and its Website data store's records, before the first file moves and again once all have landed
+- **A landing pack asks again.** A
+  project, template or preset a pack adds or replaces loses every F-001 grant
+  and session allow held for its folder, whatever the slug's
+  case, before the first file moves and again once all have landed
   (`workspace::forget_trust_at`), so the next open asks again; the allow goes
   first, so a failed settings write still asks, and a failure before the move
   refuses the import.
@@ -796,29 +830,28 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
   directory before consent and against the stream while staging; an
   `object.json` `glb` or `thumbnail` path must sit beside the manifest
   (`objects::validate_object_rel`, `isObjectRel`).
-- **Review before apply.** The trust screen shows the scene code and website
-  origins (`localhost`, `127.0.0.1` and `[::1]` flagged as session-only; other local spellings
-  such as `app.localhost` or `0.0.0.0` are not, and get lasting grants), read from the pack's signed
-  sidecars, never the manifest; the summary shows the author's notes.
+- **Review before apply.** The trust screen shows the scene code, read from the
+  pack's signed files, never the manifest; the summary shows the author's notes.
 
 ## Saved secrets
 
 The app keeps one secret: the pack signing key, in the login Keychain and
 never synchronised, with the 0600 file fallback described above. Everything else is the
-user's: Claude Code's login lives in `~/.claude`, which the app never touches;
-website logins live in each project's Website data store. No password, token or key is
+user's: Claude Code's login lives in `~/.claude`, which the app never touches.
+No password, token or key is
 printed by the app or written to its logs.
 
 ## Managed preferences
 
-Eleven keys in the domain `com.mpalmes.kookaburracut`, honoured only when a
+Ten keys in the domain `com.mpalmes.kookaburracut`, honoured only when a
 configuration profile forces them (`src-tauri/src/managed.rs`): `DisableClaude`,
-`DisableLiveWebsites`, `AllowedWebsiteOrigins`, `AllowedPublisherKeyIds`,
+`AllowedPublisherKeyIds`,
 `DisableUpdateCheck`, `WorkspaceRoot`, `DisableAgentKit`, `DisablePackExport`,
-`ExportsInProject`, `UpdateEndpoint` and `AuditLogPath`.
-`AllowedWebsiteOrigins` is checked in Rust each time a website opens, navigates,
-asks for a grant or resumes, on the exact origin, so a grant made before the
-profile stops working. A malformed key fails closed: a boolean of
+`ExportsInProject`, `UpdateEndpoint`, `AuditLogPath` and
+`RequireManagedClaude`.
+`DisableLiveWebsites` and `AllowedWebsiteOrigins` are retired with live
+websites: a profile that still forces either locks nothing, its value is never
+read, and one `[managed]` line at boot says so (`RETIRED_KEYS`). A malformed key fails closed: a boolean of
 the wrong type reads as `true`, an unusable `UpdateEndpoint` means no update
 check at all, and an unusable `AuditLogPath` means no copy of the log while the
 local one carries on (`audit::mirror_at_launch`).
@@ -971,7 +1004,7 @@ builds it in separate jobs, each on a fresh runner.
   (`@FromeCloned`) on the surfaces this file is about: the pack reader, the
   asset server, the updater, managed preferences, the trust gate and its
   terminal check, the agent kit and kb's scripts, git history, the Claude
-  handoff, the bridge, live websites, the log and its copy, the privacy
+  handoff, the bridge, the log and its copy, the privacy
   page, the per-window ACL (its test, permission sets and capabilities), the
   stage worker and its Vite build, the dependency policy, the workflows and
   the release scripts. `audit.yml` runs, on every pull request
@@ -1089,7 +1122,7 @@ Deliberately deferred, recorded so nobody mistakes them for done:
   person approves, reading the key and forging both directions; the bash-pre
   check on `_bridge/keys` is best effort. The heartbeat stays unsigned, so a
   forged heartbeat with a planted key is the same case.
-- Sealing the trust state: `trustedProjects`, `websiteOriginGrants` and
+- Sealing the trust state: `trustedProjects` and
   `knownPublishers` are plain JSON under the 0600 file mode. An HMAC under a
   Keychain secret can't serve headless exports, and after the stage worker a forged
   grant buys only a sandboxed render; native consent closes the webview path.

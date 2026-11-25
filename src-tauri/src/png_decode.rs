@@ -5,6 +5,7 @@ const MAX_INPUT_BYTES: usize = 256 * 1024 * 1024;
 pub(crate) const MAX_OUTPUT_BYTES: usize = 1024 * 1024 * 1024;
 
 /// Straight RGBA8 rows, top row first, plus the image size.
+#[cfg(any(test, feature = "fuzzing"))]
 pub(crate) fn decode_png_rgba(bytes: &[u8]) -> Result<(Vec<u8>, u32, u32), String> {
     decode_png_rows(bytes, 0, false)
 }

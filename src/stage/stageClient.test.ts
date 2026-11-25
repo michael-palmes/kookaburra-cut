@@ -204,7 +204,7 @@ describe("StageClient store mirror", () => {
     vi.stubGlobal("Worker", FakeWorker);
     useEditorStore.setState({ projectId: "ws:allowed" });
     useUiStore.setState({ audioMuted: false });
-    usePresentStore.setState({ websiteFocused: false, deck: initialDeckState() });
+    usePresentStore.setState({ videoPaused: false, deck: initialDeckState() });
     useObjectEditStore.setState({
       selected: { sceneIndex: 1, objectId: "cube" },
       pendingCommit: null,
@@ -220,14 +220,14 @@ describe("StageClient store mirror", () => {
   };
   const placement = { position: [0, 0, 0] };
 
-  it("never lets the worker pick a project, drive the chrome or hold Present's focus", () => {
+  it("never lets the worker pick a project, drive the chrome or pause Present", () => {
     const w = worker();
     w.emit({ type: "store", name: "editor", patch: { projectId: "ws:other" } });
     w.emit({ type: "store", name: "ui", patch: { audioMuted: true } });
-    w.emit({ type: "store", name: "presentDeck", patch: { websiteFocused: true } });
+    w.emit({ type: "store", name: "presentDeck", patch: { videoPaused: true } });
     expect(useEditorStore.getState().projectId).toBe("ws:allowed");
     expect(useUiStore.getState().audioMuted).toBe(false);
-    expect(usePresentStore.getState().websiteFocused).toBe(false);
+    expect(usePresentStore.getState().videoPaused).toBe(false);
   });
 
   it("takes a gizmo's commit only for the item the inspector has selected", () => {

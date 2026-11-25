@@ -29,7 +29,6 @@ GPU/driver, not across fleets.)
 | --- | --- |
 | Reading the wall clock (`Date.now`, `performance.now`, `new Date`, `requestAnimationFrame`, `setTimeout`) | Drive everything from `useTimeline()` / `seek(t)`. anime.js: `engine.useDefaultMainLoop = false`, advance manually. |
 | Animating or capturing the DOM | Render only Three.js objects in the one canvas. WebKit taints/races on DOM capture. |
-| Loading a live Website during playback or export | Website content is author-time native UI only; playback and export render the saved project PNG through deterministic WebGL chrome (`docs/scene-website.md`). |
 | **Fonts loaded lazily from a CDN** (troika default) | Bundle a local `.woff`; `preloadFont({ font, characters }, cb)` and await it before frame 0; set troika `unicodeFontsURL` to a self-hosted/offline path. |
 | troika SDF generated async in a worker | Pre-generate glyphs (preload) and await all text sync before the first captured frame. |
 | Video clips via `HTMLVideoElement` seeking | The ffmpeg sidecar pre-extracts each clip to a CFR PNG sequence (cached under `$APPDATA`, keyed by source hash); `VideoClip` samples `frameIndex = floor((localMs − startMs)/1000 × fps)` off the clock. `engine/clips.ts` + `toolkit/media/VideoClip.tsx`. |
@@ -1190,7 +1189,10 @@ camera exactly:
   asks for the mirror twice, since three draws the opaque floor in its glass
   (transmission) pass and again in its main pass; the second ask takes the first's
   mirror (`toolkit/stage/renderOnce.ts`: no render has run since), the same bytes for
-  one mirror less a frame. A floor
+  one mirror less a frame. Mirrors nest one deep (`toolkit/stage/mirrorNest.ts`): a
+  floor drawn in another floor's mirror keeps its last mirror, since several floors in one
+  render cost N! renders and hung the stage worker. The compositor shows one scene a
+  render and a scene stages one floor, so no gated frame nests. A floor
   with a `shadow` block, or `reflection.scatter` or `reach`, compiles a second program
   (cache key `-soft`), so a floor without them keeps its bytes: the first
   shadow-casting directional light's VSM map is read through a 16-tap blocker search

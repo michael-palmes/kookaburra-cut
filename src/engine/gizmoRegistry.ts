@@ -15,8 +15,7 @@ export type GizmoDomain =
   | "text"
   | "decorations"
   | "terminal"
-  | "layeredScreenshot"
-  | "website";
+  | "layeredScreenshot";
 
 /** The canvas box in client pixels, as a plain object so the routing maths stays node-testable. */
 export interface StageRect {

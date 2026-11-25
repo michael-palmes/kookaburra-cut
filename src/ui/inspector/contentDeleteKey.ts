@@ -13,7 +13,6 @@ const DELETABLE_DRILL_DOMAINS = new Set<GizmoDomain>([
   "chart",
   "text",
   "terminal",
-  "website",
   "layeredScreenshot",
 ]);
 

@@ -52,7 +52,6 @@ const CONTENT_TYPES = new Set<SceneOverviewContentType>([
   "screenshotStack",
   "comparison",
   "terminal",
-  "website",
 ]);
 
 export const OBJECT_DUPLICATE_NUDGE_X = 0.25;
@@ -90,8 +89,7 @@ export function contentMenuActions(row: SceneOverviewRowModel): ContentMenuActio
     kind === "chart" ||
     kind === "screenshotStack" ||
     kind === "comparison" ||
-    kind === "terminal" ||
-    kind === "website"
+    kind === "terminal"
   ) {
     actions.push("delete");
   }
@@ -353,17 +351,6 @@ export function planContentDelete(
       nextSelection: null,
       apply: (next) => {
         delete next.terminal;
-      },
-    };
-  }
-
-  if (target.kind === "website" && context.doc.website) {
-    return {
-      history: "delete Website",
-      nextRowId: null,
-      nextSelection: null,
-      apply: (next) => {
-        delete next.website;
       },
     };
   }

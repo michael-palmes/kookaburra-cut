@@ -7,11 +7,9 @@ import {
   discardStagedPack,
   inspectPack,
   type PackSelection,
-  readPackSceneDocs,
   stageAndPlan,
 } from "../../engine/packs";
 import { PackGlyph } from "../PackGlyph";
-import { type PackReview, reviewPackSceneDocs } from "../packReview";
 import type { ImportOutcome, ImportPlan, PackInspection, PackProgress, Resolution } from "../types";
 import { CodeView } from "./CodeView";
 import { ConflictsView } from "./ConflictsView";
@@ -32,7 +30,7 @@ type Step =
   | { name: "summary"; outcome: ImportOutcome }
   | { name: "error"; message: string };
 
-/** Trust, then contents, then conflicts. Nothing is written to disk until the user has seen what is inside: staging happens on Continue from the contents screen, not earlier. The trust screen's review (scene code, terminal commands, website origins) is read from the pack's signed files during inspection, so it is all in front of the person before Continue and nothing is reviewed after the files land. */
+/** Trust, then contents, then conflicts. Nothing is written to disk until the user has seen what is inside: staging happens on Continue from the contents screen, not earlier. The trust screen's review (the scene code) is read from the pack's signed files during inspection, so it is all in front of the person before Continue and nothing is reviewed after the files land. */
 export function ImportFlow({
   initialPath,
   queued,
@@ -44,7 +42,6 @@ export function ImportFlow({
 }) {
   const [path, setPath] = useState<string | null>(initialPath);
   const [inspection, setInspection] = useState<PackInspection | null>(null);
-  const [review, setReview] = useState<PackReview>({ websites: [] });
   const [step, setStep] = useState<Step>(initialPath ? { name: "inspecting" } : { name: "choose" });
 
   useEffect(() => {
@@ -56,7 +53,7 @@ export function ImportFlow({
     if (step.name !== "inspecting" || !path) return;
     let cancelled = false;
     inspectPack(path)
-      .then(async (result) => {
+      .then((result) => {
         if (cancelled) return;
         setInspection(result);
         if (result.signature !== "valid") {
@@ -76,9 +73,6 @@ export function ImportFlow({
           });
           return;
         }
-        // A sidecar that does not match its signed hash refuses the pack here, before any screen offers Continue.
-        setReview(reviewPackSceneDocs(await readPackSceneDocs(path)));
-        if (cancelled) return;
         setStep({ name: "trust" });
       })
       .catch((e) => {
@@ -171,7 +165,6 @@ export function ImportFlow({
       return inspection ? (
         <TrustView
           inspection={inspection}
-          review={review}
           onViewCode={() => setStep({ name: "code" })}
           onCancel={onClose}
           onContinue={() => setStep({ name: "contents" })}

@@ -720,6 +720,7 @@ pub(crate) fn bridge_role(inputs: &RoleInputs) -> BridgeRole {
     }
 }
 
+/// This instance right now: who it is, whether it serves, and whether it signs.
 struct Instance {
     identity: BridgeIdentity,
     role: BridgeRole,
@@ -727,8 +728,19 @@ struct Instance {
     auth: bool,
 }
 
-static INSTANCE: OnceLock<Instance> = OnceLock::new();
+/// What `init` decides once: who this instance is, and whether its build and environment let it serve. The agent gate is read live on top (`current_role`), so Claude turned on later serves without a relaunch.
+struct Base {
+    identity: BridgeIdentity,
+    role: BridgeRole,
+}
+
+static BASE: OnceLock<Base> = OnceLock::new();
 static AUTH: OnceLock<BridgeAuth> = OnceLock::new();
+/// The key file is on disk, so this instance signs and may serve.
+static SIGNING: AtomicBool = AtomicBool::new(false);
+/// The gate as last applied to disk (`None` before `init`). Held across each heartbeat write, so a heartbeat can't land after the gate shut and its files went.
+static GATE_APPLIED: Mutex<Option<bool>> = Mutex::new(None);
+static SIGN_FAILURE: Mutex<Option<String>> = Mutex::new(None);
 
 fn dev_checkout() -> Option<Checkout> {
     if !cfg!(debug_assertions) {
@@ -742,9 +754,9 @@ fn dev_checkout() -> Option<Checkout> {
     })
 }
 
-/// Decide this instance's role and identity once, before the heartbeat and native loop start.
+/// Decide this instance's identity and base role once, then bring the key in line with the agent gate, before the heartbeat and native loop start.
 pub fn init(app: &AppHandle) {
-    INSTANCE.get_or_init(|| {
+    BASE.get_or_init(|| {
         let checkout = dev_checkout();
         let bundle_id = app.config().identifier.clone();
         let bridge_env = std::env::var("KOOKABURRA_BRIDGE").ok();
@@ -760,27 +772,7 @@ pub fn init(app: &AppHandle) {
             bundle_id: &bundle_id,
             worktree_build: checkout.as_ref().is_some_and(|c| c.worktree),
         });
-        let role = if role.serving {
-            match start_signing(app) {
-                Ok(()) => role,
-                Err(e) => BridgeRole {
-                    serving: false,
-                    reason: Some(format!("couldn't write its bridge key ({e})")),
-                },
-            }
-        } else {
-            role
-        };
-        log::info!(
-            "[bridge] {} ({})",
-            if role.serving {
-                "serving"
-            } else {
-                "not serving"
-            },
-            role.reason.as_deref().unwrap_or("default")
-        );
-        Instance {
+        Base {
             identity: BridgeIdentity {
                 pid: std::process::id(),
                 bundle_id,
@@ -790,31 +782,135 @@ pub fn init(app: &AppHandle) {
                 started_at_ms: now_ms(),
                 checkout,
             },
-            auth: role.serving,
             role,
         }
     });
+    apply_gate(app);
 }
 
-/// A serving instance's key: drawn once and written to `keys/<pid>.key`, or the instance does not serve.
+/// Bring this instance's key and heartbeat files in line with the agent gate: at boot, when a person turns Claude on or off, and on every heartbeat refresh, so a gate that shut some other way clears them within one refresh. Opening it draws the key (once) and writes it; shutting it removes the key and both heartbeat files, and `_bridge` is never created while it is shut.
+pub fn apply_gate(app: &AppHandle) {
+    let Some(base) = BASE.get() else {
+        return;
+    };
+    let open = crate::agent_gate::deny().is_ok();
+    let mut applied = GATE_APPLIED.lock().unwrap_or_else(|p| p.into_inner());
+    if *applied == Some(open) {
+        return;
+    }
+    if open && base.role.serving {
+        let written = start_signing(app);
+        SIGNING.store(written.is_ok(), Ordering::SeqCst);
+        if let Err(e) = &written {
+            log::warn!("[bridge] couldn't write its bridge key: {e}");
+        }
+        *SIGN_FAILURE.lock().unwrap_or_else(|p| p.into_inner()) = written.err();
+    }
+    if !open {
+        SIGNING.store(false, Ordering::SeqCst);
+        if applied.is_some() && !crate::is_autorun() {
+            if let Some(bridge) = bridge_root_path(app).filter(|dir| dir.is_dir()) {
+                remove_heartbeat_files(&bridge, std::process::id());
+                bridge_auth::remove_key(&bridge, std::process::id());
+            }
+        }
+    }
+    *applied = Some(open);
+    drop(applied);
+    let role = current_role(
+        &base.role,
+        gate_reason(),
+        SIGNING.load(Ordering::SeqCst),
+        sign_failure(),
+    );
+    log::info!(
+        "[bridge] {} ({})",
+        if role.serving {
+            "serving"
+        } else {
+            "not serving"
+        },
+        role.reason.as_deref().unwrap_or("default")
+    );
+}
+
+/// A serving instance's key: drawn once a launch and written to `keys/<pid>.key`, or the instance does not serve.
 fn start_signing(app: &AppHandle) -> Result<(), String> {
-    let auth = BridgeAuth::generate()?;
-    bridge_auth::write_key(&bridge_root(app)?, std::process::id(), &auth)?;
-    AUTH.set(auth)
-        .map_err(|_| "a key was already drawn".to_owned())
+    let auth = match AUTH.get() {
+        Some(auth) => auth,
+        None => {
+            let drawn = BridgeAuth::generate()?;
+            AUTH.get_or_init(|| drawn)
+        }
+    };
+    bridge_auth::write_key(&bridge_root(app)?, std::process::id(), auth)
 }
 
 pub(crate) fn auth() -> Option<&'static BridgeAuth> {
     AUTH.get()
 }
 
-fn instance() -> Option<&'static Instance> {
-    INSTANCE.get()
+fn sign_failure() -> Option<String> {
+    SIGN_FAILURE
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .clone()
 }
 
-/// Whether this instance claims bridge requests (false until `init`).
+/// Why the agent gate keeps this instance from serving; a profile's `DisableAgentKit` is already the base role's reason.
+fn gate_reason() -> Option<String> {
+    if crate::agent_gate::managed_off() {
+        return None;
+    }
+    crate::agent_gate::deny().err()
+}
+
+/// The role this instance has now: its base role, unless the agent gate is shut or its key is not on disk.
+pub(crate) fn current_role(
+    base: &BridgeRole,
+    gate: Option<String>,
+    signing: bool,
+    sign_failure: Option<String>,
+) -> BridgeRole {
+    let off = |reason: String| BridgeRole {
+        serving: false,
+        reason: Some(reason),
+    };
+    if !base.serving {
+        return base.clone();
+    }
+    if let Some(reason) = gate {
+        return off(reason);
+    }
+    if !signing {
+        return off(match sign_failure {
+            Some(e) => format!("couldn't write its bridge key ({e})"),
+            None => "its bridge key is not written yet".to_owned(),
+        });
+    }
+    base.clone()
+}
+
+fn instance() -> Option<Instance> {
+    let base = BASE.get()?;
+    let role = current_role(
+        &base.role,
+        gate_reason(),
+        SIGNING.load(Ordering::SeqCst),
+        sign_failure(),
+    );
+    Some(Instance {
+        identity: base.identity.clone(),
+        auth: role.serving,
+        role,
+    })
+}
+
+/// Whether this instance claims bridge requests (false until `init`, and while the agent gate is shut).
 pub(crate) fn serving() -> bool {
-    instance().is_some_and(|i| i.role.serving)
+    BASE.get().is_some_and(|base| base.role.serving)
+        && SIGNING.load(Ordering::SeqCst)
+        && crate::agent_gate::deny().is_ok()
 }
 
 /// `servedBy` on every answer: kb discards one whose root is not its project's.
@@ -838,9 +934,9 @@ pub(crate) fn stamp_served_by(body: &mut Value, served_by: Option<&Value>) {
 }
 
 pub(crate) fn own_served_by(app: &AppHandle) -> Option<Value> {
-    let instance = instance()?;
+    let base = BASE.get()?;
     let (root, _) = effective_root(app, &app.state::<workspace::SettingsState>());
-    Some(served_by_value(&instance.identity, root.as_deref()))
+    Some(served_by_value(&base.identity, root.as_deref()))
 }
 
 /// The same folder by device and inode, so case, symlinks and firmlinks (`/System/Volumes/Data`) never split one root.
@@ -1178,7 +1274,7 @@ static HEARTBEAT_STOPPED: AtomicBool = AtomicBool::new(false);
 
 /// Keep the heartbeat fresh from a native thread: the editor's one-second tick runs in the webview, whose timers macOS throttles while the app is hidden (App Nap, an occluded window), and a stale heartbeat reads as "not running" to kb.
 pub fn spawn_heartbeat(app: AppHandle) {
-    if crate::is_autorun() || crate::managed::deny_agent_kit().is_err() {
+    if crate::is_autorun() || crate::agent_gate::managed_off() {
         return;
     }
     std::thread::spawn(move || loop {
@@ -1186,6 +1282,7 @@ pub fn spawn_heartbeat(app: AppHandle) {
         if HEARTBEAT_STOPPED.load(Ordering::Relaxed) {
             return;
         }
+        apply_gate(&app);
         let context = app
             .state::<EditorContextState>()
             .0
@@ -1207,7 +1304,7 @@ fn write_heartbeat(
 ) {
     if crate::is_autorun()
         || HEARTBEAT_STOPPED.load(Ordering::Relaxed)
-        || crate::managed::deny_agent_kit().is_err()
+        || crate::agent_gate::deny().is_err()
     {
         return;
     }
@@ -1237,7 +1334,7 @@ fn write_heartbeat(
         None
     };
     let mut body = heartbeat_body(
-        instance,
+        &instance,
         RootInfo { root, source },
         &places,
         context,
@@ -1259,6 +1356,10 @@ fn write_heartbeat(
         started_at_ms: instance.identity.started_at_ms,
         pid: instance.identity.pid,
     });
+    let applied = GATE_APPLIED.lock().unwrap_or_else(|p| p.into_inner());
+    if *applied != Some(true) {
+        return;
+    }
     if let Err(e) = publish_heartbeat(&bridge, &mut body, rank, now, pid_alive) {
         log::warn!("[bridge] heartbeat write failed: {e}");
     }
@@ -1270,7 +1371,7 @@ pub fn remove_heartbeat(app: &AppHandle) {
         return;
     }
     HEARTBEAT_STOPPED.store(true, Ordering::Relaxed);
-    if let Ok(bridge) = bridge_root(app) {
+    if let Some(bridge) = bridge_root_path(app).filter(|dir| dir.is_dir()) {
         remove_heartbeat_files(&bridge, std::process::id());
         bridge_auth::remove_key(&bridge, std::process::id());
     }
@@ -1315,7 +1416,7 @@ pub fn get_editor_context(state: State<EditorContextState>) -> Option<EditorCont
 /// Unclaimed requests for the render window: the editor's cheap pending probe (no claims). Native kinds and other instances' requests never count, so they never spawn (or keep alive) this instance's window.
 #[tauri::command]
 pub fn bridge_pending_count(app: AppHandle) -> Result<usize, String> {
-    crate::managed::deny_agent_kit()?;
+    crate::agent_gate::deny()?;
     Ok(served_pending_count(&app))
 }
 
@@ -1503,18 +1604,21 @@ fn bridge_dir_env() -> Option<&'static PathBuf> {
     .as_ref()
 }
 
-/// Always beside `_autorun` under the fixed home location, unaffected by a relocated workspace root; `KOOKABURRA_BRIDGE_DIR` redirects it in debug builds, for tests. Refused under `DisableAgentKit`, so no writer can create the folder.
+/// Always beside `_autorun` under the fixed home location, unaffected by a relocated workspace root; `KOOKABURRA_BRIDGE_DIR` redirects it in debug builds, for tests. Refused while the agent gate is shut (`DisableAgentKit`, or Claude not turned on), so no writer can create the folder.
 pub(crate) fn bridge_root(app: &AppHandle) -> Result<PathBuf, String> {
-    crate::managed::deny_agent_kit()?;
+    crate::agent_gate::deny()?;
+    bridge_root_path(app).ok_or_else(|| "no home folder for the bridge".to_owned())
+}
+
+/// Where the bridge folder is, whatever the gate says: for removing this instance's own files, never for writing.
+fn bridge_root_path(app: &AppHandle) -> Option<PathBuf> {
     if let Some(dir) = bridge_dir_env() {
-        return Ok(dir.clone());
+        return Some(dir.clone());
     }
-    Ok(app
-        .path()
+    app.path()
         .home_dir()
-        .map_err(|e| e.to_string())?
-        .join(workspace::WORKSPACE_DIR_NAME)
-        .join(BRIDGE_DIR))
+        .ok()
+        .map(|home| home.join(workspace::WORKSPACE_DIR_NAME).join(BRIDGE_DIR))
 }
 
 /// Ids come from the client script; path-safety is non-negotiable.
@@ -1799,7 +1903,7 @@ pub(crate) fn claim_render_request_ordered(
 #[tauri::command]
 pub fn bridge_claim_request(app: AppHandle) -> Result<Option<BridgeRequest>, String> {
     // Nothing to claim rather than a refusal: the render window's tick goes on to serve thumbs.
-    if !serving() || crate::managed::deny_agent_kit().is_err() {
+    if !serving() || crate::agent_gate::deny().is_err() {
         return Ok(None);
     }
     let root = bridge_root(&app)?;
@@ -1876,7 +1980,7 @@ pub(crate) fn stamped_response(
 /// Async so hashing the frames it names stays off the main thread.
 #[tauri::command(async)]
 pub fn bridge_write_response(app: AppHandle, id: String, json_text: String) -> Result<(), String> {
-    crate::managed::deny_agent_kit()?;
+    crate::agent_gate::deny()?;
     if !valid_id(&id) {
         return Err(format!("invalid bridge id {id:?}"));
     }
@@ -2064,20 +2168,29 @@ pub fn bridge_check_assets(
 
 /// Claim and serve the native kinds from Rust, never the render window: poll `requests/` every 300 ms, oldest first, claiming only what `claimable` gives this instance, each served on the async runtime. Writes `_bridge/cli.json` first; serving interactive instances only, and it stops with the heartbeat.
 pub fn spawn_native_bridge(app: AppHandle) {
-    if crate::is_autorun() || !serving() || crate::managed::deny_agent_kit().is_err() {
+    let may_serve = BASE.get().is_some_and(|base| base.role.serving);
+    if crate::is_autorun() || !may_serve || crate::agent_gate::managed_off() {
         return;
     }
-    write_cli_marker(&app);
-    let (Ok(root), Some(auth)) = (bridge_root(&app), auth()) else {
-        return;
-    };
     let pid = std::process::id();
     std::thread::spawn(move || {
         let mut pruned: Option<Instant> = None;
+        let mut marked = false;
         loop {
             std::thread::sleep(NATIVE_POLL);
             if HEARTBEAT_STOPPED.load(Ordering::Relaxed) {
                 return;
+            }
+            if !serving() {
+                marked = false;
+                continue;
+            }
+            let (Ok(root), Some(auth)) = (bridge_root(&app), auth()) else {
+                continue;
+            };
+            if !marked {
+                write_cli_marker(&app);
+                marked = true;
             }
             // Resolved at most once a tick, and only when a fresh native request needs it.
             let own_root = OnceCell::new();
@@ -3152,6 +3265,37 @@ mod tests {
             &test_instance(1, "release", true).identity,
             Some("/Users/x/Kookaburra Cut"),
         )
+    }
+
+    #[test]
+    fn the_agent_gate_and_the_key_decide_the_role_live() {
+        let serves = BridgeRole {
+            serving: true,
+            reason: None,
+        };
+        let passive = BridgeRole {
+            serving: false,
+            reason: Some("dev build from a git worktree".into()),
+        };
+        assert_eq!(current_role(&serves, None, true, None), serves);
+        let shut = current_role(
+            &serves,
+            Some(crate::agent_gate::OFF_REASON.into()),
+            true,
+            None,
+        );
+        assert!(!shut.serving);
+        assert_eq!(shut.reason.as_deref(), Some(crate::agent_gate::OFF_REASON));
+        let unsigned = current_role(&serves, None, false, Some("read-only folder".into()));
+        assert!(!unsigned.serving);
+        assert_eq!(
+            unsigned.reason.as_deref(),
+            Some("couldn't write its bridge key (read-only folder)")
+        );
+        assert!(!current_role(&serves, None, false, None).serving);
+        for gate in [None, Some(crate::agent_gate::OFF_REASON.to_owned())] {
+            assert_eq!(current_role(&passive, gate, false, None), passive);
+        }
     }
 
     #[test]

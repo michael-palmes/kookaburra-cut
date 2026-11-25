@@ -36,6 +36,8 @@
                 <string>~/Kookaburra Cut</string>
                 <key>UpdateEndpoint</key>
                 <string>https://updates.example.com/kookaburra-cut/latest.json</string>
+                <key>RequireManagedClaude</key>
+                <true/>
               </dict>
             </dict>
           </array>
@@ -46,7 +48,7 @@
   <key>PayloadDisplayName</key>
   <string>Kookaburra Cut: agents allowed, updates mirrored</string>
   <key>PayloadDescription</key>
-  <string>Claude Code and the agent kit stay on. Updates come from your own server, packs only from approved publishers, no live websites, and exports stay in each project.</string>
+  <string>Claude can be turned on only where your organisation's Claude Code settings are installed. Updates come from your own server, packs only from approved publishers, no live websites, and exports stay in each project.</string>
   <key>PayloadIdentifier</key>
   <string>com.example.kookaburracut.agents-mirrored</string>
   <key>PayloadScope</key>

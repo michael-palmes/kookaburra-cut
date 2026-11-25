@@ -112,6 +112,25 @@ export function EditWithClaudeButton({
   );
 }
 
+/** The titlebar's stand-in while Claude is off: it reopens the setup choice and starts nothing. */
+export function SetUpClaudeButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className="titlebar-claude quiet"
+      title="Claude is off. Choose how you want to work."
+      aria-label="Set up Claude"
+      aria-haspopup="dialog"
+      onClick={onClick}
+    >
+      <span className="titlebar-claude-mark">
+        <ClaudeSpark />
+      </span>
+      <span className="titlebar-label">Set up Claude</span>
+    </button>
+  );
+}
+
 /** What starting a session means for a confidential project, in one line. */
 const CLAUDE_DISCLOSURE =
   "Claude Code sends this project’s files to Anthropic under your own account and settings.";

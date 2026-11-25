@@ -222,7 +222,7 @@ expectation.
 
 Edit with Claude hands the project to the Claude desktop app, so its surfaces borrow Claude's own
 look: that recognition is the point. The `--claude-*` tokens (§15) apply **only** to the titlebar
-Edit with Claude button, its launcher popover and the Settings Claude section. Nothing else in the chrome may use them, and they never reach a rendered
+Edit with Claude button, its launcher popover, the Settings Claude section and the mark on the setup dialog's With Claude card (the mark alone: the card's selection is the accent). The titlebar's Set up Claude stand-in, shown while Claude is off, is neutral grey on purpose. Nothing else in the chrome may use them, and they never reach a rendered
 frame (§14).
 
 | Token | Hex | Role |
@@ -324,7 +324,7 @@ superseded by the built layout below.)*
 ├─────────────────────────────────────────────┴────────────┤
 ```
 
-- **Titlebar (46px, §13):** folder icon-button (projects) · name-over-path identity (clicking the path copies the folder) · "Find an action ⌘K" trigger · the Edit with Claude button (§4.7) · Present · the Export CTA (the ONLY accent control). Only the identity gives way: a tight bar (large text) drops the trigger's label first, then Claude's and Present's, so nothing is pushed.
+- **Titlebar (46px, §13):** folder icon-button (projects) · name-over-path identity (clicking the path copies the folder) · "Find an action ⌘K" trigger · the Edit with Claude button (§4.7), or Set up Claude while Claude is off · Present · the Export CTA (the ONLY accent control). Only the identity gives way: a tight bar (large text) drops the trigger's label first, then Claude's and Present's, so nothing is pushed.
 - **Edit with Claude:** the titlebar button (⌥⌘E) opens a launcher popover that starts a Claude
   desktop app session in the project folder (`claude://code/new`). It greets only a project created
   in the app, on its first open (turning the greeting back on in Settings adds one more, on the next

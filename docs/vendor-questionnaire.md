@@ -1,6 +1,6 @@
 # Vendor questionnaire
 
-**Version:** 0.24.0.
+**Version:** 0.25.0, pending.
 
 Pre-filled answers for the security questionnaire a procurement or security
 team sends before a pilot: the SIG Lite, arranged by the SIG's risk domains,
@@ -28,18 +28,16 @@ app with no service, no account and no hosted data.
 
 ## Version
 
-This page describes 0.24.0. On 0.22.4 and earlier these rows differ:
+This page describes 0.25.0, pending: `main` once the 0.25.0 work has merged,
+before that release is tagged. On 0.24.0, the latest release, these rows differ:
 
-- **Logging and audit:** 0.22.4 keeps no log in a release build.
-- **Data at rest:** Settings ▸ Allowed projects ▸ Forget and Settings ▸ Storage
-  ▸ Clear all app data arrive in 0.23.0.
-- **Supply chain:** the SBOM, the crate list embedded in the binary,
-  [verify-install.sh](../scripts/verify-install.sh), the licence and source
-  policy, no dependency install scripts, the provenance bundle and updater
-  signature as release assets, the sidecar's source archives and the licence
-  notices inside the app.
-- **Vulnerability management:** the 14-day acknowledgement, CodeQL over Python
-  and the `unsafe` allow-list.
+- **Third parties, Data flows, Encryption and Endpoint:** 0.24.0 can open a
+  live website inside a scene, after a native Allow for each origin, with
+  `DisableLiveWebsites` and `AllowedWebsiteOrigins` to turn it off or limit it
+  ([mdm.md, "Retired keys"](./mdm.md#retired-keys)). 0.25.0 removes it, and the
+  app loads no web page.
+- **Data at rest:** 0.24.0 keeps one WebKit store per project for those
+  websites, cleared in Settings ▸ Website data. 0.25.0 deletes them at launch.
 
 A version line marked "pending" names a release not yet tagged; the change
 that bumps the version drops it here and in
@@ -78,7 +76,7 @@ SIG: Enterprise risk management, Information assurance. CAIQ: GRC.
 | --- | --- | --- | --- |
 | Is there a documented information security policy? | Partial | [SECURITY.md](../SECURITY.md) | SECURITY.md is the security record: threat model, every control, reporting. Versioned per release and shipped in each release's assets. No separate policy document and no approval cycle beyond the maintainer. |
 | Is there a threat model or risk assessment? | Yes | [SECURITY.md, "Scope and threat model"](../SECURITY.md#scope-and-threat-model) | Names the risks in scope and the two out of scope: a hostile process already running as the same user, and Claude Code's own behaviour, network use and storage, which are Anthropic's. |
-| Are accepted and deferred risks recorded? | Yes | [SECURITY.md, "Not yet"](../SECURITY.md#not-yet), [scene-website.md](./scene-website.md#accepted-residual-risk) | A public, versioned list, so nothing deferred reads as done. |
+| Are accepted and deferred risks recorded? | Yes | [SECURITY.md, "Not yet"](../SECURITY.md#not-yet), [decisions.md](./decisions.md) | A public, versioned list, so nothing deferred reads as done. |
 | Are security decisions recorded with their reasons? | Yes | [decisions.md](./decisions.md) | One dated row per decision. |
 | Is someone accountable for security? | Yes | [CODEOWNERS](../.github/CODEOWNERS), `gh api repos/michael-palmes/kookaburra-cut/collaborators` | The maintainer, the repository's one admin. One person: see [Business continuity](#business-continuity). |
 | Is there a contract, licence agreement or support agreement? | No | [LICENSE-MIT](../LICENSE-MIT), [LICENSE-APACHE](../LICENSE-APACHE), [support-policy.md](./support-policy.md) | An individual maintainer, with no company or trading entity. The app is free and open source with no paid offer, so the MIT OR Apache-2.0 licence files are the only terms. Support is community support through GitHub issues, best effort, with no response-time promise. |
@@ -92,7 +90,7 @@ SIG: Nth party management. CAIQ: STA.
 | Question | Answer | Evidence | Notes |
 | --- | --- | --- | --- |
 | Does the vendor send customer data to subprocessors? | No | [subprocessors.md](./subprocessors.md) | The vendor receives no customer data, so it has none to pass on. |
-| Are the third parties a device can reach named, with what they receive? | Yes | [subprocessors.md](./subprocessors.md) | GitHub, Anthropic through the person's own Claude Code, and websites a person approves. Each only when a person acts. |
+| Are the third parties a device can reach named, with what they receive? | Yes | [subprocessors.md](./subprocessors.md) | GitHub, and Anthropic through the person's own Claude Code. Each only when a person acts. |
 | Is there an analytics, crash reporting or telemetry vendor? | No | [tauri.conf.json](../src-tauri/tauri.conf.json), [capabilities](../src-tauri/capabilities/) | The window's content security policy allows `connect-src` only to itself, `blob:`, `data:`, `ipc:` and `asset:`; no capability names a remote URL. |
 | Is Apple a runtime subprocessor? | No | [sign-and-notarize.sh](../scripts/sign-and-notarize.sh) | Apple notarises the release at build time. macOS's own Gatekeeper checks are the operating system's, as for any app. |
 
@@ -103,14 +101,13 @@ SIG: Asset and information management, Network security. CAIQ: DSP.
 | Question | Answer | Evidence | Notes |
 | --- | --- | --- | --- |
 | Is customer data sent to or stored by the vendor? | No | [SECURITY.md, "What leaves the Mac"](../SECURITY.md#what-leaves-the-mac) | No account, no server, no telemetry. Opening, editing, importing, exporting and presenting make no request. |
-| Is there a data-flow statement? | Yes | [SECURITY.md, "What leaves the Mac"](../SECURITY.md#what-leaves-the-mac), [security-overview.md](./security-overview.md#what-leaves-the-mac) | Four paths, each started by a person, each with an off switch. |
+| Is there a data-flow statement? | Yes | [SECURITY.md, "What leaves the Mac"](../SECURITY.md#what-leaves-the-mac), [security-overview.md](./security-overview.md#what-leaves-the-mac) | Three paths, each started by a person, each with an off switch. |
 | Update check: what is sent, and can it be turned off? | Yes | [updater.rs](../src-tauri/src/updater.rs), [updates.ts](../src/engine/updates.ts), [mdm.md](./mdm.md#keys) | One GET for `latest.json` from `github.com`, only with the first-run consent on or on Check for Updates. No identifier, no version in the URL; the user agent is the updater plugin's name and version. Off: the first-run switch, Settings ▸ Updates, `DisableUpdateCheck`; `UpdateEndpoint` sends it to your server instead. |
 | Update install: what is sent? | Yes | [updater.rs](../src-tauri/src/updater.rs) | Nothing goes up. The signed archive comes down only on Install and relaunch. Off: Later, or `DisableUpdateCheck`. |
 | Edit with Claude: what is sent? | Yes | [claude_app.rs](../src-tauri/src/claude_app.rs), [SECURITY.md, "What reaches your agent"](../SECURITY.md#what-reaches-your-agent) | The project folder's path and a starter prompt, handed to the Claude desktop app on the same Mac and never sent until the person presses Enter there. Claude Code then sends project files to Anthropic under the person's own account. Off: `DisableClaude`, `DisableAgentKit`. |
-| Live websites in a scene: what is sent? | Yes | [website.rs](../src-tauri/src/website.rs), [scene-website.md](./scene-website.md#origin-and-navigation-policy) | Nothing until a person allows that origin for that project. The page then loads like a browser tab, HTTPS or loopback only. Off: revoke in the inspector, `DisableLiveWebsites`; only your own sites: `AllowedWebsiteOrigins`. |
 | Does the app open other pages? | Yes | [claude_app.rs](../src-tauri/src/claude_app.rs) | Get Claude and What leaves your Mac open fixed URLs in the default browser, nothing appended. |
 | Is there any other network client in the app? | No | [Cargo.toml](../src-tauri/Cargo.toml), [realmGuard.ts](../src/stage/realmGuard.ts), [build-ffmpeg-sidecar.sh](../scripts/build-ffmpeg-sidecar.sh) | No Rust HTTP client of its own (reqwest only through the updater plugin, and `deny.toml` bans the rest); scene code runs behind a guard that refuses every network API but the app's own files; the release ffmpeg is built with `--disable-network`. |
-| Can an organisation list and restrict egress? | Yes | [subprocessors.md](./subprocessors.md), [fleet.md](./fleet.md) | Hosts: `github.com` and `release-assets.githubusercontent.com` (or your `UpdateEndpoint`), plus origins a person approves (only those on `AllowedWebsiteOrigins`, when forced). With `DisableUpdateCheck`, `DisableClaude` and `DisableLiveWebsites` the app makes no request of its own; What leaves your Mac still opens the privacy page in the browser. |
+| Can an organisation list and restrict egress? | Yes | [subprocessors.md](./subprocessors.md), [fleet.md](./fleet.md) | Hosts: `github.com` and `release-assets.githubusercontent.com` (or your `UpdateEndpoint`). With `DisableUpdateCheck` and `DisableClaude` the app makes no request of its own; What leaves your Mac still opens the privacy page in the browser. |
 | Is the agent bridge a network service? | No | [bridge.rs](../src-tauri/src/bridge.rs) | A file queue in an owner-only folder, not a socket. |
 
 ## Data at rest, retention and deletion
@@ -125,7 +122,7 @@ SIG: Asset and information management, Privacy management. CAIQ: DSP, IPY.
 | Are caches bounded? | Yes | [clip_cache.rs](../src-tauri/src/clip_cache.rs), [bridge.rs](../src-tauri/src/bridge.rs) | Decoded frames capped at 20 GB by default with least-recently-used eviction; bridge answers at most an hour and 2 GiB; import backups 24 hours. |
 | Are caches kept out of backups? | Yes | [privacy.rs](../src-tauri/src/privacy.rs) | `cache/clips` and `cache/media` carry Time Machine's exclusion at every launch. Projects back up like any document. |
 | Is footage kept out of project history? | Yes | [history.rs](../src-tauri/src/history.rs) | A project's git holds scenes and settings only, so a deleted asset is gone. |
-| Can a person delete their data? | Yes | [settings_win.rs](../src-tauri/src/settings_win.rs), [workspace.rs](../src-tauri/src/workspace.rs), [security-overview.md](./security-overview.md#uninstall) | A project delete moves it to the Trash and drops its grant and cache entries; Settings ▸ Website data clears site storage; Settings ▸ Allowed projects ▸ Forget drops one grant; Settings ▸ Storage ▸ Clear all app data clears every cache, the website data, the bridge queues, grants and preferences, and keeps the projects, the pack key and the log. Uninstall steps at the link. |
+| Can a person delete their data? | Yes | [settings_win.rs](../src-tauri/src/settings_win.rs), [workspace.rs](../src-tauri/src/workspace.rs), [security-overview.md](./security-overview.md#uninstall) | A project delete moves it to the Trash and drops its grant and cache entries; Settings ▸ Allowed projects ▸ Forget drops one grant; Settings ▸ Storage ▸ Clear all app data clears every cache, the bridge queues, grants and preferences, and keeps the projects, the pack key and the log. Uninstall steps at the link. |
 | Is deleted data securely erased? | No | [workspace.rs](../src-tauri/src/workspace.rs) | Deletes go to the Trash or are removed in place. FileVault is the protection for what remains on disk. |
 | How long does the vendor retain customer data? | Not applicable | [subprocessors.md](./subprocessors.md) | The vendor holds none. |
 | Can data be exported in an open format? | Yes | [packs.md](./packs.md), [agent-kit.md](./agent-kit.md) | Projects are plain files (`project.json`, `scenes/*.tsx`, `assets/`); a pack is a zip with a JSON manifest. |
@@ -137,7 +134,7 @@ SIG: Information assurance. CAIQ: CEK.
 | Question | Answer | Evidence | Notes |
 | --- | --- | --- | --- |
 | Does the app encrypt data at rest? | No | [privacy.md](./privacy.md#what-the-app-keeps-on-your-mac-and-how-to-clear-it) | Projects, caches, settings and the log are not encrypted by the app. FileVault and the macOS account are the protection at rest. |
-| Is data in transit encrypted? | Yes | [tauri.conf.json](../src-tauri/tauri.conf.json), [scene-website.md](./scene-website.md#origin-and-navigation-policy) | The update endpoint is HTTPS and an `UpdateEndpoint` must be; a live website must be HTTPS, or HTTP only on loopback with an explicit port; TLS errors are never bypassed. |
+| Is data in transit encrypted? | Yes | [tauri.conf.json](../src-tauri/tauri.conf.json), [updater.rs](../src-tauri/src/updater.rs) | The update endpoint is HTTPS and an `UpdateEndpoint` must be. Nothing else leaves the app. |
 | What secrets does the app keep? | Yes | [SECURITY.md, "Saved secrets"](../SECURITY.md#saved-secrets), [key.rs](../src-tauri/src/pack/key.rs) | One: the pack signing key. The app holds no password, token or API key for anyone. |
 | Which Keychain items does the app create? | Yes | [packs.md](./packs.md#signing-and-trust-on-first-use), [mdm.md](./mdm.md#keys) | One generic password in the login Keychain: service "Kookaburra Cut pack signing key", account the bundle identifier, not synchronisable, made on the first pack export. Never made under `DisablePackExport`. A 0600 file in app data stands in only where the Keychain cannot answer. |
 | Are keys generated from a secure source? | Yes | [key.rs](../src-tauri/src/pack/key.rs), [best-practices.md](./best-practices.md) | The operating system's entropy source (`getrandom`). |
@@ -154,8 +151,8 @@ SIG: Access control. CAIQ: IAM.
 | Does the app have user accounts or sign-in? | No | [security-overview.md](./security-overview.md#what-the-app-does-not-do) | No sign-in, licence key or registration. Access is the macOS user account. |
 | Does it support SSO or MFA? | Not applicable | [security-overview.md](./security-overview.md#what-the-app-does-not-do) | Nothing to sign in to. Claude Code signs in under its own account, outside the app. |
 | Does the app need administrator rights? | No | [updater.rs](../src-tauri/src/updater.rs) | Only an in-app update into a folder the user cannot write asks macOS for an administrator password; `DisableUpdateCheck` removes it. |
-| Are the app's internal privileges least privilege? | Yes | [capabilities](../src-tauri/capabilities/), [acl.rs](../src-tauri/src/acl.rs) | Each window holds only the native commands it uses, and only the Tauri core permissions its code calls (no `core:default`, menu or tray); a test fails on a command not yet placed or a core permission no window needs. Remote website content gets none. |
-| Are trust decisions made outside the webview? | Yes | [native_alert.rs](../src-tauri/src/native_alert.rs), [SECURITY.md](../SECURITY.md#scene-code-and-the-trust-boundary) | Allow, website grants, moving the workspace and Clear all app data are answered on native sheets, so a compromised page cannot press the button. |
+| Are the app's internal privileges least privilege? | Yes | [capabilities](../src-tauri/capabilities/), [acl.rs](../src-tauri/src/acl.rs) | Each window holds only the native commands it uses, and only the Tauri core permissions its code calls (no `core:default`, menu or tray); a test fails on a command not yet placed or a core permission no window needs. A webview that is not one of the app's own windows is refused every command and every file. |
+| Are trust decisions made outside the webview? | Yes | [native_alert.rs](../src-tauri/src/native_alert.rs), [SECURITY.md](../SECURITY.md#scene-code-and-the-trust-boundary) | Allow, moving the workspace and Clear all app data are answered on native sheets, so a compromised page cannot press the button. |
 | Who can change the code or ship a release? | Partial | `gh api repos/michael-palmes/kookaburra-cut/collaborators`, [allowed_tag_signers](../.github/allowed_tag_signers), [allowed_signers](../.github/allowed_signers) | One admin, the maintainer, and one collaborator with write access, the second reviewer. A release run needs approval from a reviewer who did not start it, so the second reviewer approves the maintainer's releases, but the admin can change that rule, so the pipeline rests on the admin account. The one sanctioned change, a break-glass for an urgent security fix, is named in that release's notes and advisory ([incident-response.md](./incident-response.md)). |
 | Does the maintainer's GitHub account require a second factor? | Yes | The maintainer's statement; GitHub shows a personal account's second factor to no one else | A passkey. |
 | Is the Mac holding the release tag key protected? | Partial | [release skill, "Signing keys"](../.agents/skills/kookaburra-release/SKILL.md#signing-keys) | FileVault is on, and the tag key sits in its Secure Enclave behind Touch ID. The Mac is not managed by MDM and runs no EDR or antivirus beyond macOS's own. |
@@ -168,8 +165,8 @@ SIG: IT operations management. CAIQ: LOG.
 | Question | Answer | Evidence | Notes |
 | --- | --- | --- | --- |
 | Does the app keep an audit log? | Yes | [audit.rs](../src-tauri/src/audit.rs), [SECURITY.md, "On the Mac"](../SECURITY.md#on-the-mac) | `~/Library/Application Support/com.mpalmes.kookaburracut/logs/app.log`, in release and dev builds. |
-| What does it record? | Yes | [audit.rs](../src-tauri/src/audit.rs) | Allow given, declined and asked again; website origins allowed and removed; pack imports with the publisher's key id and verdict; update checks and installs; workspace moves and project deletes; what a kit stamp moved; managed keys and each key's first refusal a launch; what the startup seal corrected. |
-| Does it exclude content and secrets? | Yes | [audit.rs](../src-tauri/src/audit.rs) | Paths, slugs, origins, key ids, versions and counts only; never a file's contents or a secret. Names a pack or page chose are escaped onto one line. |
+| What does it record? | Yes | [audit.rs](../src-tauri/src/audit.rs) | Allow given, declined and asked again; pack imports with the publisher's key id and verdict; update checks and installs; workspace moves and project deletes; what a kit stamp moved; managed keys and each key's first refusal a launch; what the startup seal corrected. |
+| Does it exclude content and secrets? | Yes | [audit.rs](../src-tauri/src/audit.rs) | Paths, slugs, key ids, versions and counts only; never a file's contents or a secret. Names a pack or project chose are escaped onto one line. |
 | Is it bounded and protected? | Yes | [audit.rs](../src-tauri/src/audit.rs), [privacy.rs](../src-tauri/src/privacy.rs) | 1 MiB a file, three files, at most 3 MiB. Folder 0700, files re-sealed to 0600 at launch, skipped by Spotlight. |
 | Is it tamper-evident? | No | [audit.rs](../src-tauri/src/audit.rs) | Plain text with no signature or hash chain; a process running as the same user can edit it. |
 | Can it be turned off? | No | [decisions.md](./decisions.md) | No managed key turns it off: nothing in it leaves the Mac, and a switch that removes evidence is the first thing an attacker with admin would set. |
@@ -258,7 +255,7 @@ SIG: Cybersecurity incident management. CAIQ: SEF.
 | What happens if a release or a signing key is compromised? | Partial | [incident-response.md](./incident-response.md) | Pull the release, publish a GitHub security advisory, rotate the tag, updater and Developer ID keys, and ship a fixed version through the updater. A new updater key costs one manual download per install, and there is no check of an installed app against its release file by file yet. |
 | Will customers be told of a breach of their data? | Not applicable | [subprocessors.md](./subprocessors.md) | The vendor holds no customer data and no customer list. Security releases reach people through the in-app update check, the release notes and the repository's advisories. |
 | Is there evidence on the device for an investigation? | Yes | [audit.rs](../src-tauri/src/audit.rs) | The app log records grants, imports, updates and refusals. The vendor holds no logs from the app. |
-| Can a customer contain an incident on their own fleet? | Yes | [mdm.md](./mdm.md#keys) | A profile can stop updates, pack imports, live websites and every Claude entry point at the next launch. |
+| Can a customer contain an incident on their own fleet? | Yes | [mdm.md](./mdm.md#keys) | A profile can stop updates, pack imports and every Claude entry point at the next launch. |
 
 ## Managed Macs
 
@@ -266,11 +263,10 @@ SIG: Endpoint security. CAIQ: UEM.
 
 | Question | Answer | Evidence | Notes |
 | --- | --- | --- | --- |
-| Can an MDM configure the app? | Yes | [mdm.md](./mdm.md), [managed.rs](../src-tauri/src/managed.rs) | Eleven keys in `com.mpalmes.kookaburracut`, honoured only while macOS reports them forced by a profile; a user's own `defaults write` grants nothing. |
+| Can an MDM configure the app? | Yes | [mdm.md](./mdm.md), [managed.rs](../src-tauri/src/managed.rs) | Ten keys in `com.mpalmes.kookaburracut`, honoured only while macOS reports them forced by a profile; a user's own `defaults write` grants nothing. |
 | Does a malformed setting fail closed? | Yes | [managed.rs](../src-tauri/src/managed.rs) | A wrong type reads as the most restrictive value; an unusable `UpdateEndpoint` means no update check, never GitHub. |
 | Can Claude entry points be turned off? | Yes | [mdm.md](./mdm.md#keys) | `DisableClaude`. |
 | Can everything the app lays out for an agent be turned off? | Yes | [mdm.md](./mdm.md#keys) | `DisableAgentKit`: no kit, no bridge folder, no handoff. |
-| Can live websites be turned off? | Yes | [mdm.md](./mdm.md#keys) | `DisableLiveWebsites`, or `AllowedWebsiteOrigins` to allow only your own sites' exact origins. |
 | Can pack imports be limited to approved publishers? | Yes | [mdm.md](./mdm.md#keys) | `AllowedPublisherKeyIds`; an empty list means no imports. |
 | Can pack export be turned off? | Yes | [mdm.md](./mdm.md#keys) | `DisablePackExport`; no signing key is ever made. |
 | Can update checks be turned off or redirected? | Yes | [mdm.md](./mdm.md#keys) | `DisableUpdateCheck`, or `UpdateEndpoint` for your own server; archives must still carry this project's signature. |
@@ -288,8 +284,8 @@ SIG: Privacy management. CAIQ: DSP.
 | --- | --- | --- | --- |
 | Does the vendor process personal data? | No | [privacy.md](./privacy.md), [subprocessors.md](./subprocessors.md) | No account, telemetry or upload. Mail sent to `security@` or `privacy@` reaches the maintainer's Gmail mailbox (Google) and is kept 2 years after the last message in a thread. The website keeps no access log; its error log can record a failed request's IP address. |
 | Is a data processing agreement needed? | Not applicable | [subprocessors.md](./subprocessors.md) | Nothing is processed on the customer's behalf. Anthropic's terms cover what a person sends through their own Claude Code. |
-| Are there cross-border transfers? | Not applicable | [subprocessors.md](./subprocessors.md) | None by the app. Claude Code and approved websites go where their providers do. |
-| Does the app read device or identity data? | No | [packs.md](./packs.md#signing-and-trust-on-first-use), [scene-website.md](./scene-website.md#native-boundary) | No entitlements, so no camera, microphone or location; website views deny device permissions; a pack names its device only as `Mac`, never the computer name. |
+| Are there cross-border transfers? | Not applicable | [subprocessors.md](./subprocessors.md) | None by the app. Claude Code goes where Anthropic does. |
+| Does the app read device or identity data? | No | [packs.md](./packs.md#signing-and-trust-on-first-use), [SECURITY.md, "On the Mac"](../SECURITY.md#on-the-mac) | No entitlements, so no camera, microphone or location; a pack names its device only as `Mac`, never the computer name. |
 | Is there a privacy notice? | Yes | [privacy.md](./privacy.md) | The app opens it from What leaves your Mac, at the installed version's tag. |
 | Can data subject requests be met? | Not applicable | [privacy.md](./privacy.md#what-the-app-keeps-on-your-mac-and-how-to-clear-it) | The vendor holds nothing; the person deletes on their Mac. |
 

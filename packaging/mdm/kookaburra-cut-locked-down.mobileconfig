@@ -46,6 +46,8 @@
                 <string>https://updates.example.com/kookaburra-cut/latest.json</string>
                 <key>AuditLogPath</key>
                 <string>/Library/Logs/Kookaburra Cut</string>
+                <key>RequireManagedClaude</key>
+                <true/>
               </dict>
             </dict>
           </array>

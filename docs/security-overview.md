@@ -1,7 +1,16 @@
 # Security overview
 
-Describes version 0.24.0. For the team deciding whether Kookaburra Cut can run
-on managed Macs: the security lead, CTO or engineering manager. Every line
+Describes version 0.24.0. Three changes since: live website scenes are removed
+and gone from the next release, so this page lists nothing they brought; on
+0.24.0 itself `DisableLiveWebsites` turns them off
+([mdm.md, "Retired keys"](./mdm.md#retired-keys)). And Claude is off until a
+person turns it on, with `RequireManagedClaude` to tie it to an organisation's
+own Claude Code policy; on 0.24.0 it is on from the first launch, the key is
+ignored, and `DisableAgentKit` turns it off. And a copy installed from the pkg
+leaves updates to its installer; on 0.24.0 it checks GitHub unless
+`DisableUpdateCheck` is forced. For the team deciding
+whether Kookaburra Cut can run on managed Macs: the security lead, CTO or
+engineering manager. Every line
 links to the file, command or release asset behind it, and anything not done
 yet sits under [Not yet](#not-yet). Read it at the tag of the version you
 install (`github.com/michael-palmes/kookaburra-cut/blob/v<version>/docs/security-overview.md`),
@@ -26,11 +35,10 @@ Mac can reach is in [subprocessors.md](./subprocessors.md).
 Kookaburra Cut is a free, open-source macOS desktop app (Tauri 2: a Rust shell
 and one WKWebView) that renders product launch films from a folder of scene
 code and assets, on the Mac itself. It runs no service, holds no account and
-links no HTTP client of its own. Four paths can reach the network, each
-started by a person and each with a managed off switch: an opt-in update check
-against GitHub and the install it offers, an Edit with Claude handoff to the
-Claude desktop app on the same Mac, and a website a person allows inside a
-scene. Releases are built by
+links no HTTP client of its own. Three paths lead off the Mac, each started by
+a person and each with a managed off switch: an opt-in update check against
+GitHub, the install it offers, and an Edit with Claude handoff to the Claude
+desktop app on the same Mac. It loads no web page. Releases are built by
 GitHub Actions from a signed tag, Developer ID signed, notarised and attested,
 with a software bill of materials beside each one. One maintainer runs the
 project, and the deliberate deferrals are public under
@@ -41,14 +49,13 @@ project, and the deliberate deferrals are public under
 Nothing leaves the Mac unless a person starts it
 ([SECURITY.md, "What leaves the Mac"](../SECURITY.md#what-leaves-the-mac)).
 
-![Your Mac as a walled box holding projects, render and export. Three switched doors lead to GitHub for updates, your own Claude app and a website you allow, each with the key a fleet forces to lock it. There is no other way out.](./assets/security-doors.png)
+![Your Mac as a walled box holding projects, render and export. Two switched doors lead to GitHub for updates and your own Claude app, each with the key a fleet forces to lock it. There is no other way out.](./assets/security-doors.png)
 
 | Path | Trigger | Destination host | What goes | Off switch and control |
 | --- | --- | --- | --- | --- |
-| Update check | At launch and then hourly while the app is open, at most once every 20 hours, only with the first-run consent on; or Check for Updates by hand | `github.com`, which redirects to `release-assets.githubusercontent.com` | One GET for `latest.json`; no identifiers, no version in the URL | The first-run switch or Settings ▸ Updates; `DisableUpdateCheck` for a fleet, or `UpdateEndpoint` to point it at your own server. `src-tauri/src/updater.rs`, `src/engine/updates.ts` |
+| Update check | At launch and then hourly while the app is open, at most once every 20 hours, only with the first-run consent on; or Check for Updates by hand. Never on a copy installed from the pkg, unless a profile turns it on | `github.com`, which redirects to `release-assets.githubusercontent.com` | One GET for `latest.json`; no identifiers, no version in the URL | The first-run switch or Settings ▸ Updates; `DisableUpdateCheck` for a fleet, or `UpdateEndpoint` to point it at your own server. `src-tauri/src/updater.rs`, `src/engine/updates.ts` |
 | Update install | Install and relaunch on the update dialog | The host `latest.json` names (GitHub's release assets, or your mirror) | The signed updater archive, checked against the ed25519 key built into the app and bound to the announced version before anything is written | Later; `DisableUpdateCheck`. `updater.rs` (`download_and_install`) |
-| Edit with Claude | Pressing Edit with Claude, with the Claude desktop app installed | The Claude desktop app on this Mac, which talks to Anthropic under the person's own account | The project folder's path and a starter prompt, typed into that app and never sent until the person presses Enter there | Not pressing it; `DisableClaude` removes the buttons, `DisableAgentKit` removes everything the app lays out for an agent. `src-tauri/src/claude_app.rs` |
-| Live scene websites | Allow for that origin in the paused editor; Present reloads an allowed origin on each hold | The approved origin, with the reach of a browser tab | Whatever the page loads; cookies and storage in a profile separate from Safari | Revoke in the inspector; Settings ▸ Website data; `DisableLiveWebsites` or `AllowedWebsiteOrigins`. `src-tauri/src/website.rs` |
+| Edit with Claude | Pressing Edit with Claude, once Claude is turned on and with the Claude desktop app installed | The Claude desktop app on this Mac, which talks to Anthropic under the person's own account | The project folder's path and a starter prompt, typed into that app and never sent until the person presses Enter there | Leaving Claude off (it is off until a person turns it on), or not pressing it; `DisableClaude` removes the buttons, `DisableAgentKit` removes everything the app lays out for an agent. `src-tauri/src/agent_gate.rs`, `src-tauri/src/claude_app.rs` |
 
 Two buttons open a fixed page in the default browser: Get Claude
 (`claude.ai/download`) and What leaves your Mac (this repository's
@@ -84,9 +91,6 @@ person acts:
   which this app does not control
   ([SECURITY.md, "What reaches your agent"](../SECURITY.md#what-reaches-your-agent)).
 
-A website a person allows in a scene is a third party of their own choosing,
-reached like a browser tab.
-
 ## Where data rests and how to delete it
 
 Every location, with its mode, is in
@@ -99,19 +103,18 @@ Every location, with its mode, is in
 - **App data**: `~/Library/Application Support/com.mpalmes.kookaburracut`,
   owner-only (0700 and 0600), re-sealed at every launch, skipped by Spotlight
   (`src-tauri/src/privacy.rs`). It holds `settings.json` (preferences, the
-  projects allowed to run, known pack publishers, website grants), `cache/`
+  projects allowed to run, known pack publishers), `cache/`
   (decoded frames and previews, capped at 20 GB, skipped by Time Machine),
   `pack-key/identity.json` (the public half of the pack key) and `logs/` (the
   activity log, rotated at 1 MiB with three files kept, owner-only, holding
-  paths, slugs, origins, key ids and versions, never file contents).
+  paths, slugs, key ids and versions, never file contents).
 - **The pack signing key**: a generic password in the login Keychain, never
   synchronised; the one secret the app keeps
   ([SECURITY.md, "Saved secrets"](../SECURITY.md#saved-secrets)).
-- **Website data**: `~/Library/WebKit/com.mpalmes.kookaburracut`, one WebKit
-  store per project, so a sign-in made for one project never shows in another,
-  separate from Safari. Settings ▸ Website data lists and clears them. The one
-  store every project shared before 0.23.0 is deleted at launch, so people
-  sign in to allowed sites again.
+- **WebKit's own data**: `~/Library/WebKit/com.mpalmes.kookaburracut`, the
+  storage of the app's own windows. The website stores 0.24.0 and earlier kept
+  there, one per project, are deleted at the next launch
+  (`src-tauri/src/retired_websites.rs`).
 - **The agent's files**: the kit the app writes inside each project (`.claude/`,
   `./kb`, `CLAUDE.md`, `.kb/`), and `~/Kookaburra Cut/_bridge` and `_autorun`,
   the file queues the agent and the terminal use, owner-only and pruned (bridge
@@ -125,19 +128,20 @@ Every location, with its mode, is in
 
 Encryption at rest is FileVault and the account: the app adds none and claims
 none. Deletion while installed: Settings ▸ Allowed projects ▸ Forget removes
-one project's grant, its website grants and its Website data; Settings ▸
-Storage ▸ Clear all app data removes every cache, every website store, the
+one project's grant; Settings ▸
+Storage ▸ Clear all app data removes every cache, the
 bridge's queues and the autorun runs, and resets the settings to the workspace
 location and the update consent, keeping the pack key and its Keychain item,
 the log and the projects; deleting a project moves it to the Trash and drops
-its grant, its website grants, its Website data and its cache entries.
+its grant and its cache entries.
 
 ### Uninstall
 
 The same steps as [privacy.md, "Uninstalling"](./privacy.md#uninstalling):
 
-1. Settings ▸ Storage ▸ Clear all app data, while the app is still installed:
-   it is the only thing that clears the website profiles.
+1. Launch the app once, then Settings ▸ Storage ▸ Clear all app data. A
+   launch deletes the website sign-ins 0.24.0 and earlier kept, which nothing
+   else clears.
 2. Quit the app.
 3. In Keychain Access, delete "Kookaburra Cut pack signing key". Packs it
    signed stay valid.
@@ -205,6 +209,9 @@ that tag on GitHub's own runners.
 - **Never starts Claude Code, and never holds an API key.** A session begins in
   the Claude desktop app or the person's own terminal, under their own account
   ([SECURITY.md, "What reaches your agent"](../SECURITY.md#what-reaches-your-agent)).
+- **Nothing for an agent until asked.** Claude is off until a person turns it
+  on: no agent files in a project, no bridge folder and no Claude button
+  before that (`src-tauri/src/agent_gate.rs`).
 - **No shell**, except the updater's administrator install when the app's
   folder is not writable, behind macOS's own password prompt;
   `DisableUpdateCheck` removes it
@@ -212,6 +219,9 @@ that tag on GitHub's own runners.
 - **No launch agent, login item or helper tool.** Nothing of it runs while the
   app is closed; its only child processes are listed in
   [fleet.md, "What to expect in EDR"](./fleet.md#what-to-expect-in-edr).
+- **No web browsing.** The app loads no page from the network: its windows
+  show its own bundled interface, and live website scenes were removed after
+  0.24.0 ([decisions.md](./decisions.md)).
 - **No remote code.** No plugin store and no scripts fetched at run time; a
   project's scene code runs only after a person presses Allow on a native
   sheet, in a worker shut off from the network and the app's commands
@@ -275,21 +285,21 @@ packaged-parity gate proves that each release
 
 A configuration profile forces keys in the domain `com.mpalmes.kookaburracut`;
 the app honours a key only while macOS reports it forced, a user's own
-`defaults write` grants nothing, and a malformed key fails closed. The eleven
+`defaults write` grants nothing, and a malformed key fails closed. The ten
 keys, each with a row, a guard and a test in [mdm.md](./mdm.md):
 
 - `DisableClaude`: removes every Edit with Claude entry point and the Claude
   download link.
 - `DisableAgentKit`: stops everything the app lays out for an agent: no kit
   stamped into a project, no bridge folder, no handoff.
-- `DisableLiveWebsites`: no live website ever opens in a scene; captured images
-  still render.
-- `AllowedWebsiteOrigins`: live websites only from these exact origins, and a
-  grant made before the profile stops working; an empty list means none.
+- `RequireManagedClaude`: Claude can be turned on only where Claude Code's own
+  managed settings pin your organisation's login on that Mac.
 - `AllowedPublisherKeyIds`: pack imports limited to these publishers' keys; an
   empty list means no imports at all.
 - `DisablePackExport`: no Share as pack, and no signing key is ever minted.
-- `DisableUpdateCheck`: no update check and no in-app install.
+- `DisableUpdateCheck`: no update check and no in-app install. A copy
+  installed from the pkg has neither to begin with; forcing this key to false,
+  or `UpdateEndpoint`, turns them on there.
 - `UpdateEndpoint`: the in-app check asks your server instead of GitHub; the
   archive must still carry this project's signature.
 - `ExportsInProject`: renders land beside their project, never in `~/Downloads`.
@@ -298,8 +308,11 @@ keys, each with a row, a guard and a test in [mdm.md](./mdm.md):
 
 `DisableAgentKit`, `DisablePackExport`, `ExportsInProject` and `UpdateEndpoint`
 are honoured from 0.22.3; an older build ignores them, so deploy 0.22.3 or
-later before relying on them. `AuditLogPath` and `AllowedWebsiteOrigins` need
-0.23.0.
+later before relying on them. `AuditLogPath` needs 0.23.0, and
+`RequireManagedClaude` the release after 0.24.0.
+`DisableLiveWebsites` and `AllowedWebsiteOrigins` are retired with live
+websites: a profile that still forces them locks nothing, and only 0.24.0 and
+earlier read them ([mdm.md, "Retired keys"](./mdm.md#retired-keys)).
 
 The settings the app writes into a project for Claude Code cover only projects
 the app has opened; Claude Code's own managed settings sit on top of them.
@@ -334,11 +347,11 @@ place to check.
 | Hosting and data residency | None. The app runs on the Mac it is installed on; there is no server, tenant or region, and your data stays in the person's home folder ([Where data rests](#where-data-rests-and-how-to-delete-it)). |
 | Data handled | Whatever a person puts in a project: scene code, footage, stills, brand files, a soundtrack, and the caches derived from them. The app reads nothing outside the project, the workspace and the library folders it serves ([SECURITY.md, "On the Mac"](../SECURITY.md#on-the-mac)). |
 | Accounts and authentication | None. No sign-in and no licence key; the Claude integration uses the person's own Claude Code account ([What the app does not do](#what-the-app-does-not-do)). |
-| Encryption in transit | The update check and install use HTTPS to GitHub or your `UpdateEndpoint`; a live website must be HTTPS or loopback (`website.rs`). Nothing else leaves ([What leaves the Mac](#what-leaves-the-mac)). |
+| Encryption in transit | The update check and install use HTTPS to GitHub or your `UpdateEndpoint`. Nothing else leaves ([What leaves the Mac](#what-leaves-the-mac)). |
 | Encryption at rest | None by the app: FileVault and the account are the protection at rest. App data is owner-only, 0700 folders and 0600 files, re-sealed each launch (`privacy.rs`). |
-| Logging and audit | `~/Library/Application Support/com.mpalmes.kookaburracut/logs/app.log`: trust grants and declines, website grants, pack imports with key id and verdict, update checks and installs, managed refusals; paths, slugs, origins, key ids and versions, never file contents; rotated at 1 MiB with three files kept, owner-only, never sent anywhere ([SECURITY.md, "On the Mac"](../SECURITY.md#on-the-mac)). |
+| Logging and audit | `~/Library/Application Support/com.mpalmes.kookaburracut/logs/app.log`: trust grants and declines, pack imports with key id and verdict, update checks and installs, managed refusals; paths, slugs, key ids and versions, never file contents; rotated at 1 MiB with three files kept, owner-only, never sent anywhere ([SECURITY.md, "On the Mac"](../SECURITY.md#on-the-mac)). |
 | Retention | Nothing is held by anyone but the Mac. Caches are capped at 20 GB with least-recently-used eviction; bridge responses live an hour, `kb video` drafts and import backups 24 hours; a deleted project goes to the Trash ([fleet.md, "Retention"](./fleet.md#retention)). |
-| Deletion | Settings ▸ Allowed projects ▸ Forget, Settings ▸ Storage ▸ Clear all app data, Settings ▸ Website data, and the [uninstall steps](#uninstall). |
+| Deletion | Settings ▸ Allowed projects ▸ Forget, Settings ▸ Storage ▸ Clear all app data, and the [uninstall steps](#uninstall). |
 | Subprocessors | None ([Subprocessors and third parties](#subprocessors-and-third-parties)). |
 | Third parties | GitHub for the update check and downloads; Anthropic through the person's own Claude Code; each only when a person acts. |
 | Security contact and response window | GitHub private vulnerability reporting or `security@kookaburracut.com`; an acknowledgement within 14 days, fixes best effort with no committed time ([Reporting a vulnerability](#reporting-a-vulnerability)). |
@@ -348,12 +361,12 @@ place to check.
 | Penetration test | None. The maintainer's own audit in November 2026 drove the changes from 0.22.0 on; no third-party test has been done. |
 | Fuzzing | Yes, for the riskiest parsers: a weekly cargo-fuzz run (`.github/workflows/fuzz.yml`) over pack archive paths, manifests and signatures, the edit documents, font faces, the mp4 `moov` reader and PNG decoding, and every pull request runs each target over its seeds. The other parsers are bounded and tested on hostile fixtures ([Not yet](#not-yet)). |
 | Certifications | None: no SOC 2, ISO 27001 or similar. |
-| Sandboxing | Scene code runs in a Web Worker with no DOM, no IPC and no network; a live website runs in a child webview with no app capability; the app itself has the hardened runtime, no entitlements and no App Sandbox; the agent is bounded by rules and asks, not a sandbox ([SECURITY.md, "Scene code and the trust boundary"](../SECURITY.md#scene-code-and-the-trust-boundary)). |
+| Sandboxing | Scene code runs in a Web Worker with no DOM, no IPC and no network; the app loads no web page; the app itself has the hardened runtime, no entitlements and no App Sandbox; the agent is bounded by rules and asks, not a sandbox ([SECURITY.md, "Scene code and the trust boundary"](../SECURITY.md#scene-code-and-the-trust-boundary)). |
 | Supported versions | The latest release only; nothing before 0.23.0 is recommended for managed Macs, and each fix from 0.23.0 on gets a GitHub security advisory ([SECURITY.md, "Supported versions"](../SECURITY.md#supported-versions)). |
 | Business continuity | One maintainer, no named successor. Installed apps keep working offline if the project stops; the code is MIT or Apache-2.0 and every dependency, tool and source is pinned and recorded, so a fork can build and ship it ([release-cadence.md, "If the project stops"](./release-cadence.md#if-the-project-stops)). |
 | Licence | MIT OR Apache-2.0 for the code; bundled assets keep their own terms; the ffmpeg sidecar is a GPL build run as a separate process, its exact source archives attached to each release; every licence text and a third-party notices file ship inside the app (Settings ▸ About ▸ Acknowledgements) ([NOTICE.md](../NOTICE.md)). |
-| Egress hosts | `github.com` and `release-assets.githubusercontent.com` (updates, or your `UpdateEndpoint` instead); `claude.ai`, a fixed page a person opens in their browser; the origins a person allows in a scene. Nothing else ([What leaves the Mac](#what-leaves-the-mac)). |
-| Fleet controls | Eleven managed keys through a configuration profile ([mdm.md](./mdm.md)); verified builds delivered by MDM; Claude Code's own managed settings ([fleet.md](./fleet.md)). |
+| Egress hosts | `github.com` and `release-assets.githubusercontent.com` (updates, or your `UpdateEndpoint` instead); `claude.ai`, a fixed page a person opens in their browser. Nothing else ([What leaves the Mac](#what-leaves-the-mac)). |
+| Fleet controls | Ten managed keys through a configuration profile ([mdm.md](./mdm.md)); verified builds delivered by MDM; Claude Code's own managed settings ([fleet.md](./fleet.md)). |
 
 ## Not yet
 
@@ -379,7 +392,7 @@ word:
   person approves, reading the key and forging both directions; the bash-pre
   check on `_bridge/keys` is best effort. The heartbeat stays unsigned, so a
   forged heartbeat with a planted key is the same case.
-- Sealing the trust state: `trustedProjects`, `websiteOriginGrants` and
+- Sealing the trust state: `trustedProjects` and
   `knownPublishers` are plain JSON under the 0600 file mode. An HMAC under a
   Keychain secret can't serve headless exports, and after the stage worker a forged
   grant buys only a sandboxed render; native consent closes the webview path.

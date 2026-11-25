@@ -49,12 +49,6 @@ fn open_present_window(app: &AppHandle, target: &PresentTarget) -> Result<(), St
         .theme(Some(tauri::Theme::Dark))
         .background_color(tauri::window::Color(0x00, 0x00, 0x00, 0xFF));
     let window = builder.build().map_err(|e| e.to_string())?;
-    let handle = app.clone();
-    window.on_window_event(move |event| {
-        if matches!(event, tauri::WindowEvent::Destroyed) {
-            crate::website::close_owner(&handle.state::<crate::website::WebsiteState>(), "present");
-        }
-    });
     #[cfg(target_os = "macos")]
     crate::deflash_webview(&window);
     #[cfg(not(target_os = "macos"))]

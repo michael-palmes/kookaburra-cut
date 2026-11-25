@@ -72,7 +72,6 @@ import {
   stillsSummaryText,
   stillsWarnings,
   terminalSnapshotWarning,
-  websiteCaptureWarning,
 } from "./exportOptions";
 import { SegmentedRow } from "./inspector/rows";
 import { useEscapeClose } from "./useEscapeClose";
@@ -346,7 +345,6 @@ export function ExportModal({
 
   // Selection-independent pre-flight (warn, never block): uncaptured terminals export their empty frame.
   const terminalWarning = terminalSnapshotWarning(project.sceneDocs, project.sceneFiles);
-  const websiteWarning = websiteCaptureWarning(project.sceneDocs, project.sceneFiles);
 
   // ── Export ─────────────────────────────────────────────────────────────────
   const doExport = useCallback(async () => {
@@ -660,7 +658,6 @@ export function ExportModal({
               </>
             )}
             {terminalWarning && <p className="export-loudness export-warn">{terminalWarning}</p>}
-            {websiteWarning && <p className="export-loudness export-warn">{websiteWarning}</p>}
             {error && <p className="modal-error">{error}</p>}
           </section>
 

@@ -6,7 +6,10 @@ and how an engagement should run. Quote from it freely. Every claim it points at
 is stated, with its control, in [SECURITY.md](../SECURITY.md) at the version
 under test; where the two disagree, SECURITY.md wins and this file is stale.
 
-Checked against 0.24.0, the latest release.
+Checked against 0.24.0, the latest release, then updated for one change on
+`main`: live website scenes are removed, so the child webview that showed an
+approved origin is out of scope from the next release. On 0.24.0 itself it is
+in scope as that version's copy of this file describes.
 
 ## The product
 
@@ -20,8 +23,6 @@ react-three-fiber front end in WKWebView, with ffmpeg and ffprobe sidecars.
   `~/Kookaburra Cut`, with its own git repository.
 - **Sharing:** `.kbpack` files, signed zips of projects, templates, presets,
   themes, fonts, 3D objects and brands ([docs/packs.md](packs.md)).
-- **Live websites:** a scene can show an approved origin in a child WKWebView
-  ([docs/scene-website.md](scene-website.md)).
 - **Claude Code, optional:** the app stamps a kit into each project
   (`CLAUDE.md`, `.claude/settings.json`, `./kb`), answers kb through a file-queue
   bridge, and ships a headless CLI in its own binary
@@ -44,7 +45,7 @@ people who trust what colleagues send them.
   frames in the caches.
 - The person's account: code execution, files outside the workspace,
   credentials (`~/.ssh`, the login Keychain, `~/.claude`).
-- Consent: Allow on a project's code, website origin grants, publisher trust
+- Consent: Allow on a project's code, publisher trust
   (trust on first use), bridge confirmations, the review of agent files.
 - The pack signing key in the login Keychain.
 - The update channel and the installed bundle.
@@ -54,17 +55,15 @@ people who trust what colleagues send them.
 
 1. Whoever shares a project folder (zip, git clone, file share) a person opens.
 2. Whoever builds a `.kbpack` a person imports.
-3. A website a person approves for a scene, and anything it redirects to,
-   frames or loads.
-4. A crafted font, image, movie, glb, edit document or song a person or a pack
+3. A crafted font, image, movie, glb, edit document or song a person or a pack
    brings in.
-5. A coding agent misled by text planted in a project (scene copy,
+4. A coding agent misled by text planted in a project (scene copy,
    `project.json`, `BRAND.md`, pack contents), acting through kb, the bridge and
    the CLI.
-6. A compromised app window reaching for commands another window holds.
-7. A network attacker on the update path, or someone holding the GitHub
+5. A compromised app window reaching for commands another window holds.
+6. A network attacker on the update path, or someone holding the GitHub
    account but not the signing keys.
-8. Another, non-admin user on the same Mac.
+7. Another, non-admin user on the same Mac.
 
 **Out of scope, and why.**
 
@@ -78,9 +77,7 @@ people who trust what colleagues send them.
   use and storage are Anthropic's, under the person's account. The app bounds
   what it hands the agent, not what Claude Code does with it, and a `claude`
   typed in the person's own terminal is outside the app's gate.
-- **The app's reach by design.** An approved website has a browser tab's reach,
-  subresources and DNS to local services included (docs/scene-website.md,
-  "Accepted residual risk"); Allow means a project's scenes run, inside the
+- **The app's reach by design.** Allow means a project's scenes run, inside the
   stage worker; a pack someone exports carries what they ticked.
 - **Bugs in macOS, WebKit, ffmpeg or third-party crates.** Report them as
   dependencies. Where the app widens one (handing untrusted bytes to a decoder
@@ -100,14 +97,14 @@ Start from the SECURITY.md section named; it states the claims to test.
 
 | Boundary | What crosses it | Entry files | SECURITY.md |
 | --- | --- | --- | --- |
-| Pack import | A `.kbpack` zip: manifest, signature, payload | `src-tauri/src/pack/` (`read.rs`, `paths.rs`, `limits.rs`, `key.rs`, `publisher.rs`, `commands.rs`, `apply.rs`, `conflicts.rs`, `deps.rs`, `fonts.rs`), `objects.rs`, `src/packs/packReview.ts` | Packs |
+| Pack import | A `.kbpack` zip: manifest, signature, payload | `src-tauri/src/pack/` (`read.rs`, `paths.rs`, `limits.rs`, `key.rs`, `publisher.rs`, `commands.rs`, `apply.rs`, `conflicts.rs`, `deps.rs`, `fonts.rs`), `objects.rs` | Packs |
 | Opening a project | A shared folder: scene code, sidecars, agent files, `.git` | `workspace.rs` (`request_project_trust`, `trust_project`, `check_project_trust`, `trust_covered_files`, `review_agent_files_for`), `native_alert.rs`, `kit.rs` (`sweep_agent_files`, `managed_allow_rules`), `real_dir.rs`, `history.rs` (`GUARDS`), `claude_app.rs`, `cli_trust.rs`, `src/stage/` | Scene code and the trust boundary; What reaches your agent |
 | Claude bridge and CLI | kb requests from a possibly misled agent; project text going back to it | `bridge.rs`, `bridge_export.rs`, `bridge_range.rs`, `bridge_health.rs`, `capture_service.rs`, `clean_text.rs`, `live_edits.rs`, `cli.rs` and `cli_*.rs`, `src/render/bridgeService.ts`, `bridgeRequests.ts`, `bridgeFonts.ts`, kb's `.agents/skills/kookaburra-scene-authoring/scripts/kblib/` (`reach.py`, `hookfast.py`, `util.py`, `git.py`, `realdir.py`) | What reaches your agent |
-| Websites and scene realms | An approved origin's pages; allowed scene code; asset paths from sidecars | `website.rs` (`website_open`, `website_grant_origin`, `guard_invoke`, the page-world script and its `kookaburraWebsiteFocus` handler), `src/ui/SceneWebsiteOverlay.tsx`, `src/present/PresentWebsiteOverlay.tsx`, `src/stage/realmGuard.ts`, `stageClient.ts` (`provePolicy`), `stageWorker.ts`, `asset_reach.rs`, `tauri.conf.json` (`security.csp`) | What leaves the Mac; Scene code and the trust boundary |
+| Scene realms | Allowed scene code; asset paths from sidecars | `src/stage/realmGuard.ts`, `stageClient.ts` (`provePolicy`), `stageWorker.ts`, `asset_reach.rs`, `tauri.conf.json` (`security.csp`) | What leaves the Mac; Scene code and the trust boundary |
 | Updater | A manifest and an archive from GitHub or a forced `UpdateEndpoint` | `updater.rs`, `managed.rs` (`usable_endpoint`), `tauri.conf.json` (`plugins.updater`), tauri-plugin-updater as pinned in `src-tauri/Cargo.lock` | What leaves the Mac; Release integrity |
 | Untrusted parsers | Fonts, stills, movies, glb, edit documents, sidecars, CSV, terminal transcripts, CLI arguments | `fonts.rs` and `pack/fonts.rs` (SFNT, collections, allsorts instancing), `png_decode.rs`, `imagefile.rs`, `mp4box.rs`, `media_input.rs` (ffmpeg protocol and format allow-lists), three's GLTFLoader (`src/toolkit/objects/preload.ts`, `src/engine/objectThumbnail.ts`), `edit.rs`, `src/engine/sceneDocSchema.ts`, `src/toolkit/chart/csv.ts`, `src/engine/sceneTerminalTranscript.ts`, `cli.rs` | On the Mac; Scene code and the trust boundary (Stills on the way in) |
 | Managed preferences | A configuration profile's forced keys | `managed.rs`, [docs/mdm.md](mdm.md) | Managed preferences |
-| Window IPC | Each window's commands; events between windows | `src-tauri/capabilities/*.json`, `src-tauri/permissions/*.json`, `acl.rs`, `website.rs` (`guard_invoke`) | Scene code and the trust boundary (Per-window ACL) |
+| Window IPC | Each window's commands; events between windows | `src-tauri/capabilities/*.json`, `src-tauri/permissions/*.json`, `acl.rs`, `asset_reach.rs` (`guard_invoke`) | Scene code and the trust boundary (Per-window ACL) |
 
 ## What is already tested
 
@@ -118,14 +115,14 @@ code.
 
 | Boundary | Where the hostile cases live |
 | --- | --- |
-| Pack import | `src-tauri/src/pack/tests.rs` (a `Fixture` builder; `assert_refused` snapshots the workspace before and after): traversal, absolute paths, symlink escape, depth, length, bidi and non-UTF-8 names, dotted folders, `.git`, entries outside `payload/`, ratio bomb, entry flood, oversized manifest, signature and per-kind caps, forged and oversized signatures, a key id the key does not derive, tampered and ghost entries, a scene list that isn't the staged set, disk space, cancellation. Also the unit tests in `pack/paths.rs`, `pack/apply.rs` (imported projects untrusted, agent files at any depth become notes), `pack/conflicts.rs` (`a_hostile_slug_never_resolves_to_a_path`), `pack/publisher.rs`, `pack/key.rs`; `src/packs/packReview.test.ts`, `websiteReview.test.ts` |
+| Pack import | `src-tauri/src/pack/tests.rs` (a `Fixture` builder; `assert_refused` snapshots the workspace before and after): traversal, absolute paths, symlink escape, depth, length, bidi and non-UTF-8 names, dotted folders, `.git`, entries outside `payload/`, ratio bomb, entry flood, oversized manifest, signature and per-kind caps, forged and oversized signatures, a key id the key does not derive, tampered and ghost entries, a scene list that isn't the staged set, disk space, cancellation. Also the unit tests in `pack/paths.rs`, `pack/apply.rs` (imported projects untrusted, agent files at any depth become notes), `pack/conflicts.rs` (`a_hostile_slug_never_resolves_to_a_path`), `pack/publisher.rs`, `pack/key.rs` |
 | Opening a project | `workspace.rs` tests (the fingerprint is content, single-use nonce, a pack landing asks again, consent sheet names, `copying_refuses_symlinks`, `validate_slug_rejects_escapes`); `kit.rs` (foreign settings stripped, a planted or linked `kb` moved aside, a linked `.claude`, instruction files to `NOTES.md`, MCP secrets redacted, credential lists agree across kb, the bridge and the deny rules); `history.rs` (a folder's own config never runs a program, a `.git` reaching elsewhere is refused); `real_dir.rs`; `cli_trust.rs`; kb's tests in `.agents/skills/kookaburra-scene-authoring/scripts/tests/` (`test_hostile_folder.py`, `test_git.py`, `test_shim.py`, `test_hooks.py`); `src/engine/projectTrust.test.ts`, `projectLoadIsolation.test.ts` |
 | Claude bridge and CLI | `bridge.rs` tests (malformed and stale requests, path-safe frame names, exact-case assets, picked folders refuse roots, home and credentials, one workspace per instance, `servedBy`); `clean_text.rs` (a vector table shared with kb); `bridge_export.rs`; `capture_service.rs` (rationing, prune by age, size and owner); `live_edits.rs`; `cli.rs`, `cli_media.rs`, `src-tauri/tests/edit_cli.rs`; `src/render/bridgeService.test.ts`, `bridgeRequests.test.ts`; kb's `test_reach.py`, `test_bridge.py`, `test_capture.py`, `test_envelope.py`, `test_hooks_bash.py` (send-off asks) |
-| Websites and scene realms | `website.rs` tests (unsafe schemes, remote http and credentials refused, loopback needs an explicit port, only app webviews invoke, a grant needs a request and any answer spends it); `asset_reach.rs` (a child webview is refused everything, another project is refused, hidden folders, a link out of the project, ranges); `acl.rs`; `src/stage/realmGuard.test.ts` (each network door, nested workers, install can't be undone through the prototype, asset reach, `provePolicy`, the policy names no remote host), `stageClient.test.ts`, `workerNativePort.test.ts`; `src/engine/sceneWebsite*.test.ts`, `src/ui/SceneWebsiteOverlay.test.tsx`. The packaged acceptance list in [docs/scene-website.md](scene-website.md) is run by hand |
+| Scene realms | `asset_reach.rs` (only app windows invoke, a child webview is refused everything, another project is refused, hidden folders, a link out of the project, ranges); `acl.rs`; `src/stage/realmGuard.test.ts` (each network door, nested workers, install can't be undone through the prototype, asset reach, `provePolicy`, the policy names no remote host), `stageClient.test.ts`, `workerNativePort.test.ts` |
 | Updater | `managed.rs` (`update_endpoint_accepts_https_without_a_query_and_locks_on_anything_else`); `scripts/verify-release.sh` checks the updater signature and `latest.json` on every release; the plugin's own tests cover signature and version binding |
 | Untrusted parsers | `fonts.rs` (`a_hostile_collection_is_refused_not_overflowed`, broken descriptors), `png_decode.rs` (a non-PNG, a header past the RGBA ceiling), `imagefile.rs` (a name that lies, a bomb refused on its header, damaged PNGs, non-images), `mp4box.rs`, `media_input.rs` (a playlist is refused), `edit.rs` (absurd rates saturate, a linked staging folder is refused, the sweep never follows a link), `objects.rs` (object paths) |
 | Managed preferences | `managed.rs` (forced keys only, wrong types fail closed, malformed publisher lists allow nothing, every governed command calls its guard) |
-| Window IPC | `acl.rs` (every command placed, dev sets only in dev, the trust, export, delete, website-grant and workspace commands pinned to their windows) |
+| Window IPC | `acl.rs` (every command placed, dev sets only in dev, the trust, export, delete and workspace commands pinned to their windows) |
 
 ## Fuzzing
 
@@ -159,7 +156,6 @@ noted); most have example-based tests above:
 - glTF, which three's GLTFLoader parses in the webview;
 - the still-image header readers (`imagefile.rs`);
 - `asset://` URL decoding, the reach check and Range answers (`asset_reach.rs`);
-- website origin parsing (`website.rs`, `src/engine/sceneWebsite.ts`);
 - bridge request parsing and the Rust and Python `clean_text` pair;
 - kb's path checks and file transactions, and the agent-file sweep and
   settings stripping (`kit.rs`);
@@ -173,7 +169,7 @@ cannot reach at all; those need hand-built fixtures.
 
 In November 2026 the maintainer ran an internal adversarial code review of
 five boundaries: pack import, opening a project (the Allow gate, kit stamping
-and the agent-file sweep), the Claude bridge and CLI, the website webview and
+and the agent-file sweep), the Claude bridge and CLI, the website webview (since removed) and
 stage worker realm, and the updater, plus the window capabilities. It read the
 code as an attacker would and confirmed suspicions with throwaway hostile
 fixtures. Categories covered:
@@ -189,7 +185,8 @@ fixtures. Categories covered:
   `.git` or `./kb` can reach before and after Allow;
 - the agent's reach through kb, the bridge and the CLI, and the escaping of
   project text on its way to the agent;
-- origin parsing, redirects, frames and message handlers in the website view;
+- origin parsing, redirects, frames and message handlers in the website view,
+  which has since been removed;
 - the stage worker's realm guard and what `asset://` serves each window;
 - window capabilities and events between windows;
 - the updater's signature, version binding and endpoint rules;
@@ -217,8 +214,7 @@ privately until fixed.
   preferences. No production fleet, no customer Macs, no real projects.
 - **Claude Code.** Agent-path tests use the assessor's own Claude account. The
   app holds no key to lend, and Anthropic's services are not a target.
-- **Network.** Live-website tests use origins the assessor controls; no
-  third-party sites. Update tests use a manifest on the assessor's server,
+- **Network.** Update tests use a manifest on the assessor's server,
   through a forced `UpdateEndpoint` on a release build or
   `KOOKABURRA_UPDATE_ENDPOINT` on a debug build. Never touch the project's GitHub
   releases.
@@ -256,7 +252,7 @@ on Homebrew for two weeks; NCC Group's attestation for Sourcetree records 10
 days for the macOS app. For this app, 15 to 25 person-days by two or three
 consultants over two to three weeks is a reasonable starting quote. If the
 budget is short, cover in this order: pack import, opening a project, the
-website and stage realms with `asset://`, the bridge and kb, the updater, the
+stage realm with `asset://`, the bridge and kb, the updater, the
 parsers.
 
 ## Vendor shortlist

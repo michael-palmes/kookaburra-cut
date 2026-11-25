@@ -104,7 +104,7 @@ frame bodies and the scene trees. The split, and why it is drawn where it is:
   (`src/stage/storeMirror.ts`); the export path reads none of them.
 - **Gizmo chrome stays in the DOM.** The worker projects every 2D gizmo target
   per frame (world points, NDC and matrices) and posts them; hit tests against
-  the 3D handles are async requests. Website overlays stay DOM in the window. See [gizmos.md](./gizmos.md).
+  the 3D handles are async requests. See [gizmos.md](./gizmos.md).
 - **Orchestration stays in the window.** `exporter.ts` and `stillsExport.ts`
   own `start_export`, `push_frame`, `push_still` and `finish_*`; the worker
   renders one frame or page per request into a buffer that ping-pongs by

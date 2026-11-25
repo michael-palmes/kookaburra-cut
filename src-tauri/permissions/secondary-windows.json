@@ -74,7 +74,6 @@
           "cancel_pack_build",
           "reveal_pack",
           "inspect_pack",
-          "read_pack_scene_docs",
           "read_pack_scene_source",
           "stage_pack",
           "apply_import",
@@ -92,7 +91,7 @@
     },
     {
       "identifier": "settings-window",
-      "description": "Settings: caches, the hardware video switch, conform, the workspace location, website data, the pack publisher, forgetting an Allow, clearing all app data, the log folder and exporting the log.",
+      "description": "Settings: caches, the hardware video switch, conform, the workspace location, the pack publisher, forgetting an Allow, clearing all app data, the log folder and exporting the log.",
       "commands": {
         "allow": [
           "get_settings",
@@ -113,8 +112,6 @@
           "pick_folder",
           "reveal_in_finder",
           "export_app_log",
-          "website_list_data",
-          "website_clear_data",
           "get_publisher_profile",
           "set_publisher_profile",
           "rotate_publisher_key",

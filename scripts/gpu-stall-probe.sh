@@ -19,7 +19,7 @@
 # build ignores KOOKABURRA_BRIDGE_DIR, so it would serve the real bridge.
 #   scripts/gpu-stall-probe.sh --app "/path/target/debug/bundle/macos/Kookaburra Cut.app" [--scenario A|B|C|D|all]
 # Attach mode (a test instance you started yourself, for example a dev build:
-#   KOOKABURRA_BRIDGE=1 KOOKABURRA_BRIDGE_DIR=/tmp/kc-stall/_bridge \
+#   KOOKABURRA_CLAUDE=1 KOOKABURRA_BRIDGE=1 KOOKABURRA_BRIDGE_DIR=/tmp/kc-stall/_bridge \
 #   KOOKABURRA_WORKSPACE_ROOT=/tmp/kc-stall/root pnpm tauri dev):
 #   scripts/gpu-stall-probe.sh --pid PID --bridge /tmp/kc-stall/_bridge [--gpu-pid PID]
 #
@@ -122,7 +122,8 @@ wait_heartbeat() {
 
 GPU_BEFORE="$(gpu_pids)"
 if [ -n "$APP" ]; then
-  KOOKABURRA_BRIDGE=1 KOOKABURRA_BRIDGE_DIR="$BRIDGE" KOOKABURRA_WORKSPACE_ROOT="$WORK/root" \
+  KOOKABURRA_CLAUDE=1 KOOKABURRA_BRIDGE=1 KOOKABURRA_BRIDGE_DIR="$BRIDGE" \
+    KOOKABURRA_WORKSPACE_ROOT="$WORK/root" \
     "$exe" >"$WORK/app.log" 2>&1 &
   LAUNCHED=$!
   PID=$LAUNCHED

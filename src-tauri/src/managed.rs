@@ -49,7 +49,6 @@ impl PreferenceSource for HashMap<&'static str, PrefValue> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
     DisableClaude,
-    DisableLiveWebsites,
     AllowedPublisherKeyIds,
     DisableUpdateCheck,
     WorkspaceRoot,
@@ -58,13 +57,15 @@ pub enum Key {
     ExportsInProject,
     UpdateEndpoint,
     AuditLogPath,
-    AllowedWebsiteOrigins,
+    RequireManagedClaude,
 }
 
+/// Keys an earlier version honoured. Live websites are gone, so a profile that still forces one locks nothing, and its value is never read.
+pub const RETIRED_KEYS: [&str; 2] = ["DisableLiveWebsites", "AllowedWebsiteOrigins"];
+
 impl Key {
-    pub const ALL: [Key; 11] = [
+    pub const ALL: [Key; 10] = [
         Key::DisableClaude,
-        Key::DisableLiveWebsites,
         Key::AllowedPublisherKeyIds,
         Key::DisableUpdateCheck,
         Key::WorkspaceRoot,
@@ -73,13 +74,12 @@ impl Key {
         Key::ExportsInProject,
         Key::UpdateEndpoint,
         Key::AuditLogPath,
-        Key::AllowedWebsiteOrigins,
+        Key::RequireManagedClaude,
     ];
 
     pub fn name(self) -> &'static str {
         match self {
             Key::DisableClaude => "DisableClaude",
-            Key::DisableLiveWebsites => "DisableLiveWebsites",
             Key::AllowedPublisherKeyIds => "AllowedPublisherKeyIds",
             Key::DisableUpdateCheck => "DisableUpdateCheck",
             Key::WorkspaceRoot => "WorkspaceRoot",
@@ -88,7 +88,7 @@ impl Key {
             Key::ExportsInProject => "ExportsInProject",
             Key::UpdateEndpoint => "UpdateEndpoint",
             Key::AuditLogPath => "AuditLogPath",
-            Key::AllowedWebsiteOrigins => "AllowedWebsiteOrigins",
+            Key::RequireManagedClaude => "RequireManagedClaude",
         }
     }
 
@@ -96,7 +96,6 @@ impl Key {
     fn reason(self) -> &'static str {
         match self {
             Key::DisableClaude => "Claude is turned off by your organisation",
-            Key::DisableLiveWebsites => "Live websites are turned off by your organisation",
             Key::AllowedPublisherKeyIds => {
                 "Your organisation only allows packs from approved publishers"
             }
@@ -107,8 +106,8 @@ impl Key {
             Key::ExportsInProject => "Your organisation keeps exports in the project folder",
             Key::UpdateEndpoint => "Your organisation's update server address can't be used",
             Key::AuditLogPath => "Your organisation keeps a copy of the app log",
-            Key::AllowedWebsiteOrigins => {
-                "Your organisation only allows the live websites it lists"
+            Key::RequireManagedClaude => {
+                "Claude needs your organisation's Claude settings on this Mac"
             }
         }
     }
@@ -119,7 +118,6 @@ impl Key {
             Key::WorkspaceRoot => "an absolute path",
             Key::UpdateEndpoint => "an https URL",
             Key::AuditLogPath => "an absolute folder path",
-            Key::AllowedWebsiteOrigins => "an array of origins",
             _ => "a boolean",
         }
     }
@@ -132,7 +130,6 @@ pub struct ManagedPolicy {
     /// True when any key is forced.
     pub managed: bool,
     pub disable_claude: bool,
-    pub disable_live_websites: bool,
     /// Lower-case 16-hex key ids; `None` when unmanaged, an empty list means no pack imports at all.
     pub allowed_publisher_key_ids: Option<Vec<String>>,
     pub disable_update_check: bool,
@@ -150,10 +147,13 @@ pub struct ManagedPolicy {
     pub update_endpoint_locked: bool,
     /// The folder a copy of the app log goes to when the forced value was usable; the local log stays either way.
     pub audit_log_path: Option<String>,
-    /// Origins (`https://host[:port]`) a live website may open or navigate to; `None` when unmanaged, an empty list means none.
-    pub allowed_website_origins: Option<Vec<String>>,
+    /// Claude turns on only where Claude Code's own managed policy pins an organisation's sign-in (claude_policy.rs).
+    pub require_managed_claude: bool,
     /// The forced keys by name, for the lock rows and the log.
     pub forced_keys: Vec<String>,
+    /// Retired keys a profile still forces; logged at boot, never honoured.
+    #[serde(skip)]
+    pub retired_keys: Vec<String>,
     /// What was wrong with a forced key, one line each; logged, never shown.
     #[serde(skip)]
     pub issues: Vec<String>,
@@ -171,9 +171,6 @@ impl ManagedPolicy {
             policy.forced_keys.push(key.name().to_owned());
             match key {
                 Key::DisableClaude => policy.disable_claude = policy.bool_or_closed(key, &value),
-                Key::DisableLiveWebsites => {
-                    policy.disable_live_websites = policy.bool_or_closed(key, &value)
-                }
                 Key::DisableUpdateCheck => {
                     policy.disable_update_check = policy.bool_or_closed(key, &value)
                 }
@@ -200,11 +197,16 @@ impl ManagedPolicy {
                 Key::AuditLogPath => {
                     policy.audit_log_path = policy.audit_dir_or_none(&value, &homes());
                 }
-                Key::AllowedWebsiteOrigins => {
-                    policy.allowed_website_origins = Some(policy.origins_or_closed(&value))
+                Key::RequireManagedClaude => {
+                    policy.require_managed_claude = policy.bool_or_closed(key, &value)
                 }
             }
         }
+        policy.retired_keys = RETIRED_KEYS
+            .iter()
+            .filter(|key| source.forced(key).is_some())
+            .map(|key| (*key).to_owned())
+            .collect();
         policy
     }
 
@@ -261,36 +263,6 @@ impl ManagedPolicy {
             }
         }
         ids
-    }
-
-    /// The allow-list as browser origins; a malformed entry is dropped (it allows nothing), anything but an array allows no live website.
-    fn origins_or_closed(&mut self, value: &PrefValue) -> Vec<String> {
-        let PrefValue::Array(items) = value else {
-            self.note(Key::AllowedWebsiteOrigins, value, "allowing no live websites");
-            return Vec::new();
-        };
-        let mut origins = Vec::new();
-        for item in items {
-            let PrefValue::String(raw) = item else {
-                self.issues.push(format!(
-                    "AllowedWebsiteOrigins holds {} where an origin string belongs; ignoring that entry",
-                    item.kind()
-                ));
-                continue;
-            };
-            match normalise_origin(raw) {
-                Some(origin) => {
-                    if !origins.contains(&origin) {
-                        origins.push(origin);
-                    }
-                }
-                None => self.issues.push(format!(
-                    "AllowedWebsiteOrigins entry {} is not an https origin (or http on localhost with a port) without a path, login or wildcard; ignoring it",
-                    crate::audit::field(raw)
-                )),
-            }
-        }
-        origins
     }
 
     /// The forced root when it is an absolute path (a leading `~/` expands against `home`); anything else locks relocation without pinning a path.
@@ -381,28 +353,6 @@ fn usable_endpoint(raw: &str) -> Option<String> {
     plain.then(|| url.into())
 }
 
-/// One origin as the browser serialises it: scheme, host and port compared exactly, so `https://example.com` never covers `https://www.example.com`, `http://example.com` or `https://example.com:8443`. `https` anywhere, `http` only on a loopback host with a port (the only http a scene may open); no path beyond `/`, login, query, fragment or `*`.
-fn normalise_origin(raw: &str) -> Option<String> {
-    let raw = raw.trim();
-    if raw.contains('*') {
-        return None;
-    }
-    let url = tauri::Url::parse(raw).ok()?;
-    let host = url.host_str().filter(|host| !host.is_empty())?;
-    let loopback = matches!(host, "localhost" | "127.0.0.1" | "[::1]");
-    let scheme = match url.scheme() {
-        "https" => true,
-        "http" => loopback && url.port().is_some(),
-        _ => false,
-    };
-    let bare = url.username().is_empty()
-        && url.password().is_none()
-        && url.path() == "/"
-        && url.query().is_none()
-        && url.fragment().is_none();
-    (scheme && bare).then(|| url.origin().ascii_serialization())
-}
-
 /// `a1b2 c3d4 e5f6 0718` and `A1B2C3D4E5F60718` both read as the stored id.
 fn normalise_key_id(raw: &str) -> Option<String> {
     let id: String = raw
@@ -457,7 +407,20 @@ pub fn policy() -> &'static ManagedPolicy {
 
 #[cfg(target_os = "macos")]
 fn system_source() -> impl PreferenceSource {
-    cf::CfSource
+    cf::CfSource(DOMAIN)
+}
+
+/// A key a configuration profile forces in another app's preference domain: how the app sees Claude Code's managed policy. `None` when it is unset, set only by the user, or off macOS.
+pub fn forced_in(domain: &'static str, key: &str) -> Option<PrefValue> {
+    #[cfg(target_os = "macos")]
+    {
+        cf::CfSource(domain).forced(key)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (domain, key);
+        None
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -468,6 +431,12 @@ fn system_source() -> impl PreferenceSource {
 /// One `[managed]` line for the forced keys and one per malformed one, at boot, in the app log.
 pub fn log_at_boot() {
     let policy = policy();
+    if !policy.retired_keys.is_empty() {
+        log::info!(
+            "[managed] configuration profile still forces {}: live websites were removed, so it does nothing",
+            policy.retired_keys.join(", ")
+        );
+    }
     if !policy.managed {
         return;
     }
@@ -504,9 +473,10 @@ pub fn deny_claude_in(policy: &ManagedPolicy) -> Result<(), String> {
     Ok(())
 }
 
-pub fn deny_live_websites_in(policy: &ManagedPolicy) -> Result<(), String> {
-    if policy.disable_live_websites {
-        return Err(refusal(Key::DisableLiveWebsites));
+/// `org_pinned` is whether Claude Code's own managed policy pins an organisation's sign-in on this Mac (`claude_policy::org_pinned`).
+pub fn deny_unmanaged_claude_in(policy: &ManagedPolicy, org_pinned: bool) -> Result<(), String> {
+    if policy.require_managed_claude && !org_pinned {
+        return Err(refusal(Key::RequireManagedClaude));
     }
     Ok(())
 }
@@ -543,36 +513,6 @@ pub fn deny_publisher_in(policy: &ManagedPolicy, key_id: Option<&str>) -> Result
     Err(refusal(Key::AllowedPublisherKeyIds))
 }
 
-/// Whether a live website may open or navigate to `origin`: never under `DisableLiveWebsites`, and only an exact match when `AllowedWebsiteOrigins` is forced. Checked before a grant counts, so a grant made before the profile stops working without being deleted.
-pub fn deny_website_origin_in(policy: &ManagedPolicy, origin: &str) -> Result<(), String> {
-    deny_live_websites_in(policy)?;
-    let Some(allowed) = &policy.allowed_website_origins else {
-        return Ok(());
-    };
-    if allowed.is_empty() {
-        log_refusal_once(Key::AllowedWebsiteOrigins);
-        return Err(format!(
-            "{REASON_PREFIX} Your organisation doesn't allow live websites ({}).",
-            Key::AllowedWebsiteOrigins.name()
-        ));
-    }
-    if normalise_origin(origin).is_some_and(|origin| allowed.contains(&origin)) {
-        return Ok(());
-    }
-    Err(refusal(Key::AllowedWebsiteOrigins))
-}
-
-/// The same answer as `deny_website_origin_in` without logging a refusal, for paths that only look.
-pub fn website_origin_allowed_in(policy: &ManagedPolicy, origin: &str) -> bool {
-    if policy.disable_live_websites {
-        return false;
-    }
-    match &policy.allowed_website_origins {
-        None => true,
-        Some(allowed) => normalise_origin(origin).is_some_and(|origin| allowed.contains(&origin)),
-    }
-}
-
 pub fn deny_agent_kit_in(policy: &ManagedPolicy) -> Result<(), String> {
     if policy.disable_agent_kit {
         return Err(refusal(Key::DisableAgentKit));
@@ -599,8 +539,11 @@ pub fn deny_claude() -> Result<(), String> {
     deny_claude_in(policy())
 }
 
-pub fn deny_live_websites() -> Result<(), String> {
-    deny_live_websites_in(policy())
+/// Reads Claude Code's managed policy afresh, so one IT installed a moment ago counts: for the handoff and the Use Claude switch.
+pub fn deny_unmanaged_claude() -> Result<(), String> {
+    let policy = policy();
+    let org_pinned = !policy.require_managed_claude || crate::claude_policy::refresh();
+    deny_unmanaged_claude_in(policy, org_pinned)
 }
 
 pub fn deny_update_check() -> Result<(), String> {
@@ -617,14 +560,6 @@ pub fn deny_publisher(key_id: Option<&str>) -> Result<(), String> {
 
 pub fn deny_agent_kit() -> Result<(), String> {
     deny_agent_kit_in(policy())
-}
-
-pub fn deny_website_origin(origin: &str) -> Result<(), String> {
-    deny_website_origin_in(policy(), origin)
-}
-
-pub fn website_origin_allowed(origin: &str) -> bool {
-    website_origin_allowed_in(policy(), origin)
 }
 
 pub fn deny_pack_export() -> Result<(), String> {
@@ -659,18 +594,19 @@ pub fn managed_policy() -> ManagedPolicy {
 
 #[cfg(target_os = "macos")]
 mod cf {
-    use super::{PrefValue, PreferenceSource, DOMAIN};
+    use super::{PrefValue, PreferenceSource};
     use objc2_core_foundation::{
         CFArray, CFBoolean, CFNumber, CFPreferencesAppValueIsForced, CFPreferencesCopyAppValue,
         CFRetained, CFString, CFType, Type,
     };
 
-    pub struct CfSource;
+    /// The preference domain it reads.
+    pub struct CfSource(pub &'static str);
 
     impl PreferenceSource for CfSource {
         fn forced(&self, key: &str) -> Option<PrefValue> {
             let key = CFString::from_str(key);
-            let domain = CFString::from_str(DOMAIN);
+            let domain = CFString::from_str(self.0);
             if !CFPreferencesAppValueIsForced(&key, &domain) {
                 return None;
             }
@@ -723,7 +659,6 @@ mod tests {
         assert_eq!(policy, ManagedPolicy::default());
         assert!(!policy.managed);
         assert!(deny_claude_in(&policy).is_ok());
-        assert!(deny_live_websites_in(&policy).is_ok());
         assert!(deny_update_check_in(&policy).is_ok());
         assert!(deny_workspace_change_in(&policy).is_ok());
         assert!(deny_publisher_in(&policy, Some("a1b2c3d4e5f60718")).is_ok());
@@ -733,8 +668,6 @@ mod tests {
         assert!(deny_pack_export_in(&policy).is_ok());
         assert_eq!(managed_update_endpoint_in(&policy), Ok(None));
         assert!(!policy.exports_in_project);
-        assert!(deny_website_origin_in(&policy, "https://example.com").is_ok());
-        assert!(deny_website_origin_in(&policy, "http://localhost:5173").is_ok());
     }
 
     #[test]
@@ -756,45 +689,70 @@ mod tests {
     fn forced_booleans_are_honoured_both_ways() {
         let on = forced(&[
             ("DisableClaude", PrefValue::Bool(true)),
-            ("DisableLiveWebsites", PrefValue::Bool(true)),
             ("DisableUpdateCheck", PrefValue::Bool(true)),
             ("DisableAgentKit", PrefValue::Bool(true)),
             ("DisablePackExport", PrefValue::Bool(true)),
             ("ExportsInProject", PrefValue::Bool(true)),
+            ("RequireManagedClaude", PrefValue::Bool(true)),
         ]);
         assert!(on.managed);
-        assert!(on.disable_claude && on.disable_live_websites && on.disable_update_check);
+        assert!(on.disable_claude && on.disable_update_check);
         assert!(on.disable_agent_kit && on.disable_pack_export && on.exports_in_project);
+        assert!(on.require_managed_claude);
         assert_eq!(
             on.forced_keys,
             vec![
                 "DisableClaude",
-                "DisableLiveWebsites",
                 "DisableUpdateCheck",
                 "DisableAgentKit",
                 "DisablePackExport",
-                "ExportsInProject"
+                "ExportsInProject",
+                "RequireManagedClaude"
             ]
         );
         assert!(on.issues.is_empty());
 
         let off = forced(&[
             ("DisableClaude", PrefValue::Bool(false)),
-            ("DisableLiveWebsites", PrefValue::Bool(false)),
             ("DisableUpdateCheck", PrefValue::Bool(false)),
             ("DisableAgentKit", PrefValue::Bool(false)),
             ("DisablePackExport", PrefValue::Bool(false)),
             ("ExportsInProject", PrefValue::Bool(false)),
+            ("RequireManagedClaude", PrefValue::Bool(false)),
         ]);
         assert!(
             off.managed,
             "a forced false still marks the install as managed"
         );
-        assert!(!off.disable_claude && !off.disable_live_websites && !off.disable_update_check);
+        assert!(!off.require_managed_claude);
+        assert!(deny_unmanaged_claude_in(&off, false).is_ok());
+        assert!(!off.disable_claude && !off.disable_update_check);
         assert!(!off.disable_agent_kit && !off.disable_pack_export && !off.exports_in_project);
         assert!(deny_claude_in(&off).is_ok());
         assert!(deny_agent_kit_in(&off).is_ok());
         assert!(deny_pack_export_in(&off).is_ok());
+    }
+
+    #[test]
+    fn claude_needs_the_organisations_own_policy_where_the_key_asks() {
+        let required = forced(&[("RequireManagedClaude", PrefValue::Bool(true))]);
+        assert!(deny_unmanaged_claude_in(&required, true).is_ok());
+        let refusal = deny_unmanaged_claude_in(&required, false).unwrap_err();
+        assert!(refusal.starts_with(REASON_PREFIX), "{refusal}");
+        assert!(
+            refusal.contains("Claude needs your organisation's Claude settings on this Mac"),
+            "{refusal}"
+        );
+        assert!(refusal.contains("RequireManagedClaude"), "{refusal}");
+        assert!(deny_claude_in(&required).is_ok());
+        assert!(deny_agent_kit_in(&required).is_ok());
+
+        let malformed = forced(&[("RequireManagedClaude", PrefValue::String("yes".into()))]);
+        assert!(malformed.require_managed_claude, "a wrong type fails closed");
+        assert_eq!(malformed.issues.len(), 1);
+        assert!(deny_unmanaged_claude_in(&malformed, false).is_err());
+
+        assert!(deny_unmanaged_claude_in(&ManagedPolicy::default(), false).is_ok());
     }
 
     #[test]
@@ -871,126 +829,38 @@ mod tests {
     }
 
     #[test]
-    fn website_origins_match_scheme_host_and_port_exactly() {
-        let policy = forced(&[(
-            "AllowedWebsiteOrigins",
-            strings(&[
-                " https://Product.Example.com/ ",
-                "https://product.example.com:443",
-                "http://localhost:5173",
-                "https://docs.example.com:8443",
-            ]),
-        )]);
-        assert_eq!(
-            policy.allowed_website_origins,
-            Some(vec![
-                "https://product.example.com".to_owned(),
-                "http://localhost:5173".to_owned(),
-                "https://docs.example.com:8443".to_owned(),
-            ])
-        );
-        assert!(policy.issues.is_empty(), "{:?}", policy.issues);
-        for allowed in [
-            "https://product.example.com",
-            "https://PRODUCT.example.com",
-            "http://localhost:5173",
-            "https://docs.example.com:8443",
-        ] {
-            assert!(deny_website_origin_in(&policy, allowed).is_ok(), "{allowed}");
-        }
-        for refused in [
-            "https://www.product.example.com",
-            "https://evilproduct.example.com",
-            "https://product.example.com.evil.test",
-            "https://example.com",
-            "http://product.example.com",
-            "https://product.example.com:8443",
-            "https://docs.example.com",
-            "http://localhost:5174",
-            "http://127.0.0.1:5173",
-            "not an origin",
-            "",
-        ] {
-            let message = deny_website_origin_in(&policy, refused).unwrap_err();
-            assert!(message.starts_with(REASON_PREFIX), "{refused}: {message}");
-            assert!(message.contains("AllowedWebsiteOrigins"), "{refused}");
-            assert!(!website_origin_allowed_in(&policy, refused), "{refused}");
-        }
-        assert!(website_origin_allowed_in(&policy, "https://product.example.com"));
-        assert!(website_origin_allowed_in(&ManagedPolicy::default(), "https://a.test"));
-        let empty = forced(&[("AllowedWebsiteOrigins", strings(&[]))]);
-        assert!(!website_origin_allowed_in(&empty, "https://a.test"));
-        let off = forced(&[("DisableLiveWebsites", PrefValue::Bool(true))]);
-        assert!(!website_origin_allowed_in(&off, "https://a.test"));
-    }
-
-    #[test]
-    fn website_origin_entries_that_could_widen_the_list_are_dropped() {
-        let policy = forced(&[(
-            "AllowedWebsiteOrigins",
-            PrefValue::Array(vec![
-                PrefValue::String("https://*.example.com".into()),
-                PrefValue::String("*".into()),
-                PrefValue::String("example.com".into()),
-                PrefValue::String("https://example.com/path".into()),
-                PrefValue::String("https://example.com/?q=1".into()),
-                PrefValue::String("https://example.com/#top".into()),
-                PrefValue::String("https://user@example.com".into()),
-                PrefValue::String("http://example.com".into()),
-                PrefValue::String("http://localhost".into()),
-                PrefValue::String("file:///Users/x".into()),
-                PrefValue::Bool(true),
-                PrefValue::String("https://ok.example.com".into()),
-            ]),
-        )]);
-        assert_eq!(
-            policy.allowed_website_origins,
-            Some(vec!["https://ok.example.com".to_owned()])
-        );
-        assert_eq!(policy.issues.len(), 11, "{:?}", policy.issues);
-        assert!(policy
-            .issues
-            .iter()
-            .all(|issue| issue.starts_with("AllowedWebsiteOrigins")));
-        assert!(deny_website_origin_in(&policy, "https://a.example.com").is_err());
-        assert!(deny_website_origin_in(&policy, "https://example.com").is_err());
-    }
-
-    #[test]
-    fn an_empty_or_wrong_typed_website_list_allows_no_live_websites() {
-        let empty = forced(&[("AllowedWebsiteOrigins", strings(&[]))]);
-        assert_eq!(empty.allowed_website_origins, Some(Vec::new()));
-        let refused = deny_website_origin_in(&empty, "https://example.com").unwrap_err();
-        assert!(refused.starts_with(REASON_PREFIX));
-        assert!(refused.contains("doesn't allow live websites"));
-
-        for wrong in [
-            PrefValue::String("https://example.com".into()),
+    fn a_retired_key_a_profile_still_forces_locks_nothing() {
+        for value in [
+            PrefValue::Bool(true),
             PrefValue::Bool(false),
+            strings(&["https://example.com"]),
+            strings(&[]),
             PrefValue::Other("a number"),
         ] {
-            let policy = forced(&[("AllowedWebsiteOrigins", wrong.clone())]);
-            assert_eq!(policy.allowed_website_origins, Some(Vec::new()), "{wrong:?}");
-            assert!(policy.issues[0].starts_with("AllowedWebsiteOrigins is forced but is"));
-            assert!(deny_website_origin_in(&policy, "https://example.com").is_err());
+            let policy = forced(&[
+                ("DisableLiveWebsites", value.clone()),
+                ("AllowedWebsiteOrigins", value.clone()),
+            ]);
+            assert_eq!(policy.retired_keys, RETIRED_KEYS, "{value:?}");
+            assert_eq!(
+                ManagedPolicy {
+                    retired_keys: Vec::new(),
+                    ..policy
+                },
+                ManagedPolicy::default(),
+                "{value:?}"
+            );
         }
-    }
-
-    #[test]
-    fn disabling_live_websites_wins_over_the_website_list() {
-        let policy = forced(&[
+        let beside = forced(&[
             ("DisableLiveWebsites", PrefValue::Bool(true)),
-            ("AllowedWebsiteOrigins", strings(&["https://example.com"])),
+            ("DisableClaude", PrefValue::Bool(true)),
         ]);
-        let refused = deny_website_origin_in(&policy, "https://example.com").unwrap_err();
-        assert!(refused.contains("DisableLiveWebsites"), "{refused}");
-
-        let open = forced(&[
-            ("DisableLiveWebsites", PrefValue::Bool(false)),
-            ("AllowedWebsiteOrigins", strings(&["https://example.com"])),
-        ]);
-        assert!(deny_website_origin_in(&open, "https://example.com").is_ok());
-        assert!(deny_website_origin_in(&open, "https://other.example.com").is_err());
+        assert_eq!(beside.forced_keys, vec!["DisableClaude"]);
+        assert_eq!(beside.retired_keys, vec!["DisableLiveWebsites"]);
+        assert!(beside.issues.is_empty());
+        for key in RETIRED_KEYS {
+            assert!(Key::ALL.iter().all(|live| live.name() != key), "{key}");
+        }
     }
 
     #[test]
@@ -1149,7 +1019,6 @@ mod tests {
     fn every_refusal_carries_the_managed_reason_and_the_key() {
         let policy = forced(&[
             ("DisableClaude", PrefValue::Bool(true)),
-            ("DisableLiveWebsites", PrefValue::Bool(true)),
             ("DisableUpdateCheck", PrefValue::Bool(true)),
             (
                 "WorkspaceRoot",
@@ -1159,11 +1028,14 @@ mod tests {
             ("DisableAgentKit", PrefValue::Bool(true)),
             ("DisablePackExport", PrefValue::Bool(true)),
             ("UpdateEndpoint", PrefValue::String("http://example.com".into())),
+            ("RequireManagedClaude", PrefValue::Bool(true)),
         ]);
-        let listed = forced(&[("AllowedWebsiteOrigins", strings(&["https://example.com"]))]);
         let refusals = [
+            (
+                deny_unmanaged_claude_in(&policy, false),
+                "RequireManagedClaude",
+            ),
             (deny_claude_in(&policy), "DisableClaude"),
-            (deny_live_websites_in(&policy), "DisableLiveWebsites"),
             (deny_update_check_in(&policy), "DisableUpdateCheck"),
             (deny_workspace_change_in(&policy), "WorkspaceRoot"),
             (
@@ -1175,10 +1047,6 @@ mod tests {
             (
                 managed_update_endpoint_in(&policy).map(|_| ()),
                 "UpdateEndpoint",
-            ),
-            (
-                deny_website_origin_in(&listed, "https://other.example.com"),
-                "AllowedWebsiteOrigins",
             ),
         ];
         for (outcome, key) in refusals {
@@ -1226,11 +1094,6 @@ mod tests {
                 "deny_claude",
             ),
             (
-                include_str!("website.rs"),
-                "website_open",
-                "deny_live_websites",
-            ),
-            (
                 include_str!("updater.rs"),
                 "check_for_update",
                 "deny_update_check",
@@ -1244,6 +1107,21 @@ mod tests {
                 include_str!("updater.rs"),
                 "install_update_and_relaunch",
                 "deny_update_check",
+            ),
+            (
+                include_str!("updater.rs"),
+                "check_for_update",
+                "package_install::deny_update",
+            ),
+            (
+                include_str!("updater.rs"),
+                "set_update_consent",
+                "package_install::deny_update",
+            ),
+            (
+                include_str!("updater.rs"),
+                "install_update_and_relaunch",
+                "package_install::deny_update",
             ),
             (
                 include_str!("workspace.rs"),
@@ -1266,43 +1144,95 @@ mod tests {
                 "deny_managed_publisher",
             ),
             (
+                include_str!("agent_gate.rs"),
+                "deny_in",
+                "deny_agent_kit_in",
+            ),
+            (include_str!("agent_gate.rs"), "deny", "deny_in"),
+            (
+                include_str!("agent_gate.rs"),
+                "managed_off",
+                "deny_agent_kit",
+            ),
+            (
                 include_str!("workspace.rs"),
                 "stamp_claude_provisioning",
-                "deny_agent_kit",
+                "agent_gate::deny",
             ),
             (
                 include_str!("workspace.rs"),
                 "heal_project_kit",
-                "deny_agent_kit",
+                "agent_gate::deny",
             ),
             (
                 include_str!("claude_app.rs"),
                 "open_in_claude",
-                "deny_agent_kit",
+                "agent_gate::deny",
             ),
             (
                 include_str!("claude_app.rs"),
                 "open_claude_download",
+                "agent_gate::deny",
+            ),
+            (
+                include_str!("claude_app.rs"),
+                "set_claude_consent",
+                "deny_claude",
+            ),
+            (
+                include_str!("claude_app.rs"),
+                "set_claude_consent",
                 "deny_agent_kit",
             ),
+            (
+                include_str!("claude_app.rs"),
+                "set_claude_consent",
+                "deny_unmanaged_claude",
+            ),
+            (
+                include_str!("claude_app.rs"),
+                "open_in_claude",
+                "deny_unmanaged_claude",
+            ),
+            (
+                include_str!("agent_gate.rs"),
+                "deny_in",
+                "deny_unmanaged_claude_in",
+            ),
+            (
+                include_str!("pack/commands.rs"),
+                "apply_import",
+                "agent_gate::deny",
+            ),
             (include_str!("bridge.rs"), "init", "deny_agent_kit"),
-            (include_str!("bridge.rs"), "spawn_heartbeat", "deny_agent_kit"),
-            (include_str!("bridge.rs"), "spawn_native_bridge", "deny_agent_kit"),
-            (include_str!("bridge.rs"), "bridge_root", "deny_agent_kit"),
+            (include_str!("bridge.rs"), "apply_gate", "agent_gate::deny"),
+            (
+                include_str!("bridge.rs"),
+                "spawn_heartbeat",
+                "agent_gate::managed_off",
+            ),
+            (
+                include_str!("bridge.rs"),
+                "spawn_native_bridge",
+                "agent_gate::managed_off",
+            ),
+            (include_str!("bridge.rs"), "write_heartbeat", "agent_gate::deny"),
+            (include_str!("bridge.rs"), "serving", "agent_gate::deny"),
+            (include_str!("bridge.rs"), "bridge_root", "agent_gate::deny"),
             (
                 include_str!("bridge.rs"),
                 "bridge_claim_request",
-                "deny_agent_kit",
+                "agent_gate::deny",
             ),
             (
                 include_str!("bridge.rs"),
                 "bridge_pending_count",
-                "deny_agent_kit",
+                "agent_gate::deny",
             ),
             (
                 include_str!("bridge.rs"),
                 "bridge_write_response",
-                "deny_agent_kit",
+                "agent_gate::deny",
             ),
             (
                 include_str!("pack/commands.rs"),
@@ -1350,36 +1280,6 @@ mod tests {
                 "audit_log_dir",
             ),
             (include_str!("lib.rs"), "run", "audit::mirror_at_launch"),
-            (
-                include_str!("website.rs"),
-                "website_open",
-                "deny_website_origin",
-            ),
-            (
-                include_str!("website.rs"),
-                "website_grant_origin",
-                "deny_website_origin",
-            ),
-            (
-                include_str!("website.rs"),
-                "website_resume_pending",
-                "deny_website_origin",
-            ),
-            (
-                include_str!("website.rs"),
-                "navigation_allowed",
-                "deny_website_origin",
-            ),
-            (
-                include_str!("website.rs"),
-                "origin_granted",
-                "website_origin_allowed",
-            ),
-            (
-                include_str!("website.rs"),
-                "website_list_grants",
-                "website_origin_allowed",
-            ),
         ];
         for (src, command, guard) in guarded {
             assert!(
@@ -1402,7 +1302,7 @@ mod tests {
         let json = serde_json::to_value(&policy).unwrap();
         assert_eq!(json["managed"], true);
         assert_eq!(json["disableClaude"], true);
-        assert_eq!(json["disableLiveWebsites"], false);
+        assert!(json.get("disableLiveWebsites").is_none());
         assert_eq!(
             json["allowedPublisherKeyIds"],
             serde_json::json!(["a1b2c3d4e5f60718"])
@@ -1415,7 +1315,9 @@ mod tests {
         assert_eq!(json["updateEndpoint"], serde_json::Value::Null);
         assert_eq!(json["updateEndpointLocked"], false);
         assert_eq!(json["auditLogPath"], serde_json::Value::Null);
-        assert_eq!(json["allowedWebsiteOrigins"], serde_json::Value::Null);
+        assert_eq!(json["requireManagedClaude"], false);
+        assert!(json.get("allowedWebsiteOrigins").is_none());
+        assert!(json.get("retiredKeys").is_none());
         assert_eq!(
             json["forcedKeys"],
             serde_json::json!(["DisableClaude", "AllowedPublisherKeyIds"])

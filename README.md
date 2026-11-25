@@ -45,18 +45,18 @@ while you watch them update here.
 Nothing leaves your Mac unless you choose.
 
 <p align="center">
-  <img src="docs/assets/security-doors.png" width="900" alt="Your Mac as a walled box holding projects, render and export. Three switched doors lead to GitHub for updates, your own Claude app and a website you allow, each with the key a fleet forces to lock it. There is no other way out.">
+  <img src="docs/assets/security-doors.png" width="900" alt="Your Mac as a walled box holding projects, render and export. Two switched doors lead to GitHub for updates and your own Claude app, each with the key a fleet forces to lock it. There is no other way out.">
 </p>
 
 | Risk | What the app does |
 | --- | --- |
-| [Your work leaves the Mac](SECURITY.md#what-leaves-the-mac) | There are no accounts, no telemetry and no crash reports. The app goes online for three things: updates, Edit with Claude and a website you allow in a scene. You turn each one on, and IT can turn each one off. |
+| [Your work leaves the Mac](SECURITY.md#what-leaves-the-mac) | There are no accounts, no telemetry and no crash reports. The app goes online for two things: updates and Edit with Claude. You turn each one on, and IT can turn each one off. The app itself loads no web page. |
 | [The AI sees more than it should](SECURITY.md#what-reaches-your-agent) | The app has no API key and sends nothing to Anthropic itself. Edit with Claude opens one project folder in your own Claude app, and nothing is sent until you press Enter there. Claude then sends that project's files to Anthropic, under your account and your organisation's Claude settings. |
 | [A project or pack you were sent runs code](SECURITY.md#scene-code-and-the-trust-boundary) | Nothing runs when you import. Scene code runs only after you press Allow, and it can't reach the network or the app's commands. Packs are signed, and every file's hash is checked on import. |
 | [Text in a project tries to instruct the AI](SECURITY.md#what-reaches-your-agent) | Text that Claude reads from a project is escaped, capped and marked as data. Agent settings in a shared folder are set aside, and you see the list before Claude starts. |
 | [A release or update is tampered with](SECURITY.md#release-integrity) | GitHub Actions builds each release from a signed tag, with no signing secret in reach. Signing needs a second reviewer. Apple notarises the app, and each release comes with an attestation and an SBOM. An update installs only if it's signed with the key built into the app. |
 | [Confidential files sit on the Mac](SECURITY.md#on-the-mac) | Projects stay in your home folder. Nothing is uploaded or synced. Only your account can read the app's data, and Spotlight skips it. The app adds no encryption of its own, so use FileVault. |
-| [Your organisation needs to set limits](docs/mdm.md) | A configuration profile can lock eleven settings. People can't override them with `defaults write`. If a key is malformed, the app takes the safe option. |
+| [Your organisation needs to set limits](docs/mdm.md) | A configuration profile can lock ten settings. People can't override them with `defaults write`. If a key is malformed, the app takes the safe option. |
 
 **Not done yet.** There's one maintainer, who can change the release rules. There's been no third-party penetration test. There's no SOC 2 or ISO 27001, and no App Sandbox. The AI is limited by rules and prompts, not by a sandbox. [The full list](SECURITY.md#not-yet).
 

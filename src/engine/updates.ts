@@ -30,6 +30,18 @@ export function installUpdateAndRelaunch(): Promise<void> {
   return invoke<void>("install_update_and_relaunch");
 }
 
+let knownLeftToInstaller: boolean | null = null;
+
+/** This copy came from the release package and no profile turned its updater back on (package_install.rs): it never checks or installs, and whoever installed it delivers updates. Remembered for this window's next first paint; a failed read reads as false, and Rust refuses either way. */
+export function updatesLeftToInstaller(): Promise<boolean> {
+  return invoke<boolean>("updates_left_to_installer")
+    .catch(() => false)
+    .then((left) => {
+      knownLeftToInstaller = left;
+      return left;
+    });
+}
+
 // ── Auto-check policy (pure, vitest-covered) ───────────────────────────────
 
 /** SturtBar's cadence: automatic checks at most once per 20h; manual checks never throttle. */
@@ -38,7 +50,7 @@ export const AUTO_CHECK_THROTTLE_MS = 20 * 60 * 60 * 1000;
 /** How often an open main window asks whether the throttle has lapsed; wall-clock based, so a Mac that slept catches up. */
 export const AUTO_CHECK_POLL_MS = 60 * 60 * 1000;
 
-/** A profile that turns update checks off pins consent off; the stored tri-state still says whether the welcome's ask is owed. */
+/** A profile that turns update checks off pins consent off, and so does a package install; the stored tri-state still says whether the welcome's ask is owed. */
 export function consentFromSettings(
   raw: boolean | null | undefined,
   managedOff = false,
@@ -114,6 +126,8 @@ export interface UpdateCheckApi {
   consent: UpdateConsent;
   /** Update checks are turned off by a configuration profile, or pointed at a server the app can't use: no switch, no manual check. */
   managed: boolean;
+  /** Updates are left to the installer of this copy (a package install no profile opted back in): no switch, no manual check, and not a profile's doing. */
+  byInstaller: boolean;
   /** The first-run welcome is still owed (no answer stored yet, managed or not). */
   welcomeOwed: boolean;
   phase: "idle" | "checking" | "installing";
@@ -144,6 +158,9 @@ export function useUpdateCheck({
 }: UseUpdateCheckOptions): UpdateCheckApi {
   const [consent, setConsent] = useState<UpdateConsent>("loading");
   const [managed, setManaged] = useState(false);
+  const [byInstaller, setByInstaller] = useState(knownLeftToInstaller ?? false);
+  const byInstallerRef = useRef(byInstaller);
+  byInstallerRef.current = byInstaller;
   const [welcomeOwed, setWelcomeOwed] = useState(false);
   const [phase, setPhase] = useState<"idle" | "checking" | "installing">("idle");
   const [devBuild, setDevBuild] = useState(false);
@@ -160,13 +177,14 @@ export function useUpdateCheck({
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getSettings(), managedPolicy()])
-      .then(([s, policy]) => {
+    Promise.all([getSettings(), managedPolicy(), updatesLeftToInstaller()])
+      .then(([s, policy, installer]) => {
         if (cancelled) return;
         const locked = updateChecksLocked(policy);
         setManaged(locked);
+        setByInstaller(installer);
         setWelcomeOwed(consentFromSettings(s.updateCheckConsent) === "undecided");
-        setConsent(consentFromSettings(s.updateCheckConsent, locked));
+        setConsent(consentFromSettings(s.updateCheckConsent, locked || installer));
         setLastCheckedMs(s.lastUpdateCheckMs ?? null);
       })
       .catch(() => {
@@ -219,7 +237,7 @@ export function useUpdateCheck({
         .then(([s, policy]) => {
           const due = autoCheckDue({
             storedConsent: s.updateCheckConsent,
-            managedOff: updateChecksLocked(policy),
+            managedOff: updateChecksLocked(policy) || byInstallerRef.current,
             lastCheckedMs: s.lastUpdateCheckMs,
             lastAttemptMs: lastAttemptRef.current,
             exporting: isExporting(),
@@ -294,6 +312,7 @@ export function useUpdateCheck({
   return {
     consent,
     managed,
+    byInstaller,
     welcomeOwed,
     phase,
     devBuild,
