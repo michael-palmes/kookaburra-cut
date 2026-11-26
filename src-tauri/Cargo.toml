@@ -20,7 +20,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 fuzzing = []
 
 [build-dependencies]
-tauri-build = { version = "=2.7.4", features = [] }
+tauri-build = { version = "=2.7.6", features = [] }
 
 [dependencies]
 serde_json = "1.0"
@@ -140,7 +140,7 @@ objc2-vision = { version = "0.3.2", default-features = false, features = [
   "VNTypes",
 ] }
 # Never imported: pins the webview layer to tauri-runtime-wry's wry, so move it with tauri (one wry in the lock).
-wry = "=0.57.2"
+wry = "=0.57.3"
 
 [dev-dependencies]
 walkdir = "2"
