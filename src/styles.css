@@ -258,6 +258,7 @@ body {
 /* ── Titlebar (§7.1) — custom, draggable, traffic-light inset ─────────────── */
 
 .titlebar {
+  container: titlebar / inline-size;
   display: flex;
   align-items: center;
   gap: var(--space-5);
@@ -308,11 +309,12 @@ body {
   cursor: default;
 }
 
-/* Project identity: name over its display path (a static drag surface). */
+/* Project identity: name over its display path (a static drag surface), the one part of the bar that gives way. */
 .titlebar-identity {
   display: flex;
+  flex: 0 1 auto;
   flex-direction: column;
-  min-width: 0;
+  min-width: 4em;
   line-height: 1.15;
 }
 
@@ -331,6 +333,25 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.titlebar-path.copyable {
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 0;
+  font: inherit;
+  font-size: var(--text-xs);
+  text-align: left;
+  color: var(--text-tertiary);
+  background: none;
+  border: none;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.titlebar-path.copyable:hover {
+  color: var(--text-secondary);
 }
 
 /* Enlarged text: the project name wraps to two lines rather than lose its end; the folder keeps its tooltip. */
@@ -390,8 +411,22 @@ body {
 .titlebar-export,
 .titlebar-present,
 .titlebar-cancel {
+  flex: none;
   height: calc(32px * var(--text-scale));
   gap: 7px;
+}
+
+/* A tight titlebar drops labels once the name would get under 14em: the palette's first, then Claude's and Present's (icons and ⌘K stay). Each threshold is the left side, 14em and the right group, measured at every text size. */
+@container titlebar (max-width: calc(380px + 32.4em)) {
+  .palette-trigger .titlebar-label {
+    display: none;
+  }
+}
+
+@container titlebar (max-width: calc(360px + 26.9em)) {
+  :is(.titlebar-claude, .titlebar-present) .titlebar-label {
+    display: none;
+  }
 }
 
 /* ── Edit with Claude (§4.7): the titlebar button and its launcher ─────────── */
@@ -458,7 +493,7 @@ body {
 .claude-launcher {
   position: absolute;
   top: calc(100% + 6px);
-  left: -6px;
+  right: -6px;
   /* Just under .modal-overlay, so a dialog opened by shortcut covers it. */
   z-index: 19;
   display: flex;
@@ -468,6 +503,7 @@ body {
   background: var(--claude-surface);
   border-radius: var(--radius-lg);
   box-shadow: var(--elev-dialog);
+  transform-origin: top right;
   animation: claude-launcher-in var(--dur-base) var(--ease-emphasis);
 }
 

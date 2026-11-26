@@ -574,6 +574,14 @@ export default function App() {
     }
   }, []);
 
+  const copyProjectFolderPath = useCallback((folder: string) => {
+    const failed = () =>
+      setToast({ kind: "error", message: `Couldn't copy. The path is: ${folder}` });
+    const write = navigator.clipboard?.writeText(folder);
+    if (!write) return failed();
+    write.then(() => setToast({ kind: "success", message: "Folder path copied" })).catch(failed);
+  }, []);
+
   // "Edit with Claude" on a theme card: a starter prompt, never auto-submitted, typed into the Claude app.
   const handleEditThemeInClaude = useCallback(
     (choice: { id: string; name: string }) => {
@@ -2929,7 +2937,7 @@ export default function App() {
       <div className="visually-hidden" role="status" aria-live="polite">
         {exportSpoken}
       </div>
-      {/* Titlebar: projects folder + identity left; ⌘K trigger + Export CTA right. The old center strip's actions live in the command palette (commandRegistry pins the vocabulary); Welcome keeps a New project button. */}
+      {/* Titlebar: projects folder + identity left (the part that gives way); ⌘K trigger, Edit with Claude, Present + Export CTA right. The old center strip's actions live in the command palette (commandRegistry pins the vocabulary); Welcome keeps a New project button. */}
       <Titlebar>
         {editorView ? (
           <>
@@ -2937,7 +2945,23 @@ export default function App() {
             <TitlebarIdentity
               name={project?.name ?? projectId.replace(WORKSPACE_PROJECT_PREFIX, "")}
               path={projectDisplayPath}
+              onCopyPath={
+                project && isEditableProjectId(project.id) && projectFolder
+                  ? () => copyProjectFolderPath(projectFolder)
+                  : undefined
+              }
             />
+          </>
+        ) : (
+          <span className="titlebar-title" data-tauri-drag-region>
+            Kookaburra Cut
+          </span>
+        )}
+        <span className="spacer" data-tauri-drag-region />
+        {editorView && (
+          <>
+            <PaletteTrigger onOpen={() => useUiStore.getState().togglePalette()} />
+            <span className="titlebar-divider" aria-hidden />
             {project &&
               isEditableProjectId(project.id) &&
               !claudeAllowed &&
@@ -2963,17 +2987,6 @@ export default function App() {
                 )}
               </EditWithClaudeButton>
             )}
-          </>
-        ) : (
-          <span className="titlebar-title" data-tauri-drag-region>
-            Kookaburra Cut
-          </span>
-        )}
-        <span className="spacer" data-tauri-drag-region />
-        {editorView && (
-          <>
-            <PaletteTrigger onOpen={() => useUiStore.getState().togglePalette()} />
-            <span className="titlebar-divider" aria-hidden />
             {exporting ? (
               <button
                 type="button"
@@ -2991,11 +3004,12 @@ export default function App() {
                 type="button"
                 className="btn titlebar-present"
                 title="Play this project live: click-through slideshow or video, windowed or fullscreen"
+                aria-label="Present"
                 onClick={() => setShowPresent(true)}
                 disabled={!project}
               >
                 <PresentIcon />
-                Present
+                <span className="titlebar-label">Present</span>
               </button>
             )}
             <button

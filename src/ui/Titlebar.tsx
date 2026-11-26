@@ -41,26 +41,51 @@ export function TitlebarProjects({
   );
 }
 
-/** Project identity: the name stacked over its display path, a static drag surface. */
-export function TitlebarIdentity({ name, path }: { name: string; path?: string | null }) {
+/** Project identity: the name stacked over its display path, a static drag surface. `onCopyPath` turns the path into a button that copies the folder. */
+export function TitlebarIdentity({
+  name,
+  path,
+  onCopyPath,
+}: {
+  name: string;
+  path?: string | null;
+  onCopyPath?: () => void;
+}) {
   return (
     <div className="titlebar-identity" data-tauri-drag-region>
       <span className="titlebar-name" title={name} data-tauri-drag-region>
         {name}
       </span>
-      {path && (
-        <span className="titlebar-path" title={path} data-tauri-drag-region>
-          {path}
-        </span>
-      )}
+      {path &&
+        (onCopyPath ? (
+          <button
+            type="button"
+            className="titlebar-path copyable"
+            title={`${path}\nClick to copy the folder path`}
+            aria-label={`${path}, copy folder path`}
+            onClick={onCopyPath}
+          >
+            {path}
+          </button>
+        ) : (
+          <span className="titlebar-path" title={path} data-tauri-drag-region>
+            {path}
+          </span>
+        ))}
     </div>
   );
 }
 
-/** The ⌘K launcher: a recessed field-styled button with a trailing keycap. */
+/** The ⌘K launcher: a recessed field-styled button with a trailing keycap; its label drops first in a tight titlebar. */
 export function PaletteTrigger({ onOpen }: { onOpen: () => void }) {
   return (
-    <button type="button" className="palette-trigger" onClick={onOpen} title="Find an action (⌘K)">
+    <button
+      type="button"
+      className="palette-trigger"
+      onClick={onOpen}
+      title="Find an action (⌘K)"
+      aria-label="Find an action"
+    >
       <svg
         width="14"
         height="14"
@@ -73,7 +98,7 @@ export function PaletteTrigger({ onOpen }: { onOpen: () => void }) {
         <circle cx="9" cy="9" r="5.5" />
         <path d="M13.5 13.5L17 17" />
       </svg>
-      Find an action
+      <span className="titlebar-label">Find an action</span>
       <kbd className="palette-trigger-key">⌘K</kbd>
     </button>
   );

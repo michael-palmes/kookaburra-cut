@@ -75,7 +75,7 @@ export function CloseGlyph({ size = 13 }: { size?: number }) {
   );
 }
 
-/** The titlebar entry beside the project name. `children` is the launcher, anchored under the button. */
+/** The titlebar entry beside Present. `children` is the launcher, anchored under the button. */
 export function EditWithClaudeButton({
   open,
   onToggle,
@@ -94,6 +94,7 @@ export function EditWithClaudeButton({
         type="button"
         className={`titlebar-claude${open ? " open" : ""}`}
         title="Edit with Claude (⌥⌘E)"
+        aria-label="Edit with Claude"
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={onToggle}
@@ -101,7 +102,7 @@ export function EditWithClaudeButton({
         <span className="titlebar-claude-mark">
           <ClaudeSpark />
         </span>
-        Edit with Claude
+        <span className="titlebar-label">Edit with Claude</span>
         <Glyph size={11}>
           <path d="M5 8l5 5 5-5" />
         </Glyph>
@@ -118,13 +119,14 @@ export function SetUpClaudeButton({ onClick }: { onClick: () => void }) {
       type="button"
       className="titlebar-claude quiet"
       title="Claude is off. Choose how you want to work."
+      aria-label="Set up Claude"
       aria-haspopup="dialog"
       onClick={onClick}
     >
       <span className="titlebar-claude-mark">
         <ClaudeSpark />
       </span>
-      Set up Claude
+      <span className="titlebar-label">Set up Claude</span>
     </button>
   );
 }
