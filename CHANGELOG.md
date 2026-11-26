@@ -45,6 +45,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Nothing is prepared for an AI agent until you turn Claude on. Before this,
   every project you opened got the agent kit and the app kept a bridge folder,
   whether or not you used Claude.
+- `cookie` is 0.18.3, which fixes RUSTSEC-2026-0594, the advisory 0.24.0
+  listed as known. The app never built the affected code.
 
 ## [0.24.0] - 2026-11-24
 
