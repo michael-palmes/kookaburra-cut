@@ -6,23 +6,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Changed
-
-- Claude is off until you turn it on. The app asks once, and Settings ▸ Claude
-  has the switch. While it is off the app writes no agent files into your
-  projects, keeps no bridge folder and shows no Claude buttons. Turning it on
-  works at once, with no relaunch. After updating, turn it on again to keep
-  using Edit with Claude.
-- A copy installed from the `.pkg` no longer checks for updates or installs
-  them itself: whoever installed it delivers the next one. Settings ▸ Updates
-  says so. A configuration profile can turn the in-app updater back on. Copies
-  from the DMG update as before.
+## [0.25.0] - 2026-11-26
 
 ### Added
 
 - `RequireManagedClaude`, a managed preference for fleets: Claude can be
   turned on only on a Mac that carries your organisation's own Claude Code
   settings, with its login pinned. See `docs/mdm.md`.
+
+### Changed
+
+- Claude is off until you turn it on. The app asks once, and Settings ▸ Claude
+  has the switch. While it is off the app writes no agent files into your
+  projects, keeps no bridge folder and shows no Edit with Claude buttons, only
+  a grey Set up Claude button that reopens the choice. Turning it on works at
+  once, with no relaunch. After updating, turn it on again to keep using Edit
+  with Claude.
+- A copy installed from the `.pkg` no longer checks for updates or installs
+  them itself: whoever installed it delivers the next one. Settings ▸ Updates
+  says so. A configuration profile can turn the in-app updater back on. Copies
+  from the DMG update as before.
 
 ### Removed
 
@@ -36,6 +39,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The managed preferences `DisableLiveWebsites` and `AllowedWebsiteOrigins`.
   A profile that still forces them changes nothing. Keep them while any Mac
   runs 0.24.0 or earlier. See `docs/mdm.md`, "Retired keys".
+
+### Fixed
+
+- Present no longer opens on a blank screen in a project with many staged
+  scenes. It drew before every scene was ready, so the scenes drew at once
+  and the stage hung.
+- Several satin floors in one render no longer hang the stage: a floor seen
+  in another floor's mirror keeps its last reflection.
 
 ### Security
 

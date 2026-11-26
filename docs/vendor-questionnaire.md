@@ -1,6 +1,6 @@
 # Vendor questionnaire
 
-**Version:** 0.25.0, pending.
+**Version:** 0.25.0.
 
 Pre-filled answers for the security questionnaire a procurement or security
 team sends before a pilot: the SIG Lite, arranged by the SIG's risk domains,
@@ -28,8 +28,7 @@ app with no service, no account and no hosted data.
 
 ## Version
 
-This page describes 0.25.0, pending: `main` once the 0.25.0 work has merged,
-before that release is tagged. On 0.24.0, the latest release, these rows differ:
+This page describes 0.25.0. On 0.24.0 and earlier these rows differ:
 
 - **Third parties, Data flows, Encryption and Endpoint:** 0.24.0 can open a
   live website inside a scene, after a native Allow for each origin, with

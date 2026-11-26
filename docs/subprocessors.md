@@ -1,6 +1,6 @@
 # Subprocessors and third parties
 
-**Version:** 0.25.0, pending.
+**Version:** 0.25.0.
 
 Kookaburra Cut runs on the Mac, and nothing it does sends data to the vendor.
 There is no account, no server and no hosted data, so there is no subprocessor:

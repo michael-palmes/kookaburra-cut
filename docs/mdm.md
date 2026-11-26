@@ -92,7 +92,7 @@ the person turns the Settings switch on; the welcome is not asked twice.
 ### Retired keys
 
 `DisableLiveWebsites` and `AllowedWebsiteOrigins` governed live website scenes,
-which were removed after 0.24.0: the app opens no website, so there is nothing
+which were removed in 0.25.0: the app opens no website, so there is nothing
 left for them to turn off. A profile that still forces either one locks
 nothing and never fails closed, whatever its value, and the boot log says so
 once (`RETIRED_KEYS` in `managed.rs`): `[managed] configuration profile still

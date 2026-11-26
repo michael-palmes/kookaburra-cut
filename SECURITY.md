@@ -1,7 +1,12 @@
 # Security policy
 
-**As of version 0.24.0.** This file describes that version. Older versions
-have less: 0.22.4 and 0.22.3 keep no log in a release build, share one website
+**As of version 0.25.0.** This file describes that version. Older versions
+have less: 0.24.0 and 0.23.0 can open a website a person allows in a scene,
+with `DisableLiveWebsites` and `AllowedWebsiteOrigins` as their locks, stamp
+the agent kit and serve the bridge from the first launch unless
+`DisableAgentKit` is forced, ignore `RequireManagedClaude`, and check GitHub
+for updates from a pkg install unless `DisableUpdateCheck` is forced; 0.22.4
+and 0.22.3 keep no log in a release build, share one website
 store across projects, leave bridge requests unsigned, have no Allowed
 projects list, Clear all app data, `AuditLogPath` or `AllowedWebsiteOrigins`,
 and ship no pkg, SBOM or source archives; 0.22.2 has no managed keys for the agent
@@ -10,17 +15,6 @@ the Keychain for the pack key whenever Settings or Export opens, and its Later
 stops the launch check offering that version again; 0.22.0 is 0.22.1 built
 before the pinned toolchain and the whole-bundle record ("Release integrity");
 and "Version 0.21.1" below lists what that version lacks.
-Three things here are ahead of 0.24.0. Live scene websites are removed and gone
-from the next release, so this file lists nothing they brought. 0.24.0 itself
-can still open a website a person allows in a scene, with `DisableLiveWebsites`
-and `AllowedWebsiteOrigins` as its locks; that version's copy of this file
-describes it. And Claude is off until a person turns it on, with
-`RequireManagedClaude` to tie that to an organisation's own Claude Code policy
-("What reaches your agent"); on 0.24.0 the kit is stamped and the bridge
-serves from the first launch, the key is ignored, and `DisableAgentKit` is
-what stops them. And a copy installed from the pkg leaves updates to its
-installer ("What leaves the Mac"); on 0.24.0 it checks GitHub like any other
-copy unless `DisableUpdateCheck` is forced.
 Each release from 0.22.0 on carries its own copy of this file in its assets.
 
 On a managed Mac, a configuration profile can pin the posture an organisation

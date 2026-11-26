@@ -1,6 +1,6 @@
 # Third-party assessment
 
-**Version:** 0.25.0, pending.
+**Version:** 0.25.0.
 
 For the security team that must assess Kookaburra Cut before it is allowed on
 corporate Macs. It covers the two audits such an assessment usually asks for,
@@ -9,8 +9,7 @@ corporate Macs. It covers the two audits such an assessment usually asks for,
 [deployment conditions](#deployment-conditions) to the control behind each, and
 ends with [what no control here can give you](#what-this-cannot-give-you).
 Nothing on this page is new evidence: each line points at the file, command or
-release asset that proves it. A "pending" version line names a release not yet
-tagged ([vendor-questionnaire.md](./vendor-questionnaire.md#version)).
+release asset that proves it.
 
 The long forms: [security-overview.md](./security-overview.md) for the
 decision-maker, [SECURITY.md](../SECURITY.md) for every control,

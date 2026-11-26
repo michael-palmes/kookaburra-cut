@@ -1,8 +1,8 @@
 # Security overview
 
-Describes version 0.24.0. Three changes since: live website scenes are removed
-and gone from the next release, so this page lists nothing they brought; on
-0.24.0 itself `DisableLiveWebsites` turns them off
+Describes version 0.25.0. Three changes since 0.24.0: live website scenes are
+removed, so this page lists nothing they brought; on 0.24.0
+`DisableLiveWebsites` turns them off
 ([mdm.md, "Retired keys"](./mdm.md#retired-keys)). And Claude is off until a
 person turns it on, with `RequireManagedClaude` to tie it to an organisation's
 own Claude Code policy; on 0.24.0 it is on from the first launch, the key is
@@ -212,8 +212,9 @@ that tag on GitHub's own runners.
   the Claude desktop app or the person's own terminal, under their own account
   ([SECURITY.md, "What reaches your agent"](../SECURITY.md#what-reaches-your-agent)).
 - **Nothing for an agent until asked.** Claude is off until a person turns it
-  on: no agent files in a project, no bridge folder and no Claude button
-  before that (`src-tauri/src/agent_gate.rs`).
+  on: no agent files in a project, no bridge folder and no Edit with Claude
+  button before that, only a grey Set up Claude that reopens the ask
+  (`src-tauri/src/agent_gate.rs`).
 - **No shell**, except the updater's administrator install when the app's
   folder is not writable, behind macOS's own password prompt;
   `DisableUpdateCheck` removes it
@@ -311,7 +312,7 @@ keys, each with a row, a guard and a test in [mdm.md](./mdm.md):
 `DisableAgentKit`, `DisablePackExport`, `ExportsInProject` and `UpdateEndpoint`
 are honoured from 0.22.3; an older build ignores them, so deploy 0.22.3 or
 later before relying on them. `AuditLogPath` needs 0.23.0, and
-`RequireManagedClaude` the release after 0.24.0.
+`RequireManagedClaude` 0.25.0.
 `DisableLiveWebsites` and `AllowedWebsiteOrigins` are retired with live
 websites: a profile that still forces them locks nothing, and only 0.24.0 and
 earlier read them ([mdm.md, "Retired keys"](./mdm.md#retired-keys)).
