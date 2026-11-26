@@ -6,10 +6,9 @@ and how an engagement should run. Quote from it freely. Every claim it points at
 is stated, with its control, in [SECURITY.md](../SECURITY.md) at the version
 under test; where the two disagree, SECURITY.md wins and this file is stale.
 
-Checked against 0.24.0, the latest release, then updated for one change on
-`main`: live website scenes are removed, so the child webview that showed an
-approved origin is out of scope from the next release. On 0.24.0 itself it is
-in scope as that version's copy of this file describes.
+Checked against 0.25.0, the latest release. Live website scenes are removed,
+so the child webview that showed an approved origin is out of scope; on 0.24.0
+and earlier it is in scope as that version's copy of this file describes.
 
 ## The product
 

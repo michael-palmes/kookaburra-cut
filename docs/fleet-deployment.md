@@ -245,11 +245,11 @@ and [`kookaburra-cut-open.mobileconfig`](../packaging/mdm/kookaburra-cut-open.mo
 The From column is the first release whose `Key::ALL` in `managed.rs` holds the
 key, and an older build ignores it: deploy 0.22.3 or later, since on 0.22.2 the
 open profile changes nothing and the mirrored one leaves checks on GitHub.
-`AuditLogPath` needs 0.23.0, and `RequireManagedClaude` the release after 0.24.0:
+`AuditLogPath` needs 0.23.0, and `RequireManagedClaude` 0.25.0:
 0.24.0 and earlier ignore the key, and there Claude is on from the first launch.
 
 `DisableLiveWebsites` and `AllowedWebsiteOrigins` are retired. Live website
-scenes were removed after 0.24.0, so a later build reads neither key and locks
+scenes were removed in 0.25.0, so that build and later read neither key and lock
 nothing for them ([mdm.md, "Retired keys"](./mdm.md#retired-keys)). The
 profiles keep both for Macs still on 0.24.0 or earlier, where they turn live
 websites off; drop them once no Mac runs those versions.

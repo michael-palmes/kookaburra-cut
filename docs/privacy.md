@@ -5,10 +5,10 @@ plain words, what can leave the Mac, what the app keeps, how to clear it, and
 how an organisation can lock it down. The engineering version, with the file or
 command behind every sentence, is [SECURITY.md](../SECURITY.md).
 
-This page describes version 0.24.0. Three changes since: scenes can no longer
-open a live website, and the next release has none of it (0.24.0 still can,
-after you press Allow for the site); Claude is off until you turn it on; and a
-copy installed from the package no longer checks for updates itself. On 0.21.1, pressing Allow on a shared project
+This page describes version 0.25.0. Three changes since 0.24.0: scenes can no
+longer open a live website (0.24.0 still can, after you press Allow for the
+site); Claude is off until you turn it on; and a copy installed from the
+package no longer checks for updates itself. On 0.21.1, pressing Allow on a shared project
 runs its code with your account, and the app's own data is not private to your
 account. Update once a newer release is out, and until then open only projects
 you'd trust as a program.
@@ -39,10 +39,10 @@ app; nothing about you is added to it.
 
 Claude is off until you turn it on, when the app first asks or in Settings ▸
 Claude, and you can turn it off there again. While it is off the app writes no
-agent files into your projects, keeps no bridge folder and shows no Claude
-buttons. Claude uses your own Claude Code install and your own Anthropic
-account. The app never holds a key for you, and it never starts Claude Code,
-or a shell for Claude.
+agent files into your projects, keeps no bridge folder and shows no Edit with
+Claude buttons, only a grey Set up Claude button that asks again. Claude uses
+your own Claude Code install and your own Anthropic account. The app never
+holds a key for you, and it never starts Claude Code, or a shell for Claude.
 
 - **Edit with Claude** hands the project to the Claude desktop app and types a
   starter prompt in. Nothing is sent until you press Enter in that app. From

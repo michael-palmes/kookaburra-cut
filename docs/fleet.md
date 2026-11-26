@@ -1,10 +1,10 @@
 # Kookaburra Cut on managed Macs
 
-Describes version 0.24.0. Three changes since: live website scenes are removed
-and gone from the next release, so nothing here covers them
-([mdm.md, "Retired keys"](./mdm.md#retired-keys) for Macs still on 0.24.0).
-And Claude is off until a person turns it on, where on 0.24.0 only
-`DisableAgentKit` keeps it off; and a copy installed from the pkg no longer
+Describes version 0.25.0. Three changes since 0.24.0: live website scenes are
+removed, so nothing here covers them
+([mdm.md, "Retired keys"](./mdm.md#retired-keys) for Macs still on 0.24.0 or
+earlier). Claude is off until a person turns it on, where on 0.24.0 only
+`DisableAgentKit` keeps it off. And a copy installed from the pkg no longer
 updates itself, where on 0.24.0 only `DisableUpdateCheck` stops it.
 For the IT and security team deploying Kookaburra Cut to a fleet. The keys themselves, their types and a sample profile are in
 [mdm.md](./mdm.md); the decision-maker's summary is
@@ -128,7 +128,8 @@ later before relying on them. `AuditLogPath` needs 0.23.0.
 
 With no profile at all, Claude is off until the person turns it on, on the
 first-launch ask or in Settings ▸ Claude: until then the app stamps no kit,
-keeps no `_bridge` folder and shows no Claude button (`agent_gate.rs`). That is
+keeps no `_bridge` folder and shows no Edit with Claude button, only a grey
+Set up Claude that reopens the ask (`agent_gate.rs`). That is
 a default a person can change, not a control, so force a key where the answer
 is the organisation's to give.
 
