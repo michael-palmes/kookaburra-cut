@@ -67,7 +67,7 @@ than the app reports.
 By hand, until the job below exists:
 
 ```bash
-V=0.24.0
+V=0.25.0
 D="$(mktemp -d)"
 gh release download "v$V" --repo michael-palmes/kookaburra-cut -D "$D" -p SHA256SUMS -p "KookaburraCut-$V.dmg"
 (cd "$D" && shasum -a 256 -c SHA256SUMS --ignore-missing)

@@ -2,8 +2,8 @@
 # Installs Kookaburra Cut from its release DMG once the pinned SHA-256 and Developer ID team check out (docs/fleet-deployment.md).
 set -euo pipefail
 
-VERSION="${4:-0.24.0}"
-DMG_SHA256="${5:-d706b79c4c58d06ab3f4d574d575439f320cf0310d89c70676aa3627fba87bb3}"
+VERSION="${4:-0.25.0}"
+DMG_SHA256="${5:-4431f9b5a89b2583effb66c74bde744a9c1ff777a6731322c856126fa654b40a}"
 BASE_URL="${6:-https://github.com/michael-palmes/kookaburra-cut/releases/download/v$VERSION}"
 
 TEAM_ID="Q4B8N8ZKA2"
